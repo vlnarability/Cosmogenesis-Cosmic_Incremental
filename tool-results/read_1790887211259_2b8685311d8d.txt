@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→import { create } from "zustand";
+     4→import { persist, createJSONStorage } from "zustand/middleware";
+     5→import type { GameState, GameStore, StageId, TabId } from "./types";
+     6→import { emptyResources, emptyCapacities } from "../data/resources";
+     7→import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
+     8→import { ACTION_MAP } from "../data/actions";
+     9→import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
+    10→import { TECH_MAP, TECHS } from "../data/techs";
+    11→import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
+    12→import { STORY_TRIGGERS } from "../data/story";
+    13→import { ARCHETYPE_MAP, dominantArchetype } from "../data/archetypes";
+    14→import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
+    15→import { EVENTS, eventsForStage, eventWeight, EVENT_MAP, RARITY_INFO, type GameEvent, type EventChoice } from "../data/events";
+    16→import { CHALLENGE_MAP, CHALLENGES, challengeMasteryBonus } from "../data/challenges";
+    17→import {
+    18→  FORESIGHT_NODES,
+    19→  FORESIGHT_NODE_MAP,
+    20→  ROUTE_MAP,
+    21→  foresightBonus,
+    22→  purchasedForesightCount,
+    23→  totalImplementedForesightCount,
+    24→} from "../data/foresight";
+    25→import {
+    26→  OFFERINGS,
+    27→  OFFERING_MAP,
+    28→  getOffering,
+    29→} from "../data/offerings";
+    30→import {
+    31→  RITUALS,
+    32→  RITUAL_MAP,
+    33→  getRitual,
+    34→} from "../data/rituals";
+    35→import {
+    36→  SCRIPTS,
+    37→  SCRIPT_MAP,
+    38→  getScript,
+    39→  type ScriptDef,
+    40→} from "../data/scripts";
+    41→import {
+    42→  CRADLE_WORLDS,
+    43→  CRADLE_WORLD_MAP,
+    44→  PRIME_CONDITION_MAP,
+    45→  SACRED_GEOGRAPHY_MAP,
+    46→  DORMANT_SEED_MAP,
+    47→  compileWorldEffects,
+    48→} from "../data/genesis";
+    49→import {
+    50→  DIVINE_LAWS,
+    51→  DIVINE_LAW_MAP,
+    52→  WORSHIP_MODE_MAP,
+    53→  MIRACLE_MAP,
+    54→  HERESY_RESPONSE_MAP,
+    55→  HERESY_EVENT_MAP,
+    56→  randomHeresyEventId,
+    57→  compileApotheosisEffects,
+    58→} from "../data/apotheosis";
+    59→import {
+    60→  RELICS,
+    61→  RELIC_MAP,
+    62→  LOGIC_CORES,
+    63→  LOGIC_CORE_MAP,
+    64→  COMPRESSION_PROFILES,
+    65→  COMPRESSION_PROFILE_MAP,
+    66→  canCompressStage,
+    67→  getCompressionProfile,
+    68→  compileSingularityEffects,
+    69→  checkSingularityUnlockCondition,
+    70→} from "../data/singularity";
+    71→
+    72→const STORAGE_KEY = "evolution_idle_v2";
+    73→
+    74→function initialRunState(): Partial<GameState> {
+    75→  const resources = emptyResources();
+    76→  const capacities = emptyCapacities();
+    77→  resources.atp = 5;
+    78→  resources.glucose = 8;
+    79→  resources.happiness = 75;
+    80→  return {
+    81→    stageIndex: 0,
+    82→    time: 0,
+    83→    population: 8,
+    84→    populationProgress: 0,
+    85→    maxPopulation: 8,
+    86→    resources,
+    87→    capacities,
+    88→    ownedSystems: {},
+    89→    systemEnabled: {},
+    90→    technologies: {},
+    91→    lockedTechs: {},
+    92→    lockedSystems: {},
+    93→    archetypeAffinity: {},
+    94→    lockedArchetype: null,
+    95→    log: ["New run started. The first spark stirs."],
+    96→    activeChallenge: null,
+    97→    challengeRunStart: null,
+    98→    flags: {}, // run-scoped one-time event flags (e.g. firstHunt) — cleared on prestige
+    99→    // Transcendence (Layer 3) — run-scoped transient state, cleared on prestige.
+   100→    ritualCooldowns: {},
+   101→    activeSurge: null,
+   102→    divineShieldRemaining: 0,
+   103→    scriptCooldowns: {},
+   104→    // Genesis (Layer 4) — world authoring selections are run-scoped. Cleared on
+   105→    // prestige so the player re-authors their world each run.
+   106→    selectedCradle: null,
+   107→    selectedPrimeCondition: null,
+   108→    selectedGeography: null,
+   109→    selectedSeed: null,
+   110→    awakenedSeeds: {},
+   111→    // Apotheosis (Layer 5) — enacted laws, worship mode, miracle charges, and
+   112→    // heresy are all run-scoped. They reset on prestige; the player re-engages
+   113→    // with these systems each run.
+   114→    enactedLaws: [],
+   115→    worshipMode: null,
+   116→    miracleCharges: 2, // baseline charges awarded at the start of each Apotheosis run
+   117→    activeHeresy: null,
+   118→    heresyLevel: 0,
+   119→    heresyCooldown: 120, // first heresy cannot fire for the first 2 minutes of an Apotheosis run
+   120→    // Singularity (Layer 6) — equipped relics + active logic core are
+   121→    // run-scoped. They reset on prestige; the player re-equips relics and
+   122→    // re-activates a core each run (the god reconfigures the system).
+   123→    // `compressedStages` and `relicSlots` persist across runs (meta —
+   124→    // compression is a permanent QoL feature, relic slots could be expanded
+   125→    // by future shop upgrades).
+   126→    equippedRelics: [],
+   127→    activeLogicCore: null,
+   128→  };
+   129→}
+   130→
+   131→function initialMetaState(): Partial<GameState> {
+   132→  return {
+   133→    evolutionPoints: 0,
+   134→    totalRuns: 0,
+   135→    galacticWins: 0,
+   136→    stageClearCounts: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+   137→    fastestCellClear: 0,
+   138→    totalEventsResolved: 0,
+   139→    totalPlayTime: 0,
+   140→    totalActions: 0,
+   141→    totalSystemsBuilt: 0,
+   142→    totalTechResearched: 0,
+   143→    upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])),
+   144→    storyUnlocked: { first_spark: true },
+   145→    storyAcknowledged: {},
+   146→    archive: [],
+   147→    archivedArchetypes: [],
+   148→    unlockedLayers: { evolution: true },
+   149→    achievements: {},
+   150→    newAchievements: [],
+   151→    unlockedChallenges: false,
+   152→    activeChallenge: null,
+   153→    completedChallenges: {},
+   154→    challengeRunStart: null,
+   155→    // Enlightenment (Layer 2)
+   156→    divinity: 0,
+   157→    enlightenmentUnlocked: false,
+   158→    selectedRoute: null,
+   159→    foresightNodes: {},
+   160→    showEnlightenment: false,
+   161→    // Transcendence (Layer 3)
+   162→    transcendenceUnlocked: false,
+   163→    showTranscendence: false,
+   164→    activeScripts: {}, // purchased scripts — persist across runs
+   165→    offeringLedger: { totalOfferings: 0, totalDivinityFromOfferings: 0 },
+   166→    // Genesis (Layer 4) — `genesisUnlocked` is permanent once earned (meta).
+   167→    // Selection state lives in initialRunState (cleared each prestige) so the
+   168→    // player re-authors their world each run.
+   169→    genesisUnlocked: false,
+   170→    // Apotheosis (Layer 5) — `apotheosisUnlocked` is permanent once earned
+   171→    // (meta). Lifetime stats persist across runs (used for mastery progress).
+   172→    apotheosisUnlocked: false,
+   173→    apotheosisStats: {
+   174→      totalLawsEnacted: 0,
+   175→      totalMiraclesPerformed: 0,
+   176→      totalHeresiesResolved: 0,
+   177→      distinctCradlesAuthored: [],
+   178→      distinctSeedsAwakened: [],
+   179→    },
+   180→    // Singularity (Layer 6) — `singularityUnlocked` is permanent once earned
+   181→    // (meta). `relicSlots` persists (could be expanded by future shop
+   182→    // upgrades). `compressedStages` is a permanent QoL feature (once a stage
+   183→    // is marked compressed, future runs auto-skip it). Lifetime stats persist
+   184→    // across runs (used for mastery progress).
+   185→    singularityUnlocked: false,
+   186→    showSingularity: false,
+   187→    relicSlots: 3, // default — could be expanded by future shop upgrades
+   188→    compressedStages: [],
+   189→    singularityStats: {
+   190→      totalRelicsEquipped: 0,
+   191→      totalCoresActivated: 0,
+   192→      distinctRelicsEquipped: [],
+   193→      distinctCoresActivated: [],
+   194→      compressedStagesSkipped: 0,
+   195→    },
+   196→    currentTab: "actions",
+   197→    speed: 1,
+   198→    paused: false,
+   199→    showShop: false,
+   200→    showEvolve: false,
+   201→    showSettings: false,
+   202→    showChallenges: false,
+   203→    showGenesis: false,
+   204→    showApotheosis: false,
+   205→    activeStoryPopup: "first_spark",
+   206→    activeEvent: null,
+   207→    eventCooldown: 60, // first event can fire after 60s
+   208→    eventHistory: [],
+   209→    hasSeenIntro: false,
+   210→    lastSaved: Date.now(),
+   211→    tutorialStep: 0,
+   212→    tutorialActive: true,
+   213→    tutorialDismissed: false,
+   214→    eventFrequency: "normal",
+   215→  };
+   216→}
+   217→
+   218→export const useGameStore = create<GameStore>()(
+   219→  persist(
+   220→    (set, get) => ({
+   221→      ...initialRunState(),
+   222→      ...initialMetaState(),
+   223→
+   224→      // ============ TICK ============
+   225→      tick: (dt) => {
+   226→        const s = get();
+   227→        if (s.paused) return;
+   228→        const realDt = dt * s.speed;
+   229→
+   230→        const autoLvl = s.upgrades["inherited_efficiency"] || 0;
+   231→        const autoMult = 1 + autoLvl * 0.15;
+   232→        const techMult = techMultiplier(s, "production");
+   233→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+   234→        const capMult = 1 + capBoostLvl * 0.20;
+   235→        const hasAutoBalancer = (s.upgrades["auto_balancer"] || 0) > 0;
+   236→
+   237→        // Archetype bonus
+   238→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   239→        const archAllMult = archetype?.bonus.allProductionMult || 0;
+   240→        const archPopMult = archetype?.bonus.populationGrowthMult || 0;
+   241→        const archCapMult = archetype?.bonus.capMult || 0;
+   242→
+   243→        // ===== Enlightenment route bonus (Layer 2)
+   244→        // The chosen route provides persistent bonuses that stack with archetype
+   245→        // and challenge-mastery bonuses. Foresight passives apply on top.
+   246→        const route = s.selectedRoute ? ROUTE_MAP[s.selectedRoute] : null;
+   247→        const routeAllMult = route?.bonus.allProductionMult || 0;
+   248→        const routePopMult = route?.bonus.populationGrowthMult || 0;
+   249→        const foresightAllMult = foresightBonus(s.foresightNodes || {}, "production");
+   250→        const foresightPopMult = foresightBonus(s.foresightNodes || {}, "popGrowth");
+   251→
+   252→        // ===== Challenge debuff (applied for the duration of an active challenge run)
+   253→        const activeChallenge = s.activeChallenge ? CHALLENGE_MAP[s.activeChallenge] : null;
+   254→        const challengeEffects = activeChallenge?.debuff.effects || {};
+   255→        const chFoodMult = challengeEffects.foodMult ?? 1;
+   256→        const chScienceMult = challengeEffects.scienceMult ?? 1;
+   257→        const chProductionMult = challengeEffects.productionMult ?? 1;
+   258→        const chMilitaryMult = challengeEffects.militaryMult ?? 1;
+   259→        const chWaterUpkeepMult = challengeEffects.waterUpkeepMult ?? 1;
+   260→        const chHappinessDrain = challengeEffects.happinessDrain ?? 0;
+   261→        const chPopGrowthMult = challengeEffects.popGrowthMult ?? 1;
+   262→
+   263→        // ===== Transcendence (Layer 3) — transient ritual effects + script automation.
+   264→        // - Surge: multiply all production while active (set by the production_surge ritual).
+   265→        // - Divine Shield: suppress event firing while active.
+   266→        // - Ritual cooldowns + script cooldowns tick down each tick.
+   267→        const surgeMult = s.activeSurge && s.activeSurge.remaining > 0 ? s.activeSurge.mult : 1;
+   268→        // Decrement transient cooldowns/timers by realDt (clamped at 0).
+   269→        const ritualCooldowns = tickDownCooldowns(s.ritualCooldowns || {}, realDt);
+   270→        const scriptCooldowns = tickDownCooldowns(s.scriptCooldowns || {}, realDt);
+   271→        let divineShieldRemaining = Math.max(0, (s.divineShieldRemaining || 0) - realDt);
+   272→        let activeSurge = s.activeSurge;
+   273→        if (activeSurge) {
+   274→          const remaining = activeSurge.remaining - realDt;
+   275→          activeSurge = remaining > 0 ? { mult: activeSurge.mult, remaining } : null;
+   276→        }
+   277→
+   278→        // ===== Genesis (Layer 4) — compiled world effects.
+   279→        // The cradle, prime condition, geography, and any awakened dormant
+   280→        // seed contribute their bonuses here. `worldEffects.resourceMult[r]`
+   281→        // is additive with archetype + route + foresight per-resource bonuses.
+   282→        // `worldEffects.capacityMult` is additive with archCapMult. `upkeepMult`
+   283→        // and `eventFreqMult` are multiplicative.
+   284→        const worldEffects = compileWorldEffects({
+   285→          selectedCradle: s.selectedCradle,
+   286→          selectedPrimeCondition: s.selectedPrimeCondition,
+   287→          selectedGeography: s.selectedGeography,
+   288→          selectedSeed: s.selectedSeed,
+   289→          awakenedSeeds: s.awakenedSeeds || {},
+   290→        });
+   291→        const worldCapMult = worldEffects.capacityMult || 0;
+   292→        const worldPopMult = worldEffects.popGrowthMult || 0;
+   293→
+   294→        // ===== Apotheosis (Layer 5) — compiled law + worship mode effects.
+   295→        // Enacted divine laws + current worship mode combine into a single
+   296→        // effects bundle that folds into the same per-resource / all-production
+   297→        // stacks as archetype + route + foresight + world. Passive happiness
+   298→        // regen, food/water-from-population (dark laws), and divinity-per-sec
+   299→        // (Transcendence mode) apply as flat per-tick deltas.
+   300→        const apotheosisEffects = s.apotheosisUnlocked
+   301→          ? compileApotheosisEffects(s.enactedLaws || [], s.worshipMode)
+   302→          : null;
+   303→        const apotheosisAllMult = apotheosisEffects?.allProductionMult || 0;
+   304→        const apotheosisPopMult = apotheosisEffects?.popGrowthMult || 0;
+   305→        let apotheosisDivinityGain = (apotheosisEffects?.divinityPerSec || 0) * realDt;
+   306→        const apotheosisHappinessRegen = (apotheosisEffects?.happinessRegen || 0) * realDt;
+   307→        const apotheosisFoodPerPop = apotheosisEffects?.foodPerPop || 0;
+   308→        const apotheosisWaterPerPop = apotheosisEffects?.waterPerPop || 0;
+   309→
+   310→        // ===== Singularity (Layer 6) — compiled relic + logic core effects.
+   311→        // Equipped relics + active logic core combine into a single effects
+   312→        // bundle that folds into the same per-resource / all-production stacks
+   313→        // as archetype + route + foresight + world + apotheosis. Relic
+   314→        // penalties (e.g. −10% pop/s, −20% happiness, −50% event freq) apply
+   315→        // here too — they subtract from the same stacks. `upkeepMult` and
+   316→        // `eventFreqMult` are multiplicative (stacked with world upkeep / event
+   317→        // frequency multipliers).
+   318→        const singularityEffects = s.singularityUnlocked
+   319→          ? compileSingularityEffects(s.equippedRelics || [], s.activeLogicCore)
+   320→          : null;
+   321→        const singularityAllMult = singularityEffects?.allProductionMult || 0;
+   322→        const singularityPopMult = singularityEffects?.popGrowthMult || 0;
+   323→        const singularityCapMult = singularityEffects?.capacityMult || 0;
+   324→        const singularityUpkeepMult = singularityEffects?.upkeepMult ?? 1;
+   325→        const singularityEventFreqMult = singularityEffects?.eventFreqMult ?? 1;
+   326→
+   327→        const resources = { ...s.resources };
+   328→        let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult + worldCapMult + singularityCapMult);
+   329→
+   330→        // Apply system production — with cap-aware pausing
+   331→        for (const [sysId, count] of Object.entries(s.ownedSystems)) {
+   332→          if (!count) continue;
+   333→          const sys = SYSTEM_MAP[sysId];
+   334→          if (!sys) continue;
+   335→          if (sys.requiredTech && !s.technologies[sys.requiredTech]) continue;
+   336→
+   337→          // Check if system is manually disabled
+   338→          const manuallyEnabled = s.systemEnabled[sysId] !== false; // default true
+   339→          if (!manuallyEnabled && !hasAutoBalancer) continue;
+   340→
+   341→          // Cap-aware logic: if all output resources are at cap, idle the system
+   342→          // (don't produce, don't consume upkeep — no waste)
+   343→          const outputsCapped = Object.keys(sys.produces).length > 0 &&
+   344→            Object.keys(sys.produces).every((r) => {
+   345→              const cap = capacities[r] || 0;
+   346→              return (resources[r] || 0) >= cap - 0.01;
+   347→            });
+   348→
+   349→          if (outputsCapped) {
+   350→            // System idles — no production, no upkeep
+   351→            continue;
+   352→          }
+   353→
+   354→          const stageMult = sys.stage === STAGES[s.stageIndex].id ? 1 : 0.5;
+   355→          const mult = autoMult * techMult * stageMult *
+   356→            (1 + archAllMult + routeAllMult + foresightAllMult + apotheosisAllMult + singularityAllMult) * chProductionMult *
+   357→            surgeMult;
+   358→
+   359→          // Per-resource archetype + route + foresight bonus + challenge resource-specific debuff
+   360→          // Genesis (Layer 4) world effects: per-resource production multiplier
+   361→          // (additive with archetype + route + foresight bonuses). Stacks with all.
+   362→          // Apotheosis (Layer 5) law + worship mode effects fold into the same stack.
+   363→          // Singularity (Layer 6) relic + logic core per-resource effects fold in too.
+   364→          const produces = sys.produces as Record<string, number>;
+   365→          for (const [r, v] of Object.entries(produces)) {
+   366→            const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+   367→            const routeResBonus = route?.bonus.productionMult?.[r] || 0;
+   368→            const foresightResBonus = foresightBonus(s.foresightNodes || {}, "resource", r);
+   369→            const worldResBonus = worldEffects.resourceMult?.[r] || 0;
+   370→            const apotheosisResBonus = apotheosisEffects?.resourceMult[r] || 0;
+   371→            const singularityResBonus = singularityEffects?.resourceMult[r] || 0;
+   372→            // Apply per-resource challenge multipliers
+   373→            let chResMult = 1;
+   374→            if (r === "food") chResMult *= chFoodMult;
+   375→            if (r === "science") chResMult *= chScienceMult;
+   376→            if (r === "military_power") chResMult *= chMilitaryMult;
+   377→            const rate = v * count * mult *
+   378→              (1 + archResBonus + routeResBonus + foresightResBonus + worldResBonus + apotheosisResBonus + singularityResBonus) * chResMult;
+   379→            resources[r] = (resources[r] || 0) + rate * realDt;
+   380→          }
+   381→          // Upkeep — Genesis (Layer 4) world upkeep multiplier is multiplicative
+   382→          // (so e.g. arid's 1.25× makes water cost 25% more on every system).
+   383→          // Singularity (Layer 6) relic upkeep multiplier is multiplicative too
+   384→          // (stacks with the world upkeep multiplier).
+   385→          const worldUpkeepMult = worldEffects.upkeepMult ?? 1;
+   386→          if (sys.upkeep) {
+   387→            const upkeep = sys.upkeep as Record<string, number>;
+   388→            for (const [r, v] of Object.entries(upkeep)) {
+   389→              const upkMult = (r === "water" ? chWaterUpkeepMult : 1) * worldUpkeepMult * singularityUpkeepMult;
+   390→              resources[r] = (resources[r] || 0) - v * count * realDt * upkMult;
+   391→            }
+   392→          }
+   393→        }
+   394→
+   395→        // Apply challenge happiness drain (flat per second)
+   396→        if (chHappinessDrain > 0) {
+   397→          const happCap = capacities.happiness || 100;
+   398→          resources.happiness = Math.max(0, (resources.happiness || 0) - chHappinessDrain * realDt);
+   399→          // also clamp to cap (already done below, but keep happ bounded)
+   400→          if (resources.happiness > happCap) resources.happiness = happCap;
+   401→        }
+   402→
+   403→        // ===== Apotheosis (Layer 5) — passive effects applied at the end of
+   404→        // production but before cap clamping:
+   405→        //   - happinessRegen: flat happiness delta per tick (Devotion mode,
+   406→        //     happiness-from-luxury law, etc.)
+   407→        //   - foodPerPop / waterPerPop: dark laws (Carnal Pact, Void Pact)
+   408→        //     generate food/water from population passively
+   409→        // Divinity gain is applied later (after clamping) so it isn't capped.
+   410→        // NOTE: Uses `s.population` (current value before this tick's growth)
+   411→        // because `population` is declared below; the per-pop rate is the
+   412→        // current rate, applied over `realDt` seconds. Using `s.population`
+   413→        // here is correct — the few individuals added this tick don't
+   414→        // meaningfully change the rate.
+   415→        if (apotheosisEffects) {
+   416→          if (apotheosisHappinessRegen !== 0) {
+   417→            const happCap = capacities.happiness || 100;
+   418→            resources.happiness = Math.max(
+   419→              0,
+   420→              Math.min(happCap, (resources.happiness || 0) + apotheosisHappinessRegen)
+   421→            );
+   422→          }
+   423→          if (apotheosisFoodPerPop > 0) {
+   424→            const foodCap = capacities.food || Infinity;
+   425→            const gain = apotheosisFoodPerPop * s.population * realDt;
+   426→            resources.food = Math.min(foodCap, (resources.food || 0) + gain);
+   427→          }
+   428→          if (apotheosisWaterPerPop > 0) {
+   429→            const waterCap = capacities.water || Infinity;
+   430→            const gain = apotheosisWaterPerPop * s.population * realDt;
+   431→            resources.water = Math.min(waterCap, (resources.water || 0) + gain);
+   432→          }
+   433→        }
+   434→
+   435→        // Clamp resources to capacities (no overflow)
+   436→        for (const r of Object.keys(resources)) {
+   437→          const cap = capacities[r];
+   438→          if (cap != null && resources[r] > cap) resources[r] = cap;
+   439→          if (resources[r] < 0) resources[r] = 0;
+   440→        }
+   441→
+   442→        // Slow passive ATP for cell (keeps early game from stalling)
+   443→        if (STAGES[s.stageIndex].id === "cell") {
+   444→          resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.1 * realDt);
+   445→        }
+   446→
+   447→        // Happiness drift toward 50 baseline if no source
+   448→        // (prevents permanent high happiness from start)
+   449→        // — disabled: let systems/tech maintain it
+   450→
+   451→        // Population growth with progress bar
+   452→        // Growth rate scales with happiness and food/water availability
+   453→        let popGrowthRate = 0.015; // base per second
+   454→        const happiness = resources.happiness || 50;
+   455→        popGrowthRate *= (1 + (happiness - 40) / 200); // happiness 100 → +30%, happiness 20 → -10%
+   456→        popGrowthRate *= (1 + archPopMult + routePopMult + foresightPopMult + worldPopMult + apotheosisPopMult + singularityPopMult);
+   457→        // Apply challenge population-growth debuff
+   458→        popGrowthRate *= chPopGrowthMult;
+   459→        // Penalty if food/water are critically low (creature+)
+   460→        const curStage = STAGES[s.stageIndex];
+   461→        if (["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
+   462→          const foodCap = capacities.food || 1;
+   463→          const waterCap = capacities.water || 1;
+   464→          const foodPct = (resources.food || 0) / foodCap;
+   465→          const waterPct = (resources.water || 0) / waterCap;
+   466→          if (foodPct < 0.1) popGrowthRate *= 0.3;
+   467→          if (waterPct < 0.1) popGrowthRate *= 0.3;
+   468→        }
+   469→
+   470→        let populationProgress = (s.populationProgress || 0) + popGrowthRate * realDt;
+   471→        let population = s.population;
+   472→        while (populationProgress >= 1) {
+   473→          populationProgress -= 1;
+   474→          population += 1;
+   475→        }
+   476→
+   477→        const maxPopulation = Math.max(s.maxPopulation || 0, population);
+   478→
+   479→        const newTime = s.time + realDt;
+   480→
+   481→        // Check story triggers
+   482→        const newStory = { ...s.storyUnlocked };
+   483→        let activePopup = s.activeStoryPopup;
+   484→        const ctx = { ...s, resources, ownedSystems: s.ownedSystems };
+   485→        for (const trig of STORY_TRIGGERS) {
+   486→          if (!newStory[trig.id] && trig.condition(ctx)) {
+   487→            newStory[trig.id] = true;
+   488→            if (!activePopup) activePopup = trig.id;
+   489→          }
+   490→        }
+   491→
+   492→        // Check achievements periodically (every ~2 seconds of game time)
+   493→        let achievements = s.achievements;
+   494→        let newAchievements = s.newAchievements;
+   495→        const checkInterval = 2.0;
+   496→        const lastCheck = (s as any)._lastAchCheck || 0;
+   497→        if (newTime - lastCheck >= checkInterval) {
+   498→          const curState = { ...s, resources, time: newTime } as GameState;
+   499→          const result = checkAchievements(curState);
+   500→          if (result.newOnes.length > 0) {
+   501→            achievements = result.earned;
+   502→            newAchievements = [...(newAchievements || []), ...result.newOnes];
+   503→          } else if (Object.keys(result.earned).length !== Object.keys(achievements || {}).length) {
+   504→            achievements = result.earned;
+   505→          }
+   506→          (s as any)._lastAchCheck = newTime; // not persisted, just a runtime marker
+   507→        }
+   508→
+   509→        // Random event firing — only if no popup/modal is active.
+   510→        // Divine Shield (Transcendence ritual) suppresses event firing while active.
+   511→        // Genesis (Layer 4) world effects: `eventFreqMult` multiplies the
+   512→        // cooldown — values > 1 mean events come MORE often (cooldown
+   513→        // shrinks), values < 1 mean events come LESS often (cooldown grows).
+   514→        // (The cradle's "eventFreqMult" is a multiplier on event frequency,
+   515→        // not on the cooldown duration, so we divide the cooldown by it.)
+   516→        // Singularity (Layer 6) — Silent Bell relic multiplies event frequency
+   517→        // multiplicatively too (stacks with world eventFreqMult).
+   518→        let activeEvent = s.activeEvent;
+   519→        const worldEventFreqMult = worldEffects.eventFreqMult ?? 1;
+   520→        const totalEventFreqMult = worldEventFreqMult * singularityEventFreqMult;
+   521→        let eventCooldown = Math.max(0, (s.eventCooldown || 0) - realDt);
+   522→        const eventFreq = s.eventFrequency || "normal";
+   523→        const shieldActive = divineShieldRemaining > 0;
+   524→        if (eventFreq !== "off" && !activeEvent && !activePopup && eventCooldown === 0 && !shieldActive) {
+   525→          const stageId = STAGES[s.stageIndex].id;
+   526→          const possible = eventsForStage(stageId, newTime);
+   527→          if (possible.length > 0) {
+   528→            // Weighted random selection based on rarity
+   529→            const totalWeight = possible.reduce((sum, e) => sum + eventWeight(e), 0);
+   530→            const roll = Math.random() * totalWeight;
+   531→            let cum = 0;
+   532→            for (const ev of possible) {
+   533→              cum += eventWeight(ev);
+   534→              if (roll < cum) {
+   535→                activeEvent = ev.id;
+   536→                // Cooldown depends on frequency setting — divide by the world's
+   537→                // event frequency multiplier so a 1.5× world fires events 50%
+   538→                // more often (cooldowns are 1/1.5 = 0.67× as long).
+   539→                const base = eventFreq === "frequent" ? 30 : 90;
+   540→                const range = eventFreq === "frequent" ? 30 : 90;
+   541→                eventCooldown = (base + Math.random() * range) / totalEventFreqMult;
+   542→                break;
+   543→              }
+   544→            }
+   545→          }
+   546→        }
+   547→
+   548→        // ===== Transcendence (Layer 3) — Script automation.
+   549→        // For each purchased script, evaluate its condition. If met (and the
+   550→        // script's cooldown has elapsed for one-shot scripts), apply its action.
+   551→        // Continuous scripts (sustainer) apply every tick while their condition holds.
+   552→        // Crisis Manager auto-resolves the active event when its cooldown is up.
+   553→        const scriptCtx = {
+   554→          resources,
+   555→          population,
+   556→          activeEvent,
+   557→        };
+   558→        let scriptLogs: string[] = [];
+   559→        for (const scriptDef of SCRIPTS) {
+   560→          // Only purchased scripts are active.
+   561→          if (!s.activeScripts?.[scriptDef.id]) continue;
+   562→          const onCooldown = (scriptCooldowns[scriptDef.id] || 0) > 0;
+   563→          if (onCooldown) continue;
+   564→          // Evaluate the condition
+   565→          if (!evalScriptCondition(scriptDef, scriptCtx)) continue;
+   566→          // Apply the action
+   567→          const result = applyScriptAction(scriptDef, {
+   568→            resources,
+   569→            population,
+   570→            capacities,
+   571→            activeEvent,
+   572→          });
+   573→          if (!result) continue;
+   574→          // Apply mutations
+   575→          for (const [k, v] of Object.entries(result.resourceChanges || {})) {
+   576→            const cap = capacities[k] || Infinity;
+   577→            resources[k] = Math.max(0, Math.min(cap, (resources[k] || 0) + (v as number)));
+   578→          }
+   579→          if (result.popChange) {
+   580→            population = Math.max(0, population + result.popChange);
+   581→          }
+   582→          if (result.eventResolved) {
+   583→            activeEvent = null;
+   584→            eventCooldown = Math.max(eventCooldown, 60);
+   585→          }
+   586→          // Set cooldown for one-shot scripts
+   587→          if (scriptDef.oneShot && scriptDef.cooldown) {
+   588→            scriptCooldowns[scriptDef.id] = scriptDef.cooldown;
+   589→          }
+   590→          if (result.logMsg) scriptLogs.push(result.logMsg);
+   591→        }
+   592→
+   593→        // ===== Apotheosis (Layer 5) — Heresy management.
+   594→        // While Apotheosis is unlocked:
+   595→        //   - If no active heresy and heresy cooldown has elapsed, small chance
+   596→        //     to spawn a heresy event. The cooldown prevents back-to-back spawns.
+   597→        //   - If a heresy is active, heresy level slowly climbs each tick
+   598→        //     (schisms grow if left unaddressed). The growth rate accelerates as
+   599→        //     the level rises — past 80 it ramps hard toward the failure state.
+   600→        //   - If heresy level reaches 100, the run ends — call triggerPrestige
+   601→        //     with reduced EP (the schism consumes the god's hold on creation).
+   602→        let activeHeresy = s.activeHeresy;
+   603→        let heresyLevel = s.heresyLevel || 0;
+   604→        let heresyCooldown = Math.max(0, (s.heresyCooldown || 0) - realDt);
+   605→        let divinityGainFromMode = apotheosisDivinityGain;
+   606→        let heresyEndRun = false;
+   607→        if (s.apotheosisUnlocked) {
+   608→          if (!activeHeresy && heresyCooldown === 0 && !activePopup && !activeEvent) {
+   609→            // ~0.5% chance per tick when conditions are met — translates to
+   610→            // roughly one heresy event every ~3-4 minutes of active play.
+   611→            if (Math.random() < 0.005) {
+   612→              activeHeresy = randomHeresyEventId();
+   613→              heresyCooldown = 180; // next heresy cannot fire for 3 minutes
+   614→              const evt = HERESY_EVENT_MAP[activeHeresy];
+   615→              if (evt) {
+   616→                setTimeout(() => {
+   617→                  try {
+   618→                    useGameStore.getState().addToLog(
+   619→                      `Heresy arises: ${evt.name}. ${evt.desc}`
+   620→                    );
+   621→                  } catch { /* ignore */ }
+   622→                }, 0);
+   623→              }
+   624→            }
+   625→          }
+   626→          if (activeHeresy) {
+   627→            // Base growth rate is 0.5/sec; accelerates after level 80 (the
+   628→            // "danger zone" — schisms feed on themselves).
+   629→            let growth = 0.5;
+   630→            if (heresyLevel > 80) {
+   631→              growth += (heresyLevel - 80) * 0.1; // +0.1 per level above 80
+   632→            }
+   633→            heresyLevel = Math.min(100, heresyLevel + growth * realDt);
+   634→            if (heresyLevel >= 100) {
+   635→              heresyEndRun = true;
+   636→            }
+   637→          }
+   638→        }
+   639→
+   640→        // Apply divinity-per-sec from Transcendence worship mode (passive
+   641→        // divine accrual while that mode is active).
+   642→        let divinity = s.divinity || 0;
+   643→        if (divinityGainFromMode > 0) {
+   644→          divinity += divinityGainFromMode;
+   645→        }
+   646→
+   647→        set({
+   648→          resources,
+   649→          capacities,
+   650→          time: newTime,
+   651→          population,
+   652→          maxPopulation,
+   653→          populationProgress,
+   654→          storyUnlocked: newStory,
+   655→          activeStoryPopup: activePopup,
+   656→          achievements,
+   657→          newAchievements,
+   658→          activeEvent,
+   659→          eventCooldown,
+   660→          totalPlayTime: (s.totalPlayTime || 0) + realDt,
+   661→          // Transcendence (Layer 3) — persist transient timers
+   662→          ritualCooldowns,
+   663→          scriptCooldowns,
+   664→          divineShieldRemaining,
+   665→          activeSurge,
+   666→          // Apotheosis (Layer 5) — persist heresy + divinity gain.
+   667→          activeHeresy,
+   668→          heresyLevel,
+   669→          heresyCooldown,
+   670→          divinity,
+   671→        });
+   672→
+   673→        // Log any script actions (after the set so the log appears in order)
+   674→        for (const msg of scriptLogs) {
+   675→          get().addToLog(msg);
+   676→        }
+   677→
+   678→        // Check if the active challenge's completion condition has been met.
+   679→        // If so, mark it complete and clear the active challenge slot.
+   680→        // (Done after the set so completion sees updated state.)
+   681→        if (s.activeChallenge) {
+   682→          get().checkChallengeCompletion();
+   683→        }
+   684→
+   685→        // ===== Apotheosis (Layer 5) — Heresy out of control ends the run.
+   686→        // If the schism reached 100, trigger prestige with a reduced EP reward.
+   687→        // The reduction is 50% — half the EP you would have earned, plus a
+   688→        // narrative log entry marking the failure.
+   689→        if (heresyEndRun) {
+   690→          get().addToLog(
+   691→            `Heresy has consumed the run. The schism reached its zenith and the god's hold on creation slipped. The run ends with reduced EP.`
+   692→          );
+   693→          // Trigger prestige (which will award EP based on current state).
+   694→          // The reduced EP is applied via a flag — we set it before calling
+   695→          // triggerPrestige so the function can read it.
+   696→          (useGameStore.getState() as any)._heresyEndRun = true;
+   697→          get().triggerPrestige();
+   698→        }
+   699→      },
+   700→
+   701→      // ============ ACTIONS ============
+   702→      performAction: (actionId) => {
+   703→        const s = get();
+   704→        const action = ACTION_MAP[actionId];
+   705→        if (!action) return;
+   706→        if (action.stage !== STAGES[s.stageIndex].id) return;
+   707→
+   708→        const res = { ...s.resources };
+   709→
+   710→        // Check if all output resources are at cap — if so, block (no waste)
+   711→        const outputs = Object.entries(action.produces);
+   712→        if (outputs.length > 0) {
+   713→          const allCapped = outputs.every(([r]) => {
+   714→            const cap = s.capacities[r] || 0;
+   715→            return (res[r] || 0) >= cap - 0.001;
+   716→          });
+   717→          if (allCapped) return; // action wasted — block it
+   718→        }
+   719→
+   720→        // Check costs
+   721→        if (action.cost) {
+   722→          for (const [r, v] of Object.entries(action.cost)) {
+   723→            if ((res[r] || 0) < (v as number)) return;
+   724→          }
+   725→          for (const [r, v] of Object.entries(action.cost)) {
+   726→            res[r] -= v as number;
+   727→          }
+   728→        }
+   729→
+   730→        // Manual action multiplier
+   731→        const manualLvl = s.upgrades["quickened_hands"] || 0;
+   732→        const mult = 1 + manualLvl * 0.25;
+   733→        const techMult = techMultiplier(s, "manual");
+   734→        // Transcendence surge — multiplies manual production too while active
+   735→        const surgeMult = s.activeSurge && s.activeSurge.remaining > 0 ? s.activeSurge.mult : 1;
+   736→        // Apotheosis (Layer 5) — compiled law + worship mode effects apply to
+   737→        // manual actions too (per-resource + all-production stacks).
+   738→        const apotheosisEffects = s.apotheosisUnlocked
+   739→          ? compileApotheosisEffects(s.enactedLaws || [], s.worshipMode)
+   740→          : null;
+   741→        const apotheosisAllMult = apotheosisEffects?.allProductionMult || 0;
+   742→        // Singularity (Layer 6) — relic + logic core effects apply to manual
+   743→        // actions too. Relic `manualMult` adds to the manual multiplier
+   744→        // (e.g. +30% manual actions). Per-resource + all-production bonuses
+   745→        // fold into the same stacks as auto production.
+   746→        const singularityEffects = s.singularityUnlocked
+   747→          ? compileSingularityEffects(s.equippedRelics || [], s.activeLogicCore)
+   748→          : null;
+   749→        const singularityAllMult = singularityEffects?.allProductionMult || 0;
+   750→        const singularityManualMult = singularityEffects?.manualMult || 0;
+   751→        const finalMult = (mult + singularityManualMult) * techMult * surgeMult;
+   752→
+   753→        // Archetype + Enlightenment route per-resource bonus
+   754→        // Genesis (Layer 4) world effects — compiled here too so manual actions
+   755→        // benefit from the same per-resource bonuses as auto production.
+   756→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   757→        const route = s.selectedRoute ? ROUTE_MAP[s.selectedRoute] : null;
+   758→        const routeAllMult = route?.bonus.allProductionMult || 0;
+   759→        const foresightAllMult = foresightBonus(s.foresightNodes || {}, "production");
+   760→        const worldEffects = compileWorldEffects({
+   761→          selectedCradle: s.selectedCradle,
+   762→          selectedPrimeCondition: s.selectedPrimeCondition,
+   763→          selectedGeography: s.selectedGeography,
+   764→          selectedSeed: s.selectedSeed,
+   765→          awakenedSeeds: s.awakenedSeeds || {},
+   766→        });
+   767→
+   768→        for (const [r, v] of Object.entries(action.produces)) {
+   769→          const cap = s.capacities[r] || 0;
+   770→          const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+   771→          const routeResBonus = route?.bonus.productionMult?.[r] || 0;
+   772→          const foresightResBonus = foresightBonus(s.foresightNodes || {}, "resource", r);
+   773→          const worldResBonus = worldEffects.resourceMult?.[r] || 0;
+   774→          const apotheosisResBonus = apotheosisEffects?.resourceMult[r] || 0;
+   775→          const singularityResBonus = singularityEffects?.resourceMult[r] || 0;
+   776→          const totalMult = 1 + archResBonus + routeResBonus + foresightResBonus + worldResBonus + apotheosisResBonus + singularityResBonus +
+   777→            (archetype?.bonus.allProductionMult || 0) + routeAllMult + foresightAllMult + apotheosisAllMult + singularityAllMult;
+   778→          const amount = (v as number) * finalMult * totalMult;
+   779→          res[r] = Math.min(cap, (res[r] || 0) + amount);
+   780→        }
+   781→
+   782→        // Mark first-hunt flag so STORY_TRIGGERS can fire the first_hunt story
+   783→        // beat on the next tick. The hunt action lives in Tribal stage.
+   784→        const updates: Partial<GameState> = {
+   785→          resources: res,
+   786→          totalActions: (s.totalActions || 0) + 1,
+   787→        };
+   788→        if (actionId === "hunt" && !s.flags?.firstHunt) {
+   789→          updates.flags = { ...(s.flags || {}), firstHunt: true };
+   790→        }
+   791→        set(updates);
+   792→      },
+   793→
+   794→      buySystem: (systemId, qty) => {
+   795→        const s = get();
+   796→        const sys = SYSTEM_MAP[systemId];
+   797→        if (!sys) return;
+   798→        if (sys.stage !== STAGES[s.stageIndex].id) return;
+   799→        // Check tech prerequisite
+   800→        if (sys.requiredTech && !s.technologies[sys.requiredTech]) return;
+   801→        // Locked systems (via exclusiveWith variant choices) cannot be purchased.
+   802→        if (s.lockedSystems && s.lockedSystems[systemId]) return;
+   803→
+   804→        const costReduction = (s.upgrades["frugality"] || 0) * 0.04;
+   805→        let owned = s.ownedSystems[systemId] || 0;
+   806→        if (sys.maxOwned && owned >= sys.maxOwned) return;
+   807→
+   808→        const res = { ...s.resources };
+   809→        const ownedSystems = { ...s.ownedSystems };
+   810→        const systemEnabled = { ...s.systemEnabled };
+   811→        const archetypeAffinity = { ...s.archetypeAffinity };
+   812→
+   813→        let bought = 0;
+   814→        for (let i = 0; i < qty; i++) {
+   815→          if (sys.maxOwned && owned + bought >= sys.maxOwned) break;
+   816→          const cost = systemCost(sys, owned + bought, costReduction);
+   817→          let canAfford = true;
+   818→          for (const [r, v] of Object.entries(cost)) {
+   819→            if ((res[r] || 0) < (v as number)) {
+   820→              canAfford = false;
+   821→              break;
+   822→            }
+   823→          }
+   824→          if (!canAfford) break;
+   825→          for (const [r, v] of Object.entries(cost)) {
+   826→            res[r] -= v as number;
+   827→          }
+   828→          bought++;
+   829→        }
+   830→
+   831→        if (bought === 0) return;
+   832→
+   833→        ownedSystems[systemId] = owned + bought;
+   834→        // New systems are enabled by default
+   835→        if (systemEnabled[systemId] === undefined) systemEnabled[systemId] = true;
+   836→
+   837→        // Apply archetype affinity grant
+   838→        if (sys.grantsAffinity) {
+   839→          const arch = sys.grantsAffinity.archetype;
+   840→          archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + sys.grantsAffinity.amount * bought;
+   841→        }
+   842→
+   843→        // Trigger story
+   844→        const newStory = { ...s.storyUnlocked };
+   845→        let activePopup = s.activeStoryPopup;
+   846→        for (const trig of STORY_TRIGGERS) {
+   847→          if (!newStory[trig.id] && trig.condition({ ...s, resources: res, ownedSystems })) {
+   848→            newStory[trig.id] = true;
+   849→            if (!activePopup) activePopup = trig.id;
+   850→          }
+   851→        }
+   852→
+   853→        // Enforce mutually-exclusive variant choices: when buying the first
+   854→        // instance of a system that is part of an exclusive group, permanently
+   855→        // lock all sibling variants so they can never be purchased this run.
+   856→        // (Only the FIRST purchase locks siblings — once chosen, the choice is
+   857→        // final for this run, but the chosen system can still be bought up to
+   858→        // its maxOwned.)
+   859→        const lockedSystems = { ...(s.lockedSystems || {}) };
+   860→        if (sys.exclusiveWith && sys.exclusiveWith.length > 0 && owned === 0 && bought > 0) {
+   861→          for (const siblingId of sys.exclusiveWith) {
+   862→            // Don't lock a sibling that is somehow already owned (defensive)
+   863→            if (!(ownedSystems[siblingId] > 0)) {
+   864→              lockedSystems[siblingId] = true;
+   865→            }
+   866→          }
+   867→        }
+   868→
+   869→        set({
+   870→          resources: res,
+   871→          ownedSystems,
+   872→          systemEnabled,
+   873→          archetypeAffinity,
+   874→          storyUnlocked: newStory,
+   875→          activeStoryPopup: activePopup,
+   876→          lockedSystems,
+   877→          totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
+   878→        });
+   879→        get().addToLog(`Built ${bought}× ${sys.name}.`);
+   880→      },
+   881→
+   882→      toggleSystem: (systemId) => {
+   883→        const s = get();
+   884→        if (!s.ownedSystems[systemId]) return;
+   885→        const systemEnabled = { ...s.systemEnabled };
+   886→        systemEnabled[systemId] = systemEnabled[systemId] === false ? true : false;
+   887→        set({ systemEnabled });
+   888→      },
+   889→
+   890→      enableAllSystems: (enabled) => {
+   891→        const s = get();
+   892→        const systemEnabled: Record<string, boolean> = {};
+   893→        for (const id of Object.keys(s.ownedSystems)) {
+   894→          systemEnabled[id] = enabled;
+   895→        }
+   896→        set({ systemEnabled });
+   897→      },
+   898→
+   899→      buyTech: (techId) => {
+   900→        const s = get();
+   901→        const tech = TECH_MAP[techId];
+   902→        if (!tech) return;
+   903→        if (s.technologies[techId]) return;
+   904→        // Locked techs cannot be researched (a mutually-exclusive sibling was already chosen)
+   905→        if (s.lockedTechs && s.lockedTechs[techId]) return;
+   906→        if (tech.stage !== STAGES[s.stageIndex].id) return;
+   907→        if (tech.requires) {
+   908→          for (const req of tech.requires) {
+   909→            if (!s.technologies[req]) return;
+   910→          }
+   911→        }
+   912→        const res = { ...s.resources };
+   913→        for (const [r, v] of Object.entries(tech.cost)) {
+   914→          if ((res[r] || 0) < (v as number)) return;
+   915→        }
+   916→        for (const [r, v] of Object.entries(tech.cost)) {
+   917→          res[r] -= v as number;
+   918→        }
+   919→        const technologies = { ...s.technologies, [techId]: true };
+   920→        const archetypeAffinity = { ...s.archetypeAffinity };
+   921→        if (tech.grantsAffinity) {
+   922→          archetypeAffinity[tech.grantsAffinity.archetype] =
+   923→            (archetypeAffinity[tech.grantsAffinity.archetype] || 0) + tech.grantsAffinity.amount;
+   924→        }
+   925→        // Enforce mutually-exclusive tech path choices: lock all siblings
+   926→        // listed in `exclusiveWith` so they can never be researched this run.
+   927→        const lockedTechs = { ...(s.lockedTechs || {}) };
+   928→        if (tech.exclusiveWith && tech.exclusiveWith.length > 0) {
+   929→          for (const siblingId of tech.exclusiveWith) {
+   930→            // Don't lock a sibling that is somehow already researched (defensive)
+   931→            if (!technologies[siblingId]) {
+   932→              lockedTechs[siblingId] = true;
+   933→            }
+   934→          }
+   935→        }
+   936→        set({
+   937→          resources: res,
+   938→          technologies,
+   939→          lockedTechs,
+   940→          archetypeAffinity,
+   941→          totalTechResearched: (s.totalTechResearched || 0) + 1,
+   942→        });
+   943→        get().addToLog(`Researched ${tech.name}.`);
+   944→      },
+   945→
+   946→      buyUpgrade: (upgradeId) => {
+   947→        const s = get();
+   948→        const up = UPGRADE_MAP[upgradeId];
+   949→        if (!up) return;
+   950→        if (up.requiresWins && s.galacticWins < up.requiresWins) return;
+   951→        const owned = s.upgrades[upgradeId] || 0;
+   952→        if (owned >= up.maxLevel) return;
+   953→        const cost = upgradeCost(up, owned);
+   954→        if (s.evolutionPoints < cost) return;
+   955→        const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
+   956→        set({
+   957→          evolutionPoints: s.evolutionPoints - cost,
+   958→          upgrades,
+   959→        });
+   960→        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).`);
+   961→      },
+   962→
+   963→      evolveStage: () => {
+   964→        const s = get();
+   965→        const stage = STAGES[s.stageIndex];
+   966→        const next = nextStage(stage.id);
+   967→        if (!next) {
+   968→          get().triggerPrestige();
+   969→          return;
+   970→        }
+   971→        const reqs = stage.evolveRequires;
+   972→        const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
+   973→        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+   974→        const totalTech = Object.keys(s.technologies).length;
+   975→
+   976→        if (s.population < reqs.minPopulation * evolveBoost) return;
+   977→        if (totalSystems < reqs.minSystems * evolveBoost) return;
+   978→        if (totalTech < reqs.minTech * evolveBoost) return;
+   979→
+   980→        let nextStageIdx = s.stageIndex + 1;
+   981→        let nextStageDef = STAGES[nextStageIdx];
+   982→
+   983→        // ===== Singularity (Layer 6) — Compression auto-skip.
+   984→        // If the next stage is marked compressed (player has cleared it before
+   985→        // AND toggled compression for it) AND there's a stage after it (cannot
+   986→        // compress Galactic — it's the final stage that triggers prestige), the
+   987→        // run auto-skips through the compressed stage. The skip:
+   988→        //   1. Marks the compressed stage as cleared in stageClearCounts.
+   989→        //   2. Grants the "what would have been" build (resources + population
+   990→        //      from COMPRESSION_PROFILES for that stage).
+   991→        //   3. Bumps population by the profile's `populationGrant`.
+   992→        //   4. Advances nextStageIdx by 1 more (to the stage after the compressed
+   993→        //      one) so the rest of the evolve logic operates on the destination.
+   994→        // Tradeoff: if the planted dormant seed would awaken at the compressed
+   995→        // stage, the awakening is forfeit (compression trades content for QoL).
+   996→        let compressedSkipped = false;
+   997→        let compressedStageName = "";
+   998→        let compressedStageId: string | null = null;
+   999→        let singularityStats = s.singularityStats;
+  1000→        // The resources + population that will be merged into the evolve's
+  1001→        // post-validation `resources` snapshot.
+  1002→        const compressionResourceGrant: Record<string, number> = {};
+  1003→        let compressionPopulationGrant = 0;
+  1004→        let compressionMaxPopulationBump = 0;
+  1005→        if (
+  1006→          s.singularityUnlocked &&
+  1007→          (s.compressedStages || []).includes(nextStageDef.id) &&
+  1008→          nextStageIdx + 1 < STAGES.length
+  1009→        ) {
+  1010→          const compressedStage = nextStageDef;
+  1011→          const profile = getCompressionProfile(compressedStage.id);
+  1012→          if (profile) {
+  1013→            // Collect the resource grants (clamped to current caps at apply time).
+  1014→            for (const [r, v] of Object.entries(profile.resourceGrant)) {
+  1015→              compressionResourceGrant[r] = (compressionResourceGrant[r] || 0) + (v as number);
+  1016→            }
+  1017→            compressionPopulationGrant = profile.populationGrant;
+  1018→            compressionMaxPopulationBump = profile.populationGrant;
+  1019→            compressedSkipped = true;
+  1020→            compressedStageName = compressedStage.name;
+  1021→            compressedStageId = compressedStage.id;
+  1022→            // Advance to the stage after.
+  1023→            nextStageIdx = nextStageIdx + 1;
+  1024→            nextStageDef = STAGES[nextStageIdx];
+  1025→            // Bump lifetime compression-skip counter.
+  1026→            singularityStats = {
+  1027→              ...(singularityStats || {
+  1028→                totalRelicsEquipped: 0,
+  1029→                totalCoresActivated: 0,
+  1030→                distinctRelicsEquipped: [],
+  1031→                distinctCoresActivated: [],
+  1032→                compressedStagesSkipped: 0,
+  1033→              }),
+  1034→              compressedStagesSkipped: (singularityStats?.compressedStagesSkipped || 0) + 1,
+  1035→            };
+  1036→          }
+  1037→        }
+  1038→
+  1039→        // ===== Genesis (Layer 4) — dormant seed awakening.
+  1040→        // If the player has planted a dormant seed whose awakening stage is the
+  1041→        // new (destination) stage, the seed awakens here. The reward is applied
+  1042→        // immediately:
+  1043→        //   - resourceMult becomes part of the world effects (applied via
+  1044→        //     compileWorldEffects on every tick / action from this moment on)
+  1045→        //   - divinityGain is added to the player's Divinity balance
+  1046→        // The awakening fires a log entry; no story popup (the seed's
+  1047→        // awakening IS the surprise — a quiet moment that bends the run).
+  1048→        // (Note: if the seed would awaken at a *compressed* stage, the
+  1049→        // awakening is forfeit — compression trades content for QoL.)
+  1050→        let divinityGain = 0;
+  1051→        let awakenedSeeds = s.awakenedSeeds;
+  1052→        const plantedSeedId = s.selectedSeed;
+  1053→        const plantedSeed = plantedSeedId ? DORMANT_SEED_MAP[plantedSeedId] : null;
+  1054→        if (plantedSeed && plantedSeed.awakeningStage === nextStageDef.id &&
+  1055→            !(s.awakenedSeeds?.[plantedSeed.id])) {
+  1056→          // Awaken the seed.
+  1057→          awakenedSeeds = { ...(s.awakenedSeeds || {}), [plantedSeed.id]: true };
+  1058→          divinityGain = plantedSeed.reward.divinityGain || 0;
+  1059→          // Log it (deferred so it lands after the evolve log).
+  1060→          const seedName = plantedSeed.name;
+  1061→          const rewardBits: string[] = [];
+  1062→          if (plantedSeed.reward.divinityGain) {
+  1063→            rewardBits.push(`+${plantedSeed.reward.divinityGain} Divinity`);
+  1064→          }
+  1065→          if (plantedSeed.reward.resourceMult) {
+  1066→            for (const [r, v] of Object.entries(plantedSeed.reward.resourceMult)) {
+  1067→              const pct = Math.round((v as number) * 100);
+  1068→              rewardBits.push(`+${pct}% ${r}`);
+  1069→            }
+  1070→          }
+  1071→          setTimeout(() => {
+  1072→            try {
+  1073→              useGameStore.getState().addToLog(
+  1074→                `Dormant seed awakened — ${seedName}. The world shifts: ${rewardBits.join(", ")}.`
+  1075→              );
+  1076→            } catch { /* ignore */ }
+  1077→          }, 0);
+  1078→        }
+  1079→
+  1080→        const resources = { ...s.resources };
+  1081→        // ===== Singularity (Layer 6) — apply the "what would have been" build
+  1082→        // for the compressed stage (if any). Clamped to current caps so we don't
+  1083→        // overflow before the destination stage's capacities are recomputed.
+  1084→        if (compressedSkipped) {
+  1085→          for (const [r, v] of Object.entries(compressionResourceGrant)) {
+  1086→            const cap = s.capacities[r] || Infinity;
+  1087→            resources[r] = Math.min(cap, (resources[r] || 0) + v);
+  1088→          }
+  1089→        }
+  1090→        // Give starting resources for the new stage so the player can build the first systems
+  1091→        // This prevents the "can't build anything" progression blocker
+  1092→        const stageStartBonus: Record<string, number> = {
+  1093→          creature: { food: 15, water: 10, materials: 5 },
+  1094→          tribal: { wood: 15, stone: 5, clay: 3 },
+  1095→          civilization: { production: 15, gold: 5 },
+  1096→          empire: { influence: 5, gold: 20 },
+  1097→          solar: { energy: 20, alloys: 5 },
+  1098→          galactic: { data: 10, energy: 30 },
+  1099→        };
+  1100→        const startBonus = stageStartBonus[nextStageDef.id];
+  1101→        if (startBonus) {
+  1102→          for (const [r, v] of Object.entries(startBonus)) {
+  1103→            resources[r] = (resources[r] || 0) + v;
+  1104→          }
+  1105→        }
+  1106→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+  1107→        const capMult = 1 + capBoostLvl * 0.20;
+  1108→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+  1109→        const archCapMult = archetype?.bonus.capMult || 0;
+  1110→        // Genesis (Layer 4) — world capacity mult applies to the fresh stage's caps too.
+  1111→        const worldCapMultForEvolve = compileWorldEffects({
+  1112→          selectedCradle: s.selectedCradle,
+  1113→          selectedPrimeCondition: s.selectedPrimeCondition,
+  1114→          selectedGeography: s.selectedGeography,
+  1115→          selectedSeed: s.selectedSeed,
+  1116→          awakenedSeeds,
+  1117→        }).capacityMult || 0;
+  1118→        // Singularity (Layer 6) — relic + logic core capacity mult applies too.
+  1119→        const singularityCapMultForEvolve = s.singularityUnlocked
+  1120→          ? (compileSingularityEffects(s.equippedRelics || [], s.activeLogicCore).capacityMult || 0)
+  1121→          : 0;
+  1122→        const capacities = recomputeCapacitiesFresh(
+  1123→          s,
+  1124→          capMult + archCapMult + worldCapMultForEvolve + singularityCapMultForEvolve
+  1125→        );
+  1126→
+  1127→        const newStory = { ...s.storyUnlocked };
+  1128→
+  1129→        // Map: NEW stage → that stage's primary intro story ID. This story is
+  1130→        // shown by the StageTransition modal (which displays the new stage's
+  1131→        // `storyIntro` text) AND marked as unlocked for the journal so the
+  1132→        // player can re-read it later.
+  1133→        const introStoryId =
+  1134→          nextStageDef.id === "creature" ? "first_body_stirs"
+  1135→          : nextStageDef.id === "tribal" ? "fire_remembered"
+  1136→          : nextStageDef.id === "civilization" ? "cities_learn_to_dream"
+  1137→          : nextStageDef.id === "empire" ? "distance_begins_to_obey"
+  1138→          : nextStageDef.id === "solar" ? "sky_stops_being_a_wall"
+  1139→          : "galaxy_takes_a_shape"; // → galactic
+  1140→
+  1141→        // Map: OLD stage → transition outro story ID. This is the "<stage>_endures"
+  1142→        // beat that looks back at the stage the player just left. Fired as a
+  1143→        // StoryPopup AFTER the StageTransition modal closes, so the player gets
+  1144→        // two narrative beats per evolve: the new stage's intro (in the modal),
+  1145→        // and the old stage's outro (in the popup).
+  1146→        const outroStoryId =
+  1147→          stage.id === "cell" ? "cell_endures"
+  1148→          : stage.id === "creature" ? "creature_endures"
+  1149→          : stage.id === "tribal" ? "tribal_endures"
+  1150→          : stage.id === "civilization" ? "civilization_endures"
+  1151→          : stage.id === "empire" ? "empire_endures"
+  1152→          : stage.id === "solar" ? "solar_endures"
+  1153→          : null;
+  1154→
+  1155→        if (introStoryId) newStory[introStoryId] = true;
+  1156→        if (outroStoryId) newStory[outroStoryId] = true;
+  1157→
+  1158→        // Lock archetype when evolving from Creature → Tribal.
+  1159→        // (If Creature was compressed, the player went straight from Cell to
+  1160→        // Tribal — archetype lock fires anyway with whatever drift exists.
+  1161→        // If the player went straight from Creature → Tribal via compression
+  1162→        // they skipped the archetype-locking moment, so we still fire it here.)
+  1163→        let lockedArchetype = s.lockedArchetype;
+  1164→        if (stage.id === "creature" && !lockedArchetype) {
+  1165→          const dom = dominantArchetype(s.archetypeAffinity);
+  1166→          if (dom) {
+  1167→            lockedArchetype = dom;
+  1168→            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
+  1169→          } else {
+  1170→            lockedArchetype = "humanoid"; // default fallback
+  1171→            get().addToLog(`Lineage locked: Humanoid (no drift).`);
+  1172→          }
+  1173→        }
+  1174→
+  1175→        // ===== Stage clear counts. The stage the player is leaving (the OLD
+  1176→        // stage) gets a clear count. If a compressed stage was skipped, that
+  1177→        // stage ALSO gets a clear count.
+  1178→        let stageClearCounts = { ...s.stageClearCounts, [stage.id]: (s.stageClearCounts[stage.id] || 0) + 1 };
+  1179→        if (compressedSkipped && compressedStageId) {
+  1180→          stageClearCounts = {
+  1181→            ...stageClearCounts,
+  1182→            [compressedStageId]: (stageClearCounts[compressedStageId] || 0) + 1,
+  1183→          };
+  1184→        }
+  1185→
+  1186→        // Track fastest Cell clear
+  1187→        let fastestCellClear = s.fastestCellClear || 0;
+  1188→        if (stage.id === "cell") {
+  1189→          const clearTime = s.time;
+  1190→          if (fastestCellClear === 0 || clearTime < fastestCellClear) {
+  1191→            fastestCellClear = clearTime;
+  1192→          }
+  1193→        }
+  1194→
+  1195→        // Population bump from compression (if any) — applied AFTER maxPopulation
+  1196→        // is recomputed so the new population is properly tracked.
+  1197→        let population = s.population;
+  1198→        let maxPopulation = s.maxPopulation || s.population;
+  1199→        if (compressedSkipped && compressionPopulationGrant > 0) {
+  1200→          population = population + compressionPopulationGrant;
+  1201→          maxPopulation = Math.max(maxPopulation, population);
+  1202→        }
+  1203→
+  1204→        // Check achievements after stage clear
+  1205→        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, fastestCellClear, population, maxPopulation } as GameState;
+  1206→        const achResult = checkAchievements(postEvolveState);
+  1207→        const newAchievements = achResult.newOnes.length > 0
+  1208→          ? [...(s.newAchievements || []), ...achResult.newOnes]
+  1209→          : s.newAchievements;
+  1210→
+  1211→        // ===== Apotheosis (Layer 5) — track distinct awakened seeds for the
+  1212→        // unlock condition. When a dormant seed awakens, add its id to the
+  1213→        // lifetime `apotheosisStats.distinctSeedsAwakened` list (dedup'd).
+  1214→        let apotheosisStats = s.apotheosisStats;
+  1215→        if (plantedSeed && plantedSeed.awakeningStage === nextStageDef.id &&
+  1216→            !(s.awakenedSeeds?.[plantedSeed.id])) {
+  1217→          const distinct = apotheosisStats?.distinctSeedsAwakened || [];
+  1218→          if (!distinct.includes(plantedSeed.id)) {
+  1219→            apotheosisStats = {
+  1220→              ...(apotheosisStats || {
+  1221→                totalLawsEnacted: 0,
+  1222→                totalMiraclesPerformed: 0,
+  1223→                totalHeresiesResolved: 0,
+  1224→                distinctCradlesAuthored: [],
+  1225→                distinctSeedsAwakened: [],
+  1226→              }),
+  1227→              distinctSeedsAwakened: [...distinct, plantedSeed.id],
+  1228→            };
+  1229→          }
+  1230→        }
+  1231→
+  1232→        set({
+  1233→          stageIndex: nextStageIdx,
+  1234→          resources,
+  1235→          capacities,
+  1236→          storyUnlocked: newStory,
+  1237→          // Fire the OLD stage's transition outro as the StoryPopup. The new
+  1238→          // stage's intro is shown by the StageTransition modal (z-60, sits
+  1239→          // above the StoryPopup). When the player dismisses the modal, the
+  1240→          // outro popup becomes visible — a "looking back" beat before the
+  1241→          // new era begins in earnest.
+  1242→          activeStoryPopup: outroStoryId || introStoryId || s.activeStoryPopup,
+  1243→          stageClearCounts,
+  1244→          fastestCellClear,
+  1245→          lockedArchetype,
+  1246→          achievements: achResult.earned,
+  1247→          newAchievements,
+  1248→          // Genesis (Layer 4) — record awakened seed + apply divinity gain.
+  1249→          awakenedSeeds,
+  1250→          divinity: (s.divinity || 0) + divinityGain,
+  1251→          // Apotheosis (Layer 5) — track distinct awakened seeds (lifetime).
+  1252→          apotheosisStats,
+  1253→          // Singularity (Layer 6) — population bump + lifetime skip count.
+  1254→          population,
+  1255→          maxPopulation,
+  1256→          singularityStats,
+  1257→        });
+  1258→        get().addToLog(`Evolved to ${nextStageDef.name}. ${nextStageDef.tagline}`);
+  1259→        if (compressedSkipped) {
+  1260→          get().addToLog(
+  1261→            `Compression: auto-skipped ${compressedStageName} with a "what would have been" build. The god configured, and the configuration held.`
+  1262→          );
+  1263→        }
+  1264→      },
+  1265→
+  1266→      triggerPrestige: () => {
+  1267→        const s = get();
+  1268→        const stage = STAGES[s.stageIndex];
+  1269→        const score = computeScore(s);
+  1270→        const stageMult = [1, 2, 4, 8, 16, 32, 64][s.stageIndex] || 1;
+  1271→        // ===== Genesis (Layer 4) — world EP modifier.
+  1272→        // The selected cradle's `epModifier` multiplies EP earned. Easy worlds
+  1273→        // (0.7×) yield fewer EP; extreme worlds (2.5×) yield dramatically more.
+  1274→        // Stacks with the stage multiplier (already baked into the formula below).
+  1275→        const cradle = s.selectedCradle ? CRADLE_WORLD_MAP[s.selectedCradle] : null;
+  1276→        const epModifier = cradle?.epModifier ?? 1.0;
+  1277→        // ===== Apotheosis (Layer 5) — Heresy end-run penalty.
+  1278→        // If the run ended because heresy reached 100, EP is halved. The
+  1279→        // `_heresyEndRun` flag is set by the tick() heresy-end-run path
+  1280→        // before calling triggerPrestige.
+  1281→        const heresyEndRun = !!(s as any)._heresyEndRun;
+  1282→        const heresyEpMult = heresyEndRun ? 0.5 : 1.0;
+  1283→        let epEarned = Math.max(1, Math.floor(Math.sqrt(score / 100) * stageMult * epModifier * heresyEpMult));
+  1284→        // Clear the flag so the next prestige (voluntary) gets full EP.
+  1285→        (s as any)._heresyEndRun = false;
+  1286→
+  1287→        const archive = [...s.archive];
+  1288→        const archName = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype]?.name : "Humanoid";
+  1289→        archive.unshift({
+  1290→          runId: `run_${s.totalRuns + 1}`,
+  1291→          timestamp: Date.now(),
+  1292→          stage: stage.id,
+  1293→          archetype: s.lockedArchetype || "humanoid",
+  1294→          score,
+  1295→          epEarned,
+  1296→          duration: s.time,
+  1297→          ending: s.stageIndex >= 6 ? "Galactic Ascension" : `${stage.name} Evolution (${archName})`,
+  1298→          // Genesis (Layer 4) — record which cradle was authored for this run
+  1299→          // (so the archive entry can show the difficulty + EP modifier that
+  1300→          // shaped the run). `notes` is a free-form field on ArchiveEntry.
+  1301→          // Apotheosis (Layer 5) — also flag heresy end-runs.
+  1302→          notes: [
+  1303→            cradle ? `${cradle.name} · ${epModifier}× EP` : null,
+  1304→            heresyEndRun ? "heresy collapse" : null,
+  1305→          ].filter(Boolean).join(" · ") || undefined,
+  1306→        });
+  1307→
+  1308→        const archivedArchetypes = Array.from(new Set([
+  1309→          ...(s.archivedArchetypes || []),
+  1310→          ...(s.lockedArchetype ? [s.lockedArchetype] : []),
+  1311→        ]));
+  1312→
+  1313→        // ===== Challenges: unlock on first Galactic win + abandon any active challenge
+  1314→        const wasFirstGalacticWin = s.stageIndex >= 6 && !s.unlockedChallenges;
+  1315→        const unlockedChallenges = s.unlockedChallenges || (s.stageIndex >= 6);
+  1316→        const completedChallenges = s.completedChallenges || {};
+  1317→        // If a challenge was active when prestiging without completing it, that's
+  1318→        // an abandonment — log it. The fresh run will start with no active challenge.
+  1319→        if (s.activeChallenge) {
+  1320→          const chName = CHALLENGE_MAP[s.activeChallenge]?.name || s.activeChallenge;
+  1321→          // Defer logging until after state has been set so it appears after the
+  1322→          // prestige log entry.
+  1323→          setTimeout(() => get().addToLog(`Challenge abandoned: ${chName}. The trial is incomplete.`), 0);
+  1324→        }
+  1325→
+  1326→        // ===== Enlightenment (Layer 2): unlock when all 10 Evolution challenges are mastered.
+  1327→        // Also re-checked defensively here in case checkChallengeCompletion missed
+  1328→        // it (e.g., legacy saves where the 10th challenge was completed before
+  1329→        // this code shipped).
+  1330→        const completedChallengesCount = Object.values(completedChallenges).filter(Boolean).length;
+  1331→        const wasEnlightenmentUnlocked = !!s.enlightenmentUnlocked;
+  1332→        const enlightenmentUnlocked = wasEnlightenmentUnlocked ||
+  1333→          completedChallengesCount >= CHALLENGES.length;
+  1334→
+  1335→        // Divinity is earned only once Enlightenment is unlocked. Strong runs
+  1336→        // (higher stage + higher score) yield proportionally more.
+  1337→        const divinityEarned = enlightenmentUnlocked
+  1338→          ? Math.max(1, Math.floor(score / 500 * stageMult))
+  1339→          : 0;
+  1340→
+  1341→        const fresh = initialRunState();
+  1342→        // ===== Apotheosis (Layer 5) — track distinct cradles authored across
+  1343→        // runs (for the unlock condition). The current run's selectedCradle is
+  1344→        // added to the lifetime list (dedup'd). Awakening seeds are tracked in
+  1345→        // evolveStage above. Both lists persist across prestige.
+  1346→        let apotheosisStats = s.apotheosisStats;
+  1347→        if (s.selectedCradle) {
+  1348→          const distinct = apotheosisStats?.distinctCradlesAuthored || [];
+  1349→          if (!distinct.includes(s.selectedCradle)) {
+  1350→            apotheosisStats = {
+  1351→              ...(apotheosisStats || {
+  1352→                totalLawsEnacted: 0,
+  1353→                totalMiraclesPerformed: 0,
+  1354→                totalHeresiesResolved: 0,
+  1355→                distinctCradlesAuthored: [],
+  1356→                distinctSeedsAwakened: [],
+  1357→              }),
+  1358→              distinctCradlesAuthored: [...distinct, s.selectedCradle],
+  1359→            };
+  1360→          }
+  1361→        }
+  1362→        const metaState: Partial<GameState> = {
+  1363→          evolutionPoints: s.evolutionPoints + epEarned,
+  1364→          totalRuns: s.totalRuns + 1,
+  1365→          galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
+  1366→          archive,
+  1367→          archivedArchetypes,
+  1368→          upgrades: s.upgrades,
+  1369→          storyUnlocked: { ...s.storyUnlocked, god_opens_its_eyes: true },
+  1370→          storyAcknowledged: s.storyAcknowledged,
+  1371→          unlockedLayers: s.unlockedLayers,
+  1372→          stageClearCounts: s.stageClearCounts,
+  1373→          fastestCellClear: s.fastestCellClear,
+  1374→          totalEventsResolved: s.totalEventsResolved,
+  1375→          totalPlayTime: s.totalPlayTime,
+  1376→          totalActions: s.totalActions,
+  1377→          totalSystemsBuilt: s.totalSystemsBuilt,
+  1378→          totalTechResearched: s.totalTechResearched,
+  1379→          achievements: s.achievements,
+  1380→          newAchievements: s.newAchievements,
+  1381→          // Persist challenge state across prestige
+  1382→          unlockedChallenges,
+  1383→          completedChallenges,
+  1384→          // Persist Enlightenment state across prestige (Divinity + route + foresight are permanent)
+  1385→          divinity: (s.divinity || 0) + divinityEarned,
+  1386→          enlightenmentUnlocked,
+  1387→          selectedRoute: s.selectedRoute,
+  1388→          foresightNodes: s.foresightNodes || {},
+  1389→          // Persist Transcendence state across prestige.
+  1390→          // - transcendenceUnlocked is permanent once earned.
+  1391→          // - activeScripts persist as reusable divine logic (per the design doc).
+  1392→          // - offeringLedger is a lifetime counter.
+  1393→          transcendenceUnlocked: s.transcendenceUnlocked,
+  1394→          activeScripts: s.activeScripts || {},
+  1395→          offeringLedger: s.offeringLedger || { totalOfferings: 0, totalDivinityFromOfferings: 0 },
+  1396→          // Persist Genesis (Layer 4) unlock across prestige — once unlocked, always unlocked.
+  1397→          // The run-scoped selection state (selectedCradle / prime / geography / seed /
+  1398→          // awakenedSeeds) is reset to null/empty by `initialRunState()` — the
+  1399→          // player re-authors their world each run via the GenesisModal.
+  1400→          genesisUnlocked: s.genesisUnlocked,
+  1401→          // Persist Apotheosis (Layer 5) state across prestige:
+  1402→          //   - apotheosisUnlocked is permanent once earned.
+  1403→          //   - apotheosisStats (lifetime counters + distinct cradles/seeds) persists.
+  1404→          // The run-scoped Apotheosis state (enactedLaws, worshipMode,
+  1405→          // miracleCharges, activeHeresy, heresyLevel, heresyCooldown) is reset
+  1406→          // by `initialRunState()` — the player re-engages with these systems
+  1407→          // each run. miracleCharges is awarded fresh (2 baseline) on each
+  1408→          // Apotheosis run.
+  1409→          apotheosisUnlocked: s.apotheosisUnlocked,
+  1410→          apotheosisStats,
+  1411→          // Persist Singularity (Layer 6) state across prestige:
+  1412→          //   - singularityUnlocked is permanent once earned.
+  1413→          //   - relicSlots persists (could be expanded by future shop upgrades).
+  1414→          //   - compressedStages is a permanent QoL feature (once a stage is
+  1415→          //     marked compressed, future runs auto-skip it).
+  1416→          //   - singularityStats (lifetime counters + distinct relics/cores) persists.
+  1417→          // The run-scoped Singularity state (equippedRelics, activeLogicCore)
+  1418→          // is reset by `initialRunState()` — the player re-equips relics and
+  1419→          // re-activates a core each run (the god reconfigures the system).
+  1420→          singularityUnlocked: s.singularityUnlocked,
+  1421→          relicSlots: s.relicSlots || 3,
+  1422→          compressedStages: s.compressedStages || [],
+  1423→          singularityStats: s.singularityStats || {
+  1424→            totalRelicsEquipped: 0,
+  1425→            totalCoresActivated: 0,
+  1426→            distinctRelicsEquipped: [],
+  1427→            distinctCoresActivated: [],
+  1428→            compressedStagesSkipped: 0,
+  1429→          },
+  1430→        };
+  1431→
+  1432→        // Check achievements after prestige
+  1433→        const postState = { ...s, ...metaState } as GameState;
+  1434→        const achResult = checkAchievements(postState);
+  1435→        metaState.achievements = achResult.earned;
+  1436→        if (achResult.newOnes.length > 0) {
+  1437→          metaState.newAchievements = [...(s.newAchievements || []), ...achResult.newOnes];
+  1438→        }
+  1439→
+  1440→        // Determine which story popup should fire on prestige.
+  1441→        // Priority:
+  1442→        //   1. first Galactic win → Evolution Layer unveiled
+  1443→        //   2. first prestige where Enlightenment just unlocked → Enlightenment unveiled
+  1444→        //   3. the "god_opens_its_eyes" beat for the very first prestige
+  1445→        let prestigePopup: string | null = null;
+  1446→        if (wasFirstGalacticWin) {
+  1447→          prestigePopup = "evolution_layer_unveiled";
+  1448→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, evolution_layer_unveiled: true };
+  1449→        } else if (!wasEnlightenmentUnlocked && enlightenmentUnlocked) {
+  1450→          // Enlightenment just unlocked (defensive — the unlock normally fires
+  1451→          // inside checkChallengeCompletion when the 10th challenge is mastered).
+  1452→          prestigePopup = "enlightenment_unlocked";
+  1453→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, enlightenment_unlocked: true };
+  1454→        } else if (s.totalRuns === 0) {
+  1455→          prestigePopup = "god_opens_its_eyes";
+  1456→        }
+  1457→
+  1458→        // ===== Transcendence (Layer 3) unlock check.
+  1459→        // Defensive: if the player has all foresight nodes purchased AND at
+  1460→        // least one route run completed (totalRuns >= 1 AND selectedRoute set),
+  1461→        // mark Transcendence as unlocked. This catches the case where the
+  1462→        // player already had everything done before this code shipped, OR
+  1463→        // completed the foresight library mid-run (the in-run check inside
+  1464→        // purchaseForesightNode also catches this).
+  1465→        const willTranscendenceUnlock = !s.transcendenceUnlocked &&
+  1466→          checkTranscendenceUnlockCondition(postState);
+  1467→        if (willTranscendenceUnlock) {
+  1468→          metaState.transcendenceUnlocked = true;
+  1469→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, transcendence_unlocked: true };
+  1470→          // Transcendence unlock popup takes priority over the generic
+  1471→          // god_opens_its_eyes beat (but not over the Galactic-win or
+  1472→          // Enlightenment-unlock beats, which fire earlier in the prestige arc).
+  1473→          if (!prestigePopup || prestigePopup === "god_opens_its_eyes") {
+  1474→            prestigePopup = "transcendence_unlocked";
+  1475→          }
+  1476→        }
+  1477→
+  1478→        // ===== Genesis (Layer 4) unlock check.
+  1479→        // Defensive: if the player has met the unlock condition (Transcendence
+  1480→        // unlocked AND at least one offering made — proxy for "ritual categories
+  1481→        // mastered" + "transcendent run built around Offerings" per the design
+  1482→        // doc), mark Genesis as unlocked. Fires the `genesis_unlocked` story beat.
+  1483→        const willGenesisUnlock = !s.genesisUnlocked &&
+  1484→          checkGenesisUnlockCondition(postState);
+  1485→        if (willGenesisUnlock) {
+  1486→          metaState.genesisUnlocked = true;
+  1487→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, genesis_unlocked: true };
+  1488→          // Genesis unlock popup takes priority over the generic god_opens_its_eyes
+  1489→          // beat — but not over Galactic-win, Enlightenment-unlock, or
+  1490→          // Transcendence-unlock beats (the first three are rarer / bigger moments).
+  1491→          if (!prestigePopup || prestigePopup === "god_opens_its_eyes") {
+  1492→            prestigePopup = "genesis_unlocked";
+  1493→          }
+  1494→        }
+  1495→
+  1496→        // ===== Apotheosis (Layer 5) unlock check.
+  1497→        // Defensive: if the player has authored at least 2 distinct cradle
+  1498→        // worlds across runs AND awakened at least 2 distinct dormant seeds
+  1499→        // (per the design doc: "Complete all required world origins + awaken
+  1500→        // all seed categories" — we use 2/2 as a reasonable proxy since there
+  1501→        // are 4 seeds and 8 cradles, and the player will likely hit the unlock
+  1502→        // after experiencing the Genesis system meaningfully). Fires the
+  1503→        // `apotheosis_unlocked` story beat — "Mortals Learn the Divine Name".
+  1504→        const apoStats = apotheosisStats || {
+  1505→          totalLawsEnacted: 0,
+  1506→          totalMiraclesPerformed: 0,
+  1507→          totalHeresiesResolved: 0,
+  1508→          distinctCradlesAuthored: [],
+  1509→          distinctSeedsAwakened: [],
+  1510→        };
+  1511→        const willApotheosisUnlock = !s.apotheosisUnlocked &&
+  1512→          (apoStats.distinctCradlesAuthored.length >= 2) &&
+  1513→          (apoStats.distinctSeedsAwakened.length >= 2);
+  1514→        if (willApotheosisUnlock) {
+  1515→          metaState.apotheosisUnlocked = true;
+  1516→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, apotheosis_unlocked: true };
+  1517→          // Apotheosis unlock popup takes priority over the generic
+  1518→          // god_opens_its_eyes beat — but not over Galactic-win, Enlightenment,
+  1519→          // Transcendence, or Genesis unlock beats.
+  1520→          if (!prestigePopup || prestigePopup === "god_opens_its_eyes") {
+  1521→            prestigePopup = "apotheosis_unlocked";
+  1522→          }
+  1523→        }
+  1524→
+  1525→        // ===== Singularity (Layer 6) unlock check.
+  1526→        // Defensive: if the player has Apotheosis unlocked AND has enacted at
+  1527→        // least 2 divine laws (lifetime) AND survived at least one heresy crisis
+  1528→        // (responded to ≥ 1 heresy) — mark Singularity as unlocked. Fires the
+  1529→        // `singularity_unlocked` story beat — "The System Learns the God".
+  1530→        const willSingularityUnlock = !s.singularityUnlocked &&
+  1531→          checkSingularityUnlockCondition({
+  1532→            apotheosisUnlocked: !!metaState.apotheosisUnlocked,
+  1533→            apotheosisStats: apoStats,
+  1534→          });
+  1535→        if (willSingularityUnlock) {
+  1536→          metaState.singularityUnlocked = true;
+  1537→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, singularity_unlocked: true };
+  1538→          // Singularity unlock popup takes priority over the generic
+  1539→          // god_opens_its_eyes beat — but not over Galactic-win, Enlightenment,
+  1540→          // Transcendence, Genesis, or Apotheosis unlock beats.
+  1541→          if (!prestigePopup || prestigePopup === "god_opens_its_eyes") {
+  1542→            prestigePopup = "singularity_unlocked";
+  1543→          }
+  1544→        }
+  1545→
+  1546→        // ===== Genesis (Layer 4) — auto-open the world authoring modal on the
+  1547→        // fresh run if Genesis is unlocked. The player needs to author their
+  1548→        // world before the run begins in earnest. We defer setting `showGenesis`
+  1549→        // to true via setTimeout so the prestige popup (if any) shows first;
+  1550→        // when the player dismisses the popup, the Genesis modal will be waiting.
+  1551→        const genesisJustUnlocked = willGenesisUnlock;
+  1552→        const genesisAlreadyUnlocked = !!metaState.genesisUnlocked;
+  1553→        if (genesisAlreadyUnlocked || genesisJustUnlocked) {
+  1554→          setTimeout(() => {
+  1555→            try {
+  1556→              const cur = useGameStore.getState();
+  1557→              // Don't open if a popup is currently showing — wait for the user
+  1558→              // to dismiss it. The next tick will retry. For now, just open it.
+  1559→              if (!cur.showGenesis && !cur.activeStoryPopup) {
+  1560→                useGameStore.setState({ showGenesis: true });
+  1561→              }
+  1562→            } catch { /* ignore */ }
+  1563→          }, 50);
+  1564→        }
+  1565→
+  1566→        // ===== Singularity (Layer 6) — auto-open the relic loadout modal on the
+  1567→        // fresh run if Singularity is unlocked. The player should configure their
+  1568→        // relic loadout + logic core before the run begins in earnest. We defer
+  1569→        // setting `showSingularity` to true via setTimeout (50ms after Genesis's
+  1570→        // auto-open) so the modal order is: prestige popup → Genesis → Singularity.
+  1571→        // If Genesis opens first, Singularity waits for it to close; the dismissStory
+  1572→        // handler retries Singularity after Genesis closes.
+  1573→        const singularityJustUnlocked = willSingularityUnlock;
+  1574→        const singularityAlreadyUnlocked = !!metaState.singularityUnlocked;
+  1575→        if (singularityAlreadyUnlocked || singularityJustUnlocked) {
+  1576→          setTimeout(() => {
+  1577→            try {
+  1578→              const cur = useGameStore.getState();
+  1579→              // Don't open if Genesis is open OR a popup is showing — wait for
+  1580→              // the player to dismiss those first. The dismissStory handler
+  1581→              // retries opening Singularity once those close.
+  1582→              if (!cur.showSingularity && !cur.showGenesis && !cur.activeStoryPopup) {
+  1583→                useGameStore.setState({ showSingularity: true });
+  1584→              }
+  1585→            } catch { /* ignore */ }
+  1586→          }, 100);
+  1587→        }
+  1588→
+  1589→        set({
+  1590→          ...fresh,
+  1591→          ...metaState,
+  1592→          currentTab: "actions",
+  1593→          speed: 1,
+  1594→          paused: false,
+  1595→          showShop: false,
+  1596→          showEvolve: false,
+  1597→          showChallenges: false,
+  1598→          showEnlightenment: false,
+  1599→          showTranscendence: false,
+  1600→          // Genesis (Layer 4) — close the modal on prestige (player re-authors
+  1601→          // via the auto-open above). If the player is mid-author when they
+  1602→          // prestige (unlikely), the modal closes here and re-opens via setTimeout.
+  1603→          showGenesis: false,
+  1604→          // Apotheosis (Layer 5) — close the modal on prestige (player re-engages
+  1605→          // with laws/worship/miracles/heresy on the fresh run).
+  1606→          showApotheosis: false,
+  1607→          // Singularity (Layer 6) — close the modal on prestige (player
+  1608→          // re-equips relics + re-activates a logic core on the fresh run).
+  1609→          showSingularity: false,
+  1610→          activeStoryPopup: prestigePopup,
+  1611→          hasSeenIntro: true,
+  1612→          lastSaved: Date.now(),
+  1613→          tutorialActive: false,
+  1614→        });
+  1615→        get().addToLog(
+  1616→          `Prestige! Earned ${epEarned} Evolution Points` +
+  1617→          (epModifier !== 1 ? ` (×${epModifier} world modifier)` : "") +
+  1618→          (heresyEndRun ? ` (heresy collapse — EP halved)` : "") +
+  1619→          (divinityEarned > 0 ? ` and ${divinityEarned} Divinity.` : `.`),
+  1620→        );
+  1621→        // If Transcendence just unlocked, log it explicitly so the moment
+  1622→        // is recorded even if the player dismisses the story popup.
+  1623→        if (willTranscendenceUnlock) {
+  1624→          setTimeout(() => get().addToLog(
+  1625→            `Transcendence unlocked — the god steps outside creation. Offerings, Rituals, and Scripts now available.`
+  1626→          ), 0);
+  1627→        }
+  1628→        // If Genesis just unlocked, log it explicitly so the moment is recorded.
+  1629→        if (willGenesisUnlock) {
+  1630→          setTimeout(() => get().addToLog(
+  1631→            `Genesis unlocked — the god begins to author worlds. Choose a cradle, prime condition, sacred geography, and dormant seed before the next run begins.`
+  1632→          ), 0);
+  1633→        }
+  1634→        // If Apotheosis just unlocked, log it explicitly so the moment is recorded.
+  1635→        if (willApotheosisUnlock) {
+  1636→          setTimeout(() => get().addToLog(
+  1637→            `Apotheosis unlocked — mortals learn the divine name. Divine Laws, Worship Modes, Miracles, and Heresy Management now available.`
+  1638→          ), 0);
+  1639→        }
+  1640→        // If Singularity just unlocked, log it explicitly so the moment is recorded.
+  1641→        if (willSingularityUnlock) {
+  1642→          setTimeout(() => get().addToLog(
+  1643→            `Singularity unlocked — the god enters the system. Relic Loadouts, Compression, and Logic Cores now available.`
+  1644→          ), 0);
+  1645→        }
+  1646→      },
+  1647→
+  1648→      setTab: (tab) => set({ currentTab: tab }),
+  1649→      setSpeed: (speed) => set({ speed }),
+  1650→      togglePause: () => set((s) => ({ paused: !s.paused })),
+  1651→      setShowShop: (v) => set({ showShop: v }),
+  1652→      setShowEvolve: (v) => set({ showEvolve: v }),
+  1653→      setShowSettings: (v) => set({ showSettings: v }),
+  1654→      setShowChallenges: (v) => set({ showChallenges: v }),
+  1655→      setShowEnlightenment: (v) => set({ showEnlightenment: v }),
+  1656→
+  1657→      // ============ CHALLENGES ============
+  1658→      setActiveChallenge: (id) => {
+  1659→        const s = get();
+  1660→        // Only one active challenge at a time. If we are setting a new challenge,
+  1661→        // the previous one (if any) is implicitly abandoned.
+  1662→        if (s.activeChallenge && id && s.activeChallenge !== id) {
+  1663→          const prev = CHALLENGE_MAP[s.activeChallenge];
+  1664→          if (prev) get().addToLog(`Abandoned "${prev.name}" before completion.`);
+  1665→        }
+  1666→        if (id === null) {
+  1667→          // Explicit abandon / clear
+  1668→          if (s.activeChallenge) {
+  1669→            const prev = CHALLENGE_MAP[s.activeChallenge];
+  1670→            if (prev) get().addToLog(`Abandoned "${prev.name}" before completion.`);
+  1671→          }
+  1672→          set({ activeChallenge: null, challengeRunStart: null });
+  1673→          return;
+  1674→        }
+  1675→        const ch = CHALLENGE_MAP[id];
+  1676→        if (!ch) return;
+  1677→        // Don't restart an already-completed challenge
+  1678→        if (s.completedChallenges && s.completedChallenges[id]) {
+  1679→          get().addToLog(`"${ch.name}" is already mastered.`);
+  1680→          return;
+  1681→        }
+  1682→        // Apply special "zeroStart" — drain all run resources + population progress
+  1683→        // to 0 so the player truly starts the trial with nothing.
+  1684→        const updates: Partial<GameState> = {
+  1685→          activeChallenge: id,
+  1686→          challengeRunStart: s.time,
+  1687→        };
+  1688→        if (ch.debuff.effects.zeroStart) {
+  1689→          const resources = { ...s.resources };
+  1690→          for (const k of Object.keys(resources)) {
+  1691→            // Keep happiness at a minimal baseline so the run isn't dead-on-arrival,
+  1692→            // but zero out every produced resource.
+  1693→            if (k === "happiness") {
+  1694→              resources[k] = 5;
+  1695→            } else {
+  1696→              resources[k] = 0;
+  1697→            }
+  1698→          }
+  1699→          updates.resources = resources;
+  1700→          updates.populationProgress = 0;
+  1701→        }
+  1702→        // Apply forced archetype (lock the lineage immediately if not already)
+  1703→        if (ch.debuff.effects.forcedArchetype && s.lockedArchetype !== ch.debuff.effects.forcedArchetype) {
+  1704→          updates.lockedArchetype = ch.debuff.effects.forcedArchetype;
+  1705→        }
+  1706→        set(updates);
+  1707→        get().addToLog(`Challenge begun: ${ch.name}. ${ch.debuff.label}.`);
+  1708→      },
+  1709→
+  1710→      checkChallengeCompletion: () => {
+  1711→        const s = get();
+  1712→        if (!s.activeChallenge) return;
+  1713→        const ch = CHALLENGE_MAP[s.activeChallenge];
+  1714→        if (!ch) return;
+  1715→        const cw = ch.completeWhen;
+  1716→        let done = false;
+  1717→        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+  1718→        const totalTech = Object.keys(s.technologies).length;
+  1719→        switch (cw.type) {
+  1720→          case "reachPopulation":
+  1721→            done = s.population >= Number(cw.value);
+  1722→            break;
+  1723→          case "reachStage":
+  1724→            // Stage reached (or beyond)
+  1725→            {
+  1726→              const stageIds = ["cell", "creature", "tribal", "civilization", "empire", "solar", "galactic"];
+  1727→              const targetIdx = stageIds.indexOf(String(cw.value));
+  1728→              done = targetIdx >= 0 && s.stageIndex >= targetIdx;
+  1729→            }
+  1730→            break;
+  1731→          case "stockpileResource":
+  1732→            done = (s.resources[cw.resourceId || ""] || 0) >= Number(cw.value);
+  1733→            break;
+  1734→          case "clearStage":
+  1735→            done = (s.stageClearCounts?.[cw.value as keyof typeof s.stageClearCounts] || 0) >= 1;
+  1736→            break;
+  1737→          case "reachGalactic":
+  1738→            // Reached Galactic stage during this run
+  1739→            done = s.stageIndex >= 6;
+  1740→            break;
+  1741→          case "researchTechs":
+  1742→            done = totalTech >= Number(cw.value);
+  1743→            break;
+  1744→          case "buildSystems":
+  1745→            done = totalSystems >= Number(cw.value);
+  1746→            break;
+  1747→          case "clearCellFast":
+  1748→            // Cell stage must be cleared in under N seconds. We use the run-time
+  1749→            // when reaching Creature (stageIndex >= 1). If they have already
+  1750→            // cleared Cell during this challenge run, check the elapsed time.
+  1751→            if (s.stageIndex >= 1 && s.challengeRunStart != null) {
+  1752→              const elapsed = s.time - s.challengeRunStart;
+  1753→              done = elapsed <= Number(cw.value);
+  1754→            }
+  1755→            break;
+  1756→        }
+  1757→        if (!done) return;
+  1758→
+  1759→        // Mark challenge complete, clear the active slot, grant mastery bonus
+  1760→        const completedChallenges = { ...(s.completedChallenges || {}), [ch.id]: true };
+  1761→        set({
+  1762→          completedChallenges,
+  1763→          activeChallenge: null,
+  1764→          challengeRunStart: null,
+  1765→        });
+  1766→        get().addToLog(
+  1767→          `Challenge mastered: ${ch.name}! ${ch.mastery.label}. The god is pleased.`
+  1768→        );
+  1769→
+  1770→        // ===== Enlightenment unlock check (Layer 2)
+  1771→        // When the player masters the 10th and final Evolution challenge, the
+  1772→        // god opens its eyes fully. Enlightenment unlocks immediately, and the
+  1773→        // Enlightenment story popup fires INSTEAD of the generic challenge_mastered
+  1774→        // popup — that single moment of awakening deserves its own beat.
+  1775→        const completedCount = Object.values(completedChallenges).filter(Boolean).length;
+  1776→        const unlocksEnlightenmentNow = !s.enlightenmentUnlocked &&
+  1777→          completedCount >= CHALLENGES.length;
+  1778→        if (unlocksEnlightenmentNow) {
+  1779→          const storyUnlocked = { ...s.storyUnlocked, enlightenment_unlocked: true };
+  1780→          set({
+  1781→            enlightenmentUnlocked: true,
+  1782→            storyUnlocked,
+  1783→            activeStoryPopup: "enlightenment_unlocked",
+  1784→          });
+  1785→          get().addToLog(
+  1786→            `Enlightenment unlocked — the god opens its eyes fully. Divinity awakens.`
+  1787→          );
+  1788→        } else {
+  1789→          // Trigger a story popup so the player feels the reward, AND mark the
+  1790→          // challenge_mastered story entry as unlocked so it appears in the
+  1791→          // StoryTab journal (otherwise the popup flashes but the journal stays
+  1792→          // empty — and a player who dismisses the popup without reading it
+  1793→          // would never see the beat again).
+  1794→          const storyUnlocked = { ...s.storyUnlocked, challenge_mastered: true };
+  1795→          set({
+  1796→            storyUnlocked,
+  1797→            activeStoryPopup: "challenge_mastered",
+  1798→          });
+  1799→        }
+  1800→      },
+  1801→
+  1802→      // ============ ENLIGHTENMENT (Layer 2) ============
+  1803→      spendDivinity: (amount, _nodeId) => {
+  1804→        const s = get();
+  1805→        if ((s.divinity || 0) < amount) return false;
+  1806→        set({ divinity: s.divinity - amount });
+  1807→        return true;
+  1808→      },
+  1809→
+  1810→      selectRoute: (routeId) => {
+  1811→        const s = get();
+  1812→        // Route selection is free but requires Enlightenment unlocked
+  1813→        if (!s.enlightenmentUnlocked) return;
+  1814→        const route = ROUTE_MAP[routeId];
+  1815→        if (!route) return;
+  1816→        // Toggle off if already selected (let the player change their mind)
+  1817→        const newRoute = s.selectedRoute === routeId ? null : routeId;
+  1818→        set({ selectedRoute: newRoute });
+  1819→        get().addToLog(
+  1820→          newRoute
+  1821→            ? `Route chosen: ${route.name}. ${route.effectLabel}.`
+  1822→            : `Route unchosen. The god is open to all paths once more.`
+  1823→        );
+  1824→      },
+  1825→
+  1826→      purchaseForesightNode: (nodeId) => {
+  1827→        const s = get();
+  1828→        if (!s.enlightenmentUnlocked) return false;
+  1829→        const node = FORESIGHT_NODE_MAP[nodeId];
+  1830→        if (!node) return false;
+  1831→        // "Coming soon" nodes cannot be purchased
+  1832→        if (node.implemented === false) return false;
+  1833→        // Already purchased
+  1834→        if (s.foresightNodes?.[nodeId]) return false;
+  1835→        // Check prerequisites
+  1836→        if (node.requires) {
+  1837→          for (const req of node.requires) {
+  1838→            if (!s.foresightNodes?.[req]) return false;
+  1839→          }
+  1840→        }
+  1841→        // Check cost
+  1842→        if ((s.divinity || 0) < node.cost) return false;
+  1843→        const foresightNodes = { ...(s.foresightNodes || {}), [nodeId]: true };
+  1844→        set({
+  1845→          divinity: s.divinity - node.cost,
+  1846→          foresightNodes,
+  1847→        });
+  1848→        get().addToLog(
+  1849→          `Foresight acquired: ${node.name}. ${node.passive?.label || node.effect}.`
+  1850→        );
+  1851→        // Check if purchasing this node completed the foresight library AND
+  1852→        // the player has at least one route run completed — that unlocks
+  1853→        // Transcendence (Layer 3).
+  1854→        checkTranscendenceUnlock(get(), set);
+  1855→        return true;
+  1856→      },
+  1857→
+  1858→      // ============ TRANSCENDENCE (Layer 3) ============
+  1859→      setShowTranscendence: (v) => set({ showTranscendence: v }),
+  1860→
+  1861→      makeOffering: (offeringId) => {
+  1862→        const s = get();
+  1863→        if (!s.transcendenceUnlocked) return false;
+  1864→        const offering = OFFERING_MAP[offeringId];
+  1865→        if (!offering) return false;
+  1866→        const res = { ...s.resources };
+  1867→        let population = s.population;
+  1868→        const ownedSystems = { ...s.ownedSystems };
+  1869→        const technologies = { ...s.technologies };
+  1870→        const lockedSystems = { ...(s.lockedSystems || {}) };
+  1871→
+  1872→        // ===== Validate + apply the sacrifice =====
+  1873→        if (offering.cost.resourceId) {
+  1874→          const rid = offering.cost.resourceId;
+  1875→          if ((res[rid] || 0) < offering.cost.amount) return false;
+  1876→          res[rid] -= offering.cost.amount;
+  1877→        }
+  1878→        if (offering.cost.population) {
+  1879→          if (population < offering.cost.population) return false;
+  1880→          population -= offering.cost.population;
+  1881→        }
+  1882→        if (offering.cost.system) {
+  1883→          // Sacrifice one owned system — find any system the player owns at
+  1884→          // least one of, decrement by 1. Locked systems aren't touched.
+  1885→          const ownedId = Object.keys(ownedSystems).find((id) => (ownedSystems[id] || 0) > 0);
+  1886→          if (!ownedId) return false;
+  1887→          ownedSystems[ownedId] = (ownedSystems[ownedId] || 0) - 1;
+  1888→          // If the count drops to 0, remove the entry entirely (clean state)
+  1889→          if (ownedSystems[ownedId] <= 0) delete ownedSystems[ownedId];
+  1890→        }
+  1891→        if (offering.cost.tech) {
+  1892→          // Sacrifice one researched tech — find any researched tech, unmark it.
+  1893→          const techId = Object.keys(technologies).find((id) => technologies[id]);
+  1894→          if (!techId) return false;
+  1895→          delete technologies[techId];
+  1896→        }
+  1897→
+  1898→        // ===== Award Divinity + update ledger =====
+  1899→        const offeringLedger = {
+  1900→          totalOfferings: (s.offeringLedger?.totalOfferings || 0) + 1,
+  1901→          totalDivinityFromOfferings:
+  1902→            (s.offeringLedger?.totalDivinityFromOfferings || 0) + offering.divinityGain,
+  1903→        };
+  1904→        set({
+  1905→          resources: res,
+  1906→          population,
+  1907→          ownedSystems,
+  1908→          technologies,
+  1909→          lockedSystems,
+  1910→          divinity: (s.divinity || 0) + offering.divinityGain,
+  1911→          offeringLedger,
+  1912→        });
+  1913→        const darkTag = offering.isDark ? " [Blood Pact — the dark offering]" : "";
+  1914→        get().addToLog(
+  1915→          `Offering made: ${offering.name}. Sacrifice accepted; ${offering.divinityGain} Divinity rises.${darkTag}`
+  1916→        );
+  1917→        // ===== Genesis (Layer 4) — check unlock condition.
+  1918→        // The proxy for "ritual categories mastered + transcendent run built
+  1919→        // around Offerings" (per the design doc) is: Transcendence unlocked
+  1920→        // AND at least one offering made. The first offering the player ever
+  1921→        // makes is the moment the god learns it can draw power from sacrifice
+  1922→        // — and once it has done so within a Transcendence run, it begins to
+  1923→        // imagine authoring worlds of its own.
+  1924→        checkGenesisUnlock(get(), set);
+  1925→        return true;
+  1926→      },
+  1927→
+  1928→      performRitual: (ritualId) => {
+  1929→        const s = get();
+  1930→        if (!s.transcendenceUnlocked) return false;
+  1931→        const ritual = RITUAL_MAP[ritualId];
+  1932→        if (!ritual) return false;
+  1933→        // One-time-per-run: if ritual cooldown is set (i.e., already performed
+  1934→        // this run), block. We use the ritual's presence in ritualCooldowns as
+  1935→        // the "already performed" marker — once performed, the cooldown is set
+  1936→        // to a large value (Number.MAX_SAFE_INTEGER) so the button stays
+  1937→        // disabled until prestige clears it.
+  1938→        if (ritual.oneTimePerRun && (s.ritualCooldowns?.[ritualId] || 0) > 0) return false;
+  1939→        // Check Divinity cost
+  1940→        if ((s.divinity || 0) < ritual.divinityCost) return false;
+  1941→
+  1942→        // ===== Apply the ritual effect =====
+  1943→        const updates: Partial<GameState> = {
+  1944→          divinity: s.divinity - ritual.divinityCost,
+  1945→        };
+  1946→        const effect = ritual.effect;
+  1947→        let logMsg = `Ritual performed: ${ritual.name}. `;
+  1948→        let surgeApplied = false;
+  1949→        switch (effect.type) {
+  1950→          case "surge": {
+  1951→            // Stack with existing surge if any (most recent surge takes priority
+  1952→            // by resetting remaining to its duration).
+  1953→            const mult = effect.surgeMult ?? 2;
+  1954→            const duration = effect.surgeDuration ?? 60;
+  1955→            updates.activeSurge = { mult, remaining: duration };
+  1956→            logMsg += `Production ×${mult} for ${duration}s.`;
+  1957→            surgeApplied = true;
+  1958→            break;
+  1959→          }
+  1960→          case "stabilize": {
+  1961→            const floor = effect.stabilizeHappiness ?? 75;
+  1962→            const cur = s.resources.happiness || 0;
+  1963→            const cap = s.capacities.happiness || 100;
+  1964→            if (cur < floor) {
+  1965→              const res = { ...s.resources };
+  1966→              res.happiness = Math.min(cap, floor);
+  1967→              updates.resources = res;
+  1968→            }
+  1969→            logMsg += `Happiness floor set to ${floor}.`;
+  1970→            break;
+  1971→          }
+  1972→          case "resolve": {
+  1973→            // Instantly resolve the active event by auto-picking the safest option.
+  1974→            if (s.activeEvent) {
+  1975→              const ev = EVENT_MAP[s.activeEvent];
+  1976→              if (ev) {
+  1977→                const safeChoice = pickSafestChoice(ev);
+  1978→                updates.activeEvent = null;
+  1979→                updates.eventCooldown = Math.max(s.eventCooldown || 0, 60);
+  1980→                // Defer the actual event resolution to the next tick so the
+  1981→                // choice's resource effects apply cleanly through resolveEvent.
+  1982→                if (safeChoice) {
+  1983→                  setTimeout(() => {
+  1984→                    const cur = get();
+  1985→                    if (cur.activeEvent === ev.id) {
+  1986→                      // Event is still active; resolve with the safe choice.
+  1987→                      get().resolveEvent(ev.id, safeChoice.id);
+  1988→                    }
+  1989→                  }, 0);
+  1990→                }
+  1991→                logMsg += `Crisis resolved: ${ev.name}.`;
+  1992→              }
+  1993→            } else {
+  1994→              logMsg += `No active crisis to resolve.`;
+  1995→            }
+  1996→            break;
+  1997→          }
+  1998→          case "unlock": {
+  1999→            // Instantly research the cheapest available tech (no resource cost).
+  2000→            const stageId = STAGES[s.stageIndex].id;
+
+[showing lines 1-2000 of 3389; use offset=2001 with limit to continue reading]

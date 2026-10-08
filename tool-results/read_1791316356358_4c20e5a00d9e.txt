@@ -1,0 +1,933 @@
+     1→// Singularity — Layer 6 prestige content
+     2→//
+     3→// When a god reaches Singularity it enters the machinery of reality itself.
+     4→// No longer an outside author, it becomes the substrate beneath creation:
+     5→// relic loadouts reshape passive bonuses, logic cores execute scheduled
+     6→// divine actions on the tick loop, and (in a later task) compression lets
+     7→// the god collapse redundant system tiers into denser cores.
+     8→//
+     9→// Three mechanic families are spec'd for Singularity in prestigeLayers.ts:
+    10→//   - Relic Loadouts (passive bonus triples: upside / downside / special)
+    11→//   - Compression (collapse system tiers — NOT in this file)
+    12→//   - Logic Cores   (automation priorities that run while active)
+    13→//
+    14→// This file implements TWO of those three families — Relic Loadouts and
+    15→// Logic Cores — plus the helpers `relicBonus`, `logicCoreBonus`, and
+    16→// `isSingularityComplete`. The Compression family interacts with the
+    17→// stage-band logic in store.ts (which doesn't yet exist for Layer 6), so
+    18→// it's deferred to a follow-up task; `isSingularityComplete` already
+    19→// accepts a `compressionPerformed: boolean` argument so the helper is
+    20→// ready to gate advancement to Layer 7 (Omnipotence) once compression
+    21→// wiring lands.
+    22→//
+    23→// State fields (planned for GameState — to be wired in a follow-up task):
+    24→//   - activeRelic:           string | null              // equipped relic loadout id, or null
+    25→//   - installedLogicCores:   Record<string, boolean>   // installed logic cores (any subset of 6)
+    26→//   - compressionPerformed:  boolean                    // whether any system tier was compressed this run
+    27→//
+    28→// Reference: /home/z/my-project/upload/data.js DATA.LOGIC_CORES (lines
+    29→// 270-277) for the original vanilla-JS shapes (7 cores including a
+    30→// "balanced" placeholder). The TS port reshapes each core into a spec-
+    31→// aligned subset of 6 cores with explicit per-tick effects. The Relic
+    32→// Loadout family is new to the port — the vanilla JS had stage-keyed
+    33→// `MASTERY_RELICS` (one relic per stage) and a single slot system, but
+    34→// no "loadout" with an upside/downside/special-interaction triple.
+    35→//
+    36→// Advancement to Layer 7 (Omnipotence) requires installing 3 Logic Cores
+    37→// AND compressing one system tier — see prestigeLayers.ts
+    38→// `singularity.completeState: "Install 3 Logic Cores and Compress one system tier"`.
+    39→
+    40→import type { ResourceId } from "../state/types";
+    41→
+    42→// =====================================================================
+    43→// Constants
+    44→// =====================================================================
+    45→
+    46→/**
+    47→ * Number of Logic Cores the player must install for the Layer 6
+    48→ * completion check (`isSingularityComplete`). Matches the spec wording
+    49→ * "Install 3 Logic Cores and Compress one system tier" from
+    50→ * prestigeLayers.ts. The dataset defines 6 cores total, so this is half
+    51→ * of the available pool — a meaningful but not exhaustive commitment.
+    52→ */
+    53→export const SINGULARITY_COMPLETION_CORES_REQUIRED: number = 3;
+    54→
+    55→/**
+    56→ * Maximum number of Logic Cores the player can install in a single run.
+    57→ *
+    58→ * The dataset has exactly 6 cores; the cap is enforced as `Object.keys(
+    59→ * installedLogicCores).filter(...).length <= 6` by the store, but the
+    60→ * data-side constant lives here so the validator and consumer share one
+    61→ * source of truth. A future upgrade ("Logic Core Seed" in vanilla JS
+    62→ * `DATA.FUTURE_UPGRADES.singularity`) could raise this cap; if so, bump
+    63→ * this constant or replace it with a function.
+    64→ */
+    65→export const MAX_INSTALLED_LOGIC_CORES: number = 6;
+    66→
+    67→// =====================================================================
+    68→// 1. Relic Loadouts (8) — passive bonus triples: upside / downside / special
+    69→// =====================================================================
+    70→
+    71→/**
+    72→ * Discriminated union of relic "special interaction" behaviors. Each
+    73→ * relic carries exactly one variant; the consumer (store / game loop)
+    74→ * reads `relic.special.kind` and dispatches accordingly.
+    75→ *
+    76→ * The special is the third leg of each relic loadout — it's what makes
+    77→ * "Singularity Core" different from a flat "+production / -caps" bonus.
+    78→ * Specials are triggerable: they fire on specific game events (tech
+    79→ * purchase, system purchase, action perform, per-tick conditional, etc.).
+    80→ *
+    81→ * Known variants:
+    82→ *
+    83→ *   - `production_floor`              Singularity Core
+    84→ *   - `pop_growth_doubles_below_pop`  Eternal Flame
+    85→ *   - `tech_cost_reduction`           Void Lens
+    86→ *   - `system_buy_gold_kickback`      Golden Idol
+    87→ *   - `caps_grow_with_happiness`      Stone Tablet
+    88→ *   - `military_event_chance_mult`    War Drum
+    89→ *   - `double_actions_producing`     Harvest Scythe
+    90→ *   - `scale_with_installed_cores`    Omni Matrix
+    91→ */
+    92→export type RelicSpecial =
+    93→  /** Production is floored at `floorMult × baseline` while the relic is equipped.
+    94→   *  Protects against other production penalties (e.g. Stone Tablet's −15%). */
+    95→  | { kind: "production_floor"; floorMult: number }
+    96→  /** Population growth rate is doubled while `state.population ≤ threshold`.
+    97→   *  Eternal Flame's "burns hottest when the world is small" flavor. */
+    98→  | { kind: "pop_growth_doubles_below_pop"; threshold: number }
+    99→  /** All tech research costs are reduced by `value` (0..1, additive on final cost).
+   100→   *  Void Lens "bends inquiry into cheaper shapes". */
+   101→  | { kind: "tech_cost_reduction"; value: number }
+   102→  /** When the player buys a system, refund `fraction` of its gold cost as a kickback.
+   103→   *  Golden Idol's "wealth returns to the worshipful". */
+   104→  | { kind: "system_buy_gold_kickback"; fraction: number }
+   105→  /** While `state.resources.happiness ≥ above`, all caps grow by `perSec` per second.
+   106→   *  Stone Tablet "swells beneath contented civilizations". */
+   107→  | { kind: "caps_grow_with_happiness"; above: number; perSec: number }
+   108→  /** Military-type random events are `value`× more likely to fire while equipped.
+   109→   *  War Drum "calls the conflicts that prove devotion". */
+   110→  | { kind: "military_event_chance_mult"; value: number }
+   111→  /** Manual actions that produce any of `resources` have their yield doubled.
+   112→   *  Harvest Scythe "cuts twice where life is gathered". */
+   113→  | { kind: "double_actions_producing"; resources: ResourceId[] }
+   114→  /** This relic's own stat bonuses are multiplied by `(1 + perCoreMult × installedLogicCoreCount)`.
+   115→   *  Omni Matrix "synergizes with the cores that run beneath it". */
+   116→  | { kind: "scale_with_installed_cores"; perCoreMult: number };
+   117→
+   118→/**
+   119→ * A single Relic Loadout. Only one relic can be equipped at a time
+   120→ * (mirrors the Worship Mode pattern from apotheosis.ts — `activeRelic`
+   121→ * in GameState is a single id, not a set). The store applies the
+   122→ * equipped relic's effects each tick via `relicBonus(state.activeRelic)`.
+   123→ *
+   124→ * Effect field → consumer wiring:
+   125→ *   - `productionMult`         → additive all-production mult (Singularity Core +0.30, Stone Tablet −0.15)
+   126→ *   - `populationGrowthMult`   → additive pop-growth mult (Eternal Flame +0.50, Golden Idol −0.20)
+   127→ *   - `scienceMult`            → additive science mult (Void Lens +0.60, War Drum −0.20)
+   128→ *   - `militaryMult`           → additive military mult (Void Lens −0.30, War Drum +0.80)
+   129→ *   - `goldMult`               → additive gold mult (Golden Idol +0.40, Harvest Scythe −0.30)
+   130→ *   - `productionMult` (again) → Golden Idol also sets +0.40 production
+   131→ *   - `foodMult`               → additive food mult (Harvest Scythe +0.50)
+   132→ *   - `organicMatterMult`     → additive organic_matter mult (Harvest Scythe +0.50)
+   133→ *   - `capsMult`               → additive mult on all resource caps (Singularity Core −0.20, Stone Tablet +0.50, Omni Matrix +0.10)
+   134→ *   - `happinessDrainPerSec`  → flat per-second happiness drain (Eternal Flame −0.2, War Drum −0.3)
+   135→ *   - `special`                → discriminated union dispatched by the consumer (see `RelicSpecial`)
+   136→ *
+   137→ * All mult fields are additive on the baseline (0 = no change). Negative
+   138→ * values represent the relic's downside (e.g. Singularity Core's −20% caps).
+   139→ * `happinessDrainPerSec` is signed and typically negative (a drain);
+   140→ * the IIFE validator enforces it be ≤ 0 when set. `special` is required
+   141→ * (non-optional) — every relic has a special interaction.
+   142→ *
+   143→ * Omni Matrix is the only relic with no downside (all its stat fields
+   144→ * are non-negative, no `happinessDrainPerSec`). The validator does NOT
+   145→ * enforce that every relic has a downside — only the dataset author
+   146→ * ensures that intent.
+   147→ */
+   148→export interface RelicLoadoutDef {
+   149→  /** Stable identifier (matches `activeRelic` in GameState). */
+   150→  id: string;
+   151→  /** Human-readable relic name. */
+   152→  name: string;
+   153→  /** Narrative / mechanical flavour describing the relic's upside, downside, and special. */
+   154→  desc: string;
+   155→  /** Emoji glyph shown on the relic card. */
+   156→  icon: string;
+   157→  /** Additive all-production multiplier (0.30 = +30% all production). */
+   158→  productionMult?: number;
+   159→  /** Additive population-growth multiplier (0.50 = +50% pop growth). */
+   160→  populationGrowthMult?: number;
+   161→  /** Additive science multiplier (0.60 = +60% science). */
+   162→  scienceMult?: number;
+   163→  /** Additive military-power multiplier (0.80 = +80% military). */
+   164→  militaryMult?: number;
+   165→  /** Additive gold multiplier (0.40 = +40% gold). */
+   166→  goldMult?: number;
+   167→  /** Additive food multiplier (0.50 = +50% food). */
+   168→  foodMult?: number;
+   169→  /** Additive organic_matter multiplier (0.50 = +50% organic matter). */
+   170→  organicMatterMult?: number;
+   171→  /** Additive multiplier on every resource's cap (−0.20 = −20% all caps). */
+   172→  capsMult?: number;
+   173→  /** Flat per-second happiness drain (signed; typically negative for a drain). */
+   174→  happinessDrainPerSec?: number;
+   175→  /** The relic's special interaction — required, dispatches on `special.kind`. */
+   176→  special: RelicSpecial;
+   177→}
+   178→
+   179→export const RELIC_LOADOUTS: RelicLoadoutDef[] = [
+   180→  {
+   181→    id: "singularity_core",
+   182→    name: "Singularity Core",
+   183→    desc:
+   184→      "A point of infinite density at the heart of the world. All production flows 30% richer — " +
+   185→      "but every cap is squeezed by 20%. Production never falls below half its baseline, " +
+   186→      "no matter how much else compresses around it.",
+   187→    icon: "🕳️",
+   188→    productionMult: 0.30,
+   189→    capsMult: -0.20,
+   190→    special: { kind: "production_floor", floorMult: 0.50 },
+   191→  },
+   192→  {
+   193→    id: "eternal_flame",
+   194→    name: "Eternal Flame",
+   195→    desc:
+   196→      "A fire that never goes out, fed by the joy of the living. Population grows 50% faster — " +
+   197→      "but happiness drains at 0.2 per second. While the world is small (population ≤ 50), " +
+   198→      "the flame burns hottest and growth doubles again.",
+   199→    icon: "🔥",
+   200→    populationGrowthMult: 0.50,
+   201→    happinessDrainPerSec: -0.2,
+   202→    special: { kind: "pop_growth_doubles_below_pop", threshold: 50 },
+   203→  },
+   204→  {
+   205→    id: "void_lens",
+   206→    name: "Void Lens",
+   207→    desc:
+   208→      "An aperture into the space between thoughts. Science flows 60% richer — " +
+   209→      "but the lens warps every blade and spear, and military power withers by 30%. " +
+   210→      "Inquiry bends toward cheaper shapes: all tech research costs 20% less.",
+   211→    icon: "🔭",
+   212→    scienceMult: 0.60,
+   213→    militaryMult: -0.30,
+   214→    special: { kind: "tech_cost_reduction", value: 0.20 },
+   215→  },
+   216→  {
+   217→    id: "golden_idol",
+   218→    name: "Golden Idol",
+   219→    desc:
+   220→      "A graven image that turns devotion into wealth. Gold and production both rise 40% — " +
+   221→      "but the idol's hunger slows population growth by 20%. Every system bought returns " +
+   222→      "10% of its gold cost to the worshipful.",
+   223→    icon: "🟡",
+   224→    goldMult: 0.40,
+   225→    productionMult: 0.40,
+   226→    populationGrowthMult: -0.20,
+   227→    special: { kind: "system_buy_gold_kickback", fraction: 0.10 },
+   228→  },
+   229→  {
+   230→    id: "stone_tablet",
+   231→    name: "Stone Tablet",
+   232→    desc:
+   233→      "Ancient law cut deep into bedrock. Every cap is widened by 50% — " +
+   234→      "but the weight of tradition slows production by 15%. When happiness is high (≥ 80), " +
+   235→      "the tablet swells: caps grow by +1% per second beneath contented civilizations.",
+   236→    icon: "📜",
+   237→    capsMult: 0.50,
+   238→    productionMult: -0.15,
+   239→    special: { kind: "caps_grow_with_happiness", above: 80, perSec: 0.01 },
+   240→  },
+   241→  {
+   242→    id: "war_drum",
+   243→    name: "War Drum",
+   244→    desc:
+   245→      "A hide stretched tight over a hollow frame, beaten without end. Military power surges 80% — " +
+   246→      "but the drum wears the soul: happiness drains at 0.3 per second, and science withers 20%. " +
+   247→      "The drum calls conflicts to itself: military-type events fire 50% more often.",
+   248→    icon: "🥁",
+   249→    militaryMult: 0.80,
+   250→    happinessDrainPerSec: -0.3,
+   251→    scienceMult: -0.20,
+   252→    special: { kind: "military_event_chance_mult", value: 1.50 },
+   253→  },
+   254→  {
+   255→    id: "harvest_scythe",
+   256→    name: "Harvest Scythe",
+   257→    desc:
+   258→      "A crescent blade that reaps what the world has grown. Food and organic matter flow 50% richer — " +
+   259→      "but gold is pared back by 30%. Every foraging and hunting action yields twice as much; " +
+   260→      "the scythe cuts twice where life is gathered.",
+   261→    icon: "🌾",
+   262→    foodMult: 0.50,
+   263→    organicMatterMult: 0.50,
+   264→    goldMult: -0.30,
+   265→    special: {
+   266→      kind: "double_actions_producing",
+   267→      resources: ["food", "organic_matter"],
+   268→    },
+   269→  },
+   270→  {
+   271→    id: "omni_matrix",
+   272→    name: "Omni Matrix",
+   273→    desc:
+   274→      "A lattice of every pattern at once, balanced against itself. All production and caps rise 10% — " +
+   275→      "no downside, no drain. The matrix synergizes with installed logic cores: each core multiplies " +
+   276→      "its bonuses by +1%.",
+   277→    icon: "🔷",
+   278→    productionMult: 0.10,
+   279→    capsMult: 0.10,
+   280→    special: { kind: "scale_with_installed_cores", perCoreMult: 0.01 },
+   281→  },
+   282→];
+   283→
+   284→export const RELIC_LOADOUT_MAP: Record<string, RelicLoadoutDef> = Object.fromEntries(
+   285→  RELIC_LOADOUTS.map((r) => [r.id, r])
+   286→);
+   287→
+   288→export const RELIC_LOADOUT_COUNT: number = RELIC_LOADOUTS.length;
+   289→
+   290→// =====================================================================
+   291→// 2. Logic Cores (6) — automation priorities that run while active
+   292→// =====================================================================
+   293→
+   294→/**
+   295→ * Discriminated union of logic core behaviors. Each core has exactly one
+   296→ * behavior variant; the consumer (store / game loop) reads `core.behavior.kind`
+   297→ * and dispatches accordingly.
+   298→ *
+   299→ * Two kinds are automation (Growth, Stability) — they trigger an action
+   300→ * each tick; the bonus fields on the def are unused for these. The other
+   301→ * four (Conquest, Science, Trade, Faith) are passive bonus providers —
+   302→ * their `behavior.kind` is "passive" and the consumer reads the bonus
+   303→ * fields each tick via `logicCoreBonus`.
+   304→ *
+   305→ * Known variants:
+   306→ *
+   307→ *   - `auto_evolve`           Growth Core
+   308→ *   - `happiness_drift`       Stability Core
+   309→ *   - `passive`               Conquest / Science / Trade / Faith Cores
+   310→ */
+   311→export type LogicCoreBehavior =
+   312→  /** Each tick, if the current stage's evolve requirements are met,
+   313→   *  automatically trigger `evolveStage()`. Mirrors the existing
+   314→   *  `auto_evolver` upgrade effect but at the Layer 6 scope. */
+   315→  | { kind: "auto_evolve" }
+   316→  /** Each tick, if `state.resources.happiness < below`, drift happiness
+   317→   *  upward toward `toward` at `perSec`/s. Stability Core's "happiness
+   318→   *  drifts toward 70 if below 40" — below: 40, toward: 70, perSec: 1. */
+   319→  | { kind: "happiness_drift"; below: number; toward: number; perSec: number }
+   320→  /** No automation — the core only contributes its passive bonus fields
+   321→   *  to `logicCoreBonus`. Conquest, Science, Trade, and Faith use this. */
+   322→  | { kind: "passive" };
+   323→
+   324→/**
+   325→ * A single Logic Core. Up to `MAX_INSTALLED_LOGIC_CORES` (6) can be
+   326→ * installed at once; the player picks any subset of the 6 defined cores.
+   327→ * The store applies each installed core's behavior each tick.
+   328→ *
+   329→ * Effect field → consumer wiring:
+   330→ *   - `militaryMult`     → additive military mult (Conquest Core +0.20)
+   331→ *   - `scienceMult`      → additive science mult (Science Core +0.25)
+   332→ *   - `goldMult`         → additive gold mult (Trade Core +0.15)
+   333→ *   - `productionMult`   → additive production mult (Trade Core +0.15)
+   334→ *   - `divinityPerSec`   → flat Divinity/sec (Faith Core +0.02)
+   335→ *   - `behavior`         → discriminated union dispatched by the consumer
+   336→ *
+   337→ * Cores with `behavior.kind !== "passive"` (Growth, Stability) typically
+   338→ * set no bonus fields — their value is the automation, not a stat boost.
+   339→ * The validator enforces that "passive" cores set at least one bonus
+   340→ * field, and that non-passive cores set NO bonus fields (to keep the
+   341→ * boundary clean).
+   342→ *
+   343→ * `divinityPerSec` is additive on top of any other Divinity/sec source
+   344→ * (Transcendence's Eternal Well ritual +0.05, Apotheosis's Manna, etc.).
+   345→ * Faith Core's +0.02/s is intentionally modest — it's a permanent-for-
+   346→ * run passive once the core is installed, not a one-time grant.
+   347→ */
+   348→export interface LogicCoreDef {
+   349→  /** Stable identifier (used as a key in `installedLogicCores` in GameState). */
+   350→  id: string;
+   351→  /** Human-readable core name. */
+   352→  name: string;
+   353→  /** Short flavour / mechanical description of what the core does while installed. */
+   354→  desc: string;
+   355→  /** Emoji glyph shown on the core card. */
+   356→  icon: string;
+   357→  /** What the core does each tick while installed (automation or "passive"). */
+   358→  behavior: LogicCoreBehavior;
+   359→  /** Additive military-power multiplier (0.20 = +20% military). */
+   360→  militaryMult?: number;
+   361→  /** Additive science multiplier (0.25 = +25% science). */
+   362→  scienceMult?: number;
+   363→  /** Additive gold multiplier (0.15 = +15% gold). */
+   364→  goldMult?: number;
+   365→  /** Additive all-production multiplier (0.15 = +15% production). */
+   366→  productionMult?: number;
+   367→  /** Flat Divinity generated per second (0.02 = +0.02 Divinity/s). */
+   368→  divinityPerSec?: number;
+   369→}
+   370→
+   371→export const LOGIC_CORES: LogicCoreDef[] = [
+   372→  {
+   373→    id: "growth_core",
+   374→    name: "Growth Core",
+   375→    desc:
+   376→      "Bias the substrate toward becoming. Each tick, if the current stage's evolve requirements " +
+   377→      "are met, the core triggers evolution automatically — no click needed.",
+   378→    icon: "🌱",
+   379→    behavior: { kind: "auto_evolve" },
+   380→  },
+   381→  {
+   382→    id: "stability_core",
+   383→    name: "Stability Core",
+   384→    desc:
+   385→      "Bias the substrate toward calm. Each tick, if happiness drops below 40, it drifts back " +
+   386→      "toward 70 at 1 per second — keeping the world just above the threshold of unrest.",
+   387→    icon: "🛡️",
+   388→    behavior: { kind: "happiness_drift", below: 40, toward: 70, perSec: 1 },
+   389→  },
+   390→  {
+   391→    id: "conquest_core",
+   392→    name: "Conquest Core",
+   393→    desc:
+   394→      "Bias the substrate toward command. While installed, military power is 20% greater — " +
+   395→      "the drum of war plays beneath every action.",
+   396→    icon: "⚔️",
+   397→    behavior: { kind: "passive" },
+   398→    militaryMult: 0.20,
+   399→  },
+   400→  {
+   401→    id: "science_core",
+   402→    name: "Science Core",
+   403→    desc:
+   404→      "Bias the substrate toward inquiry. While installed, science flows 25% richer — " +
+   405→      "the lattice of curiosity hums beneath every measurement.",
+   406→    icon: "🔬",
+   407→    behavior: { kind: "passive" },
+   408→    scienceMult: 0.25,
+   409→  },
+   410→  {
+   411→    id: "trade_core",
+   412→    name: "Trade Core",
+   413→    desc:
+   414→      "Bias the substrate toward exchange. While installed, gold and production both rise 15% — " +
+   415→      "the gears of commerce turn a little faster beneath every transaction.",
+   416→    icon: "⚖️",
+   417→    behavior: { kind: "passive" },
+   418→    goldMult: 0.15,
+   419→    productionMult: 0.15,
+   420→  },
+   421→  {
+   422→    id: "faith_core",
+   423→    name: "Faith Core",
+   424→    desc:
+   425→      "Bias the substrate toward devotion. While installed, a thin but constant stream of divinity " +
+   426→      "flows in at +0.02 per second — the substrate itself begins to pray.",
+   427→    icon: "🛐",
+   428→    behavior: { kind: "passive" },
+   429→    divinityPerSec: 0.02,
+   430→  },
+   431→];
+   432→
+   433→export const LOGIC_CORE_MAP: Record<string, LogicCoreDef> = Object.fromEntries(
+   434→  LOGIC_CORES.map((c) => [c.id, c])
+   435→);
+   436→
+   437→export const LOGIC_CORE_COUNT: number = LOGIC_CORES.length;
+   438→
+   439→// =====================================================================
+   440→// Module-load sanity checks
+   441→// =====================================================================
+   442→
+   443→/**
+   444→ * Validate the singularity data at module load:
+   445→ *   - All relic loadout ids are unique.
+   446→ *   - Each relic sets a `special` (required field — enforced by type, but
+   447→ *     the validator also sanity-checks the payload of each variant).
+   448→ *   - Each relic sets at least one stat field OR has a `special` whose
+   449→ *     `kind` is `scale_with_installed_cores` (Omni Matrix — its specials
+   450→ *     amplifies its own stat fields, so it must set at least one).
+   451→ *   - `happinessDrainPerSec` (if set) is ≤ 0 (it's a drain, not a bonus).
+   452→ *   - `capsMult` (if set) is in (−1, ∞) — caps can drop toward 0 but
+   453→ *     never go negative.
+   454→ *   - All logic core ids are unique.
+   455→ *   - Each `passive` logic core sets at least one bonus field.
+   456→ *   - Each non-`passive` logic core (auto_evolve, happiness_drift) sets
+   457→ *     NO bonus fields — automation-only.
+   458→ *   - `divinityPerSec` (if set) is > 0.
+   459→ *   - All mult fields (if set) on logic cores are > 0 (cores grant
+   460→ *     bonuses, never penalties).
+   461→ *   - `SINGULARITY_COMPLETION_CORES_REQUIRED` is in [1, MAX_INSTALLED_LOGIC_CORES].
+   462→ *
+   463→ * Throws on any violation (programmer error, not a runtime / save data
+   464→ * error). The check is O(N) and runs once at module import, so it's a
+   465→ * no-op on the hot path. Matches the pattern established by
+   466→ * `apotheosis.ts`, `transcendence.ts`, and `genesis.ts`.
+   467→ */
+   468→(function validateSingularityData(): void {
+   469→  if (
+   470→    SINGULARITY_COMPLETION_CORES_REQUIRED < 1 ||
+   471→    SINGULARITY_COMPLETION_CORES_REQUIRED > MAX_INSTALLED_LOGIC_CORES
+   472→  ) {
+   473→    throw new Error(
+   474→      `singularity.ts: SINGULARITY_COMPLETION_CORES_REQUIRED must be in [1, ${MAX_INSTALLED_LOGIC_CORES}] (got ${SINGULARITY_COMPLETION_CORES_REQUIRED})`
+   475→    );
+   476→  }
+   477→
+   478→  // ---- Relic loadouts ----
+   479→  const seenRelic = new Set<string>();
+   480→  for (const r of RELIC_LOADOUTS) {
+   481→    if (seenRelic.has(r.id)) {
+   482→      throw new Error(`singularity.ts: duplicate relic loadout id "${r.id}"`);
+   483→    }
+   484→    seenRelic.add(r.id);
+   485→
+   486→    // `special` is required by type, but the validator sanity-checks each variant's payload.
+   487→    switch (r.special.kind) {
+   488→      case "production_floor":
+   489→        if (r.special.floorMult < 0 || r.special.floorMult > 1) {
+   490→          throw new Error(
+   491→            `singularity.ts: relic "${r.id}" production_floor.floorMult must be in [0, 1] (got ${r.special.floorMult})`
+   492→          );
+   493→        }
+   494→        break;
+   495→      case "pop_growth_doubles_below_pop":
+   496→        if (r.special.threshold < 0) {
+   497→          throw new Error(
+   498→            `singularity.ts: relic "${r.id}" pop_growth_doubles_below_pop.threshold must be >= 0 (got ${r.special.threshold})`
+   499→          );
+   500→        }
+   501→        break;
+   502→      case "tech_cost_reduction":
+   503→        if (r.special.value < 0 || r.special.value > 1) {
+   504→          throw new Error(
+   505→            `singularity.ts: relic "${r.id}" tech_cost_reduction.value must be in [0, 1] (got ${r.special.value})`
+   506→          );
+   507→        }
+   508→        break;
+   509→      case "system_buy_gold_kickback":
+   510→        if (r.special.fraction < 0 || r.special.fraction > 1) {
+   511→          throw new Error(
+   512→            `singularity.ts: relic "${r.id}" system_buy_gold_kickback.fraction must be in [0, 1] (got ${r.special.fraction})`
+   513→          );
+   514→        }
+   515→        break;
+   516→      case "caps_grow_with_happiness":
+   517→        if (r.special.above < 0 || r.special.above > 100) {
+   518→          throw new Error(
+   519→            `singularity.ts: relic "${r.id}" caps_grow_with_happiness.above must be in [0, 100] (got ${r.special.above})`
+   520→          );
+   521→        }
+   522→        if (r.special.perSec <= 0) {
+   523→          throw new Error(
+   524→            `singularity.ts: relic "${r.id}" caps_grow_with_happiness.perSec must be > 0 (got ${r.special.perSec})`
+   525→          );
+   526→        }
+   527→        break;
+   528→      case "military_event_chance_mult":
+   529→        if (r.special.value < 0) {
+   530→          throw new Error(
+   531→            `singularity.ts: relic "${r.id}" military_event_chance_mult.value must be >= 0 (got ${r.special.value})`
+   532→          );
+   533→        }
+   534→        break;
+   535→      case "double_actions_producing":
+   536→        if (r.special.resources.length === 0) {
+   537→          throw new Error(
+   538→            `singularity.ts: relic "${r.id}" double_actions_producing.resources must be non-empty`
+   539→          );
+   540→        }
+   541→        break;
+   542→      case "scale_with_installed_cores":
+   543→        if (r.special.perCoreMult < 0) {
+   544→          throw new Error(
+   545→            `singularity.ts: relic "${r.id}" scale_with_installed_cores.perCoreMult must be >= 0 (got ${r.special.perCoreMult})`
+   546→          );
+   547→        }
+   548→        // Omni Matrix must set at least one stat field for the scaling to amplify.
+   549→        const omniStats = [
+   550→          r.productionMult,
+   551→          r.populationGrowthMult,
+   552→          r.scienceMult,
+   553→          r.militaryMult,
+   554→          r.goldMult,
+   555→          r.foodMult,
+   556→          r.organicMatterMult,
+   557→          r.capsMult,
+   558→        ].filter((v) => v !== undefined).length;
+   559→        if (omniStats < 1) {
+   560→          throw new Error(
+   561→            `singularity.ts: relic "${r.id}" scale_with_installed_cores requires at least one stat field to amplify (set ${omniStats})`
+   562→          );
+   563→        }
+   564→        break;
+   565→      // No default — exhaustiveness is enforced by TypeScript's discriminated union check.
+   566→    }
+   567→
+   568→    // `happinessDrainPerSec` is a drain — must be ≤ 0.
+   569→    if (r.happinessDrainPerSec !== undefined && r.happinessDrainPerSec > 0) {
+   570→      throw new Error(
+   571→        `singularity.ts: relic "${r.id}" happinessDrainPerSec must be <= 0 (got ${r.happinessDrainPerSec})`
+   572→      );
+   573→    }
+   574→
+   575→    // `capsMult` is additive on caps; a value of −1 would zero every cap.
+   576→    // Allow (−1, ∞) — −0.999 is the smallest meaningful value.
+   577→    if (r.capsMult !== undefined && r.capsMult <= -1) {
+   578→      throw new Error(
+   579→        `singularity.ts: relic "${r.id}" capsMult must be > -1 (got ${r.capsMult})`
+   580→      );
+   581→    }
+   582→
+   583→    // Each relic should set at least one stat field (the upside or downside)
+   584→    // in addition to its `special`. The only relic that could conceivably
+   585→    // violate this is one whose `special` is `scale_with_installed_cores`
+   586→    // with NO stat fields to amplify — but that case is already caught by
+   587→    // the Omni Matrix check above (a `scale_with_installed_cores` relic
+   588→    // with no stats fails the `omniStats < 1` check). For all other
+   589→    // specials, the dataset author ensures at least one stat is set.
+   590→    //
+   591→    // We do NOT enforce a generic "statCount >= 1" here because some relic
+   592→    // designs might legitimately have a `special`-only effect (e.g. a
+   593→    // hypothetical relic whose only impact is its `production_floor`).
+   594→    // The dataset below passes: all 8 relics set at least one stat field.
+   595→  }
+   596→
+   597→  // ---- Logic cores ----
+   598→  const seenCore = new Set<string>();
+   599→  for (const c of LOGIC_CORES) {
+   600→    if (seenCore.has(c.id)) {
+   601→      throw new Error(`singularity.ts: duplicate logic core id "${c.id}"`);
+   602→    }
+   603→    seenCore.add(c.id);
+   604→
+   605→    const bonusCount = [
+   606→      c.militaryMult,
+   607→      c.scienceMult,
+   608→      c.goldMult,
+   609→      c.productionMult,
+   610→      c.divinityPerSec,
+   611→    ].filter((v) => v !== undefined).length;
+   612→
+   613→    if (c.behavior.kind === "passive") {
+   614→      // Passive cores must set at least one bonus field.
+   615→      if (bonusCount < 1) {
+   616→        throw new Error(
+   617→          `singularity.ts: passive logic core "${c.id}" must set at least one bonus field (set ${bonusCount})`
+   618→        );
+   619→      }
+   620→    } else {
+   621→      // Automation cores (auto_evolve, happiness_drift) must set NO bonus fields.
+   622→      if (bonusCount > 0) {
+   623→        throw new Error(
+   624→          `singularity.ts: automation logic core "${c.id}" (behavior "${c.behavior.kind}") must NOT set bonus fields (set ${bonusCount})`
+   625→        );
+   626→      }
+   627→    }
+   628→
+   629→    // Bonus fields on cores must be strictly positive — cores grant bonuses,
+   630→    // never penalties. (Contrast with relics, which can have negative fields
+   631→    // for downsides.)
+   632→    if (c.militaryMult !== undefined && c.militaryMult <= 0) {
+   633→      throw new Error(
+   634→        `singularity.ts: logic core "${c.id}" militaryMult must be > 0 (got ${c.militaryMult})`
+   635→      );
+   636→    }
+   637→    if (c.scienceMult !== undefined && c.scienceMult <= 0) {
+   638→      throw new Error(
+   639→        `singularity.ts: logic core "${c.id}" scienceMult must be > 0 (got ${c.scienceMult})`
+   640→      );
+   641→    }
+   642→    if (c.goldMult !== undefined && c.goldMult <= 0) {
+   643→      throw new Error(
+   644→        `singularity.ts: logic core "${c.id}" goldMult must be > 0 (got ${c.goldMult})`
+   645→      );
+   646→    }
+   647→    if (c.productionMult !== undefined && c.productionMult <= 0) {
+   648→      throw new Error(
+   649→        `singularity.ts: logic core "${c.id}" productionMult must be > 0 (got ${c.productionMult})`
+   650→      );
+   651→    }
+   652→    if (c.divinityPerSec !== undefined && c.divinityPerSec <= 0) {
+   653→      throw new Error(
+   654→        `singularity.ts: logic core "${c.id}" divinityPerSec must be > 0 (got ${c.divinityPerSec})`
+   655→      );
+   656→    }
+   657→
+   658→    // happiness_drift behavior must have sensible thresholds.
+   659→    if (c.behavior.kind === "happiness_drift") {
+   660→      if (c.behavior.below < 0 || c.behavior.below > 100) {
+   661→        throw new Error(
+   662→          `singularity.ts: logic core "${c.id}" happiness_drift.below must be in [0, 100] (got ${c.behavior.below})`
+   663→        );
+   664→      }
+   665→      if (c.behavior.toward < 0 || c.behavior.toward > 100) {
+   666→        throw new Error(
+   667→          `singularity.ts: logic core "${c.id}" happiness_drift.toward must be in [0, 100] (got ${c.behavior.toward})`
+   668→        );
+   669→      }
+   670→      if (c.behavior.toward < c.behavior.below) {
+   671→        throw new Error(
+   672→          `singularity.ts: logic core "${c.id}" happiness_drift.toward (${c.behavior.toward}) must be >= below (${c.behavior.below})`
+   673→        );
+   674→      }
+   675→      if (c.behavior.perSec <= 0) {
+   676→        throw new Error(
+   677→          `singularity.ts: logic core "${c.id}" happiness_drift.perSec must be > 0 (got ${c.behavior.perSec})`
+   678→        );
+   679→      }
+   680→    }
+   681→  }
+   682→})();
+   683→
+   684→// =====================================================================
+   685→// Helpers
+   686→// =====================================================================
+   687→
+   688→/**
+   689→ * Aggregated bonus object returned by `relicBonus`.
+   690→ *
+   691→ * All mult fields are additive on top of the baseline (0 = no change).
+   692→ * The consumer applies these in the tick loop:
+   693→ *
+   694→ *   - `productionMult`:        multiply production by `(1 + productionMult)`
+   695→ *   - `populationGrowthMult`:  multiply pop growth by `(1 + populationGrowthMult)`
+   696→ *   - `scienceMult`:           multiply science by `(1 + scienceMult)`
+   697→ *   - `militaryMult`:         multiply military by `(1 + militaryMult)`
+   698→ *   - `goldMult`:              multiply gold by `(1 + goldMult)`
+   699→ *   - `foodMult`:              multiply food by `(1 + foodMult)`
+   700→ *   - `organicMatterMult`:    multiply organic_matter by `(1 + organicMatterMult)`
+   701→ *   - `capsMult`:              multiply every resource cap by `(1 + capsMult)`
+   702→ *   - `happinessDrainPerSec`: add to `state.resources.happiness` per second (signed; negative = drain)
+   703→ *   - `special`:               the active relic's special interaction, or `null` if no relic equipped
+   704→ *
+   705→ * Only one relic can be equipped at a time (`state.activeRelic` is a single
+   706→ * id, not a set), so the aggregate is just the equipped relic's fields
+   707→ * passed through with defaults. The `special` field is non-aggregated —
+   708→ * it's the relic's own special, returned so the consumer can dispatch on
+   709→ * `special.kind` without a second lookup.
+   710→ */
+   711→export interface RelicBonus {
+   712→  /** Additive all-production multiplier (Singularity Core +0.30, Golden Idol +0.40, Stone Tablet −0.15, Omni Matrix +0.10). */
+   713→  productionMult: number;
+   714→  /** Additive population-growth multiplier (Eternal Flame +0.50, Golden Idol −0.20). */
+   715→  populationGrowthMult: number;
+   716→  /** Additive science multiplier (Void Lens +0.60, War Drum −0.20). */
+   717→  scienceMult: number;
+   718→  /** Additive military-power multiplier (War Drum +0.80, Void Lens −0.30). */
+   719→  militaryMult: number;
+   720→  /** Additive gold multiplier (Golden Idol +0.40, Harvest Scythe −0.30). */
+   721→  goldMult: number;
+   722→  /** Additive food multiplier (Harvest Scythe +0.50). */
+   723→  foodMult: number;
+   724→  /** Additive organic_matter multiplier (Harvest Scythe +0.50). */
+   725→  organicMatterMult: number;
+   726→  /** Additive multiplier on every resource's cap (Singularity Core −0.20, Stone Tablet +0.50, Omni Matrix +0.10). */
+   727→  capsMult: number;
+   728→  /** Flat per-second happiness drain (signed; Eternal Flame −0.2, War Drum −0.3, 0 = no drain). */
+   729→  happinessDrainPerSec: number;
+   730→  /** The active relic's special interaction, or `null` if no relic is equipped. */
+   731→  special: RelicSpecial | null;
+   732→}
+   733→
+   734→/**
+   735→ * Return the equipped relic's bonuses as a single aggregate object.
+   736→ *
+   737→ * Only one relic can be active per run (`state.activeRelic` is a single
+   738→ * id, not a set — mirrors the Worship Mode pattern from apotheosis.ts).
+   739→ * The aggregate is just the equipped relic's stat fields passed through
+   740→ * with defaults (0 for mults, 0 for happinessDrainPerSec, `null` for
+   741→ * special). The `special` field is returned verbatim so the consumer
+   742→ * can dispatch on `special.kind` without a second lookup.
+   743→ *
+   744→ * Used by the tick loop to compute per-resource multipliers, the
+   745→ * pop-growth rate, cap multipliers, and the happiness drain. Special
+   746→ * interactions (e.g. Singularity Core's production floor, Golden Idol's
+   747→ * system-buy kickback) are dispatched separately by the consumer
+   748→ * reading `bonus.special.kind`.
+   749→ *
+   750→ * @param activeRelicId  The equipped relic loadout id, or `null` if none.
+   751→ * @returns Aggregated `RelicBonus` (all fields defaulted for null input).
+   752→ *
+   753→ * @example
+   754→ *   relicBonus(null)
+   755→ *     // → { productionMult:0, ..., happinessDrainPerSec:0, special:null }
+   756→ *   relicBonus("singularity_core")
+   757→ *     // → { productionMult:0.30, capsMult:-0.20, ...,
+   758→ *     //     special:{ kind:"production_floor", floorMult:0.50 } }
+   759→ *   relicBonus("eternal_flame")
+   760→ *     // → { populationGrowthMult:0.50, happinessDrainPerSec:-0.2, ...,
+   761→ *     //     special:{ kind:"pop_growth_doubles_below_pop", threshold:50 } }
+   762→ *   relicBonus("nonexistent_id")
+   763→ *     // → { all defaults, special:null }  (unknown id treated as "no relic")
+   764→ */
+   765→export function relicBonus(
+   766→  activeRelicId: string | null
+   767→): RelicBonus {
+   768→  const result: RelicBonus = {
+   769→    productionMult: 0,
+   770→    populationGrowthMult: 0,
+   771→    scienceMult: 0,
+   772→    militaryMult: 0,
+   773→    goldMult: 0,
+   774→    foodMult: 0,
+   775→    organicMatterMult: 0,
+   776→    capsMult: 0,
+   777→    happinessDrainPerSec: 0,
+   778→    special: null,
+   779→  };
+   780→  if (!activeRelicId) return result;
+   781→  const relic = RELIC_LOADOUT_MAP[activeRelicId];
+   782→  if (!relic) return result;
+   783→  if (relic.productionMult !== undefined) result.productionMult = relic.productionMult;
+   784→  if (relic.populationGrowthMult !== undefined) result.populationGrowthMult = relic.populationGrowthMult;
+   785→  if (relic.scienceMult !== undefined) result.scienceMult = relic.scienceMult;
+   786→  if (relic.militaryMult !== undefined) result.militaryMult = relic.militaryMult;
+   787→  if (relic.goldMult !== undefined) result.goldMult = relic.goldMult;
+   788→  if (relic.foodMult !== undefined) result.foodMult = relic.foodMult;
+   789→  if (relic.organicMatterMult !== undefined) result.organicMatterMult = relic.organicMatterMult;
+   790→  if (relic.capsMult !== undefined) result.capsMult = relic.capsMult;
+   791→  if (relic.happinessDrainPerSec !== undefined) result.happinessDrainPerSec = relic.happinessDrainPerSec;
+   792→  result.special = relic.special;
+   793→  return result;
+   794→}
+   795→
+   796→/**
+   797→ * Aggregated bonus object returned by `logicCoreBonus`.
+   798→ *
+   799→ * All fields are additive on top of the baseline (0 = no change).
+   800→ * `divinityPerSec` is a flat per-second Divinity grant (not a mult).
+   801→ * The consumer applies these in the tick loop:
+   802→ *
+   803→ *   - `militaryMult`:     multiply military by `(1 + militaryMult)`
+   804→ *   - `scienceMult`:      multiply science by `(1 + scienceMult)`
+   805→ *   - `goldMult`:         multiply gold by `(1 + goldMult)`
+   806→ *   - `productionMult`:   multiply production by `(1 + productionMult)`
+   807→ *   - `divinityPerSec`:   add to `state.resources.divinity` per second
+   808→ *
+   809→ * Automation behaviors (Growth Core's auto-evolve, Stability Core's
+   810→ * happiness drift) are NOT in this aggregate — they're encoded on each
+   811→ * core's `behavior` field and dispatched by the consumer reading
+   812→ * `LOGIC_CORE_MAP[id].behavior` directly. This keeps the aggregate
+   813→ * strictly numeric (no union-of-behaviors return type).
+   814→ */
+   815→export interface LogicCoreBonus {
+   816→  /** Additive military-power multiplier (Conquest Core +0.20). */
+   817→  militaryMult: number;
+   818→  /** Additive science multiplier (Science Core +0.25). */
+   819→  scienceMult: number;
+   820→  /** Additive gold multiplier (Trade Core +0.15). */
+   821→  goldMult: number;
+   822→  /** Additive all-production multiplier (Trade Core +0.15). */
+   823→  productionMult: number;
+   824→  /** Flat Divinity generated per second (Faith Core +0.02). */
+   825→  divinityPerSec: number;
+   826→}
+   827→
+   828→/**
+   829→ * Sum the passive bonuses from all installed Logic Cores into a single
+   830→ * aggregate.
+   831→ *
+   832→ * Iterates `LOGIC_CORES` and adds each installed core's bonus fields.
+   833→ * Cores with `behavior.kind !== "passive"` (Growth, Stability) set no
+   834→ * bonus fields (enforced by the IIFE validator) and contribute nothing
+   835→ * to the aggregate — their value is the automation, which the consumer
+   836→ * dispatches separately via `LOGIC_CORE_MAP[id].behavior`.
+   837→ *
+   838→ * Used by the tick loop to compute per-resource multipliers and the
+   839→ * Divinity/sec grant. The aggregate is recomputed each tick (it's cheap
+   840→ * — 6 entries) so the consumer doesn't need to cache it.
+   841→ *
+   842→ * @param installedCores  Map of core id → installed-this-run flag.
+   843→ * @returns Aggregated `LogicCoreBonus` (all fields defaulted for empty input).
+   844→ *
+   845→ * @example
+   846→ *   logicCoreBonus({})
+   847→ *     // → { militaryMult:0, scienceMult:0, goldMult:0, productionMult:0, divinityPerSec:0 }
+   848→ *   logicCoreBonus({ conquest_core: true })
+   849→ *     // → { militaryMult:0.20, scienceMult:0, goldMult:0, productionMult:0, divinityPerSec:0 }
+   850→ *   logicCoreBonus({ conquest_core: true, science_core: true, trade_core: true })
+   851→ *     // → { militaryMult:0.20, scienceMult:0.25, goldMult:0.15, productionMult:0.15, divinityPerSec:0 }
+   852→ *   logicCoreBonus({ faith_core: true })
+   853→ *     // → { ..., divinityPerSec:0.02 }
+   854→ *   logicCoreBonus({ growth_core: true, stability_core: true })
+   855→ *     // → { all zeros }  (automation cores contribute no passive bonuses)
+   856→ *   logicCoreBonus({ conquest_core: true, science_core: true, trade_core: true,
+   857→ *                    faith_core: true, growth_core: true, stability_core: true })
+   858→ *     // → { militaryMult:0.20, scienceMult:0.25, goldMult:0.15, productionMult:0.15, divinityPerSec:0.02 }
+   859→ */
+   860→export function logicCoreBonus(
+   861→  installedCores: Record<string, boolean>
+   862→): LogicCoreBonus {
+   863→  const result: LogicCoreBonus = {
+   864→    militaryMult: 0,
+   865→    scienceMult: 0,
+   866→    goldMult: 0,
+   867→    productionMult: 0,
+   868→    divinityPerSec: 0,
+   869→  };
+   870→  for (const core of LOGIC_CORES) {
+   871→    if (!installedCores[core.id]) continue;
+   872→    if (core.militaryMult !== undefined) result.militaryMult += core.militaryMult;
+   873→    if (core.scienceMult !== undefined) result.scienceMult += core.scienceMult;
+   874→    if (core.goldMult !== undefined) result.goldMult += core.goldMult;
+   875→    if (core.productionMult !== undefined) result.productionMult += core.productionMult;
+   876→    if (core.divinityPerSec !== undefined) result.divinityPerSec += core.divinityPerSec;
+   877→  }
+   878→  return result;
+   879→}
+   880→
+   881→/**
+   882→ * Whether the Layer 6 (Singularity) completion conditions are met.
+   883→ *
+   884→ * Conditions (both must be true):
+   885→ *   1. At least `SINGULARITY_COMPLETION_CORES_REQUIRED` (3) Logic Cores installed.
+   886→ *   2. At least one system tier has been compressed this run
+   887→ *      (`compressionPerformed === true`).
+   888→ *
+   889→ * Matches `prestigeLayers.ts singularity.completeState = "Install 3
+   890→ * Logic Cores and Compress one system tier"`. Used by `triggerPrestige()`
+   891→ * to gate advancement to Layer 7 (Omnipotence).
+   892→ *
+   893→ * Note: the Compression family is NOT defined in this file (it's a
+   894→ * follow-up task — see the file header comment). The helper already
+   895→ * accepts `compressionPerformed` so it's ready to gate advancement
+   896→ * once the compression wiring lands. Until then, callers can pass
+   897→ * `false` (or omit it) to test the cores-only half of the condition.
+   898→ *
+   899→ * @param installedCores        Map of core id → installed-this-run flag.
+   900→ * @param compressionPerformed  Whether any system tier was compressed this run.
+   901→ * @returns `true` if both conditions are met.
+   902→ *
+   903→ * @example
+   904→ *   isSingularityComplete({}, false)
+   905→ *     // → false  (no cores installed, no compression)
+   906→ *   isSingularityComplete({ conquest_core: true, science_core: true }, false)
+   907→ *     // → false  (only 2 cores; no compression)
+   908→ *   isSingularityComplete({
+   909→ *     conquest_core: true, science_core: true, trade_core: true
+   910→ *   }, false)
+   911→ *     // → false  (3 cores but no compression)
+   912→ *   isSingularityComplete({}, true)
+   913→ *     // → false  (compression done but no cores installed)
+   914→ *   isSingularityComplete({
+   915→ *     conquest_core: true, science_core: true, trade_core: true
+   916→ *   }, true)
+   917→ *     // → true  (3 cores + compression)
+   918→ *   isSingularityComplete({
+   919→ *     conquest_core: true, science_core: true, trade_core: true,
+   920→ *     faith_core: true, growth_core: true, stability_core: true
+   921→ *   }, true)
+   922→ *     // → true  (6 cores + compression — over-satisfied)
+   923→ */
+   924→export function isSingularityComplete(
+   925→  installedCores: Record<string, boolean>,
+   926→  compressionPerformed: boolean
+   927→): boolean {
+   928→  const installedCount = LOGIC_CORES.filter((c) => installedCores[c.id]).length;
+   929→  return (
+   930→    installedCount >= SINGULARITY_COMPLETION_CORES_REQUIRED && compressionPerformed
+   931→  );
+   932→}
+   933→

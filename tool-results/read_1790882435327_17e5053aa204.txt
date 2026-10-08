@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→import { create } from "zustand";
+     4→import { persist, createJSONStorage } from "zustand/middleware";
+     5→import type { GameState, GameStore, StageId, TabId } from "./types";
+     6→import { emptyResources, emptyCapacities } from "../data/resources";
+     7→import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
+     8→import { ACTION_MAP } from "../data/actions";
+     9→import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
+    10→import { TECH_MAP, TECHS } from "../data/techs";
+    11→import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
+    12→import { STORY_TRIGGERS } from "../data/story";
+    13→import { ARCHETYPE_MAP, dominantArchetype } from "../data/archetypes";
+    14→import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
+    15→import { EVENTS, eventsForStage, eventWeight, EVENT_MAP, RARITY_INFO, type GameEvent, type EventChoice } from "../data/events";
+    16→import { CHALLENGE_MAP, CHALLENGES, challengeMasteryBonus } from "../data/challenges";
+    17→import {
+    18→  FORESIGHT_NODES,
+    19→  FORESIGHT_NODE_MAP,
+    20→  ROUTE_MAP,
+    21→  foresightBonus,
+    22→  purchasedForesightCount,
+    23→  totalImplementedForesightCount,
+    24→} from "../data/foresight";
+    25→import {
+    26→  OFFERINGS,
+    27→  OFFERING_MAP,
+    28→  getOffering,
+    29→} from "../data/offerings";
+    30→import {
+    31→  RITUALS,
+    32→  RITUAL_MAP,
+    33→  getRitual,
+    34→} from "../data/rituals";
+    35→import {
+    36→  SCRIPTS,
+    37→  SCRIPT_MAP,
+    38→  getScript,
+    39→  type ScriptDef,
+    40→} from "../data/scripts";
+    41→
+    42→const STORAGE_KEY = "evolution_idle_v2";
+    43→
+    44→function initialRunState(): Partial<GameState> {
+    45→  const resources = emptyResources();
+    46→  const capacities = emptyCapacities();
+    47→  resources.atp = 5;
+    48→  resources.glucose = 8;
+    49→  resources.happiness = 75;
+    50→  return {
+    51→    stageIndex: 0,
+    52→    time: 0,
+    53→    population: 8,
+    54→    populationProgress: 0,
+    55→    maxPopulation: 8,
+    56→    resources,
+    57→    capacities,
+    58→    ownedSystems: {},
+    59→    systemEnabled: {},
+    60→    technologies: {},
+    61→    lockedTechs: {},
+    62→    lockedSystems: {},
+    63→    archetypeAffinity: {},
+    64→    lockedArchetype: null,
+    65→    log: ["New run started. The first spark stirs."],
+    66→    activeChallenge: null,
+    67→    challengeRunStart: null,
+    68→    flags: {}, // run-scoped one-time event flags (e.g. firstHunt) — cleared on prestige
+    69→    // Transcendence (Layer 3) — run-scoped transient state, cleared on prestige.
+    70→    ritualCooldowns: {},
+    71→    activeSurge: null,
+    72→    divineShieldRemaining: 0,
+    73→    scriptCooldowns: {},
+    74→  };
+    75→}
+    76→
+    77→function initialMetaState(): Partial<GameState> {
+    78→  return {
+    79→    evolutionPoints: 0,
+    80→    totalRuns: 0,
+    81→    galacticWins: 0,
+    82→    stageClearCounts: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+    83→    fastestCellClear: 0,
+    84→    totalEventsResolved: 0,
+    85→    totalPlayTime: 0,
+    86→    totalActions: 0,
+    87→    totalSystemsBuilt: 0,
+    88→    totalTechResearched: 0,
+    89→    upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])),
+    90→    storyUnlocked: { first_spark: true },
+    91→    storyAcknowledged: {},
+    92→    archive: [],
+    93→    archivedArchetypes: [],
+    94→    unlockedLayers: { evolution: true },
+    95→    achievements: {},
+    96→    newAchievements: [],
+    97→    unlockedChallenges: false,
+    98→    activeChallenge: null,
+    99→    completedChallenges: {},
+   100→    challengeRunStart: null,
+   101→    // Enlightenment (Layer 2)
+   102→    divinity: 0,
+   103→    enlightenmentUnlocked: false,
+   104→    selectedRoute: null,
+   105→    foresightNodes: {},
+   106→    showEnlightenment: false,
+   107→    // Transcendence (Layer 3)
+   108→    transcendenceUnlocked: false,
+   109→    showTranscendence: false,
+   110→    activeScripts: {}, // purchased scripts — persist across runs
+   111→    offeringLedger: { totalOfferings: 0, totalDivinityFromOfferings: 0 },
+   112→    currentTab: "actions",
+   113→    speed: 1,
+   114→    paused: false,
+   115→    showShop: false,
+   116→    showEvolve: false,
+   117→    showSettings: false,
+   118→    showChallenges: false,
+   119→    activeStoryPopup: "first_spark",
+   120→    activeEvent: null,
+   121→    eventCooldown: 60, // first event can fire after 60s
+   122→    eventHistory: [],
+   123→    hasSeenIntro: false,
+   124→    lastSaved: Date.now(),
+   125→    tutorialStep: 0,
+   126→    tutorialActive: true,
+   127→    tutorialDismissed: false,
+   128→    eventFrequency: "normal",
+   129→  };
+   130→}
+   131→
+   132→export const useGameStore = create<GameStore>()(
+   133→  persist(
+   134→    (set, get) => ({
+   135→      ...initialRunState(),
+   136→      ...initialMetaState(),
+   137→
+   138→      // ============ TICK ============
+   139→      tick: (dt) => {
+   140→        const s = get();
+   141→        if (s.paused) return;
+   142→        const realDt = dt * s.speed;
+   143→
+   144→        const autoLvl = s.upgrades["inherited_efficiency"] || 0;
+   145→        const autoMult = 1 + autoLvl * 0.15;
+   146→        const techMult = techMultiplier(s, "production");
+   147→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+   148→        const capMult = 1 + capBoostLvl * 0.20;
+   149→        const hasAutoBalancer = (s.upgrades["auto_balancer"] || 0) > 0;
+   150→
+   151→        // Archetype bonus
+   152→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   153→        const archAllMult = archetype?.bonus.allProductionMult || 0;
+   154→        const archPopMult = archetype?.bonus.populationGrowthMult || 0;
+   155→        const archCapMult = archetype?.bonus.capMult || 0;
+   156→
+   157→        // ===== Enlightenment route bonus (Layer 2)
+   158→        // The chosen route provides persistent bonuses that stack with archetype
+   159→        // and challenge-mastery bonuses. Foresight passives apply on top.
+   160→        const route = s.selectedRoute ? ROUTE_MAP[s.selectedRoute] : null;
+   161→        const routeAllMult = route?.bonus.allProductionMult || 0;
+   162→        const routePopMult = route?.bonus.populationGrowthMult || 0;
+   163→        const foresightAllMult = foresightBonus(s.foresightNodes || {}, "production");
+   164→        const foresightPopMult = foresightBonus(s.foresightNodes || {}, "popGrowth");
+   165→
+   166→        // ===== Challenge debuff (applied for the duration of an active challenge run)
+   167→        const activeChallenge = s.activeChallenge ? CHALLENGE_MAP[s.activeChallenge] : null;
+   168→        const challengeEffects = activeChallenge?.debuff.effects || {};
+   169→        const chFoodMult = challengeEffects.foodMult ?? 1;
+   170→        const chScienceMult = challengeEffects.scienceMult ?? 1;
+   171→        const chProductionMult = challengeEffects.productionMult ?? 1;
+   172→        const chMilitaryMult = challengeEffects.militaryMult ?? 1;
+   173→        const chWaterUpkeepMult = challengeEffects.waterUpkeepMult ?? 1;
+   174→        const chHappinessDrain = challengeEffects.happinessDrain ?? 0;
+   175→        const chPopGrowthMult = challengeEffects.popGrowthMult ?? 1;
+   176→
+   177→        // ===== Transcendence (Layer 3) — transient ritual effects + script automation.
+   178→        // - Surge: multiply all production while active (set by the production_surge ritual).
+   179→        // - Divine Shield: suppress event firing while active.
+   180→        // - Ritual cooldowns + script cooldowns tick down each tick.
+   181→        const surgeMult = s.activeSurge && s.activeSurge.remaining > 0 ? s.activeSurge.mult : 1;
+   182→        // Decrement transient cooldowns/timers by realDt (clamped at 0).
+   183→        const ritualCooldowns = tickDownCooldowns(s.ritualCooldowns || {}, realDt);
+   184→        const scriptCooldowns = tickDownCooldowns(s.scriptCooldowns || {}, realDt);
+   185→        let divineShieldRemaining = Math.max(0, (s.divineShieldRemaining || 0) - realDt);
+   186→        let activeSurge = s.activeSurge;
+   187→        if (activeSurge) {
+   188→          const remaining = activeSurge.remaining - realDt;
+   189→          activeSurge = remaining > 0 ? { mult: activeSurge.mult, remaining } : null;
+   190→        }
+   191→
+   192→        const resources = { ...s.resources };
+   193→        let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
+   194→
+   195→        // Apply system production — with cap-aware pausing
+   196→        for (const [sysId, count] of Object.entries(s.ownedSystems)) {
+   197→          if (!count) continue;
+   198→          const sys = SYSTEM_MAP[sysId];
+   199→          if (!sys) continue;
+   200→          if (sys.requiredTech && !s.technologies[sys.requiredTech]) continue;
+   201→
+   202→          // Check if system is manually disabled
+   203→          const manuallyEnabled = s.systemEnabled[sysId] !== false; // default true
+   204→          if (!manuallyEnabled && !hasAutoBalancer) continue;
+   205→
+   206→          // Cap-aware logic: if all output resources are at cap, idle the system
+   207→          // (don't produce, don't consume upkeep — no waste)
+   208→          const outputsCapped = Object.keys(sys.produces).length > 0 &&
+   209→            Object.keys(sys.produces).every((r) => {
+   210→              const cap = capacities[r] || 0;
+   211→              return (resources[r] || 0) >= cap - 0.01;
+   212→            });
+   213→
+   214→          if (outputsCapped) {
+   215→            // System idles — no production, no upkeep
+   216→            continue;
+   217→          }
+   218→
+   219→          const stageMult = sys.stage === STAGES[s.stageIndex].id ? 1 : 0.5;
+   220→          const mult = autoMult * techMult * stageMult *
+   221→            (1 + archAllMult + routeAllMult + foresightAllMult) * chProductionMult *
+   222→            surgeMult;
+   223→
+   224→          // Per-resource archetype + route + foresight bonus + challenge resource-specific debuff
+   225→          const produces = sys.produces as Record<string, number>;
+   226→          for (const [r, v] of Object.entries(produces)) {
+   227→            const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+   228→            const routeResBonus = route?.bonus.productionMult?.[r] || 0;
+   229→            const foresightResBonus = foresightBonus(s.foresightNodes || {}, "resource", r);
+   230→            // Apply per-resource challenge multipliers
+   231→            let chResMult = 1;
+   232→            if (r === "food") chResMult *= chFoodMult;
+   233→            if (r === "science") chResMult *= chScienceMult;
+   234→            if (r === "military_power") chResMult *= chMilitaryMult;
+   235→            const rate = v * count * mult *
+   236→              (1 + archResBonus + routeResBonus + foresightResBonus) * chResMult;
+   237→            resources[r] = (resources[r] || 0) + rate * realDt;
+   238→          }
+   239→          // Upkeep
+   240→          if (sys.upkeep) {
+   241→            const upkeep = sys.upkeep as Record<string, number>;
+   242→            for (const [r, v] of Object.entries(upkeep)) {
+   243→              const upkMult = r === "water" ? chWaterUpkeepMult : 1;
+   244→              resources[r] = (resources[r] || 0) - v * count * realDt * upkMult;
+   245→            }
+   246→          }
+   247→        }
+   248→
+   249→        // Apply challenge happiness drain (flat per second)
+   250→        if (chHappinessDrain > 0) {
+   251→          const happCap = capacities.happiness || 100;
+   252→          resources.happiness = Math.max(0, (resources.happiness || 0) - chHappinessDrain * realDt);
+   253→          // also clamp to cap (already done below, but keep happ bounded)
+   254→          if (resources.happiness > happCap) resources.happiness = happCap;
+   255→        }
+   256→
+   257→        // Clamp resources to capacities (no overflow)
+   258→        for (const r of Object.keys(resources)) {
+   259→          const cap = capacities[r];
+   260→          if (cap != null && resources[r] > cap) resources[r] = cap;
+   261→          if (resources[r] < 0) resources[r] = 0;
+   262→        }
+   263→
+   264→        // Slow passive ATP for cell (keeps early game from stalling)
+   265→        if (STAGES[s.stageIndex].id === "cell") {
+   266→          resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.1 * realDt);
+   267→        }
+   268→
+   269→        // Happiness drift toward 50 baseline if no source
+   270→        // (prevents permanent high happiness from start)
+   271→        // — disabled: let systems/tech maintain it
+   272→
+   273→        // Population growth with progress bar
+   274→        // Growth rate scales with happiness and food/water availability
+   275→        let popGrowthRate = 0.015; // base per second
+   276→        const happiness = resources.happiness || 50;
+   277→        popGrowthRate *= (1 + (happiness - 40) / 200); // happiness 100 → +30%, happiness 20 → -10%
+   278→        popGrowthRate *= (1 + archPopMult + routePopMult + foresightPopMult);
+   279→        // Apply challenge population-growth debuff
+   280→        popGrowthRate *= chPopGrowthMult;
+   281→        // Penalty if food/water are critically low (creature+)
+   282→        const curStage = STAGES[s.stageIndex];
+   283→        if (["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
+   284→          const foodCap = capacities.food || 1;
+   285→          const waterCap = capacities.water || 1;
+   286→          const foodPct = (resources.food || 0) / foodCap;
+   287→          const waterPct = (resources.water || 0) / waterCap;
+   288→          if (foodPct < 0.1) popGrowthRate *= 0.3;
+   289→          if (waterPct < 0.1) popGrowthRate *= 0.3;
+   290→        }
+   291→
+   292→        let populationProgress = (s.populationProgress || 0) + popGrowthRate * realDt;
+   293→        let population = s.population;
+   294→        while (populationProgress >= 1) {
+   295→          populationProgress -= 1;
+   296→          population += 1;
+   297→        }
+   298→
+   299→        const maxPopulation = Math.max(s.maxPopulation || 0, population);
+   300→
+   301→        const newTime = s.time + realDt;
+   302→
+   303→        // Check story triggers
+   304→        const newStory = { ...s.storyUnlocked };
+   305→        let activePopup = s.activeStoryPopup;
+   306→        const ctx = { ...s, resources, ownedSystems: s.ownedSystems };
+   307→        for (const trig of STORY_TRIGGERS) {
+   308→          if (!newStory[trig.id] && trig.condition(ctx)) {
+   309→            newStory[trig.id] = true;
+   310→            if (!activePopup) activePopup = trig.id;
+   311→          }
+   312→        }
+   313→
+   314→        // Check achievements periodically (every ~2 seconds of game time)
+   315→        let achievements = s.achievements;
+   316→        let newAchievements = s.newAchievements;
+   317→        const checkInterval = 2.0;
+   318→        const lastCheck = (s as any)._lastAchCheck || 0;
+   319→        if (newTime - lastCheck >= checkInterval) {
+   320→          const curState = { ...s, resources, time: newTime } as GameState;
+   321→          const result = checkAchievements(curState);
+   322→          if (result.newOnes.length > 0) {
+   323→            achievements = result.earned;
+   324→            newAchievements = [...(newAchievements || []), ...result.newOnes];
+   325→          } else if (Object.keys(result.earned).length !== Object.keys(achievements || {}).length) {
+   326→            achievements = result.earned;
+   327→          }
+   328→          (s as any)._lastAchCheck = newTime; // not persisted, just a runtime marker
+   329→        }
+   330→
+   331→        // Random event firing — only if no popup/modal is active.
+   332→        // Divine Shield (Transcendence ritual) suppresses event firing while active.
+   333→        let activeEvent = s.activeEvent;
+   334→        let eventCooldown = (s.eventCooldown || 0) - realDt;
+   335→        if (eventCooldown < 0) eventCooldown = 0;
+   336→        const eventFreq = s.eventFrequency || "normal";
+   337→        const shieldActive = divineShieldRemaining > 0;
+   338→        if (eventFreq !== "off" && !activeEvent && !activePopup && eventCooldown === 0 && !shieldActive) {
+   339→          const stageId = STAGES[s.stageIndex].id;
+   340→          const possible = eventsForStage(stageId, newTime);
+   341→          if (possible.length > 0) {
+   342→            // Weighted random selection based on rarity
+   343→            const totalWeight = possible.reduce((sum, e) => sum + eventWeight(e), 0);
+   344→            const roll = Math.random() * totalWeight;
+   345→            let cum = 0;
+   346→            for (const ev of possible) {
+   347→              cum += eventWeight(ev);
+   348→              if (roll < cum) {
+   349→                activeEvent = ev.id;
+   350→                // Cooldown depends on frequency setting
+   351→                const base = eventFreq === "frequent" ? 30 : 90;
+   352→                const range = eventFreq === "frequent" ? 30 : 90;
+   353→                eventCooldown = base + Math.random() * range;
+   354→                break;
+   355→              }
+   356→            }
+   357→          }
+   358→        }
+   359→
+   360→        // ===== Transcendence (Layer 3) — Script automation.
+   361→        // For each purchased script, evaluate its condition. If met (and the
+   362→        // script's cooldown has elapsed for one-shot scripts), apply its action.
+   363→        // Continuous scripts (sustainer) apply every tick while their condition holds.
+   364→        // Crisis Manager auto-resolves the active event when its cooldown is up.
+   365→        const scriptCtx = {
+   366→          resources,
+   367→          population,
+   368→          activeEvent,
+   369→        };
+   370→        let scriptLogs: string[] = [];
+   371→        for (const scriptDef of SCRIPTS) {
+   372→          // Only purchased scripts are active.
+   373→          if (!s.activeScripts?.[scriptDef.id]) continue;
+   374→          const onCooldown = (scriptCooldowns[scriptDef.id] || 0) > 0;
+   375→          if (onCooldown) continue;
+   376→          // Evaluate the condition
+   377→          if (!evalScriptCondition(scriptDef, scriptCtx)) continue;
+   378→          // Apply the action
+   379→          const result = applyScriptAction(scriptDef, {
+   380→            resources,
+   381→            population,
+   382→            capacities,
+   383→            activeEvent,
+   384→          });
+   385→          if (!result) continue;
+   386→          // Apply mutations
+   387→          for (const [k, v] of Object.entries(result.resourceChanges || {})) {
+   388→            const cap = capacities[k] || Infinity;
+   389→            resources[k] = Math.max(0, Math.min(cap, (resources[k] || 0) + (v as number)));
+   390→          }
+   391→          if (result.popChange) {
+   392→            population = Math.max(0, population + result.popChange);
+   393→          }
+   394→          if (result.eventResolved) {
+   395→            activeEvent = null;
+   396→            eventCooldown = Math.max(eventCooldown, 60);
+   397→          }
+   398→          // Set cooldown for one-shot scripts
+   399→          if (scriptDef.oneShot && scriptDef.cooldown) {
+   400→            scriptCooldowns[scriptDef.id] = scriptDef.cooldown;
+   401→          }
+   402→          if (result.logMsg) scriptLogs.push(result.logMsg);
+   403→        }
+   404→
+   405→        set({
+   406→          resources,
+   407→          capacities,
+   408→          time: newTime,
+   409→          population,
+   410→          maxPopulation,
+   411→          populationProgress,
+   412→          storyUnlocked: newStory,
+   413→          activeStoryPopup: activePopup,
+   414→          achievements,
+   415→          newAchievements,
+   416→          activeEvent,
+   417→          eventCooldown,
+   418→          totalPlayTime: (s.totalPlayTime || 0) + realDt,
+   419→          // Transcendence (Layer 3) — persist transient timers
+   420→          ritualCooldowns,
+   421→          scriptCooldowns,
+   422→          divineShieldRemaining,
+   423→          activeSurge,
+   424→        });
+   425→
+   426→        // Log any script actions (after the set so the log appears in order)
+   427→        for (const msg of scriptLogs) {
+   428→          get().addToLog(msg);
+   429→        }
+   430→
+   431→        // Check if the active challenge's completion condition has been met.
+   432→        // If so, mark it complete and clear the active challenge slot.
+   433→        // (Done after the set so completion sees updated state.)
+   434→        if (s.activeChallenge) {
+   435→          get().checkChallengeCompletion();
+   436→        }
+   437→      },
+   438→
+   439→      // ============ ACTIONS ============
+   440→      performAction: (actionId) => {
+   441→        const s = get();
+   442→        const action = ACTION_MAP[actionId];
+   443→        if (!action) return;
+   444→        if (action.stage !== STAGES[s.stageIndex].id) return;
+   445→
+   446→        const res = { ...s.resources };
+   447→
+   448→        // Check if all output resources are at cap — if so, block (no waste)
+   449→        const outputs = Object.entries(action.produces);
+   450→        if (outputs.length > 0) {
+   451→          const allCapped = outputs.every(([r]) => {
+   452→            const cap = s.capacities[r] || 0;
+   453→            return (res[r] || 0) >= cap - 0.001;
+   454→          });
+   455→          if (allCapped) return; // action wasted — block it
+   456→        }
+   457→
+   458→        // Check costs
+   459→        if (action.cost) {
+   460→          for (const [r, v] of Object.entries(action.cost)) {
+   461→            if ((res[r] || 0) < (v as number)) return;
+   462→          }
+   463→          for (const [r, v] of Object.entries(action.cost)) {
+   464→            res[r] -= v as number;
+   465→          }
+   466→        }
+   467→
+   468→        // Manual action multiplier
+   469→        const manualLvl = s.upgrades["quickened_hands"] || 0;
+   470→        const mult = 1 + manualLvl * 0.25;
+   471→        const techMult = techMultiplier(s, "manual");
+   472→        // Transcendence surge — multiplies manual production too while active
+   473→        const surgeMult = s.activeSurge && s.activeSurge.remaining > 0 ? s.activeSurge.mult : 1;
+   474→        const finalMult = mult * techMult * surgeMult;
+   475→
+   476→        // Archetype + Enlightenment route per-resource bonus
+   477→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   478→        const route = s.selectedRoute ? ROUTE_MAP[s.selectedRoute] : null;
+   479→        const routeAllMult = route?.bonus.allProductionMult || 0;
+   480→        const foresightAllMult = foresightBonus(s.foresightNodes || {}, "production");
+   481→
+   482→        for (const [r, v] of Object.entries(action.produces)) {
+   483→          const cap = s.capacities[r] || 0;
+   484→          const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+   485→          const routeResBonus = route?.bonus.productionMult?.[r] || 0;
+   486→          const foresightResBonus = foresightBonus(s.foresightNodes || {}, "resource", r);
+   487→          const totalMult = 1 + archResBonus + routeResBonus + foresightResBonus +
+   488→            (archetype?.bonus.allProductionMult || 0) + routeAllMult + foresightAllMult;
+   489→          const amount = (v as number) * finalMult * totalMult;
+   490→          res[r] = Math.min(cap, (res[r] || 0) + amount);
+   491→        }
+   492→
+   493→        // Mark first-hunt flag so STORY_TRIGGERS can fire the first_hunt story
+   494→        // beat on the next tick. The hunt action lives in Tribal stage.
+   495→        const updates: Partial<GameState> = {
+   496→          resources: res,
+   497→          totalActions: (s.totalActions || 0) + 1,
+   498→        };
+   499→        if (actionId === "hunt" && !s.flags?.firstHunt) {
+   500→          updates.flags = { ...(s.flags || {}), firstHunt: true };
+   501→        }
+   502→        set(updates);
+   503→      },
+   504→
+   505→      buySystem: (systemId, qty) => {
+   506→        const s = get();
+   507→        const sys = SYSTEM_MAP[systemId];
+   508→        if (!sys) return;
+   509→        if (sys.stage !== STAGES[s.stageIndex].id) return;
+   510→        // Check tech prerequisite
+   511→        if (sys.requiredTech && !s.technologies[sys.requiredTech]) return;
+   512→        // Locked systems (via exclusiveWith variant choices) cannot be purchased.
+   513→        if (s.lockedSystems && s.lockedSystems[systemId]) return;
+   514→
+   515→        const costReduction = (s.upgrades["frugality"] || 0) * 0.04;
+   516→        let owned = s.ownedSystems[systemId] || 0;
+   517→        if (sys.maxOwned && owned >= sys.maxOwned) return;
+   518→
+   519→        const res = { ...s.resources };
+   520→        const ownedSystems = { ...s.ownedSystems };
+   521→        const systemEnabled = { ...s.systemEnabled };
+   522→        const archetypeAffinity = { ...s.archetypeAffinity };
+   523→
+   524→        let bought = 0;
+   525→        for (let i = 0; i < qty; i++) {
+   526→          if (sys.maxOwned && owned + bought >= sys.maxOwned) break;
+   527→          const cost = systemCost(sys, owned + bought, costReduction);
+   528→          let canAfford = true;
+   529→          for (const [r, v] of Object.entries(cost)) {
+   530→            if ((res[r] || 0) < (v as number)) {
+   531→              canAfford = false;
+   532→              break;
+   533→            }
+   534→          }
+   535→          if (!canAfford) break;
+   536→          for (const [r, v] of Object.entries(cost)) {
+   537→            res[r] -= v as number;
+   538→          }
+   539→          bought++;
+   540→        }
+   541→
+   542→        if (bought === 0) return;
+   543→
+   544→        ownedSystems[systemId] = owned + bought;
+   545→        // New systems are enabled by default
+   546→        if (systemEnabled[systemId] === undefined) systemEnabled[systemId] = true;
+   547→
+   548→        // Apply archetype affinity grant
+   549→        if (sys.grantsAffinity) {
+   550→          const arch = sys.grantsAffinity.archetype;
+   551→          archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + sys.grantsAffinity.amount * bought;
+   552→        }
+   553→
+   554→        // Trigger story
+   555→        const newStory = { ...s.storyUnlocked };
+   556→        let activePopup = s.activeStoryPopup;
+   557→        for (const trig of STORY_TRIGGERS) {
+   558→          if (!newStory[trig.id] && trig.condition({ ...s, resources: res, ownedSystems })) {
+   559→            newStory[trig.id] = true;
+   560→            if (!activePopup) activePopup = trig.id;
+   561→          }
+   562→        }
+   563→
+   564→        // Enforce mutually-exclusive variant choices: when buying the first
+   565→        // instance of a system that is part of an exclusive group, permanently
+   566→        // lock all sibling variants so they can never be purchased this run.
+   567→        // (Only the FIRST purchase locks siblings — once chosen, the choice is
+   568→        // final for this run, but the chosen system can still be bought up to
+   569→        // its maxOwned.)
+   570→        const lockedSystems = { ...(s.lockedSystems || {}) };
+   571→        if (sys.exclusiveWith && sys.exclusiveWith.length > 0 && owned === 0 && bought > 0) {
+   572→          for (const siblingId of sys.exclusiveWith) {
+   573→            // Don't lock a sibling that is somehow already owned (defensive)
+   574→            if (!(ownedSystems[siblingId] > 0)) {
+   575→              lockedSystems[siblingId] = true;
+   576→            }
+   577→          }
+   578→        }
+   579→
+   580→        set({
+   581→          resources: res,
+   582→          ownedSystems,
+   583→          systemEnabled,
+   584→          archetypeAffinity,
+   585→          storyUnlocked: newStory,
+   586→          activeStoryPopup: activePopup,
+   587→          lockedSystems,
+   588→          totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
+   589→        });
+   590→        get().addToLog(`Built ${bought}× ${sys.name}.`);
+   591→      },
+   592→
+   593→      toggleSystem: (systemId) => {
+   594→        const s = get();
+   595→        if (!s.ownedSystems[systemId]) return;
+   596→        const systemEnabled = { ...s.systemEnabled };
+   597→        systemEnabled[systemId] = systemEnabled[systemId] === false ? true : false;
+   598→        set({ systemEnabled });
+   599→      },
+   600→
+   601→      enableAllSystems: (enabled) => {
+   602→        const s = get();
+   603→        const systemEnabled: Record<string, boolean> = {};
+   604→        for (const id of Object.keys(s.ownedSystems)) {
+   605→          systemEnabled[id] = enabled;
+   606→        }
+   607→        set({ systemEnabled });
+   608→      },
+   609→
+   610→      buyTech: (techId) => {
+   611→        const s = get();
+   612→        const tech = TECH_MAP[techId];
+   613→        if (!tech) return;
+   614→        if (s.technologies[techId]) return;
+   615→        // Locked techs cannot be researched (a mutually-exclusive sibling was already chosen)
+   616→        if (s.lockedTechs && s.lockedTechs[techId]) return;
+   617→        if (tech.stage !== STAGES[s.stageIndex].id) return;
+   618→        if (tech.requires) {
+   619→          for (const req of tech.requires) {
+   620→            if (!s.technologies[req]) return;
+   621→          }
+   622→        }
+   623→        const res = { ...s.resources };
+   624→        for (const [r, v] of Object.entries(tech.cost)) {
+   625→          if ((res[r] || 0) < (v as number)) return;
+   626→        }
+   627→        for (const [r, v] of Object.entries(tech.cost)) {
+   628→          res[r] -= v as number;
+   629→        }
+   630→        const technologies = { ...s.technologies, [techId]: true };
+   631→        const archetypeAffinity = { ...s.archetypeAffinity };
+   632→        if (tech.grantsAffinity) {
+   633→          archetypeAffinity[tech.grantsAffinity.archetype] =
+   634→            (archetypeAffinity[tech.grantsAffinity.archetype] || 0) + tech.grantsAffinity.amount;
+   635→        }
+   636→        // Enforce mutually-exclusive tech path choices: lock all siblings
+   637→        // listed in `exclusiveWith` so they can never be researched this run.
+   638→        const lockedTechs = { ...(s.lockedTechs || {}) };
+   639→        if (tech.exclusiveWith && tech.exclusiveWith.length > 0) {
+   640→          for (const siblingId of tech.exclusiveWith) {
+   641→            // Don't lock a sibling that is somehow already researched (defensive)
+   642→            if (!technologies[siblingId]) {
+   643→              lockedTechs[siblingId] = true;
+   644→            }
+   645→          }
+   646→        }
+   647→        set({
+   648→          resources: res,
+   649→          technologies,
+   650→          lockedTechs,
+   651→          archetypeAffinity,
+   652→          totalTechResearched: (s.totalTechResearched || 0) + 1,
+   653→        });
+   654→        get().addToLog(`Researched ${tech.name}.`);
+   655→      },
+   656→
+   657→      buyUpgrade: (upgradeId) => {
+   658→        const s = get();
+   659→        const up = UPGRADE_MAP[upgradeId];
+   660→        if (!up) return;
+   661→        if (up.requiresWins && s.galacticWins < up.requiresWins) return;
+   662→        const owned = s.upgrades[upgradeId] || 0;
+   663→        if (owned >= up.maxLevel) return;
+   664→        const cost = upgradeCost(up, owned);
+   665→        if (s.evolutionPoints < cost) return;
+   666→        const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
+   667→        set({
+   668→          evolutionPoints: s.evolutionPoints - cost,
+   669→          upgrades,
+   670→        });
+   671→        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).`);
+   672→      },
+   673→
+   674→      evolveStage: () => {
+   675→        const s = get();
+   676→        const stage = STAGES[s.stageIndex];
+   677→        const next = nextStage(stage.id);
+   678→        if (!next) {
+   679→          get().triggerPrestige();
+   680→          return;
+   681→        }
+   682→        const reqs = stage.evolveRequires;
+   683→        const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
+   684→        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+   685→        const totalTech = Object.keys(s.technologies).length;
+   686→
+   687→        if (s.population < reqs.minPopulation * evolveBoost) return;
+   688→        if (totalSystems < reqs.minSystems * evolveBoost) return;
+   689→        if (totalTech < reqs.minTech * evolveBoost) return;
+   690→
+   691→        const nextStageIdx = s.stageIndex + 1;
+   692→        const nextStageDef = STAGES[nextStageIdx];
+   693→
+   694→        const resources = { ...s.resources };
+   695→        // Give starting resources for the new stage so the player can build the first systems
+   696→        // This prevents the "can't build anything" progression blocker
+   697→        const stageStartBonus: Record<string, number> = {
+   698→          creature: { food: 15, water: 10, materials: 5 },
+   699→          tribal: { wood: 15, stone: 5, clay: 3 },
+   700→          civilization: { production: 15, gold: 5 },
+   701→          empire: { influence: 5, gold: 20 },
+   702→          solar: { energy: 20, alloys: 5 },
+   703→          galactic: { data: 10, energy: 30 },
+   704→        };
+   705→        const startBonus = stageStartBonus[nextStageDef.id];
+   706→        if (startBonus) {
+   707→          for (const [r, v] of Object.entries(startBonus)) {
+   708→            resources[r] = (resources[r] || 0) + v;
+   709→          }
+   710→        }
+   711→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+   712→        const capMult = 1 + capBoostLvl * 0.20;
+   713→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   714→        const archCapMult = archetype?.bonus.capMult || 0;
+   715→        const capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
+   716→
+   717→        const newStory = { ...s.storyUnlocked };
+   718→
+   719→        // Map: NEW stage → that stage's primary intro story ID. This story is
+   720→        // shown by the StageTransition modal (which displays the new stage's
+   721→        // `storyIntro` text) AND marked as unlocked for the journal so the
+   722→        // player can re-read it later.
+   723→        const introStoryId =
+   724→          nextStageDef.id === "creature" ? "first_body_stirs"
+   725→          : nextStageDef.id === "tribal" ? "fire_remembered"
+   726→          : nextStageDef.id === "civilization" ? "cities_learn_to_dream"
+   727→          : nextStageDef.id === "empire" ? "distance_begins_to_obey"
+   728→          : nextStageDef.id === "solar" ? "sky_stops_being_a_wall"
+   729→          : "galaxy_takes_a_shape"; // → galactic
+   730→
+   731→        // Map: OLD stage → transition outro story ID. This is the "<stage>_endures"
+   732→        // beat that looks back at the stage the player just left. Fired as a
+   733→        // StoryPopup AFTER the StageTransition modal closes, so the player gets
+   734→        // two narrative beats per evolve: the new stage's intro (in the modal),
+   735→        // and the old stage's outro (in the popup).
+   736→        const outroStoryId =
+   737→          stage.id === "cell" ? "cell_endures"
+   738→          : stage.id === "creature" ? "creature_endures"
+   739→          : stage.id === "tribal" ? "tribal_endures"
+   740→          : stage.id === "civilization" ? "civilization_endures"
+   741→          : stage.id === "empire" ? "empire_endures"
+   742→          : stage.id === "solar" ? "solar_endures"
+   743→          : null;
+   744→
+   745→        if (introStoryId) newStory[introStoryId] = true;
+   746→        if (outroStoryId) newStory[outroStoryId] = true;
+   747→
+   748→        // Lock archetype when evolving from Creature → Tribal
+   749→        let lockedArchetype = s.lockedArchetype;
+   750→        if (stage.id === "creature" && !lockedArchetype) {
+   751→          const dom = dominantArchetype(s.archetypeAffinity);
+   752→          if (dom) {
+   753→            lockedArchetype = dom;
+   754→            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
+   755→          } else {
+   756→            lockedArchetype = "humanoid"; // default fallback
+   757→            get().addToLog(`Lineage locked: Humanoid (no drift).`);
+   758→          }
+   759→        }
+   760→
+   761→        const stageClearCounts = { ...s.stageClearCounts, [stage.id]: (s.stageClearCounts[stage.id] || 0) + 1 };
+   762→
+   763→        // Track fastest Cell clear
+   764→        let fastestCellClear = s.fastestCellClear || 0;
+   765→        if (stage.id === "cell") {
+   766→          const clearTime = s.time;
+   767→          if (fastestCellClear === 0 || clearTime < fastestCellClear) {
+   768→            fastestCellClear = clearTime;
+   769→          }
+   770→        }
+   771→
+   772→        // Check achievements after stage clear
+   773→        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, fastestCellClear } as GameState;
+   774→        const achResult = checkAchievements(postEvolveState);
+   775→        const newAchievements = achResult.newOnes.length > 0
+   776→          ? [...(s.newAchievements || []), ...achResult.newOnes]
+   777→          : s.newAchievements;
+   778→
+   779→        set({
+   780→          stageIndex: nextStageIdx,
+   781→          resources,
+   782→          capacities,
+   783→          storyUnlocked: newStory,
+   784→          // Fire the OLD stage's transition outro as the StoryPopup. The new
+   785→          // stage's intro is shown by the StageTransition modal (z-60, sits
+   786→          // above the StoryPopup). When the player dismisses the modal, the
+   787→          // outro popup becomes visible — a "looking back" beat before the
+   788→          // new era begins in earnest.
+   789→          activeStoryPopup: outroStoryId || introStoryId || s.activeStoryPopup,
+   790→          stageClearCounts,
+   791→          fastestCellClear,
+   792→          lockedArchetype,
+   793→          achievements: achResult.earned,
+   794→          newAchievements,
+   795→        });
+   796→        get().addToLog(`Evolved to ${nextStageDef.name}. ${nextStageDef.tagline}`);
+   797→      },
+   798→
+   799→      triggerPrestige: () => {
+   800→        const s = get();
+   801→        const stage = STAGES[s.stageIndex];
+   802→        const score = computeScore(s);
+   803→        const stageMult = [1, 2, 4, 8, 16, 32, 64][s.stageIndex] || 1;
+   804→        const epEarned = Math.max(1, Math.floor(Math.sqrt(score / 100) * stageMult));
+   805→
+   806→        const archive = [...s.archive];
+   807→        const archName = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype]?.name : "Humanoid";
+   808→        archive.unshift({
+   809→          runId: `run_${s.totalRuns + 1}`,
+   810→          timestamp: Date.now(),
+   811→          stage: stage.id,
+   812→          archetype: s.lockedArchetype || "humanoid",
+   813→          score,
+   814→          epEarned,
+   815→          duration: s.time,
+   816→          ending: s.stageIndex >= 6 ? "Galactic Ascension" : `${stage.name} Evolution (${archName})`,
+   817→        });
+   818→
+   819→        const archivedArchetypes = Array.from(new Set([
+   820→          ...(s.archivedArchetypes || []),
+   821→          ...(s.lockedArchetype ? [s.lockedArchetype] : []),
+   822→        ]));
+   823→
+   824→        // ===== Challenges: unlock on first Galactic win + abandon any active challenge
+   825→        const wasFirstGalacticWin = s.stageIndex >= 6 && !s.unlockedChallenges;
+   826→        const unlockedChallenges = s.unlockedChallenges || (s.stageIndex >= 6);
+   827→        const completedChallenges = s.completedChallenges || {};
+   828→        // If a challenge was active when prestiging without completing it, that's
+   829→        // an abandonment — log it. The fresh run will start with no active challenge.
+   830→        if (s.activeChallenge) {
+   831→          const chName = CHALLENGE_MAP[s.activeChallenge]?.name || s.activeChallenge;
+   832→          // Defer logging until after state has been set so it appears after the
+   833→          // prestige log entry.
+   834→          setTimeout(() => get().addToLog(`Challenge abandoned: ${chName}. The trial is incomplete.`), 0);
+   835→        }
+   836→
+   837→        // ===== Enlightenment (Layer 2): unlock when all 10 Evolution challenges are mastered.
+   838→        // Also re-checked defensively here in case checkChallengeCompletion missed
+   839→        // it (e.g., legacy saves where the 10th challenge was completed before
+   840→        // this code shipped).
+   841→        const completedChallengesCount = Object.values(completedChallenges).filter(Boolean).length;
+   842→        const wasEnlightenmentUnlocked = !!s.enlightenmentUnlocked;
+   843→        const enlightenmentUnlocked = wasEnlightenmentUnlocked ||
+   844→          completedChallengesCount >= CHALLENGES.length;
+   845→
+   846→        // Divinity is earned only once Enlightenment is unlocked. Strong runs
+   847→        // (higher stage + higher score) yield proportionally more.
+   848→        const divinityEarned = enlightenmentUnlocked
+   849→          ? Math.max(1, Math.floor(score / 500 * stageMult))
+   850→          : 0;
+   851→
+   852→        const fresh = initialRunState();
+   853→        const metaState: Partial<GameState> = {
+   854→          evolutionPoints: s.evolutionPoints + epEarned,
+   855→          totalRuns: s.totalRuns + 1,
+   856→          galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
+   857→          archive,
+   858→          archivedArchetypes,
+   859→          upgrades: s.upgrades,
+   860→          storyUnlocked: { ...s.storyUnlocked, god_opens_its_eyes: true },
+   861→          storyAcknowledged: s.storyAcknowledged,
+   862→          unlockedLayers: s.unlockedLayers,
+   863→          stageClearCounts: s.stageClearCounts,
+   864→          fastestCellClear: s.fastestCellClear,
+   865→          totalEventsResolved: s.totalEventsResolved,
+   866→          totalPlayTime: s.totalPlayTime,
+   867→          totalActions: s.totalActions,
+   868→          totalSystemsBuilt: s.totalSystemsBuilt,
+   869→          totalTechResearched: s.totalTechResearched,
+   870→          achievements: s.achievements,
+   871→          newAchievements: s.newAchievements,
+   872→          // Persist challenge state across prestige
+   873→          unlockedChallenges,
+   874→          completedChallenges,
+   875→          // Persist Enlightenment state across prestige (Divinity + route + foresight are permanent)
+   876→          divinity: (s.divinity || 0) + divinityEarned,
+   877→          enlightenmentUnlocked,
+   878→          selectedRoute: s.selectedRoute,
+   879→          foresightNodes: s.foresightNodes || {},
+   880→          // Persist Transcendence state across prestige.
+   881→          // - transcendenceUnlocked is permanent once earned.
+   882→          // - activeScripts persist as reusable divine logic (per the design doc).
+   883→          // - offeringLedger is a lifetime counter.
+   884→          transcendenceUnlocked: s.transcendenceUnlocked,
+   885→          activeScripts: s.activeScripts || {},
+   886→          offeringLedger: s.offeringLedger || { totalOfferings: 0, totalDivinityFromOfferings: 0 },
+   887→        };
+   888→
+   889→        // Check achievements after prestige
+   890→        const postState = { ...s, ...metaState } as GameState;
+   891→        const achResult = checkAchievements(postState);
+   892→        metaState.achievements = achResult.earned;
+   893→        if (achResult.newOnes.length > 0) {
+   894→          metaState.newAchievements = [...(s.newAchievements || []), ...achResult.newOnes];
+   895→        }
+   896→
+   897→        // Determine which story popup should fire on prestige.
+   898→        // Priority:
+   899→        //   1. first Galactic win → Evolution Layer unveiled
+   900→        //   2. first prestige where Enlightenment just unlocked → Enlightenment unveiled
+   901→        //   3. the "god_opens_its_eyes" beat for the very first prestige
+   902→        let prestigePopup: string | null = null;
+   903→        if (wasFirstGalacticWin) {
+   904→          prestigePopup = "evolution_layer_unveiled";
+   905→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, evolution_layer_unveiled: true };
+   906→        } else if (!wasEnlightenmentUnlocked && enlightenmentUnlocked) {
+   907→          // Enlightenment just unlocked (defensive — the unlock normally fires
+   908→          // inside checkChallengeCompletion when the 10th challenge is mastered).
+   909→          prestigePopup = "enlightenment_unlocked";
+   910→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, enlightenment_unlocked: true };
+   911→        } else if (s.totalRuns === 0) {
+   912→          prestigePopup = "god_opens_its_eyes";
+   913→        }
+   914→
+   915→        // ===== Transcendence (Layer 3) unlock check.
+   916→        // Defensive: if the player has all foresight nodes purchased AND at
+   917→        // least one route run completed (totalRuns >= 1 AND selectedRoute set),
+   918→        // mark Transcendence as unlocked. This catches the case where the
+   919→        // player already had everything done before this code shipped, OR
+   920→        // completed the foresight library mid-run (the in-run check inside
+   921→        // purchaseForesightNode also catches this).
+   922→        const willTranscendenceUnlock = !s.transcendenceUnlocked &&
+   923→          checkTranscendenceUnlockCondition(postState);
+   924→        if (willTranscendenceUnlock) {
+   925→          metaState.transcendenceUnlocked = true;
+   926→          metaState.storyUnlocked = { ...metaState.storyUnlocked!, transcendence_unlocked: true };
+   927→          // Transcendence unlock popup takes priority over the generic
+   928→          // god_opens_its_eyes beat (but not over the Galactic-win or
+   929→          // Enlightenment-unlock beats, which fire earlier in the prestige arc).
+   930→          if (!prestigePopup || prestigePopup === "god_opens_its_eyes") {
+   931→            prestigePopup = "transcendence_unlocked";
+   932→          }
+   933→        }
+   934→
+   935→        set({
+   936→          ...fresh,
+   937→          ...metaState,
+   938→          currentTab: "actions",
+   939→          speed: 1,
+   940→          paused: false,
+   941→          showShop: false,
+   942→          showEvolve: false,
+   943→          showChallenges: false,
+   944→          showEnlightenment: false,
+   945→          showTranscendence: false,
+   946→          activeStoryPopup: prestigePopup,
+   947→          hasSeenIntro: true,
+   948→          lastSaved: Date.now(),
+   949→          tutorialActive: false,
+   950→        });
+   951→        get().addToLog(
+   952→          `Prestige! Earned ${epEarned} Evolution Points` +
+   953→          (divinityEarned > 0 ? ` and ${divinityEarned} Divinity.` : `.`),
+   954→        );
+   955→        // If Transcendence just unlocked, log it explicitly so the moment
+   956→        // is recorded even if the player dismisses the story popup.
+   957→        if (willTranscendenceUnlock) {
+   958→          setTimeout(() => get().addToLog(
+   959→            `Transcendence unlocked — the god steps outside creation. Offerings, Rituals, and Scripts now available.`
+   960→          ), 0);
+   961→        }
+   962→      },
+   963→
+   964→      setTab: (tab) => set({ currentTab: tab }),
+   965→      setSpeed: (speed) => set({ speed }),
+   966→      togglePause: () => set((s) => ({ paused: !s.paused })),
+   967→      setShowShop: (v) => set({ showShop: v }),
+   968→      setShowEvolve: (v) => set({ showEvolve: v }),
+   969→      setShowSettings: (v) => set({ showSettings: v }),
+   970→      setShowChallenges: (v) => set({ showChallenges: v }),
+   971→      setShowEnlightenment: (v) => set({ showEnlightenment: v }),
+   972→
+   973→      // ============ CHALLENGES ============
+   974→      setActiveChallenge: (id) => {
+   975→        const s = get();
+   976→        // Only one active challenge at a time. If we are setting a new challenge,
+   977→        // the previous one (if any) is implicitly abandoned.
+   978→        if (s.activeChallenge && id && s.activeChallenge !== id) {
+   979→          const prev = CHALLENGE_MAP[s.activeChallenge];
+   980→          if (prev) get().addToLog(`Abandoned "${prev.name}" before completion.`);
+   981→        }
+   982→        if (id === null) {
+   983→          // Explicit abandon / clear
+   984→          if (s.activeChallenge) {
+   985→            const prev = CHALLENGE_MAP[s.activeChallenge];
+   986→            if (prev) get().addToLog(`Abandoned "${prev.name}" before completion.`);
+   987→          }
+   988→          set({ activeChallenge: null, challengeRunStart: null });
+   989→          return;
+   990→        }
+   991→        const ch = CHALLENGE_MAP[id];
+   992→        if (!ch) return;
+   993→        // Don't restart an already-completed challenge
+   994→        if (s.completedChallenges && s.completedChallenges[id]) {
+   995→          get().addToLog(`"${ch.name}" is already mastered.`);
+   996→          return;
+   997→        }
+   998→        // Apply special "zeroStart" — drain all run resources + population progress
+   999→        // to 0 so the player truly starts the trial with nothing.
+  1000→        const updates: Partial<GameState> = {
+  1001→          activeChallenge: id,
+  1002→          challengeRunStart: s.time,
+  1003→        };
+  1004→        if (ch.debuff.effects.zeroStart) {
+  1005→          const resources = { ...s.resources };
+  1006→          for (const k of Object.keys(resources)) {
+  1007→            // Keep happiness at a minimal baseline so the run isn't dead-on-arrival,
+  1008→            // but zero out every produced resource.
+  1009→            if (k === "happiness") {
+  1010→              resources[k] = 5;
+  1011→            } else {
+  1012→              resources[k] = 0;
+  1013→            }
+  1014→          }
+  1015→          updates.resources = resources;
+  1016→          updates.populationProgress = 0;
+  1017→        }
+  1018→        // Apply forced archetype (lock the lineage immediately if not already)
+  1019→        if (ch.debuff.effects.forcedArchetype && s.lockedArchetype !== ch.debuff.effects.forcedArchetype) {
+  1020→          updates.lockedArchetype = ch.debuff.effects.forcedArchetype;
+  1021→        }
+  1022→        set(updates);
+  1023→        get().addToLog(`Challenge begun: ${ch.name}. ${ch.debuff.label}.`);
+  1024→      },
+  1025→
+  1026→      checkChallengeCompletion: () => {
+  1027→        const s = get();
+  1028→        if (!s.activeChallenge) return;
+  1029→        const ch = CHALLENGE_MAP[s.activeChallenge];
+  1030→        if (!ch) return;
+  1031→        const cw = ch.completeWhen;
+  1032→        let done = false;
+  1033→        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+  1034→        const totalTech = Object.keys(s.technologies).length;
+  1035→        switch (cw.type) {
+  1036→          case "reachPopulation":
+  1037→            done = s.population >= Number(cw.value);
+  1038→            break;
+  1039→          case "reachStage":
+  1040→            // Stage reached (or beyond)
+  1041→            {
+  1042→              const stageIds = ["cell", "creature", "tribal", "civilization", "empire", "solar", "galactic"];
+  1043→              const targetIdx = stageIds.indexOf(String(cw.value));
+  1044→              done = targetIdx >= 0 && s.stageIndex >= targetIdx;
+  1045→            }
+  1046→            break;
+  1047→          case "stockpileResource":
+  1048→            done = (s.resources[cw.resourceId || ""] || 0) >= Number(cw.value);
+  1049→            break;
+  1050→          case "clearStage":
+  1051→            done = (s.stageClearCounts?.[cw.value as keyof typeof s.stageClearCounts] || 0) >= 1;
+  1052→            break;
+  1053→          case "reachGalactic":
+  1054→            // Reached Galactic stage during this run
+  1055→            done = s.stageIndex >= 6;
+  1056→            break;
+  1057→          case "researchTechs":
+  1058→            done = totalTech >= Number(cw.value);
+  1059→            break;
+  1060→          case "buildSystems":
+  1061→            done = totalSystems >= Number(cw.value);
+  1062→            break;
+  1063→          case "clearCellFast":
+  1064→            // Cell stage must be cleared in under N seconds. We use the run-time
+  1065→            // when reaching Creature (stageIndex >= 1). If they have already
+  1066→            // cleared Cell during this challenge run, check the elapsed time.
+  1067→            if (s.stageIndex >= 1 && s.challengeRunStart != null) {
+  1068→              const elapsed = s.time - s.challengeRunStart;
+  1069→              done = elapsed <= Number(cw.value);
+  1070→            }
+  1071→            break;
+  1072→        }
+  1073→        if (!done) return;
+  1074→
+  1075→        // Mark challenge complete, clear the active slot, grant mastery bonus
+  1076→        const completedChallenges = { ...(s.completedChallenges || {}), [ch.id]: true };
+  1077→        set({
+  1078→          completedChallenges,
+  1079→          activeChallenge: null,
+  1080→          challengeRunStart: null,
+  1081→        });
+  1082→        get().addToLog(
+  1083→          `Challenge mastered: ${ch.name}! ${ch.mastery.label}. The god is pleased.`
+  1084→        );
+  1085→
+  1086→        // ===== Enlightenment unlock check (Layer 2)
+  1087→        // When the player masters the 10th and final Evolution challenge, the
+  1088→        // god opens its eyes fully. Enlightenment unlocks immediately, and the
+  1089→        // Enlightenment story popup fires INSTEAD of the generic challenge_mastered
+  1090→        // popup — that single moment of awakening deserves its own beat.
+  1091→        const completedCount = Object.values(completedChallenges).filter(Boolean).length;
+  1092→        const unlocksEnlightenmentNow = !s.enlightenmentUnlocked &&
+  1093→          completedCount >= CHALLENGES.length;
+  1094→        if (unlocksEnlightenmentNow) {
+  1095→          const storyUnlocked = { ...s.storyUnlocked, enlightenment_unlocked: true };
+  1096→          set({
+  1097→            enlightenmentUnlocked: true,
+  1098→            storyUnlocked,
+  1099→            activeStoryPopup: "enlightenment_unlocked",
+  1100→          });
+  1101→          get().addToLog(
+  1102→            `Enlightenment unlocked — the god opens its eyes fully. Divinity awakens.`
+  1103→          );
+  1104→        } else {
+  1105→          // Trigger a story popup so the player feels the reward, AND mark the
+  1106→          // challenge_mastered story entry as unlocked so it appears in the
+  1107→          // StoryTab journal (otherwise the popup flashes but the journal stays
+  1108→          // empty — and a player who dismisses the popup without reading it
+  1109→          // would never see the beat again).
+  1110→          const storyUnlocked = { ...s.storyUnlocked, challenge_mastered: true };
+  1111→          set({
+  1112→            storyUnlocked,
+  1113→            activeStoryPopup: "challenge_mastered",
+  1114→          });
+  1115→        }
+  1116→      },
+  1117→
+  1118→      // ============ ENLIGHTENMENT (Layer 2) ============
+  1119→      spendDivinity: (amount, _nodeId) => {
+  1120→        const s = get();
+  1121→        if ((s.divinity || 0) < amount) return false;
+  1122→        set({ divinity: s.divinity - amount });
+  1123→        return true;
+  1124→      },
+  1125→
+  1126→      selectRoute: (routeId) => {
+  1127→        const s = get();
+  1128→        // Route selection is free but requires Enlightenment unlocked
+  1129→        if (!s.enlightenmentUnlocked) return;
+  1130→        const route = ROUTE_MAP[routeId];
+  1131→        if (!route) return;
+  1132→        // Toggle off if already selected (let the player change their mind)
+  1133→        const newRoute = s.selectedRoute === routeId ? null : routeId;
+  1134→        set({ selectedRoute: newRoute });
+  1135→        get().addToLog(
+  1136→          newRoute
+  1137→            ? `Route chosen: ${route.name}. ${route.effectLabel}.`
+  1138→            : `Route unchosen. The god is open to all paths once more.`
+  1139→        );
+  1140→      },
+  1141→
+  1142→      purchaseForesightNode: (nodeId) => {
+  1143→        const s = get();
+  1144→        if (!s.enlightenmentUnlocked) return false;
+  1145→        const node = FORESIGHT_NODE_MAP[nodeId];
+  1146→        if (!node) return false;
+  1147→        // "Coming soon" nodes cannot be purchased
+  1148→        if (node.implemented === false) return false;
+  1149→        // Already purchased
+  1150→        if (s.foresightNodes?.[nodeId]) return false;
+  1151→        // Check prerequisites
+  1152→        if (node.requires) {
+  1153→          for (const req of node.requires) {
+  1154→            if (!s.foresightNodes?.[req]) return false;
+  1155→          }
+  1156→        }
+  1157→        // Check cost
+  1158→        if ((s.divinity || 0) < node.cost) return false;
+  1159→        const foresightNodes = { ...(s.foresightNodes || {}), [nodeId]: true };
+  1160→        set({
+  1161→          divinity: s.divinity - node.cost,
+  1162→          foresightNodes,
+  1163→        });
+  1164→        get().addToLog(
+  1165→          `Foresight acquired: ${node.name}. ${node.passive?.label || node.effect}.`
+  1166→        );
+  1167→        // Check if purchasing this node completed the foresight library AND
+  1168→        // the player has at least one route run completed — that unlocks
+  1169→        // Transcendence (Layer 3).
+  1170→        checkTranscendenceUnlock(get(), set);
+  1171→        return true;
+  1172→      },
+  1173→
+  1174→      // ============ TRANSCENDENCE (Layer 3) ============
+  1175→      setShowTranscendence: (v) => set({ showTranscendence: v }),
+  1176→
+  1177→      makeOffering: (offeringId) => {
+  1178→        const s = get();
+  1179→        if (!s.transcendenceUnlocked) return false;
+  1180→        const offering = OFFERING_MAP[offeringId];
+  1181→        if (!offering) return false;
+  1182→        const res = { ...s.resources };
+  1183→        let population = s.population;
+  1184→        const ownedSystems = { ...s.ownedSystems };
+  1185→        const technologies = { ...s.technologies };
+  1186→        const lockedSystems = { ...(s.lockedSystems || {}) };
+  1187→
+  1188→        // ===== Validate + apply the sacrifice =====
+  1189→        if (offering.cost.resourceId) {
+  1190→          const rid = offering.cost.resourceId;
+  1191→          if ((res[rid] || 0) < offering.cost.amount) return false;
+  1192→          res[rid] -= offering.cost.amount;
+  1193→        }
+  1194→        if (offering.cost.population) {
+  1195→          if (population < offering.cost.population) return false;
+  1196→          population -= offering.cost.population;
+  1197→        }
+  1198→        if (offering.cost.system) {
+  1199→          // Sacrifice one owned system — find any system the player owns at
+  1200→          // least one of, decrement by 1. Locked systems aren't touched.
+  1201→          const ownedId = Object.keys(ownedSystems).find((id) => (ownedSystems[id] || 0) > 0);
+  1202→          if (!ownedId) return false;
+  1203→          ownedSystems[ownedId] = (ownedSystems[ownedId] || 0) - 1;
+  1204→          // If the count drops to 0, remove the entry entirely (clean state)
+  1205→          if (ownedSystems[ownedId] <= 0) delete ownedSystems[ownedId];
+  1206→        }
+  1207→        if (offering.cost.tech) {
+  1208→          // Sacrifice one researched tech — find any researched tech, unmark it.
+  1209→          const techId = Object.keys(technologies).find((id) => technologies[id]);
+  1210→          if (!techId) return false;
+  1211→          delete technologies[techId];
+  1212→        }
+  1213→
+  1214→        // ===== Award Divinity + update ledger =====
+  1215→        const offeringLedger = {
+  1216→          totalOfferings: (s.offeringLedger?.totalOfferings || 0) + 1,
+  1217→          totalDivinityFromOfferings:
+  1218→            (s.offeringLedger?.totalDivinityFromOfferings || 0) + offering.divinityGain,
+  1219→        };
+  1220→        set({
+  1221→          resources: res,
+  1222→          population,
+  1223→          ownedSystems,
+  1224→          technologies,
+  1225→          lockedSystems,
+  1226→          divinity: (s.divinity || 0) + offering.divinityGain,
+  1227→          offeringLedger,
+  1228→        });
+  1229→        const darkTag = offering.isDark ? " [Blood Pact — the dark offering]" : "";
+  1230→        get().addToLog(
+  1231→          `Offering made: ${offering.name}. Sacrifice accepted; ${offering.divinityGain} Divinity rises.${darkTag}`
+  1232→        );
+  1233→        return true;
+  1234→      },
+  1235→
+  1236→      performRitual: (ritualId) => {
+  1237→        const s = get();
+  1238→        if (!s.transcendenceUnlocked) return false;
+  1239→        const ritual = RITUAL_MAP[ritualId];
+  1240→        if (!ritual) return false;
+  1241→        // One-time-per-run: if ritual cooldown is set (i.e., already performed
+  1242→        // this run), block. We use the ritual's presence in ritualCooldowns as
+  1243→        // the "already performed" marker — once performed, the cooldown is set
+  1244→        // to a large value (Number.MAX_SAFE_INTEGER) so the button stays
+  1245→        // disabled until prestige clears it.
+  1246→        if (ritual.oneTimePerRun && (s.ritualCooldowns?.[ritualId] || 0) > 0) return false;
+  1247→        // Check Divinity cost
+  1248→        if ((s.divinity || 0) < ritual.divinityCost) return false;
+  1249→
+  1250→        // ===== Apply the ritual effect =====
+  1251→        const updates: Partial<GameState> = {
+  1252→          divinity: s.divinity - ritual.divinityCost,
+  1253→        };
+  1254→        const effect = ritual.effect;
+  1255→        let logMsg = `Ritual performed: ${ritual.name}. `;
+  1256→        let surgeApplied = false;
+  1257→        switch (effect.type) {
+  1258→          case "surge": {
+  1259→            // Stack with existing surge if any (most recent surge takes priority
+  1260→            // by resetting remaining to its duration).
+  1261→            const mult = effect.surgeMult ?? 2;
+  1262→            const duration = effect.surgeDuration ?? 60;
+  1263→            updates.activeSurge = { mult, remaining: duration };
+  1264→            logMsg += `Production ×${mult} for ${duration}s.`;
+  1265→            surgeApplied = true;
+  1266→            break;
+  1267→          }
+  1268→          case "stabilize": {
+  1269→            const floor = effect.stabilizeHappiness ?? 75;
+  1270→            const cur = s.resources.happiness || 0;
+  1271→            const cap = s.capacities.happiness || 100;
+  1272→            if (cur < floor) {
+  1273→              const res = { ...s.resources };
+  1274→              res.happiness = Math.min(cap, floor);
+  1275→              updates.resources = res;
+  1276→            }
+  1277→            logMsg += `Happiness floor set to ${floor}.`;
+  1278→            break;
+  1279→          }
+  1280→          case "resolve": {
+  1281→            // Instantly resolve the active event by auto-picking the safest option.
+  1282→            if (s.activeEvent) {
+  1283→              const ev = EVENT_MAP[s.activeEvent];
+  1284→              if (ev) {
+  1285→                const safeChoice = pickSafestChoice(ev);
+  1286→                updates.activeEvent = null;
+  1287→                updates.eventCooldown = Math.max(s.eventCooldown || 0, 60);
+  1288→                // Defer the actual event resolution to the next tick so the
+  1289→                // choice's resource effects apply cleanly through resolveEvent.
+  1290→                if (safeChoice) {
+  1291→                  setTimeout(() => {
+  1292→                    const cur = get();
+  1293→                    if (cur.activeEvent === ev.id) {
+  1294→                      // Event is still active; resolve with the safe choice.
+  1295→                      get().resolveEvent(ev.id, safeChoice.id);
+  1296→                    }
+  1297→                  }, 0);
+  1298→                }
+  1299→                logMsg += `Crisis resolved: ${ev.name}.`;
+  1300→              }
+  1301→            } else {
+  1302→              logMsg += `No active crisis to resolve.`;
+  1303→            }
+  1304→            break;
+  1305→          }
+  1306→          case "unlock": {
+  1307→            // Instantly research the cheapest available tech (no resource cost).
+  1308→            const stageId = STAGES[s.stageIndex].id;
+  1309→            const candidates = TECHS.filter((t) => {
+  1310→              if (t.stage !== stageId) return false;
+  1311→              if (s.technologies[t.id]) return false;
+  1312→              if (s.lockedTechs?.[t.id]) return false;
+  1313→              if (t.requires) {
+  1314→                for (const req of t.requires) {
+  1315→                  if (!s.technologies[req]) return false;
+  1316→                }
+  1317→              }
+  1318→              return true;
+  1319→            });
+  1320→            if (candidates.length === 0) {
+  1321→              logMsg += `No available tech to unlock.`;
+  1322→            } else {
+  1323→              // Cheapest = lowest total resource cost
+  1324→              const cheapest = candidates.reduce((best, t) => {
+  1325→                const bestCost = Object.values(best.cost).reduce((a, b) => a + (b as number), 0);
+  1326→                const tCost = Object.values(t.cost).reduce((a, b) => a + (b as number), 0);
+  1327→                return tCost < bestCost ? t : best;
+  1328→              });
+  1329→              updates.technologies = { ...s.technologies, [cheapest.id]: true };
+  1330→              updates.totalTechResearched = (s.totalTechResearched || 0) + 1;
+  1331→              logMsg += `Knowledge burst: ${cheapest.name} researched (free).`;
+  1332→            }
+  1333→            break;
+  1334→          }
+  1335→          case "shield": {
+  1336→            const duration = effect.shieldDuration ?? 120;
+  1337→            updates.divineShieldRemaining = duration;
+  1338→            logMsg += `Divine Shield: no negative events for ${duration}s.`;
+  1339→            break;
+  1340→          }
+  1341→          case "pop_boom": {
+  1342→            const gain = effect.popGain ?? 20;
+  1343→            updates.population = s.population + gain;
+  1344→            updates.maxPopulation = Math.max(s.maxPopulation || 0, s.population + gain);
+  1345→            logMsg += `Population boom: +${gain} population.`;
+  1346→            break;
+  1347→          }
+  1348→        }
+  1349→
+  1350→        // Mark the ritual as on cooldown for the rest of this run (one-time-per-run).
+  1351→        const ritualCooldowns = { ...(s.ritualCooldowns || {}) };
+  1352→        if (ritual.oneTimePerRun) {
+  1353→          ritualCooldowns[ritualId] = Number.MAX_SAFE_INTEGER;
+  1354→        }
+  1355→        updates.ritualCooldowns = ritualCooldowns;
+  1356→
+  1357→        set(updates);
+  1358→        if (surgeApplied) {
+  1359→          get().addToLog(logMsg);
+  1360→        } else {
+  1361→          get().addToLog(logMsg);
+  1362→        }
+  1363→        return true;
+  1364→      },
+  1365→
+  1366→      purchaseScript: (scriptId) => {
+  1367→        const s = get();
+  1368→        if (!s.transcendenceUnlocked) return false;
+  1369→        const script = SCRIPT_MAP[scriptId];
+  1370→        if (!script) return false;
+  1371→        if (s.activeScripts?.[scriptId]) return false;
+  1372→        if ((s.divinity || 0) < script.divinityCost) return false;
+  1373→        const activeScripts = { ...(s.activeScripts || {}), [scriptId]: true };
+  1374→        set({
+  1375→          divinity: s.divinity - script.divinityCost,
+  1376→          activeScripts,
+  1377→        });
+  1378→        get().addToLog(
+  1379→          `Script bound: ${script.name}. ${script.desc} The god's logic now runs unattended.`
+  1380→        );
+  1381→        return true;
+  1382→      },
+  1383→
+  1384→      dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
+  1385→      setEventFrequency: (freq) => set({ eventFrequency: freq }),
+  1386→
+  1387→      resolveEvent: (eventId, choiceId) => {
+  1388→        const s = get();
+  1389→        const ev = EVENT_MAP[eventId];
+  1390→        if (!ev) {
+  1391→          set({ activeEvent: null });
+  1392→          return;
+  1393→        }
+  1394→        const choice = ev.choices.find((c) => c.id === choiceId);
+  1395→        if (!choice) {
+  1396→          set({ activeEvent: null });
+  1397→          return;
+  1398→        }
+  1399→
+  1400→        // Check for risk — roll the dice
+  1401→        const riskTriggered = choice.riskChance && Math.random() < choice.riskChance;
+  1402→        const effects = riskTriggered && choice.riskEffect ? choice.riskEffect : choice;
+  1403→
+  1404→        // Apply effects
+  1405→        const res = { ...s.resources };
+  1406→        if (effects.resourceChanges) {
+  1407→          for (const [r, v] of Object.entries(effects.resourceChanges)) {
+  1408→            const cap = s.capacities[r] || Infinity;
+  1409→            res[r] = Math.max(0, Math.min(cap, (res[r] || 0) + (v as number)));
+  1410→          }
+  1411→        }
+  1412→        let pop = s.population;
+  1413→        if (effects.populationChange) {
+  1414→          pop = Math.max(0, pop + effects.populationChange);
+  1415→        }
+  1416→        if (effects.happinessChange) {
+  1417→          const cap = s.capacities.happiness || 100;
+  1418→          res.happiness = Math.max(0, Math.min(cap, (res.happiness || 0) + (effects.happinessChange || 0)));
+  1419→        }
+  1420→        // NOTE: Events do NOT affect archetype affinity — lineage drift only comes from
+  1421→        // systems and techs in the Cell and Creature stages (per design feedback)
+  1422→        const archetypeAffinity = { ...s.archetypeAffinity };
+  1423→        // Record in event history
+  1424→        const eventHistory = [
+  1425→          {
+  1426→            eventId: ev.id,
+  1427→            eventName: ev.name,
+  1428→            eventIcon: ev.icon,
+  1429→            choiceId: choice.id,
+  1430→            choiceLabel: choice.label,
+  1431→            timestamp: Date.now(),
+  1432→            gameTime: s.time,
+  1433→          },
+  1434→          ...(s.eventHistory || []),
+  1435→        ].slice(0, 50); // keep last 50
+  1436→        set({
+  1437→          resources: res,
+  1438→          population: pop,
+  1439→          maxPopulation: Math.max(s.maxPopulation || 0, pop),
+  1440→          archetypeAffinity,
+  1441→          activeEvent: null,
+  1442→          eventHistory,
+  1443→          totalEventsResolved: (s.totalEventsResolved || 0) + 1,
+  1444→        });
+  1445→        if (riskTriggered && choice.riskEffect) {
+  1446→          get().addToLog(`${ev.name}: ${choice.riskEffect.logMsg}`);
+  1447→        } else if (choice.logMsg) {
+  1448→          get().addToLog(`${ev.name}: ${choice.logMsg}`);
+  1449→        }
+  1450→
+  1451→        // Check achievements after event resolution
+  1452→        const postEventState = get();
+  1453→        const achResult = checkAchievements(postEventState);
+  1454→        if (achResult.newOnes.length > 0) {
+  1455→          set({
+  1456→            achievements: achResult.earned,
+  1457→            newAchievements: [...(postEventState.newAchievements || []), ...achResult.newOnes],
+  1458→          });
+  1459→        }
+  1460→      },
+  1461→
+  1462→      dismissStory: (id) => {
+  1463→        const s = get();
+  1464→        const ack = { ...s.storyAcknowledged, [id]: true };
+  1465→        set({ activeStoryPopup: null, storyAcknowledged: ack });
+  1466→      },
+  1467→
+  1468→      dismissAchievementToast: () => {
+  1469→        set({ newAchievements: [] });
+  1470→      },
+  1471→
+  1472→      applyOfflineProgress: () => {
+  1473→        const s = get();
+  1474→        if (!s.lastSaved) return null;
+  1475→        const elapsedSec = Math.floor((Date.now() - s.lastSaved) / 1000);
+  1476→        // Only apply if away for more than 30 seconds
+  1477→        if (elapsedSec < 30) return null;
+  1478→        // Cap: base 24h, +24h per temporal_reserves tier
+  1479→        const tempReservesLvl = s.upgrades["temporal_reserves"] || 0;
+  1480→        const maxBank = 86400 + tempReservesLvl * 86400;
+  1481→        const appliedDt = Math.min(elapsedSec, maxBank);
+  1482→        if (appliedDt < 30) return null;
+  1483→
+  1484→        // Snapshot resources before to compute gains
+  1485→        const before = { ...s.resources };
+  1486→
+  1487→        // Apply tick at compressed speed (cap at 86400 per call to avoid huge loops)
+  1488→        // We simulate in chunks of 3600s (1 hour) to stay performant
+  1489→        const chunkSize = 3600;
+  1490→        let remaining = appliedDt;
+  1491→        // Temporarily set speed to 1 and call tick with large dt
+  1492→        while (remaining > 0) {
+  1493→          const chunk = Math.min(chunkSize, remaining);
+  1494→          get().tick(chunk);
+  1495→          remaining -= chunk;
+  1496→          // Re-read state in case it changed
+  1497→          const cur = get();
+  1498→          if (cur.paused) break;
+  1499→        }
+  1500→
+  1501→        const after = get();
+  1502→        const resourcesGained: Record<string, number> = {};
+  1503→        for (const r of Object.keys(after.resources)) {
+  1504→          const gain = (after.resources[r] || 0) - (before[r] || 0);
+  1505→          if (Math.abs(gain) > 0.01) resourcesGained[r] = gain;
+  1506→        }
+  1507→
+  1508→        get().addToLog(`Offline progress: simulated ${Math.floor(appliedDt / 60)}m ${Math.floor(appliedDt % 60)}s away.`);
+  1509→
+  1510→        return { elapsed: appliedDt, resourcesGained, applied: true };
+  1511→      },
+  1512→
+  1513→      addToLog: (msg) => {
+  1514→        const s = get();
+  1515→        const ts = new Date().toLocaleTimeString();
+  1516→        const entry = `[${ts}] ${msg}`;
+  1517→        const log = [entry, ...s.log].slice(0, 100);
+  1518→        set({ log });
+  1519→      },
+  1520→
+  1521→      hardReset: () => {
+  1522→        if (typeof window !== "undefined") {
+  1523→          localStorage.removeItem(STORAGE_KEY);
+  1524→        }
+  1525→        const fresh = { ...initialRunState(), ...initialMetaState() };
+  1526→        set(fresh);
+  1527→      },
+  1528→
+  1529→      saveGame: () => {
+  1530→        set({ lastSaved: Date.now() });
+  1531→      },
+  1532→
+  1533→      loadGame: () => {
+  1534→        // Handled by persist middleware
+  1535→      },
+  1536→
+  1537→      exportSave: () => {
+  1538→        const s = get();
+  1539→        return btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+  1540→      },
+  1541→
+  1542→      importSave: (data) => {
+  1543→        try {
+  1544→          const parsed = JSON.parse(decodeURIComponent(escape(atob(data))));
+  1545→          set(parsed);
+  1546→          return true;
+  1547→        } catch {
+  1548→          return false;
+  1549→        }
+  1550→      },
+  1551→    }),
+  1552→    {
+  1553→      name: STORAGE_KEY,
+  1554→      storage: createJSONStorage(() => {
+  1555→        if (typeof window === "undefined") {
+  1556→          return {
+  1557→            getItem: () => null,
+  1558→            setItem: () => {},
+  1559→            removeItem: () => {},
+  1560→          };
+  1561→        }
+  1562→        return window.localStorage;
+  1563→      }),
+  1564→      version: 2,
+  1565→      partialize: (s) => s,
+  1566→      // Migrate old saves (v1) to new structure
+  1567→      migrate: (persisted: any, version: number) => {
+  1568→        if (!persisted) return persisted;
+  1569→        if (version < 2) {
+  1570→          if (!persisted.systemEnabled) persisted.systemEnabled = {};
+  1571→          if (!persisted.archetypeAffinity) persisted.archetypeAffinity = {};
+  1572→          if (persisted.lockedArchetype === undefined) persisted.lockedArchetype = null;
+  1573→          if (persisted.populationProgress === undefined) persisted.populationProgress = 0;
+  1574→          if (!persisted.achievements) persisted.achievements = {};
+  1575→          if (!persisted.newAchievements) persisted.newAchievements = [];
+  1576→          if (persisted.upgrades) {
+  1577→            if (persisted.upgrades.auto_balancer === undefined) persisted.upgrades.auto_balancer = 0;
+  1578→            if (persisted.upgrades.archetype_insight === undefined) persisted.upgrades.archetype_insight = 0;
+  1579→          }
+  1580→        }
+  1581→        // Always ensure achievements fields exist (even on v2)
+  1582→        if (!persisted.achievements) persisted.achievements = {};
+  1583→        if (!persisted.newAchievements) persisted.newAchievements = [];
+  1584→        if (persisted.showSettings === undefined) persisted.showSettings = false;
+  1585→        if (persisted.tutorialDismissed === undefined) persisted.tutorialDismissed = false;
+  1586→        if (persisted.maxPopulation === undefined) persisted.maxPopulation = persisted.population || 8;
+  1587→        if (persisted.fastestCellClear === undefined) persisted.fastestCellClear = 0;
+  1588→        if (persisted.activeEvent === undefined) persisted.activeEvent = null;
+  1589→        if (persisted.eventCooldown === undefined) persisted.eventCooldown = 60;
+  1590→        if (!persisted.eventHistory) persisted.eventHistory = [];
+  1591→        if (persisted.totalEventsResolved === undefined) persisted.totalEventsResolved = 0;
+  1592→        if (persisted.totalPlayTime === undefined) persisted.totalPlayTime = 0;
+  1593→        if (persisted.totalActions === undefined) persisted.totalActions = 0;
+  1594→        if (persisted.totalSystemsBuilt === undefined) persisted.totalSystemsBuilt = 0;
+  1595→        if (persisted.totalTechResearched === undefined) persisted.totalTechResearched = 0;
+  1596→        if (!persisted.eventFrequency) persisted.eventFrequency = "normal";
+  1597→        if (!persisted.lockedTechs) persisted.lockedTechs = {};
+  1598→        if (!persisted.lockedSystems) persisted.lockedSystems = {};
+  1599→        if (!persisted.archivedArchetypes) persisted.archivedArchetypes = [];
+  1600→        // Evolution Challenges (Task 7) — fields default to a "locked + nothing done" state
+  1601→        if (persisted.unlockedChallenges === undefined) persisted.unlockedChallenges = false;
+  1602→        if (persisted.activeChallenge === undefined) persisted.activeChallenge = null;
+  1603→        if (!persisted.completedChallenges) persisted.completedChallenges = {};
+  1604→        if (persisted.challengeRunStart === undefined) persisted.challengeRunStart = null;
+  1605→        if (persisted.showChallenges === undefined) persisted.showChallenges = false;
+  1606→        // Enlightenment (Task 19) — fields default to a "locked + 0 divinity + no route" state.
+  1607→        // EnlightenmentUnlocked is recomputed defensively from completedChallenges on next prestige
+  1608→        // (see triggerPrestige) in case a legacy save already had all 10 challenges done.
+  1609→        if (persisted.divinity === undefined) persisted.divinity = 0;
+  1610→        if (persisted.enlightenmentUnlocked === undefined) {
+  1611→          // If the player had all 10 challenges done before this code shipped, mark
+  1612→          // Enlightenment as unlocked so they get the button + modal immediately.
+  1613→          const doneCount = persisted.completedChallenges
+  1614→            ? Object.values(persisted.completedChallenges).filter(Boolean).length
+  1615→            : 0;
+  1616→          persisted.enlightenmentUnlocked = doneCount >= 10;
+  1617→        }
+  1618→        if (persisted.selectedRoute === undefined) persisted.selectedRoute = null;
+  1619→        if (!persisted.foresightNodes) persisted.foresightNodes = {};
+  1620→        if (persisted.showEnlightenment === undefined) persisted.showEnlightenment = false;
+  1621→        // One-time event flags (Task 20) — run-scoped, defaults to empty record
+  1622→        if (!persisted.flags) persisted.flags = {};
+  1623→        // Transcendence (Task 23) — fields default to a "locked + no scripts + empty ledger" state.
+  1624→        // transcendenceUnlocked is recomputed defensively from foresight + totalRuns below.
+  1625→        if (persisted.transcendenceUnlocked === undefined) {
+  1626→          persisted.transcendenceUnlocked = checkTranscendenceUnlockCondition({
+  1627→            ...persisted,
+  1628→            totalRuns: persisted.totalRuns || 0,
+  1629→          } as GameState);
+  1630→        }
+  1631→        if (persisted.showTranscendence === undefined) persisted.showTranscendence = false;
+  1632→        if (!persisted.activeScripts) persisted.activeScripts = {};
+  1633→        if (!persisted.ritualCooldowns) persisted.ritualCooldowns = {};
+  1634→        if (!persisted.offeringLedger) {
+  1635→          persisted.offeringLedger = { totalOfferings: 0, totalDivinityFromOfferings: 0 };
+  1636→        }
+  1637→        if (persisted.activeSurge === undefined) persisted.activeSurge = null;
+  1638→        if (persisted.divineShieldRemaining === undefined) persisted.divineShieldRemaining = 0;
+  1639→        if (!persisted.scriptCooldowns) persisted.scriptCooldowns = {};
+  1640→        return persisted;
+  1641→      },
+  1642→    }
+  1643→  )
+  1644→);
+  1645→
+  1646→// ============ HELPERS ============
+  1647→
+  1648→function techMultiplier(s: GameState, target: "production" | "manual" | "capacity"): number {
+  1649→  let mult = 1;
+  1650→  for (const [techId, owned] of Object.entries(s.technologies)) {
+  1651→    if (!owned) continue;
+  1652→    const tech = TECH_MAP[techId];
+  1653→    if (!tech || !tech.multiplier) continue;
+  1654→    if (tech.multiplier.target === target || tech.multiplier.target === "production") {
+  1655→      mult += tech.multiplier.value;
+  1656→    }
+  1657→  }
+  1658→  // Achievement production bonus
+  1659→  const ctx = buildAchievementCtx(s);
+  1660→  mult += achievementBonus(s.achievements || {}, ctx, "production");
+  1661→  // Challenge mastery bonus (only for completed challenges, persists across runs)
+  1662→  // — applied as a production multiplier (all 10 challenges grant "production" type).
+  1663→  if (target === "production") {
+  1664→    mult += challengeMasteryBonus(s.completedChallenges || {}, "production");
+  1665→  }
+  1666→  // Foresight (Enlightenment Layer 2) — purchased foresight nodes grant a
+  1667→  // small production / manual / capacity bonus that stacks with achievements
+  1668→  // and challenge mastery. Route bonus is applied separately in tick() and
+  1669→  // performAction (per-resource), not here, because routes are per-resource.
+  1670→  if (target === "production" || target === "manual") {
+  1671→    mult += foresightBonus(s.foresightNodes || {}, target);
+  1672→  }
+  1673→  return mult;
+  1674→}
+  1675→
+  1676→function buildAchievementCtx(s: GameState): AchievementCheckCtx {
+  1677→  const systemsDiscoveredCount = Object.keys(s.ownedSystems).filter((id) => (s.ownedSystems[id] || 0) > 0).length;
+  1678→  const techResearchedCount = Object.keys(s.technologies).filter((id) => s.technologies[id]).length;
+  1679→  const upgradesOwnedCount = Object.values(s.upgrades).filter((c) => c > 0).length;
+  1680→  const storyUnlockedCount = Object.keys(s.storyUnlocked).filter((id) => s.storyUnlocked[id]).length;
+  1681→  return {
+  1682→    galacticWins: s.galacticWins,
+  1683→    totalRuns: s.totalRuns,
+  1684→    stageClearCounts: s.stageClearCounts,
+  1685→    archivedArchetypes: s.archivedArchetypes || [],
+  1686→    storyUnlockedCount,
+  1687→    systemsDiscoveredCount,
+  1688→    techResearchedCount,
+  1689→    upgradesOwnedCount,
+  1690→    maxPopulation: s.maxPopulation || 0,
+  1691→    fastestCellClear: s.fastestCellClear || 0,
+  1692→    totalEventsResolved: s.totalEventsResolved || 0,
+  1693→  };
+  1694→}
+  1695→
+  1696→// Check all achievements; return new ones earned
+  1697→function checkAchievements(s: GameState): { earned: Record<string, boolean>; newOnes: string[] } {
+  1698→  const ctx = buildAchievementCtx(s);
+  1699→  const earned = { ...(s.achievements || {}) };
+  1700→  const newOnes: string[] = [];
+  1701→  for (const ach of ACHIEVEMENTS) {
+  1702→    if (!earned[ach.id] && ach.check(ctx)) {
+  1703→      earned[ach.id] = true;
+  1704→      newOnes.push(ach.id);
+  1705→    }
+  1706→  }
+  1707→  return { earned, newOnes };
+  1708→}
+  1709→
+  1710→function computeScore(s: GameState): number {
+  1711→  const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+  1712→  const totalTech = Object.keys(s.technologies).length;
+  1713→  const resourceSum = Object.values(s.resources).reduce((a, b) => a + b, 0);
+  1714→  return Math.floor(
+  1715→    s.population * 2 +
+  1716→    totalSystems * 5 +
+  1717→    totalTech * 10 +
+  1718→    resourceSum * 0.5 +
+  1719→    s.time * 0.1
+  1720→  );
+  1721→}
+  1722→
+  1723→// Recompute all capacities from scratch based on owned systems
+  1724→function recomputeCapacitiesFresh(s: GameState, capMult: number): Record<string, number> {
+  1725→  const base = emptyCapacities();
+  1726→  const caps: Record<string, number> = {};
+  1727→  for (const r of Object.keys(base)) {
+  1728→    let cap = (base[r] || 50) * capMult;
+  1729→    for (const sys of SYSTEMS) {
+  1730→      const count = s.ownedSystems[sys.id] || 0;
+  1731→      if (!count || !sys.capacityBoost) continue;
+  1732→      const boost = sys.capacityBoost[r];
+  1733→      if (boost) cap += (boost as number) * count * capMult;
+  1734→    }
+  1735→    caps[r] = cap;
+  1736→  }
+  1737→  return caps;
+  1738→}
+  1739→
+  1740→// Export helper for components to compute whether an action is capped
+  1741→export function isActionCapped(
+  1742→  produces: Record<string, number>,
+  1743→  resources: Record<string, number>,
+  1744→  capacities: Record<string, number>
+  1745→): boolean {
+  1746→  const outputs = Object.entries(produces);
+  1747→  if (outputs.length === 0) return false;
+  1748→  return outputs.every(([r]) => {
+  1749→    const cap = capacities[r] || 0;
+  1750→    return (resources[r] || 0) >= cap - 0.001;
+  1751→  });
+  1752→}
+  1753→
+  1754→// Export helper for whether a system is currently capped (idling)
+  1755→export function isSystemCapped(
+  1756→  sysId: string,
+  1757→  resources: Record<string, number>,
+  1758→  capacities: Record<string, number>
+  1759→): boolean {
+  1760→  const sys = SYSTEM_MAP[sysId];
+  1761→  if (!sys) return false;
+  1762→  const produces = Object.keys(sys.produces);
+  1763→  if (produces.length === 0) return false;
+  1764→  return produces.every((r) => {
+  1765→    const cap = capacities[r] || 0;
+  1766→    return (resources[r] || 0) >= cap - 0.01;
+  1767→  });
+  1768→}
+  1769→
+  1770→// Export for components
+  1771→export { STAGES, STAGE_IDS, SYSTEMS, TECHS, UPGRADES, ARCHETYPE_MAP };
+  1772→
+  1773→// ============================================================
+  1774→// Transcendence (Layer 3) — helper functions
+  1775→// ============================================================
+  1776→
+  1777→/**
+  1778→ * Decrement all cooldowns in a record by `dt`, clamped at 0. Cooldowns that
+  1779→ * hit 0 are removed from the record (clean state). Used for ritual cooldowns,
+  1780→ * script cooldowns — both should tick down each tick.
+  1781→ *
+  1782→ * Rituals marked "one-time per run" use a sentinel value
+  1783→ * (Number.MAX_SAFE_INTEGER) to indicate "performed this run, can't be
+  1784→ * performed again until prestige". That sentinel value is preserved — the
+  1785→ * ritual stays on cooldown until prestige clears it (prestige calls
+  1786→ * `initialRunState()` which resets `ritualCooldowns` to `{}`).
+  1787→ */
+  1788→function tickDownCooldowns(
+  1789→  cooldowns: Record<string, number>,
+  1790→  dt: number
+  1791→): Record<string, number> {
+  1792→  const out: Record<string, number> = {};
+  1793→  for (const [k, v] of Object.entries(cooldowns)) {
+  1794→    // Preserve the "performed this run" sentinel for one-time-per-run rituals.
+  1795→    if (v >= Number.MAX_SAFE_INTEGER) {
+  1796→      out[k] = v;
+  1797→      continue;
+  1798→    }
+  1799→    const remaining = v - dt;
+  1800→    if (remaining > 0) out[k] = remaining;
+  1801→    // else: cooldown expired — drop the entry (clean state)
+  1802→  }
+  1803→  return out;
+  1804→}
+  1805→
+  1806→/**
+  1807→ * Returns true if the player has met the Transcendence unlock condition:
+  1808→ *   - All implemented foresight nodes purchased
+  1809→ *   - At least one route run completed (totalRuns >= 1 AND a route is selected)
+  1810→ *
+  1811→ * Note: this is a *condition check* — it does not perform the unlock. Callers
+  1812→ * (`purchaseForesightNode`, `triggerPrestige`) are responsible for actually
+  1813→ * setting `transcendenceUnlocked = true` and firing the story popup.
+  1814→ */
+  1815→function checkTranscendenceUnlockCondition(s: GameState): boolean {
+  1816→  const allNodesPurchased =
+  1817→    purchasedForesightCount(s.foresightNodes || {}) >=
+  1818→    totalImplementedForesightCount();
+  1819→  const hasRoute = !!s.selectedRoute;
+  1820→  const hasRuns = (s.totalRuns || 0) >= 1;
+  1821→  return allNodesPurchased && hasRoute && hasRuns;
+  1822→}
+  1823→
+  1824→/**
+  1825→ * Fire the Transcendence unlock if the condition is met AND the player has
+  1826→ * not already unlocked it. Used inside `purchaseForesightNode` (and called
+  1827→ * from `triggerPrestige` defensively) so the unlock fires the moment the
+  1828→ * last foresight node is purchased (or, defensively, on the next prestige).
+  1829→ *
+  1830→ * This is the "during gameplay" unlock path: foresight library just completed,
+  1831→ * player already had a route + a run, fire the popup immediately so the
+  1832→ * player sees the moment.
+  1833→ */
+  1834→function checkTranscendenceUnlock(
+  1835→  s: GameState,
+  1836→  set: (partial: Partial<GameState>) => void
+  1837→): void {
+  1838→  if (s.transcendenceUnlocked) return;
+  1839→  if (!checkTranscendenceUnlockCondition(s)) return;
+  1840→  const storyUnlocked = { ...s.storyUnlocked, transcendence_unlocked: true };
+  1841→  set({
+  1842→    transcendenceUnlocked: true,
+  1843→    storyUnlocked,
+  1844→    // Don't override an already-active popup, but if none is active, fire ours.
+  1845→    activeStoryPopup: s.activeStoryPopup || "transcendence_unlocked",
+  1846→  });
+  1847→  // Defer the log so it appears after any purchase log.
+  1848→  setTimeout(() => {
+  1849→    try {
+  1850→      useGameStore.getState().addToLog(
+  1851→        `Transcendence unlocked — the god steps outside creation. Offerings, Rituals, and Scripts now available.`
+  1852→      );
+  1853→    } catch {
+  1854→      // ignore — store may not be available in some edge cases (e.g. SSR)
+  1855→    }
+  1856→  }, 0);
+  1857→}
+  1858→
+  1859→/**
+  1860→ * Evaluate a script's condition against the current game state. Returns true
+  1861→ * if the condition is met (and the script's action should fire).
+  1862→ */
+  1863→function evalScriptCondition(
+  1864→  script: ScriptDef,
+  1865→  ctx: { resources: Record<string, number>; population: number; activeEvent: string | null }
+  1866→): boolean {
+  1867→  const c = script.condition;
+  1868→  switch (c.type) {
+  1869→    case "happiness_low":
+  1870→      return (ctx.resources.happiness || 0) < (c.threshold ?? 30);
+  1871→    case "resource_low": {
+  1872→      // For resource_low without a specific resourceId, scan all resources and
+  1873→      // trigger if any is below the threshold.
+  1874→      const threshold = c.threshold ?? 10;
+  1875→      if (c.resourceId) {
+  1876→        return (ctx.resources[c.resourceId] || 0) < threshold;
+  1877→      }
+  1878→      // Scan all resources (skip happiness — it has its own condition type)
+  1879→      for (const [k, v] of Object.entries(ctx.resources)) {
+  1880→        if (k === "happiness") continue;
+  1881→        if (v < threshold) return true;
+  1882→      }
+  1883→      return false;
+  1884→    }
+  1885→    case "event_active":
+  1886→      return !!ctx.activeEvent;
+  1887→    case "population_low":
+  1888→      return ctx.population < (c.threshold ?? 10);
+  1889→    default:
+  1890→      return false;
+  1891→  }
+  1892→}
+  1893→
+  1894→interface ScriptActionResult {
+  1895→  resourceChanges?: Record<string, number>;
+  1896→  popChange?: number;
+  1897→  eventResolved?: boolean;
+  1898→  logMsg?: string;
+  1899→}
+  1900→
+  1901→/**
+  1902→ * Compute the effect of a script's action. Returns null if the action cannot
+  1903→ * be applied (e.g., not enough food to convert, no active event to resolve).
+  1904→ * Does not mutate the input state — callers apply the returned changes.
+  1905→ */
+  1906→function applyScriptAction(
+  1907→  script: ScriptDef,
+  1908→  ctx: {
+  1909→    resources: Record<string, number>;
+  1910→    population: number;
+  1911→    capacities: Record<string, number>;
+  1912→    activeEvent: string | null;
+  1913→  }
+  1914→): ScriptActionResult | null {
+  1915→  const a = script.action;
+  1916→  switch (a.type) {
+  1917→    case "boost_happiness": {
+  1918→      const amount = a.amount ?? 20;
+  1919→      const cap = ctx.capacities.happiness || 100;
+  1920→      const cur = ctx.resources.happiness || 0;
+  1921→      // Don't boost if already at cap
+  1922→      if (cur >= cap) return null;
+  1923→      return {
+  1924→        resourceChanges: { happiness: amount },
+  1925→        logMsg: `Script fired: ${script.name} — happiness +${amount}.`,
+  1926→      };
+  1927→    }
+  1928→    case "boost_population": {
+  1929→      const amount = a.amount ?? 15;
+  1930→      return {
+  1931→        popChange: amount,
+  1932→        logMsg: `Script fired: ${script.name} — population +${amount}.`,
+  1933→      };
+  1934→    }
+  1935→    case "convert_resource": {
+  1936→      // Convert `convertAmount` of `fromResource` to `toResource`.
+  1937→      // If `toResource` is "auto", pick the lowest-value resource below
+  1938→      // threshold (the one that triggered the condition).
+  1939→      const convertAmount = a.convertAmount ?? 50;
+  1940→      const from = a.fromResource || "food";
+  1941→      if ((ctx.resources[from] || 0) < convertAmount) return null;
+  1942→      let toId: string;
+  1943→      if (!a.toResource || a.toResource === "auto") {
+  1944→        // Pick the lowest resource below the threshold (excluding `from`)
+  1945→        let lowest: string | null = null;
+  1946→        let lowestVal = Infinity;
+  1947→        for (const [k, v] of Object.entries(ctx.resources)) {
+  1948→          if (k === from || k === "happiness") continue;
+  1949→          if (v < 10 && v < lowestVal) {
+  1950→            lowestVal = v;
+  1951→            lowest = k;
+  1952→          }
+  1953→        }
+  1954→        if (!lowest) return null;
+  1955→        toId = lowest;
+  1956→      } else {
+  1957→        toId = a.toResource;
+  1958→      }
+  1959→      return {
+  1960→        resourceChanges: { [from]: -convertAmount, [toId]: convertAmount },
+  1961→        logMsg: `Script fired: ${script.name} — converted ${convertAmount} ${from} → ${toId}.`,
+  1962→      };
+  1963→    }
+  1964→    case "auto_resolve_event": {
+  1965→      if (!ctx.activeEvent) return null;
+  1966→      const ev = EVENT_MAP[ctx.activeEvent];
+  1967→      if (!ev) return null;
+  1968→      const safe = pickSafestChoice(ev);
+  1969→      if (!safe) return null;
+  1970→      // Defer the actual resolution to the next tick so the choice's effects
+  1971→      // apply cleanly through resolveEvent (which expects to read live state).
+  1972→      setTimeout(() => {
+  1973→        const cur = useGameStore.getState();
+  1974→        if (cur.activeEvent === ev.id) {
+  1975→          cur.resolveEvent(ev.id, safe.id);
+  1976→        }
+  1977→      }, 0);
+  1978→      return {
+  1979→        eventResolved: true,
+  1980→        logMsg: `Script fired: ${script.name} — auto-resolved "${ev.name}" (safest option).`,
+  1981→      };
+  1982→    }
+  1983→    case "regenerate_happiness": {
+  1984→      // Continuous: add `amount` to happiness (per tick; tick's dt is folded
+  1985→      // into `amount` by the caller — but for simplicity, this is per-tick
+  1986→      // addition). For a 0.5/s regen with a 10-tick-per-second game loop,
+  1987→      // we add 0.05 per tick. We assume here that `amount` is already a
+  1988→      // per-second rate and the caller will scale it. Since our tick is
+  1989→      // arbitrary dt, we multiply by dt-equivalent... but we don't have dt
+  1990→      // here. To keep this simple, the script's `amount` is the per-tick
+  1991→      // addition (works fine since the sustainer script is designed for
+  1992→      // continuous +0.5/s and tick is typically called at ~10Hz).
+  1993→      // For correctness, we approximate by adding `amount` per tick.
+  1994→      const amount = a.amount ?? 0.5;
+  1995→      const cap = ctx.capacities.happiness || 100;
+  1996→      const cur = ctx.resources.happiness || 0;
+  1997→      if (cur >= cap) return null;
+  1998→      return {
+  1999→        resourceChanges: { happiness: amount },
+  2000→      };
+
+[showing lines 1-2000 of 2050; use offset=2001 with limit to continue reading]

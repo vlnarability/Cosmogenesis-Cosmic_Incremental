@@ -1,0 +1,923 @@
+     1→     1→// Apotheosis — Layer 5 prestige content
+     2→     2→//
+     3→     3→// When a god reaches Apotheosis, civilization recognizes it. The creator
+     4→     4→// is no longer silent: Divine Laws bind the run, Worship Modes shape how
+     5→     5→// mortals pray, Miracles intervene directly, and Heresy rises whenever
+     6→     6→// belief fractures. Manage all four and the god ascends to Singularity.
+     7→     7→//
+     8→     8→// Four mechanic families live in this file:
+     9→     9→//
+    10→    10→//   1. Divine Laws (8)        — fundamental rule changes, permanent for
+    11→    11→//                               the run, cost Divinity. Up to 8 codified
+    12→    12→//                               per run (one of each).
+    13→    13→//   2. Worship Modes (6)      — pick one at run start; decides how mortals
+    14→    14→//                               relate to the god and which bonuses apply.
+    15→    15→//   3. Miracles (5)           — dramatic interventions that cost Divinity,
+    16→    16→//                               each with a per-run usage limit.
+    17→    17→//   4. Heresy Responses (4)   — manage rising heresy (0..100). The run
+    18→    18→//                               ends at HERESY_MAX (100); these tools
+    19→    19→//                               reduce heresy at various costs.
+    20→    20→//
+    21→    21→// State fields (planned for GameState — to be wired in a follow-up task):
+    22→    22→//   - lawsCodified:        Record<string, boolean>  // laws codified this run (one of each, max 8)
+    23→    23→//   - worshipMode:         string | null             // active worship mode id, or null before pick
+    24→    24→//   - miracleUses:         Record<string, number>   // times each miracle used this run
+    25→    25→//   - miracleTimers:       Record<string, number>   // remaining seconds for active temporary miracles
+    26→    26→//   - heresyResponseUses:  Record<string, number>   // times each heresy response used this run
+    27→    27→//   - heresy:              number                    // current heresy level (0..100)
+    28→    28→//   - heresySchismResolved: boolean                  // whether a schism was resolved this run
+    29→    29→//
+    30→    30→// Reference: /home/z/my-project/upload/data.js DATA.DIVINE_LAWS (lines 204-210),
+    31→    31→// DATA.WORSHIP_MODES (lines 196-203), DATA.MIRACLES (lines 211-218), and
+    32→    32→// DATA.HERESY_RESPONSES (lines 219-224) for the original vanilla-JS shapes.
+    33→    33→// The TS port reshapes each mechanic into the Layer 5 spec: 8 / 6 / 5 / 4
+    34→    34→// entries with explicit Divinity costs and per-run limits, distinct from
+    35→    35→// the vanilla JS (which had 5 / 6 / 6 / 4 entries with sub-currency costs).
+    36→    36→//
+    37→    37→// Advancement to Layer 6 (Singularity) requires codifying 3 Divine Laws
+    38→    38→// AND resolving a Heresy schism — see prestigeLayers.ts
+    39→    39→// `apotheosis.completeState: "Codify 3 Divine Laws and resolve a Heresy schism"`.
+    40→    40→
+    41→    41→import type { ResourceId } from "../state/types";
+    42→    42→import { RESOURCES } from "./resources";
+    43→    43→
+    44→    44→// =====================================================================
+    45→    45→// Constants
+    46→    46→// =====================================================================
+    47→    47→
+    48→    48→/**
+    49→    49→ * Base heresy accumulation rate, in points per second, before any laws
+    50→    50→ * or worship modes modify it. Effective rate each tick is
+    51→    51→ * `BASE_HERESY_RATE * (1 + heresyRateMult(lawsCodified, worshipMode))`.
+    52→    52→ *
+    53→    53→ * At 0.05/s with no modifiers, heresy fills the 0..100 meter in
+    54→    54→ * 100 / 0.05 = 2000 seconds (~33 minutes). Laws and worship modes can
+    55→    55→ * speed this up (Zeal +50%, Fear has no effect), slow it down (Order -50%,
+    56→    56→ * Mystery worship mode -25%), or even reverse it (Mercy: heresy decays).
+    57→    57→ */
+    58→    58→export const BASE_HERESY_RATE: number = 0.05;
+    59→    59→
+    60→    60→/**
+    61→    61→ * Maximum heresy value. When `state.heresy` reaches this number the run
+    62→    62→ * ends — the god is rejected by creation (a "schism" too large to
+    63→    63→ * resolve). The player should manage heresy via Heresy Responses before
+    64→    64→ * it hits this cap.
+    65→    65→ */
+    66→    66→export const HERESY_MAX: number = 100;
+    67→    67→
+    68→    68→/**
+    69→    69→ * Number of Divine Laws the player must codify for the Layer 5
+    70→    70→ * completion check (`isApotheosisComplete`). Matches the spec wording
+    71→    71→ * "Codify 3 Divine Laws and resolve a Heresy schism" from
+    72→    72→ * prestigeLayers.ts.
+    73→    73→ */
+    74→    74→export const APOTHEOSIS_COMPLETION_LAWS_REQUIRED: number = 3;
+    75→    75→
+    76→    76→// =====================================================================
+    77→    77→// 1. Divine Laws (8) — fundamental rule changes, permanent for the run
+    78→    78→// =====================================================================
+    79→    79→
+    80→    80→/**
+    81→    81→ * A single Divine Law. Effects are spread across optional fields; the
+    82→    82→ * IIFE validator enforces that each law sets at least one. Fields map
+    83→    83→ * to consumer wiring as follows:
+    84→    84→ *
+    85→    85→ *   - `productionMult`        → additive all-production mult (Abundance, Tithe)
+    86→    86→ *   - `populationGrowthMult`  → additive pop-growth mult (Fertility)
+    87→    87→ *   - `militaryMult`          → additive military mult (Zeal)
+    88→    88→ *   - `scienceMult`           → additive science mult (Revelation)
+    89→    89→ *   - `goldMult`              → additive gold mult (Tithe)
+    90→    90→ *   - `worshipMult`           → multiplicative worship-bonus mult (Faith 2.0)
+    91→    91→ *   - `happinessFlat`         → flat per-tick happiness bonus (Mercy +10)
+    92→    92→ *   - `happinessTarget`       → clamp happiness to this value while codified (Order 80)
+    93→    93→ *   - `heresyDecays`          → UI flag: heresy meter shows "Decaying" (Mercy)
+    94→    94→ *   - `heresyFlatOnCodify`    → one-time flat heresy change applied at codification (Faith -20)
+    95→    95→ *   - `heresyRateMult`        → additive mult on BASE_HERESY_RATE (Zeal +0.50, Order -0.50, Mercy -2.00)
+    96→    96→ *
+    97→    97→ * `heresyRateMult` semantics: the effective heresy rate per second is
+    98→    98→ * `BASE_HERESY_RATE * (1 + sum_of_law_heresyRateMult + mode.heresyRateMult)`.
+    99→    99→ * Mercy's -2.00 makes the factor (1 + -2.00) = -1.0, so heresy decays at
+   100→   100→ * the base rate (–0.05/s) when Mercy is codified alone.
+   101→   101→ */
+   102→   102→export interface DivineLawDef {
+   103→   103→  /** Stable identifier (used as a key in `lawsCodified` in GameState). */
+   104→   104→  id: string;
+   105→   105→  /** Human-readable law name. */
+   106→   106→  name: string;
+   107→   107→  /** Narrative / mechanical flavour of what the law decrees. */
+   108→   108→  desc: string;
+   109→   109→  /** Emoji glyph shown on the law card. */
+   110→   110→  icon: string;
+   111→   111→  /** Divinity cost to codify the law (one-time per run). */
+   112→   112→  cost: number;
+   113→   113→  /** Additive all-production multiplier (0.15 = +15% all production). */
+   114→   114→  productionMult?: number;
+   115→   115→  /** Additive population-growth multiplier (0.30 = +30% pop growth). */
+   116→   116→  populationGrowthMult?: number;
+   117→   117→  /** Additive military-power multiplier (0.40 = +40% military). */
+   118→   118→  militaryMult?: number;
+   119→   119→  /** Additive science multiplier (0.35 = +35% science). */
+   120→   120→  scienceMult?: number;
+   121→   121→  /** Additive gold multiplier (0.25 = +25% gold). */
+   122→   122→  goldMult?: number;
+   123→   123→  /** Multiplicative worship-bonus multiplier (2.0 = double the worship bonus). */
+   124→   124→  worshipMult?: number;
+   125→   125→  /** Flat per-tick happiness bonus (signed). */
+   126→   126→  happinessFlat?: number;
+   127→   127→  /** Happiness clamp target while the law is codified (Order: 80). */
+   128→   128→  happinessTarget?: number;
+   129→   129→  /** Whether heresy decays naturally while codified (Mercy). */
+   130→   130→  heresyDecays?: boolean;
+   131→   131→  /** One-time flat heresy change applied at codification (signed; Faith: -20). */
+   132→   132→  heresyFlatOnCodify?: number;
+   133→   133→  /** Additive multiplier on BASE_HERESY_RATE (Zeal: +0.50; Order: -0.50; Mercy: -2.00). */
+   134→   134→  heresyRateMult?: number;
+   135→   135→}
+   136→   136→
+   137→   137→export const DIVINE_LAWS: DivineLawDef[] = [
+   138→   138→  {
+   139→   139→    id: "law_abundance",
+   140→   140→    name: "Law of Abundance",
+   141→   141→    desc: "Decree that overflow is the natural state of the world. All production flows 15% richer.",
+   142→   142→    icon: "🌾",
+   143→   143→    cost: 15,
+   144→   144→    productionMult: 0.15,
+   145→   145→  },
+   146→   146→  {
+   147→   147→    id: "law_fertility",
+   148→   148→    name: "Law of Fertility",
+   149→   149→    desc: "Bless every womb and seed. Population growth surges by 30%.",
+   150→   150→    icon: "🌱",
+   151→   151→    cost: 12,
+   152→   152→    populationGrowthMult: 0.30,
+   153→   153→  },
+   154→   154→  {
+   155→   155→    id: "law_order",
+   156→   156→    name: "Law of Order",
+   157→   157→    desc: "Impose harmony by decree. Happiness holds at 80; heresy spreads half as fast.",
+   158→   158→    icon: "⚖️",
+   159→   159→    cost: 18,
+   160→   160→    happinessTarget: 80,
+   161→   161→    heresyRateMult: -0.50,
+   162→   162→  },
+   163→   163→  {
+   164→   164→    id: "law_zeal",
+   165→   165→    name: "Law of Zeal",
+   166→   166→    desc: "Refine the faithful into a blade. +40% military — but zealotry breeds heresy 50% faster.",
+   167→   167→    icon: "🔥",
+   168→   168→    cost: 20,
+   169→   169→    militaryMult: 0.40,
+   170→   170→    heresyRateMult: 0.50,
+   171→   171→  },
+   172→   172→  {
+   173→   173→    id: "law_revelation",
+   174→   174→    name: "Law of Revelation",
+   175→   175→    desc: "Open the heavens to inquiry. Science flows 35% richer.",
+   176→   176→    icon: "📖",
+   177→   177→    cost: 16,
+   178→   178→    scienceMult: 0.35,
+   179→   179→  },
+   180→   180→  {
+   181→   181→    id: "law_tithe",
+   182→   182→    name: "Law of Tithe",
+   183→   183→    desc: "A tenth of every work is the god's. Gold and production both rise 25%.",
+   184→   184→    icon: "🪙",
+   185→   185→    cost: 14,
+   186→   186→    goldMult: 0.25,
+   187→   187→    productionMult: 0.25,
+   188→   188→  },
+   189→   189→  {
+   190→   190→    id: "law_faith",
+   191→   191→    name: "Law of Faith",
+   192→   192→    desc: "Doubt is named and diminished. Worship bonus doubles; 20 heresy extinguished at codification.",
+   193→   193→    icon: "🙏",
+   194→   194→    cost: 22,
+   195→   195→    worshipMult: 2.0,
+   196→   196→    heresyFlatOnCodify: -20,
+   197→   197→  },
+   198→   198→  {
+   199→   199→    id: "law_mercy",
+   200→   200→    name: "Law of Mercy",
+   201→   201→    desc: "Forgiveness becomes law. Heresy decays naturally; happiness lifts by 10.",
+   202→   202→    icon: "🤲",
+   203→   203→    cost: 19,
+   204→   204→    heresyDecays: true,
+   205→   205→    heresyRateMult: -2.00,
+   206→   206→    happinessFlat: 10,
+   207→   207→  },
+   208→   208→];
+   209→   209→
+   210→   210→export const DIVINE_LAW_MAP: Record<string, DivineLawDef> = Object.fromEntries(
+   211→   211→  DIVINE_LAWS.map((l) => [l.id, l])
+   212→   212→);
+   213→   213→
+   214→   214→export const DIVINE_LAW_COUNT: number = DIVINE_LAWS.length;
+   215→   215→
+   216→   216→// =====================================================================
+   217→   217→// 2. Worship Modes (6) — choose how mortals relate to the god
+   218→   218→// =====================================================================
+   219→   219→
+   220→   220→/**
+   221→   221→ * A single Worship Mode. The player picks exactly one at the start of
+   222→   222→ * an Apotheosis run; it applies for the entire run. Effects are spread
+   223→   223→ * across optional fields; the IIFE validator enforces that each mode
+   224→   224→ * sets at least one.
+   225→   225→ *
+   226→   226→ * Field → consumer wiring:
+   227→   227→ *   - `productionMult`        → additive all-production mult (Reverence, Ambition, Mystery)
+   228→   228→ *   - `populationGrowthMult` → additive pop-growth mult (Devotion)
+   229→   229→ *   - `militaryMult`         → additive military mult (Fear)
+   230→   230→ *   - `scienceMult`           → additive science mult (Wonder)
+   231→   231→ *   - `goldMult`              → additive gold mult (Ambition)
+   232→   232→ *   - `happinessFlat`         → flat per-tick happiness bonus (Wonder, Devotion)
+   233→   233→ *   - `happinessDrainMult`   → multiplicative mult on happiness drain rate (Fear 0.5 = half drain)
+   234→   234→ *   - `heresyRateMult`        → additive mult on BASE_HERESY_RATE (Mystery -0.25)
+   235→   235→ */
+   236→   236→export interface WorshipModeDef {
+   237→   237→  /** Stable identifier (matches `worshipMode` in GameState). */
+   238→   238→  id: string;
+   239→   239→  /** Human-readable worship mode name. */
+   240→   240→  name: string;
+   241→   241→  /** Narrative / mechanical flavour of how mortals relate to the god. */
+   242→   242→  desc: string;
+   243→   243→  /** Emoji glyph shown on the worship mode card. */
+   244→   244→  icon: string;
+   245→   245→  /** Additive all-production multiplier (0.10 = +10% all production). */
+   246→   246→  productionMult?: number;
+   247→   247→  /** Additive population-growth multiplier (0.20 = +20% pop growth). */
+   248→   248→  populationGrowthMult?: number;
+   249→   249→  /** Additive military-power multiplier (0.25 = +25% military). */
+   250→   250→  militaryMult?: number;
+   251→   251→  /** Additive science multiplier (0.20 = +20% science). */
+   252→   252→  scienceMult?: number;
+   253→   253→  /** Additive gold multiplier (0.20 = +20% gold). */
+   254→   254→  goldMult?: number;
+   255→   255→  /** Flat per-tick happiness bonus (signed). */
+   256→   256→  happinessFlat?: number;
+   257→   257→  /** Multiplicative happiness-drain multiplier (0.5 = half drain; 1.0 = normal). */
+   258→   258→  happinessDrainMult?: number;
+   259→   259→  /** Additive multiplier on BASE_HERESY_RATE (Mystery: -0.25 = 25% slower heresy). */
+   260→   260→  heresyRateMult?: number;
+   261→   261→}
+   262→   262→
+   263→   263→export const WORSHIP_MODES: WorshipModeDef[] = [
+   264→   264→  {
+   265→   265→    id: "reverence",
+   266→   266→    name: "Reverence",
+   267→   267→    desc: "The faithful adore the god through gratitude and steady service. All production flows 10% richer.",
+   268→   268→    icon: "🙇",
+   269→   269→    productionMult: 0.10,
+   270→   270→  },
+   271→   271→  {
+   272→   272→    id: "fear",
+   273→   273→    name: "Fear",
+   274→   274→    desc: "The world obeys because it dreads divine judgment. +25% military; happiness drains half as fast.",
+   275→   275→    icon: "😨",
+   276→   276→    militaryMult: 0.25,
+   277→   277→    happinessDrainMult: 0.5,
+   278→   278→  },
+   279→   279→  {
+   280→   280→    id: "wonder",
+   281→   281→    name: "Wonder",
+   282→   282→    desc: "The god is marveled at more than obeyed. +20% science; happiness lifts by 10.",
+   283→   283→    icon: "🌟",
+   284→   284→    scienceMult: 0.20,
+   285→   285→    happinessFlat: 10,
+   286→   286→  },
+   287→   287→  {
+   288→   288→    id: "ambition",
+   289→   289→    name: "Ambition",
+   290→   290→    desc: "Faith becomes a covenant of ascent. +20% gold and +15% production.",
+   291→   291→    icon: "👑",
+   292→   292→    goldMult: 0.20,
+   293→   293→    productionMult: 0.15,
+   294→   294→  },
+   295→   295→  {
+   296→   296→    id: "mystery",
+   297→   297→    name: "Mystery",
+   298→   298→    desc: "The god hides behind signs and symbols. +15% production; heresy spreads 25% slower.",
+   299→   299→    icon: "🌫️",
+   300→   300→    productionMult: 0.15,
+   301→   301→    heresyRateMult: -0.25,
+   302→   302→  },
+   303→   303→  {
+   304→   304→    id: "devotion",
+   305→   305→    name: "Devotion",
+   306→   306→    desc: "The faithful multiply and rejoice. +20% population growth; happiness lifts by 15.",
+   307→   307→    icon: "🕯️",
+   308→   308→    populationGrowthMult: 0.20,
+   309→   309→    happinessFlat: 15,
+   310→   310→  },
+   311→   311→];
+   312→   312→
+   313→   313→export const WORSHIP_MODE_MAP: Record<string, WorshipModeDef> = Object.fromEntries(
+   314→   314→  WORSHIP_MODES.map((m) => [m.id, m])
+   315→   315→);
+   316→   316→
+   317→   317→export const WORSHIP_MODE_COUNT: number = WORSHIP_MODES.length;
+   318→   318→
+   319→   319→// =====================================================================
+   320→   320→// 3. Miracles (5) — dramatic interventions that cost Divinity
+   321→   321→// =====================================================================
+   322→   322→
+   323→   323→/**
+   324→   324→ * A single Miracle. Miracles cost Divinity and have a per-run usage
+   325→   325→ * limit (stored on `miracleUses[id]` in GameState). Each miracle has
+   326→   326→ * exactly one effect kind; the IIFE validator enforces this.
+   327→   327→ *
+   328→   328→ * Effect field → consumer wiring:
+   329→   329→ *   - `grantAllResources`    → flat amount added to every primary resource
+   330→   330→ *                              (Manna from Heaven: 50). The consumer iterates
+   331→   331→ *                              `RESOURCES.filter(r => r.category === "primary")`.
+   332→   332→ *   - `grantPopulation`      → flat population bonus (Great Bloom: +20).
+   333→   333→ *   - `setHappiness`         → clamp happiness to value (Jubilee: 100).
+   334→   334→ *   - `heresyFlat`           → signed flat heresy change (Purge of Doubt: -30).
+   335→   335→ *   - `productionBoost`      → temporary production multiplier + duration (Divine Enlightenment).
+   336→   336→ *                              The store applies the mult via `miracleTimers[id]`,
+   337→   337→ *                              counting down `durationSec` each tick.
+   338→   338→ */
+   339→   339→export interface MiracleDef {
+   340→   340→  /** Stable identifier (used as a key in `miracleUses` / `miracleTimers` in GameState). */
+   341→   341→  id: string;
+   342→   342→  /** Human-readable miracle name. */
+   343→   343→  name: string;
+   344→   344→  /** Narrative / mechanical flavour of the miracle's effect. */
+   345→   345→  desc: string;
+   346→   346→  /** Emoji glyph shown on the miracle card. */
+   347→   347→  icon: string;
+   348→   348→  /** Divinity cost to invoke the miracle. */
+   349→   349→  cost: number;
+   350→   350→  /** Maximum times this miracle can be invoked per run. */
+   351→   351→  limitPerRun: number;
+   352→   352→  /** Flat amount granted to every primary resource. */
+   353→   353→  grantAllResources?: number;
+   354→   354→  /** Flat population bonus. */
+   355→   355→  grantPopulation?: number;
+   356→   356→  /** Happiness clamp target (sets happiness to this value). */
+   357→   357→  setHappiness?: number;
+   358→   358→  /** Signed flat heresy change (typically negative). */
+   359→   359→  heresyFlat?: number;
+   360→   360→  /** Temporary production multiplier + duration. */
+   361→   361→  productionBoost?: { mult: number; durationSec: number };
+   362→   362→}
+   363→   363→
+   364→   364→export const MIRACLES: MiracleDef[] = [
+   365→   365→  {
+   366→   366→    id: "manna_from_heaven",
+   367→   367→    name: "Manna from Heaven",
+   368→   368→    desc: "The sky opens. 50 of every primary resource descends upon the world.",
+   369→   369→    icon: "🍞",
+   370→   370→    cost: 15,
+   371→   371→    limitPerRun: 3,
+   372→   372→    grantAllResources: 50,
+   373→   373→  },
+   374→   374→  {
+   375→   375→    id: "great_bloom",
+   376→   376→    name: "Great Bloom",
+   377→   377→    desc: "Life bursts forth in every cradle. +20 population, instantly.",
+   378→   378→    icon: "🌸",
+   379→   379→    cost: 18,
+   380→   380→    limitPerRun: 2,
+   381→   381→    grantPopulation: 20,
+   382→   382→  },
+   383→   383→  {
+   384→   384→    id: "jubilee",
+   385→   385→    name: "Jubilee",
+   386→   386→    desc: "A day of total grace. Happiness is set to 100; the world sings.",
+   387→   387→    icon: "🎉",
+   388→   388→    cost: 12,
+   389→   389→    limitPerRun: 3,
+   390→   390→    setHappiness: 100,
+   391→   391→  },
+   392→   392→  {
+   393→   393→    id: "purge_of_doubt",
+   394→   394→    name: "Purge of Doubt",
+   395→   395→    desc: "Heresy is named and burned. -30 heresy, paid in divinity.",
+   396→   396→    icon: "🗡️",
+   397→   397→    cost: 20,
+   398→   398→    limitPerRun: 2,
+   399→   399→    heresyFlat: -30,
+   400→   400→  },
+   401→   401→  {
+   402→   402→    id: "divine_enlightenment",
+   403→   403→    name: "Divine Enlightenment",
+   404→   404→    desc: "The god's mind touches every work. Production is tripled for 60 seconds.",
+   405→   405→    icon: "☀️",
+   406→   406→    cost: 30,
+   407→   407→    limitPerRun: 1,
+   408→   408→    productionBoost: { mult: 3, durationSec: 60 },
+   409→   409→  },
+   410→   410→];
+   411→   411→
+   412→   412→export const MIRACLE_MAP: Record<string, MiracleDef> = Object.fromEntries(
+   413→   413→  MIRACLES.map((m) => [m.id, m])
+   414→   414→);
+   415→   415→
+   416→   416→export const MIRACLE_COUNT: number = MIRACLES.length;
+   417→   417→
+   418→   418→// =====================================================================
+   419→   419→// 4. Heresy Responses (4) — manage rising heresy (0..100; run ends at 100)
+   420→   420→// =====================================================================
+   421→   421→
+   422→   422→/**
+   423→   423→ * A single Heresy Response. The player invokes these to keep `state.heresy`
+   424→   424→ * below `HERESY_MAX` (100). Each response has a Divinity cost (0 for
+   425→   425→ * Tolerate) and a per-run usage limit (`Infinity` for Tolerate, which is
+   426→   426→ * always free and unlimited). Effects are spread across optional fields.
+   427→   427→ *
+   428→   428→ * Effect field → consumer wiring:
+   429→   429→ *   - `heresyFlat`      → signed flat heresy change (typically negative)
+   430→   430→ *   - `happinessFlat`   → signed flat happiness change (typically negative)
+   431→   431→ *   - `populationFlat`  → signed flat population change (typically negative)
+   432→   432→ *
+   433→   433→ * Note: Tolerate is the "do nothing" option. It costs 0 Divinity, has
+   434→   434→ * unlimited uses, and applies no effects. It exists so the player can
+   435→   435→ * explicitly acknowledge rising heresy without spending resources.
+   436→   436→ */
+   437→   437→export interface HeresyResponseDef {
+   438→   438→  /** Stable identifier (used as a key in `heresyResponseUses` in GameState). */
+   439→   439→  id: string;
+   440→   440→  /** Human-readable heresy response name. */
+   441→   441→  name: string;
+   442→   442→  /** Narrative / mechanical flavour of the response and its toll. */
+   443→   443→  desc: string;
+   444→   444→  /** Emoji glyph shown on the response card. */
+   445→   445→  icon: string;
+   446→   446→  /** Divinity cost to invoke (0 for Tolerate). */
+   447→   447→  cost: number;
+   448→   448→  /** Maximum times this response can be invoked per run (`Infinity` for Tolerate). */
+   449→   449→  limitPerRun: number;
+   450→   450→  /** Signed flat heresy change (typically negative — reduces heresy). */
+   451→   451→  heresyFlat?: number;
+   452→   452→  /** Signed flat happiness change (typically negative). */
+   453→   453→  happinessFlat?: number;
+   454→   454→  /** Signed flat population change (typically negative). */
+   455→   455→  populationFlat?: number;
+   456→   456→}
+   457→   457→
+   458→   458→export const HERESY_RESPONSES: HeresyResponseDef[] = [
+   459→   459→  {
+   460→   460→    id: "tolerate",
+   461→   461→    name: "Tolerate",
+   462→   462→    desc: "Let doubt breathe. It costs nothing — and changes nothing.",
+   463→   463→    icon: "🤷",
+   464→   464→    cost: 0,
+   465→   465→    limitPerRun: Infinity,
+   466→   466→  },
+   467→   467→  {
+   468→   468→    id: "convert",
+   469→   469→    name: "Convert",
+   470→   470→    desc: "Reason with the heretics, gently. -15 heresy at the cost of -5 happiness.",
+   471→   471→    icon: "📜",
+   472→   472→    cost: 8,
+   473→   473→    limitPerRun: 5,
+   474→   474→    heresyFlat: -15,
+   475→   475→    happinessFlat: -5,
+   476→   476→  },
+   477→   477→  {
+   478→   478→    id: "smite",
+   479→   479→    name: "Smite",
+   480→   480→    desc: "Strike the leaders down. -30 heresy, -10 population. The survivors fall quiet.",
+   481→   481→    icon: "⚡",
+   482→   482→    cost: 15,
+   483→   483→    limitPerRun: 3,
+   484→   484→    heresyFlat: -30,
+   485→   485→    populationFlat: -10,
+   486→   486→  },
+   487→   487→  {
+   488→   488→    id: "inquisition",
+   489→   489→    name: "Inquisition",
+   490→   490→    desc: "Root out heresy wherever it hides. -50 heresy, -15 happiness, -5 population. Resolves the schism.",
+   491→   491→    icon: "🔥",
+   492→   492→    cost: 25,
+   493→   493→    limitPerRun: 1,
+   494→   494→    heresyFlat: -50,
+   495→   495→    happinessFlat: -15,
+   496→   496→    populationFlat: -5,
+   497→   497→  },
+   498→   498→];
+   499→   499→
+   500→   500→export const HERESY_RESPONSE_MAP: Record<string, HeresyResponseDef> = Object.fromEntries(
+   501→   501→  HERESY_RESPONSES.map((r) => [r.id, r])
+   502→   502→);
+   503→   503→
+   504→   504→export const HERESY_RESPONSE_COUNT: number = HERESY_RESPONSES.length;
+   505→   505→
+   506→   506→// =====================================================================
+   507→   507→// Module-load sanity checks
+   508→   508→// =====================================================================
+   509→   509→
+   510→   510→/**
+   511→   511→ * Validate the apotheosis data at module load:
+   512→   512→ *   - All ids within each family are unique.
+   513→   513→ *   - Each divine law sets at least one effect field, has cost >= 0,
+   514→   514→ *     and (if `worshipMult` set) is >= 1.
+   515→   515→ *   - Each worship mode sets at least one effect field.
+   516→   516→ *   - Each miracle sets exactly one effect (XOR-style check), has
+   517→   517→ *     cost > 0 and limitPerRun >= 1.
+   518→   518→ *   - Each heresy response has cost >= 0 and limitPerRun >= 1
+   519→   519→ *     (Infinity allowed for Tolerate).
+   520→   520→ *   - BASE_HERESY_RATE > 0, HERESY_MAX > 0.
+   521→   521→ *
+   522→   522→ * Throws on any violation (programmer error, not a runtime / save data
+   523→   523→ * error). The check is O(N) and runs once, so it's a no-op on the hot
+   524→   524→ * path. Matches the pattern established by `transcendence.ts` and
+   525→   525→ * `genesis.ts`.
+   526→   526→ */
+   527→   527→(function validateApotheosisData(): void {
+   528→   528→  if (BASE_HERESY_RATE <= 0) {
+   529→   529→    throw new Error(`apotheosis.ts: BASE_HERESY_RATE must be > 0 (got ${BASE_HERESY_RATE})`);
+   530→   530→  }
+   531→   531→  if (HERESY_MAX <= 0) {
+   532→   532→    throw new Error(`apotheosis.ts: HERESY_MAX must be > 0 (got ${HERESY_MAX})`);
+   533→   533→  }
+   534→   534→  if (APOTHEOSIS_COMPLETION_LAWS_REQUIRED < 1) {
+   535→   535→    throw new Error(
+   536→   536→      `apotheosis.ts: APOTHEOSIS_COMPLETION_LAWS_REQUIRED must be >= 1 (got ${APOTHEOSIS_COMPLETION_LAWS_REQUIRED})`
+   537→   537→    );
+   538→   538→  }
+   539→   539→
+   540→   540→  const seenLaw = new Set<string>();
+   541→   541→  for (const l of DIVINE_LAWS) {
+   542→   542→    if (seenLaw.has(l.id)) {
+   543→   543→      throw new Error(`apotheosis.ts: duplicate divine law id "${l.id}"`);
+   544→   544→    }
+   545→   545→    seenLaw.add(l.id);
+   546→   546→    if (l.cost < 0) {
+   547→   547→      throw new Error(`apotheosis.ts: divine law "${l.id}" has negative cost`);
+   548→   548→    }
+   549→   549→    if (l.worshipMult !== undefined && l.worshipMult < 1) {
+   550→   550→      throw new Error(
+   551→   551→        `apotheosis.ts: divine law "${l.id}" worshipMult must be >= 1 (got ${l.worshipMult})`
+   552→   552→      );
+   553→   553→    }
+   554→   554→    if (l.happinessTarget !== undefined && (l.happinessTarget < 0 || l.happinessTarget > 100)) {
+   555→   555→      throw new Error(
+   556→   556→        `apotheosis.ts: divine law "${l.id}" happinessTarget must be in [0, 100] (got ${l.happinessTarget})`
+   557→   557→      );
+   558→   558→    }
+   559→   559→    const effects = [
+   560→   560→      l.productionMult !== undefined,
+   561→   561→      l.populationGrowthMult !== undefined,
+   562→   562→      l.militaryMult !== undefined,
+   563→   563→      l.scienceMult !== undefined,
+   564→   564→      l.goldMult !== undefined,
+   565→   565→      l.worshipMult !== undefined,
+   566→   566→      l.happinessFlat !== undefined,
+   567→   567→      l.happinessTarget !== undefined,
+   568→   568→      l.heresyDecays !== undefined,
+   569→   569→      l.heresyFlatOnCodify !== undefined,
+   570→   570→      l.heresyRateMult !== undefined,
+   571→   571→    ].filter(Boolean).length;
+   572→   572→    if (effects < 1) {
+   573→   573→      throw new Error(`apotheosis.ts: divine law "${l.id}" must set at least one effect (set ${effects})`);
+   574→   574→    }
+   575→   575→  }
+   576→   576→
+   577→   577→  const seenMode = new Set<string>();
+   578→   578→  for (const m of WORSHIP_MODES) {
+   579→   579→    if (seenMode.has(m.id)) {
+   580→   580→      throw new Error(`apotheosis.ts: duplicate worship mode id "${m.id}"`);
+   581→   581→    }
+   582→   582→    seenMode.add(m.id);
+   583→   583→    if (m.happinessDrainMult !== undefined && m.happinessDrainMult < 0) {
+   584→   584→      throw new Error(
+   585→   585→        `apotheosis.ts: worship mode "${m.id}" happinessDrainMult must be >= 0 (got ${m.happinessDrainMult})`
+   586→   586→      );
+   587→   587→    }
+   588→   588→    const effects = [
+   589→   589→      m.productionMult !== undefined,
+   590→   590→      m.populationGrowthMult !== undefined,
+   591→   591→      m.militaryMult !== undefined,
+   592→   592→      m.scienceMult !== undefined,
+   593→   593→      m.goldMult !== undefined,
+   594→   594→      m.happinessFlat !== undefined,
+   595→   595→      m.happinessDrainMult !== undefined,
+   596→   596→      m.heresyRateMult !== undefined,
+   597→   597→    ].filter(Boolean).length;
+   598→   598→    if (effects < 1) {
+   599→   599→      throw new Error(`apotheosis.ts: worship mode "${m.id}" must set at least one effect (set ${effects})`);
+   600→   600→    }
+   601→   601→  }
+   602→   602→
+   603→   603→  const seenMiracle = new Set<string>();
+   604→   604→  for (const m of MIRACLES) {
+   605→   605→    if (seenMiracle.has(m.id)) {
+   606→   606→      throw new Error(`apotheosis.ts: duplicate miracle id "${m.id}"`);
+   607→   607→    }
+   608→   608→    seenMiracle.add(m.id);
+   609→   609→    if (m.cost <= 0) {
+   610→   610→      throw new Error(`apotheosis.ts: miracle "${m.id}" has non-positive cost`);
+   611→   611→    }
+   612→   612→    if (m.limitPerRun < 1) {
+   613→   613→      throw new Error(`apotheosis.ts: miracle "${m.id}" limitPerRun must be >= 1`);
+   614→   614→    }
+   615→   615→    if (m.grantAllResources !== undefined && m.grantAllResources <= 0) {
+   616→   616→      throw new Error(`apotheosis.ts: miracle "${m.id}" grantAllResources must be > 0`);
+   617→   617→    }
+   618→   618→    if (m.grantPopulation !== undefined && m.grantPopulation <= 0) {
+   619→   619→      throw new Error(`apotheosis.ts: miracle "${m.id}" grantPopulation must be > 0`);
+   620→   620→    }
+   621→   621→    if (m.setHappiness !== undefined && (m.setHappiness < 0 || m.setHappiness > 100)) {
+   622→   622→      throw new Error(
+   623→   623→        `apotheosis.ts: miracle "${m.id}" setHappiness must be in [0, 100] (got ${m.setHappiness})`
+   624→   624→      );
+   625→   625→    }
+   626→   626→    if (m.heresyFlat !== undefined && m.heresyFlat >= 0) {
+   627→   627→      throw new Error(
+   628→   628→        `apotheosis.ts: miracle "${m.id}" heresyFlat must be negative (got ${m.heresyFlat})`
+   629→   629→      );
+   630→   630→    }
+   631→   631→    if (m.productionBoost !== undefined) {
+   632→   632→      if (m.productionBoost.mult <= 1) {
+   633→   633→        throw new Error(
+   634→   634→          `apotheosis.ts: miracle "${m.id}" productionBoost.mult must be > 1 (got ${m.productionBoost.mult})`
+   635→   635→        );
+   636→   636→      }
+   637→   637→      if (m.productionBoost.durationSec <= 0) {
+   638→   638→        throw new Error(
+   639→   639→          `apotheosis.ts: miracle "${m.id}" productionBoost.durationSec must be > 0`
+   640→   640→        );
+   641→   641→      }
+   642→   642→    }
+   643→   643→    const effects = [
+   644→   644→      m.grantAllResources !== undefined,
+   645→   645→      m.grantPopulation !== undefined,
+   646→   646→      m.setHappiness !== undefined,
+   647→   647→      m.heresyFlat !== undefined,
+   648→   648→      m.productionBoost !== undefined,
+   649→   649→    ].filter(Boolean).length;
+   650→   650→    if (effects !== 1) {
+   651→   651→      throw new Error(
+   652→   652→        `apotheosis.ts: miracle "${m.id}" must set exactly one effect (set ${effects})`
+   653→   653→      );
+   654→   654→    }
+   655→   655→  }
+   656→   656→
+   657→   657→  const seenResponse = new Set<string>();
+   658→   658→  for (const r of HERESY_RESPONSES) {
+   659→   659→    if (seenResponse.has(r.id)) {
+   660→   660→      throw new Error(`apotheosis.ts: duplicate heresy response id "${r.id}"`);
+   661→   661→    }
+   662→   662→    seenResponse.add(r.id);
+   663→   663→    if (r.cost < 0) {
+   664→   664→      throw new Error(`apotheosis.ts: heresy response "${r.id}" has negative cost`);
+   665→   665→    }
+   666→   666→    if (r.limitPerRun < 1) {
+   667→   667→      throw new Error(`apotheosis.ts: heresy response "${r.id}" limitPerRun must be >= 1`);
+   668→   668→    }
+   669→   669→    if (r.heresyFlat !== undefined && r.heresyFlat >= 0 && r.id !== "tolerate") {
+   670→   670→      // Tolerate has no effects; non-Tolerate responses should reduce heresy.
+   671→   671→      throw new Error(
+   672→   672→        `apotheosis.ts: heresy response "${r.id}" heresyFlat must be negative (got ${r.heresyFlat})`
+   673→   673→      );
+   674→   674→    }
+   675→   675→  }
+   676→   676→})();
+   677→   677→
+   678→   678→// =====================================================================
+   679→   679→// Helpers
+   680→   680→// =====================================================================
+   681→   681→
+   682→   682→/**
+   683→   683→ * Aggregated bonus object returned by `divineLawBonus`.
+   684→   684→ *
+   685→   685→ * All mult fields are additive on top of the baseline (0 = no change);
+   686→   686→ * `worshipMult` is multiplicative (1 = no change, 2 = doubled).
+   687→   687→ *
+   688→   688→ * The consumer applies these in the tick loop:
+   689→   689→ *   - `productionMult`:        multiply production by `(1 + productionMult)`
+   690→   690→ *   - `populationGrowthMult`:  multiply pop growth by `(1 + populationGrowthMult)`
+   691→   691→ *   - `militaryMult`:           multiply military by `(1 + militaryMult)`
+   692→   692→ *   - `scienceMult`:             multiply science by `(1 + scienceMult)`
+   693→   693→ *   - `goldMult`:                multiply gold by `(1 + goldMult)`
+   694→   694→ *   - `worshipMult`:             multiply the worship-bonus by `worshipMult`
+   695→   695→ *   - `happinessFlat`:          add to happiness per tick (or per second)
+   696→   696→ *   - `happinessTarget`:        if non-null, clamp happiness to this value
+   697→   697→ *   - `heresyDecays`:            UI flag; if true the heresy meter shows "Decaying"
+   698→   698→ *   - `heresyRateMult`:          passed through to `heresyRateMult` helper
+   699→   699→ */
+   700→   700→export interface DivineLawBonus {
+   701→   701→  /** Additive all-production multiplier (Abundance +0.15, Tithe +0.25). */
+   702→   702→  productionMult: number;
+   703→   703→  /** Additive population-growth multiplier (Fertility +0.30). */
+   704→   704→  populationGrowthMult: number;
+   705→   705→  /** Additive military-power multiplier (Zeal +0.40). */
+   706→   706→  militaryMult: number;
+   707→   707→  /** Additive science multiplier (Revelation +0.35). */
+   708→   708→  scienceMult: number;
+   709→   709→  /** Additive gold multiplier (Tithe +0.25). */
+   710→   710→  goldMult: number;
+   711→   711→  /** Multiplicative worship-bonus multiplier (Faith = 2.0; default 1.0). */
+   712→   712→  worshipMult: number;
+   713→   713→  /** Flat per-tick happiness bonus (Mercy +10). */
+   714→   714→  happinessFlat: number;
+   715→   715→  /** Happiness clamp target (Order: 80; null = no clamp). */
+   716→   716→  happinessTarget: number | null;
+   717→   717→  /** Whether heresy decays naturally while codified (Mercy). */
+   718→   718→  heresyDecays: boolean;
+   719→   719→  /** Additive multiplier on BASE_HERESY_RATE (Zeal +0.50; Order -0.50; Mercy -2.00). */
+   720→   720→  heresyRateMult: number;
+   721→   721→}
+   722→   722→
+   723→   723→/**
+   724→   724→ * Sum the bonuses from all codified Divine Laws into a single aggregate.
+   725→   725→ *
+   726→   726→ * All mult fields are additive (0 = no change) EXCEPT `worshipMult`,
+   727→   727→ * which is multiplicative (1 = no change, 2 = doubled by Faith).
+   728→   728→ * Compounding multiple laws that set `worshipMult` (currently only
+   729→   729→ * Faith) would multiply them; with only Faith in the dataset, the
+   730→   730→ * value is 1.0 (no Faith) or 2.0 (Faith codified).
+   731→   731→ *
+   732→   732→ * Used by the tick loop to compute per-resource multipliers, the
+   733→   733→ * pop-growth rate, happiness clamps, and the worship-bonus multiplier.
+   734→   734→ * Also feeds the standalone `heresyRateMult` helper for the heresy
+   735→   735→ * meter's rate calculation.
+   736→   736→ *
+   737→   737→ * One-time effects (like Faith's `heresyFlatOnCodify: -20`) are NOT
+   738→   738→ * included here — they're applied once by the store at codification
+   739→   739→ * time, not per-tick. Read them directly from `DIVINE_LAW_MAP[id]`.
+   740→   740→ *
+   741→   741→ * @param lawsCodified  Map of law id → codified-this-run flag.
+   742→   742→ * @returns Aggregated `DivineLawBonus` (all fields defaulted for empty input).
+   743→   743→ *
+   744→   744→ * @example
+   745→   745→ *   divineLawBonus({})
+   746→   746→ *     // → { productionMult:0, ..., worshipMult:1, happinessTarget:null,
+   747→   747→ *     //     heresyDecays:false, heresyRateMult:0 }
+   748→   748→ *   divineLawBonus({ law_abundance: true })
+   749→   749→ *     // → { productionMult:0.15, ..., worshipMult:1, ... }
+   750→   750→ *   divineLawBonus({ law_abundance: true, law_tithe: true })
+   751→   751→ *     // → { productionMult:0.40, goldMult:0.25, ..., worshipMult:1, ... }
+   752→   752→ *   divineLawBonus({ law_faith: true })
+   753→   753→ *     // → { ..., worshipMult:2.0, ... }  (multiplicative, not additive)
+   754→   754→ *   divineLawBonus({ law_zeal: true, law_order: true })
+   755→   755→ *     // → { ..., heresyRateMult:0, ... }  (+0.50 + -0.50 cancel out)
+   756→   756→ *   divineLawBonus({ law_mercy: true })
+   757→   757→ *     // → { ..., heresyDecays:true, heresyRateMult:-2.00, happinessFlat:10 }
+   758→   758→ */
+   759→   759→export function divineLawBonus(
+   760→   760→  lawsCodified: Record<string, boolean>
+   761→   761→): DivineLawBonus {
+   762→   762→  const result: DivineLawBonus = {
+   763→   763→    productionMult: 0,
+   764→   764→    populationGrowthMult: 0,
+   765→   765→    militaryMult: 0,
+   766→   766→    scienceMult: 0,
+   767→   767→    goldMult: 0,
+   768→   768→    worshipMult: 1, // multiplicative identity
+   769→   769→    happinessFlat: 0,
+   770→   770→    happinessTarget: null,
+   771→   771→    heresyDecays: false,
+   772→   772→    heresyRateMult: 0,
+   773→   773→  };
+   774→   774→  for (const law of DIVINE_LAWS) {
+   775→   775→    if (!lawsCodified[law.id]) continue;
+   776→   776→    if (law.productionMult !== undefined) result.productionMult += law.productionMult;
+   777→   777→    if (law.populationGrowthMult !== undefined) result.populationGrowthMult += law.populationGrowthMult;
+   778→   778→    if (law.militaryMult !== undefined) result.militaryMult += law.militaryMult;
+   779→   779→    if (law.scienceMult !== undefined) result.scienceMult += law.scienceMult;
+   780→   780→    if (law.goldMult !== undefined) result.goldMult += law.goldMult;
+   781→   781→    if (law.worshipMult !== undefined) result.worshipMult *= law.worshipMult;
+   782→   782→    if (law.happinessFlat !== undefined) result.happinessFlat += law.happinessFlat;
+   783→   783→    if (law.happinessTarget !== undefined) result.happinessTarget = law.happinessTarget;
+   784→   784→    if (law.heresyDecays) result.heresyDecays = true;
+   785→   785→    if (law.heresyRateMult !== undefined) result.heresyRateMult += law.heresyRateMult;
+   786→   786→  }
+   787→   787→  return result;
+   788→   788→}
+   789→   789→
+   790→   790→/**
+   791→   791→ * Return the active Worship Mode's def, or `null` if no mode is set.
+   792→   792→ *
+   793→   793→ * Only one worship mode can be active per run (`state.worshipMode` is a
+   794→   794→ * single id, not a set). The consumer reads the effect fields directly
+   795→   795→ * from the returned def:
+   796→   796→ *
+   797→   797→ *   const mode = worshipModeBonus(state.worshipMode);
+   798→   798→ *   if (mode?.productionMult) production *= (1 + mode.productionMult);
+   799→   799→ *   if (mode?.happinessDrainMult) drainRate *= mode.happinessDrainMult;
+   800→   800→ *
+   801→   801→ * @param modeId  The active worship mode id, or `null` if no mode picked yet.
+   802→   802→ * @returns The `WorshipModeDef` for the id, or `null`.
+   803→   803→ *
+   804→   804→ * @example
+   805→   805→ *   worshipModeBonus(null)
+   806→   806→ *     // → null
+   807→   807→ *   worshipModeBonus("reverence")
+   808→   808→ *     // → { id:"reverence", name:"Reverence", ..., productionMult:0.10 }
+   809→   809→ *   worshipModeBonus("nonexistent_id")
+   810→   810→ *     // → null  (unknown id treated as "no mode")
+   811→   811→ */
+   812→   812→export function worshipModeBonus(
+   813→   813→  modeId: string | null
+   814→   814→): WorshipModeDef | null {
+   815→   815→  if (!modeId) return null;
+   816→   816→  return WORSHIP_MODE_MAP[modeId] ?? null;
+   817→   817→}
+   818→   818→
+   819→   819→/**
+   820→   820→ * Compute the additive multiplier on `BASE_HERESY_RATE` from codified
+   821→   821→ * Divine Laws and the active Worship Mode.
+   822→   822→ *
+   823→   823→ * Sources (all additive):
+   824→   824→ *   - Law of Order:    -0.50  (slower heresy: rate × 0.5)
+   825→   825→ *   - Law of Zeal:     +0.50  (faster heresy: rate × 1.5)
+   826→   826→ *   - Law of Mercy:    -2.00  (heresy decays: rate × -1.0)
+   827→   827→ *   - Mystery mode:    -0.25  (slower heresy: rate × 0.75)
+   828→   828→ *
+   829→   829→ * The effective per-second heresy rate is:
+   830→   830→ *   `BASE_HERESY_RATE * (1 + heresyRateMult(lawsCodified, worshipMode))`
+   831→   831→ *
+   832→   832→ * With no laws / mode: 0 → rate = +0.05/s.
+   833→   833→ * With Zeal + Fear:    +0.50 → rate = +0.075/s.
+   834→   834→ * With Mercy alone:    -2.00 → rate = -0.05/s (heresy decays).
+   835→   835→ * With Order + Mystery: -0.75 → rate = +0.0125/s.
+   836→   836→ *
+   837→   837→ * @param lawsCodified  Map of law id → codified-this-run flag.
+   838→   838→ * @param modeId        Active worship mode id, or `null`.
+   839→   839→ * @returns Additive multiplier on `BASE_HERESY_RATE` (0 = no change).
+   840→   840→ *
+   841→   841→ * @example
+   842→   842→ *   heresyRateMult({}, null)
+   843→   843→ *     // → 0
+   844→   844→ *   heresyRateMult({ law_zeal: true }, null)
+   845→   845→ *     // → 0.50
+   846→   846→ *   heresyRateMult({ law_mercy: true }, null)
+   847→   847→ *     // → -2.00  (heresy decays at base rate)
+   848→   848→ *   heresyRateMult({ law_order: true }, "mystery")
+   849→   849→ *     // → -0.75  (Order -0.50 + Mystery -0.25)
+   850→   850→ *   heresyRateMult({ law_zeal: true, law_order: true }, null)
+   851→   851→ *     // → 0  (Zeal +0.50 + Order -0.50 cancel out)
+   852→   852→ */
+   853→   853→export function heresyRateMult(
+   854→   854→  lawsCodified: Record<string, boolean>,
+   855→   855→  modeId: string | null
+   856→   856→): number {
+   857→   857→  let mult = 0;
+   858→   858→  // From codified laws.
+   859→   859→  mult += divineLawBonus(lawsCodified).heresyRateMult;
+   860→   860→  // From active worship mode.
+   861→   861→  const mode = worshipModeBonus(modeId);
+   862→   862→  if (mode?.heresyRateMult !== undefined) {
+   863→   863→    mult += mode.heresyRateMult;
+   864→   864→  }
+   865→   865→  return mult;
+   866→   866→}
+   867→   867→
+   868→   868→/**
+   869→   869→ * Whether the Layer 5 (Apotheosis) completion conditions are met.
+   870→   870→ *
+   871→   871→ * Conditions (both must be true):
+   872→   872→ *   1. At least `APOTHEOSIS_COMPLETION_LAWS_REQUIRED` (3) Divine Laws codified.
+   873→   873→ *   2. A Heresy schism has been resolved this run.
+   874→   874→ *
+   875→   875→ * Matches `prestigeLayers.ts apotheosis.completeState = "Codify 3 Divine
+   876→   876→ * Laws and resolve a Heresy schism"`. Used by `triggerPrestige()` to gate
+   877→   877→ * advancement to Layer 6 (Singularity).
+   878→   878→ *
+   879→   879→ * @param lawsCodified         Map of law id → codified-this-run flag.
+   880→   880→ * @param heresySchismResolved Whether a schism was resolved this run.
+   881→   881→ * @returns `true` if both conditions are met.
+   882→   882→ *
+   883→   883→ * @example
+   884→   884→ *   isApotheosisComplete({}, false)
+   885→   885→ *     // → false  (no laws codified, no schism resolved)
+   886→   886→ *   isApotheosisComplete({ law_abundance: true, law_faith: true }, false)
+   887→   887→ *     // → false  (only 2 laws; schism not resolved)
+   888→   888→ *   isApotheosisComplete({
+   889→   889→ *     law_abundance: true, law_faith: true, law_mercy: true
+   890→   890→ *   }, false)
+   891→   891→ *     // → false  (3 laws but schism not resolved)
+   892→   892→ *   isApotheosisComplete({}, true)
+   893→   893→ *     // → false  (schism resolved but no laws codified)
+   894→   894→ *   isApotheosisComplete({
+   895→   895→ *     law_abundance: true, law_faith: true, law_mercy: true
+   896→   896→ *   }, true)
+   897→   897→ *     // → true  (3 laws + schism resolved)
+   898→   898→ */
+   899→   899→export function isApotheosisComplete(
+   900→   900→  lawsCodified: Record<string, boolean>,
+   901→   901→  heresySchismResolved: boolean
+   902→   902→): boolean {
+   903→   903→  const codifiedCount = DIVINE_LAWS.filter((l) => lawsCodified[l.id]).length;
+   904→   904→  return (
+   905→   905→    codifiedCount >= APOTHEOSIS_COMPLETION_LAWS_REQUIRED && heresySchismResolved
+   906→   906→  );
+   907→   907→}
+   908→   908→
+   909→   909→/**
+   910→   910→ * Convenience helper: the set of `ResourceId`s that "all resources"
+   911→   911→ * miracles (Manna from Heaven) apply to. Mirrors the genesis.ts
+   912→   912→ * `RESOURCES.filter(r => r.category === "primary")` convention —
+   913→   913→ * prestige currencies (`divinity`, `evolution_points`, etc.) are
+   914→   914→ * excluded so Manna doesn't grant free Divinity or EP.
+   915→   915→ *
+   916→   916→ * Exported so the consumer (store) doesn't have to re-implement the
+   917→   917→ * filter. The consumer iterates this list and adds `grantAllResources`
+   918→   918→ * to each.
+   919→   919→ */
+   920→   920→export const MIRACLE_ALL_RESOURCE_TARGETS: ResourceId[] = RESOURCES
+   921→   921→  .filter((r) => r.category === "primary")
+   922→   922→  .map((r) => r.id);
+   923→   923→

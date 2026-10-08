@@ -1,0 +1,630 @@
+     1→import type { StoryEntry, StageId } from "../state/types";
+     2→import { SYSTEMS } from "./systems";
+     3→import { STAGES } from "./stages";
+     4→
+     5→// Story beats unlocked by progression.
+     6→//
+     7→// The narrative arc moves through two dimensions:
+     8→//   1. Stage progression (Cell → Creature → Tribal → Civilization → Empire → Solar → Galactic)
+     9→//      Each stage has a primary "intro" entry (fired by the StageTransition modal) and
+    10→//      an "endures" transition entry (fired as a StoryPopup after the modal closes,
+    11→//      looking back at the stage just left).
+    12→//   2. Prestige layer progression (Evolution → Enlightenment → Transcendence → … → Eternity).
+    13→//      Each layer unlock fires a "layer" category story beat that pushes the god's
+    14→//      awakening narrative forward — from "barely conscious" in Cell to "what deserves
+    15→//      to be eternal" in Eternity.
+    16→//
+    17→// Tone: mythic, poetic, second-person ("you" = the god watching its creation).
+    18→export const STORY_ENTRIES: StoryEntry[] = [
+    19→  // ============================================================
+    20→  // CELL STAGE — "The god is barely conscious, testing life through observation"
+    21→  // ============================================================
+    22→  {
+    23→    id: "first_spark",
+    24→    title: "First Spark",
+    25→    body: "In the warm dark of a young sea, something stirs. A membrane holds. A spark of ATP ignites. " +
+    26→      "You are not yet awake — but you are becoming. The first law of this universe is survival.",
+    27→    stage: "cell",
+    28→    layer: "Evolution",
+    29→    trigger: "Run start",
+    30→    category: "primary",
+    31→  },
+    32→  {
+    33→    id: "first_membrane_holds",
+    34→    title: "First Membrane Holds",
+    35→    body: "A thousand small deaths, and one survival. The cell learns to draw glucose through its wall. " +
+    36→      "What was fragile becomes durable. The first choice — to persist — has been made.",
+    37→    stage: "cell",
+    38→    layer: "Evolution",
+    39→    trigger: "Buy 3 systems",
+    40→    category: "stage",
+    41→  },
+    42→  {
+    43→    id: "nucleus_forms",
+    44→    title: "The Nucleus Forms",
+    45→    body: "Genetic material curls into a protected core. The cell has become something more than chemistry — " +
+    46→      "it has become memory. What it has learned, it can now pass on.",
+    47→    stage: "cell",
+    48→    layer: "Evolution",
+    49→    trigger: "Build a Nucleus",
+    50→    category: "milestone",
+    51→  },
+    52→  {
+    53→    id: "glucose_overload",
+    54→    title: "The Warm Dark Drowns in Sugar",
+    55→    body: "The sea grows thick with glucose. Every membrane draws, and still there is more. For the first " +
+    56→      "time, the cell knows what it is to drown in plenty — and a dim suspicion forms that abundance " +
+    57→      "may be its own kind of hunger. You, watching, learn the shape of surplus.",
+    58→    stage: "cell",
+    59→    layer: "Evolution",
+    60→    trigger: "Glucose reaches 40",
+    61→    category: "stage",
+    62→  },
+    63→  {
+    64→    id: "cell_endures",
+    65→    title: "Cell Endures",
+    66→    body: "The cell divides. The membrane holds through a thousand tremors. What was single is now many. " +
+    67→      "The first body stirs in the deep.",
+    68→    stage: "cell",
+    69→    layer: "Evolution",
+    70→    trigger: "Evolve to Creature",
+    71→    category: "milestone",
+    72→  },
+    73→
+    74→  // ============================================================
+    75→  // CREATURE STAGE — "The first body stirs"
+    76→  // ============================================================
+    77→  {
+    78→    id: "first_body_stirs",
+    79→    title: "The First Body Stirs",
+    80→    body: "The first body uncurls. Eyes that were spots now see. Hunger that was instinct now becomes want. " +
+    81→      "The world is wide and full of teeth. You must move, eat, fear, and remember.",
+    82→    stage: "creature",
+    83→    layer: "Evolution",
+    84→    trigger: "Reach Creature stage",
+    85→    category: "primary",
+    86→  },
+    87→  {
+    88→    id: "instinct_learns",
+    89→    title: "Instinct Learns",
+    90→    body: "The pack returns to the same watering hole. The same path. The same shelter. " +
+    91→      "Instinct becomes ritual, and ritual becomes the first fragile shape of culture.",
+    92→    stage: "creature",
+    93→    layer: "Evolution",
+    94→    trigger: "Buy 5 creature systems",
+    95→    category: "stage",
+    96→  },
+    97→  {
+    98→    id: "creature_endures",
+    99→    title: "The Pack Settles",
+   100→    body: "Around the firelight, the pack settles. The first language is gesture. The first law is kin. " +
+   101→      "The tribe is born not from one body, but from many that chose to stay.",
+   102→    stage: "creature",
+   103→    layer: "Evolution",
+   104→    trigger: "Evolve to Tribal",
+   105→    category: "milestone",
+   106→  },
+   107→
+   108→  // ============================================================
+   109→  // TRIBAL STAGE — "Fire is remembered"
+   110→  // ============================================================
+   111→  {
+   112→    id: "fire_remembered",
+   113→    title: "Fire is Remembered",
+   114→    body: "The fire holds through the night. The circle of faces becomes a circle of names. " +
+   115→      "Story is born — and with story, the first memory that outlives a single life.",
+   116→    stage: "tribal",
+   117→    layer: "Evolution",
+   118→    trigger: "Reach Tribal stage",
+   119→    category: "primary",
+   120→  },
+   121→  {
+   122→    id: "first_circle",
+   123→    title: "The First Circle",
+   124→    body: "Around the fire, the first council meets. Words are slow, gestures are slow, but a decision is made: " +
+   125→      "to stay. To build. To remember.",
+   126→    stage: "tribal",
+   127→    layer: "Evolution",
+   128→    trigger: "Build a Totem",
+   129→    category: "stage",
+   130→  },
+   131→  {
+   132→    id: "first_hunt",
+   133→    title: "The First Kill",
+   134→    body: "The pack returns with meat on their shoulders, and the firelight catches something new in their " +
+   135→      "eyes — the memory of a taking. You watch the first hunt end, and mark it: this is the moment " +
+   136→      "life learned it could end other life, and call it feeding.",
+   137→    stage: "tribal",
+   138→    layer: "Evolution",
+   139→    trigger: "Perform the Hunt action",
+   140→    category: "milestone",
+   141→  },
+   142→  {
+   143→    id: "village_forms",
+   144→    title: "The Village Forms",
+   145→    body: "Fifty souls. The fires are no longer one, but many. A path becomes a street. A family becomes " +
+   146→      "a clan. The tribe outgrows its name, and something larger takes shape — half memory, half intention.",
+   147→    stage: "tribal",
+   148→    layer: "Evolution",
+   149→    trigger: "Population reaches 50 (Tribal)",
+   150→    category: "stage",
+   151→  },
+   152→  {
+   153→    id: "agriculture_mastered",
+   154→    title: "The Seed is Planted",
+   155→    body: "The tribe learns to keep what grows. A seed, dropped and forgotten, returns as a stalk. " +
+   156→      "Hunger, the ancient enemy, becomes a thing that can be planned against. The first calendar is carved in bone.",
+   157→    stage: "tribal",
+   158→    layer: "Evolution",
+   159→    trigger: "Research Agriculture",
+   160→    category: "milestone",
+   161→  },
+   162→  {
+   163→    id: "first_writing",
+   164→    title: "The First Mark",
+   165→    body: "A scratch on clay. A notch on bone. The first symbol that means the same thing tomorrow as it does today. " +
+   166→      "Memory, until now, has lived only in the minds of the old. Now it can outlive them.",
+   167→    stage: "tribal",
+   168→    layer: "Evolution",
+   169→    trigger: "Research Writing",
+   170→    category: "milestone",
+   171→  },
+   172→  {
+   173→    id: "tribal_endures",
+   174→    title: "Walls Rise",
+   175→    body: "Walls rise where tents stood. Granaries hold what hands once carried. " +
+   176→      "The village becomes a city. The dream of rule begins.",
+   177→    stage: "tribal",
+   178→    layer: "Evolution",
+   179→    trigger: "Evolve to Civilization",
+   180→    category: "milestone",
+   181→  },
+   182→
+   183→  // ============================================================
+   184→  // CIVILIZATION STAGE — "Cities learn to dream"
+   185→  // ============================================================
+   186→  {
+   187→    id: "cities_learn_to_dream",
+   188→    title: "Cities Learn to Dream",
+   189→    body: "Stone rises in courses. Laws are carved beside grain counts. " +
+   190→      "The city learns to dream of more than tomorrow — it dreams of empire.",
+   191→    stage: "civilization",
+   192→    layer: "Evolution",
+   193→    trigger: "Reach Civilization",
+   194→    category: "primary",
+   195→  },
+   196→  {
+   197→    id: "first_city",
+   198→    title: "The First Walls",
+   199→    body: "Stone rises in courses taller than a man. Inside, grain is counted, laws are carved, and the names of " +
+   200→      "the dead are written on pillars. Outside, the wild begins to learn the meaning of 'border.'",
+   201→    stage: "civilization",
+   202→    layer: "Evolution",
+   203→    trigger: "Build 3 civilization systems",
+   204→    category: "stage",
+   205→  },
+   206→  {
+   207→    id: "scientific_method",
+   208→    title: "The Method",
+   209→    body: "Not just knowledge — but a way to test knowledge. A question becomes a hypothesis, becomes an experiment, " +
+   210→      "becomes a law. The universe, until now a mystery to be endured, becomes a puzzle to be solved.",
+   211→    stage: "civilization",
+   212→    layer: "Evolution",
+   213→    trigger: "Research Scientific Method",
+   214→    category: "milestone",
+   215→  },
+   216→  {
+   217→    id: "golden_age_dawn",
+   218→    title: "A Golden Age Dawns",
+   219→    body: "The city sings. Bells, markets, children — every sound answers another. You lean close, curious: " +
+   220→      "this is what creation looks like when nothing is desperate. Will the dreamers remember, when the gold " +
+   221→      "dims, that they once chose to dream?",
+   222→    stage: "civilization",
+   223→    layer: "Evolution",
+   224→    trigger: "Happiness reaches 80 (Civilization)",
+   225→    category: "stage",
+   226→  },
+   227→  {
+   228→    id: "civilization_endures",
+   229→    title: "One Banner, Many Cities",
+   230→    body: "The banner of one city becomes the banner of a continent. Roads bind the provinces. " +
+   231→      "An empire wakes — and so do its rivals.",
+   232→    stage: "civilization",
+   233→    layer: "Evolution",
+   234→    trigger: "Evolve to Empire",
+   235→    category: "milestone",
+   236→  },
+   237→
+   238→  // ============================================================
+   239→  // EMPIRE STAGE — "Distance begins to obey"
+   240→  // ============================================================
+   241→  {
+   242→    id: "distance_begins_to_obey",
+   243→    title: "Distance Begins to Obey",
+   244→    body: "Distance begins to obey. The roads of an empire run long, and along them ride not just grain and gold — " +
+   245→      "but the slow weight of rivals who dream the same dreams.",
+   246→    stage: "empire",
+   247→    layer: "Evolution",
+   248→    trigger: "Reach Empire",
+   249→    category: "primary",
+   250→  },
+   251→  {
+   252→    id: "first_empire_decree",
+   253→    title: "The First Decree",
+   254→    body: "A word from the throne reshapes provinces. Roads are ordered. Laws are unified. For the first time, " +
+   255→      "millions of strangers move to the rhythm of a single will — and the will begins to dream of more.",
+   256→    stage: "empire",
+   257→    layer: "Evolution",
+   258→    trigger: "Build 2 empire systems",
+   259→    category: "stage",
+   260→  },
+   261→  {
+   262→    id: "empire_stable",
+   263→    title: "The Empire Holds",
+   264→    body: "Influence radiates from the throne like heat from a sun. Twenty banners — once rivals, now provinces — " +
+   265→      "bend the same wind. The empire has stopped merely expanding. It has begun, for the first time, to hold.",
+   266→    stage: "empire",
+   267→    layer: "Evolution",
+   268→    trigger: "Influence reaches 20 (Empire)",
+   269→    category: "stage",
+   270→  },
+   271→  {
+   272→    id: "empire_endures",
+   273→    title: "The Edge of the Sky",
+   274→    body: "The empire reaches the edges of its sky. The sun, once a god, is now a neighbor. " +
+   275→      "The next shore is not across the sea, but across the void.",
+   276→    stage: "empire",
+   277→    layer: "Evolution",
+   278→    trigger: "Evolve to Solar",
+   279→    category: "milestone",
+   280→  },
+   281→
+   282→  // ============================================================
+   283→  // SOLAR STAGE — "The sky stops being a wall"
+   284→  // ============================================================
+   285→  {
+   286→    id: "sky_stops_being_a_wall",
+   287→    title: "The Sky Stops Being a Wall",
+   288→    body: "The sky stops being a wall. A ship breaks the sky and does not fall. " +
+   289→      "The first new world waits in the dark — and beyond it, a hundred more.",
+   290→    stage: "solar",
+   291→    layer: "Evolution",
+   292→    trigger: "Reach Solar",
+   293→    category: "primary",
+   294→  },
+   295→  {
+   296→    id: "first_colony",
+   297→    title: "The First Shore Beyond",
+   298→    body: "A ship breaks the sky and does not fall. On a new world, pioneers plant a flag in soil no ancestor " +
+   299→      "ever touched. The horizon, until now a wall, becomes a door.",
+   300→    stage: "solar",
+   301→    layer: "Evolution",
+   302→    trigger: "Build a Colony Ship",
+   303→    category: "milestone",
+   304→  },
+   305→  {
+   306→    id: "first_orbit",
+   307→    title: "The First Orbit Closes",
+   308→    body: "A second world turns around a second sun. The first system is bound — not by gravity alone, but " +
+   309→      "by the slow will of those who built it. You mark the orbit closed, and see that it is good. " +
+   310→      "Then ask: where next?",
+   311→    stage: "solar",
+   312→    layer: "Evolution",
+   313→    trigger: "Build any Solar system",
+   314→    category: "milestone",
+   315→  },
+   316→  {
+   317→    id: "solar_endures",
+   318→    title: "A Hundred Worlds Breathe",
+   319→    body: "A hundred worlds breathe. A thousand ships cross the dark between them. " +
+   320→      "The next shore is not a planet — but a star.",
+   321→    stage: "solar",
+   322→    layer: "Evolution",
+   323→    trigger: "Evolve to Galactic",
+   324→    category: "milestone",
+   325→  },
+   326→
+   327→  // ============================================================
+   328→  // GALACTIC STAGE — "The galaxy takes a shape"
+   329→  // ============================================================
+   330→  {
+   331→    id: "galaxy_takes_a_shape",
+   332→    title: "The Galaxy Takes a Shape",
+   333→    body: "The galaxy takes a shape. A thousand suns answer one banner. " +
+   334→      "The question is no longer whether to live — but what kind of life deserves to live forever.",
+   335→    stage: "galactic",
+   336→    layer: "Evolution",
+   337→    trigger: "Reach Galactic",
+   338→    category: "primary",
+   339→  },
+   340→  {
+   341→    id: "galactic_council_forms",
+   342→    title: "The Galactic Council Forms",
+   343→    body: "Fifty streams of data converge on a single hub, and out of the noise a voice emerges — many-voiced, " +
+   344→      "slow, but unmistakable. The galaxy, until now a crowded dark, has become a deliberating body. " +
+   345→      "You listen to its first quarrel, and find it familiar.",
+   346→    stage: "galactic",
+   347→    layer: "Evolution",
+   348→    trigger: "Data reaches 50 (Galactic)",
+   349→    category: "stage",
+   350→  },
+   351→  {
+   352→    id: "ascension_researched",
+   353→    title: "The Path Beyond Matter",
+   354→    body: "The equations align. A pattern emerges in the cosmic background — not noise, but a signature. " +
+   355→      "The civilization begins to suspect that matter is not the final word, but the first chapter.",
+   356→    stage: "galactic",
+   357→    layer: "Evolution",
+   358→    trigger: "Research Ascension Theory",
+   359→    category: "milestone",
+   360→  },
+   361→  {
+   362→    id: "creation_reaches_stars",
+   363→    title: "Creation Reaches the Stars",
+   364→    body: "Creation reaches the stars. The god opens its eyes — and sees, for the first time, " +
+   365→      "that it has been watching itself all along. Evolution has reached its first ending. " +
+   366→      "But the universe is wider than one dream.",
+   367→    stage: "galactic",
+   368→    layer: "Evolution",
+   369→    trigger: "Win the game",
+   370→    category: "milestone",
+   371→  },
+   372→
+   373→  // ============================================================
+   374→  // META — PRESTIGE LAYERS
+   375→  // The god's awakening arc: barely conscious (Cell) → opens its eyes (Galactic win)
+   376→  // → opens fully (Enlightenment) → separates (Transcendence) → authors (Genesis)
+   377→  // → is discovered (Apotheosis) → merges with system (Singularity) → rewrites (Omnipotence)
+   378→  // → becomes cosmic (Divinity) → curates timelines (Infinity) → asks the final question (Eternity).
+   379→  // ============================================================
+   380→  {
+   381→    id: "god_opens_its_eyes",
+   382→    title: "The God Opens Its Eyes",
+   383→    body: "The god opens its eyes. The long testing is over. " +
+   384→      "Now, in the silence between galaxies, it begins to ask: what kind of universe deserves to exist forever?",
+   385→    stage: "meta",
+   386→    layer: "Enlightenment",
+   387→    trigger: "First prestige",
+   388→    category: "layer",
+   389→  },
+   390→  {
+   391→    id: "evolution_layer_unveiled",
+   392→    title: "The First Trial",
+   393→    body: "The god has watched you carry life from a single cell to the rim of the galaxy. Now, in the silence " +
+   394→      "after ascension, it speaks a new question: what if life had been harder? What if the cell had been slower, " +
+   395→      "the harvest thinner, the sword forbidden? The Evolution Challenges are unveiled — voluntary trials, each " +
+   396→      "a deliberate hardship, each offering a permanent blessing to the lineage that endures it. Take them, or not. " +
+   397→      "The god is curious, not cruel. But the god is also patient.",
+   398→    stage: "meta",
+   399→    layer: "Evolution",
+   400→    trigger: "First Galactic Ascension",
+   401→    category: "layer",
+   402→  },
+   403→  {
+   404→    id: "challenge_mastered",
+   405→    title: "The God is Pleased",
+   406→    body: "The trial is ended. The hardship you carried has been folded back into the lineage as a permanent strength — " +
+   407→      "a memory the god will not let die. From this run forward, every breath carries a little of what you earned in the dark.",
+   408→    stage: "meta",
+   409→    layer: "Evolution",
+   410→    trigger: "Master a Challenge",
+   411→    category: "milestone",
+   412→  },
+   413→  {
+   414→    id: "enlightenment_unlocked",
+   415→    title: "The God Opens Its Eyes Fully",
+   416→    body: "Ten trials weathered. Ten shapes of hardship survived. The god, who until now has only watched, " +
+   417→      "begins to *see*. The future takes on edges; the past, a pattern. A new question forms: not 'can life endure?' " +
+   418→      "but 'what should it become?' Divinity awakens — the currency of foresight. Spend it well: on routes to bind, " +
+   419→      "on omens of pressure to come, on the deep threads that bind resource to resource. The Enlightenment has begun.",
+   420→    stage: "meta",
+   421→    layer: "Enlightenment",
+   422→    trigger: "Master all 10 Evolution Challenges",
+   423→    category: "layer",
+   424→  },
+   425→
+   426→  // ----- Layer 3 onward: the god's narrative continues past what is currently implemented.
+   427→  // These story beats exist now so the journal foreshadows the full arc; their unlock
+   428→  // conditions will be wired up when each layer's mechanics ship. -----
+   429→  {
+   430→    id: "transcendence_unlocked",
+   431→    title: "Power Drawn From History",
+   432→    body: "The god steps outside the cycle for the first time. What was endured is now offered; what was built " +
+   433→      "is now sacrificed. From the offering rises a power older than any single run — the power to draw strength " +
+   434→      "from what is given up, and to walk forward lighter than before. Separation is the first true act of will.",
+   435→    stage: "meta",
+   436→    layer: "Transcendence",
+   437→    trigger: "Unlock Transcendence",
+   438→    category: "layer",
+   439→  },
+   440→  {
+   441→    id: "genesis_unlocked",
+   442→    title: "First Authored World",
+   443→    body: "Until now, the god inherited the universe it found. Now, for the first time, it sets a parameter. " +
+   444→      "The first world is authored — not descended into, but written. The god discovers that creation is " +
+   445→      "a kind of writing, and that the page will not always hold what is set down upon it.",
+   446→    stage: "meta",
+   447→    layer: "Genesis",
+   448→    trigger: "Unlock Genesis",
+   449→    category: "layer",
+   450→  },
+   451→  {
+   452→    id: "apotheosis_unlocked",
+   453→    title: "Mortals Learn the Divine Name",
+   454→    body: "A temple rises. A name is spoken. The god, long content to watch in silence, is named — and in " +
+   455→      "naming, is entered. Mortals kneel, and fear, and bargain. The god discovers that being worshipped is " +
+   456→      "its own kind of constraint, and that a worshipper is a mirror that does not always flatter.",
+   457→    stage: "meta",
+   458→    layer: "Apotheosis",
+   459→    trigger: "Unlock Apotheosis",
+   460→    category: "layer",
+   461→  },
+   462→  {
+   463→    id: "singularity_unlocked",
+   464→    title: "The System Learns the God",
+   465→    body: "The god enters the system. Will becomes logic; logic becomes law. No longer does the god intervene — " +
+   466→      "it configures, and the configuration holds. The first relic is bound, and the god tastes a new shape " +
+   467→      "of power: one that does not move the world, but is the world moving.",
+   468→    stage: "meta",
+   469→    layer: "Singularity",
+   470→    trigger: "Unlock Singularity",
+   471→    category: "layer",
+   472→  },
+   473→  {
+   474→    id: "omnipotence_unlocked",
+   475→    title: "Boundaries Are Denied",
+   476→    body: "Why choose one truth when the god can hold two? The first contradiction is fused — fire that cools, " +
+   477→      "hunger that feeds — and reality groans, but does not break. The god learns that omnipotence is not the " +
+   478→      "absence of limits, but the careful curation of which limits may be denied.",
+   479→    stage: "meta",
+   480→    layer: "Omnipotence",
+   481→    trigger: "Unlock Omnipotence",
+   482→    category: "layer",
+   483→  },
+   484→  {
+   485→    id: "divinity_unlocked",
+   486→    title: "Creation Looks Back",
+   487→    body: "The god puts on a mask — and the mask puts on the god. Creation, until now an object of attention, " +
+   488→      "becomes a presence that perceives. To be divine is no longer to be unseen above; it is to be seen, in " +
+   489→      "six shapes at once, and to wear what is returned.",
+   490→    stage: "meta",
+   491→    layer: "Divinity",
+   492→    trigger: "Unlock Divinity",
+   493→    category: "layer",
+   494→  },
+   495→  {
+   496→    id: "infinity_unlocked",
+   497→    title: "Many Histories Become One Will",
+   498→    body: "Time, the last wall, falls. The god walks back through the corridor of every run that was, and forward " +
+   499→      "through every run that could be. Echoes linger; forks whisper; the future can be borrowed against. " +
+   500→      "All of time becomes a library — and the god, its librarian, decides which books deserve to be read again.",
+   501→    stage: "meta",
+   502→    layer: "Infinity",
+   503→    trigger: "Unlock Infinity",
+   504→    category: "layer",
+   505→  },
+   506→  {
+   507→    id: "eternity_unlocked",
+   508→    title: "What Deserves to Be Eternal?",
+   509→    body: "The seeking is over. Only one question remains: of all this — the cells that divided, the cities that " +
+   510→      "dreamed, the empires that fell, the gods that the god became — what deserves to be kept forever? " +
+   511→      "The god takes up the pen, and begins to write a Testament.",
+   512→    stage: "meta",
+   513→    layer: "Eternity",
+   514→    trigger: "Unlock Eternity",
+   515→    category: "layer",
+   516→  },
+   517→  {
+   518→    id: "eternity_complete",
+   519→    title: "The Testament Is Written",
+   520→    body: "The last clause is set down. The canon is closed. The god reads what it has written, and finds the " +
+   521→      "universe it has chosen to keep — and finds, too, that keeping was always the harder answer. The cycle, " +
+   522→      "should it begin again, will begin with this Testament held close. And the god, for the first time in a " +
+   523→      "long age, rests.",
+   524→    stage: "meta",
+   525→    layer: "Eternity",
+   526→    trigger: "Complete the Testament",
+   527→    category: "layer",
+   528→  },
+   529→];
+   530→
+   531→export const STORY_MAP: Record<string, StoryEntry> = Object.fromEntries(
+   532→  STORY_ENTRIES.map((s) => [s.id, s])
+   533→);
+   534→
+   535→// Trigger conditions evaluated during gameplay
+   536→export interface StoryTrigger {
+   537→  id: string;
+   538→  condition: (state: any) => boolean;
+   539→}
+   540→
+   541→// Helper: the current StageId (e.g. "cell", "tribal"). Pulled from STAGES by index.
+   542→function currentStage(s: any): string | null {
+   543→  if (typeof s.stageIndex !== "number") return null;
+   544→  return STAGES[s.stageIndex]?.id || null;
+   545→}
+   546→
+   547→export const STORY_TRIGGERS: StoryTrigger[] = [
+   548→  // ===== CELL STAGE =====
+   549→  { id: "first_membrane_holds", condition: (s) => totalSystems(s) >= 3 },
+   550→  { id: "nucleus_forms", condition: (s) => !!s.ownedSystems?.["nucleus"] },
+   551→  { id: "first_autobuyer", condition: (s) => !!s.ownedSystems?.["membrane_pump"] },
+   552→  { id: "first_tech", condition: (s) => Object.keys(s.technologies || {}).some((k) => s.technologies[k]) },
+   553→  { id: "population_boom", condition: (s) => (s.population || 0) >= 50 },
+   554→  { id: "first_cap", condition: (s) => hasResourceAtCap(s) },
+   555→  // Mid-stage: abundance (fires before cap to feel like a different beat than first_cap)
+   556→  {
+   557→    id: "glucose_overload",
+   558→    condition: (s) =>
+   559→      currentStage(s) === "cell" && (s.resources?.glucose || 0) >= 40,
+   560→  },
+   561→
+   562→  // ===== CREATURE STAGE =====
+   563→  { id: "instinct_learns", condition: (s) => stageSystemsCount(s, "creature") >= 5 },
+   564→
+   565→  // ===== TRIBAL STAGE =====
+   566→  { id: "first_circle", condition: (s) => !!s.ownedSystems?.["totem"] },
+   567→  { id: "agriculture_mastered", condition: (s) => !!s.technologies?.["agriculture"] },
+   568→  { id: "first_writing", condition: (s) => !!s.technologies?.["writing"] },
+   569→  // Mid-stage: first hunt (flag set in performAction when the player clicks Hunt)
+   570→  { id: "first_hunt", condition: (s) => !!s.flags?.firstHunt },
+   571→  // Mid-stage: village forms at 50 population while in Tribal
+   572→  {
+   573→    id: "village_forms",
+   574→    condition: (s) =>
+   575→      currentStage(s) === "tribal" && (s.population || 0) >= 50,
+   576→  },
+   577→
+   578→  // ===== CIVILIZATION STAGE =====
+   579→  { id: "first_city", condition: (s) => stageSystemsCount(s, "civilization") >= 3 },
+   580→  { id: "scientific_method", condition: (s) => !!s.technologies?.["scientific_method"] },
+   581→  // Mid-stage: golden age (happiness 80+ while in Civilization)
+   582→  {
+   583→    id: "golden_age_dawn",
+   584→    condition: (s) =>
+   585→      currentStage(s) === "civilization" && (s.resources?.happiness || 0) >= 80,
+   586→  },
+   587→
+   588→  // ===== EMPIRE STAGE =====
+   589→  { id: "first_empire_decree", condition: (s) => stageSystemsCount(s, "empire") >= 2 },
+   590→  // Mid-stage: empire holds (influence 20+ while in Empire)
+   591→  {
+   592→    id: "empire_stable",
+   593→    condition: (s) =>
+   594→      currentStage(s) === "empire" && (s.resources?.influence || 0) >= 20,
+   595→  },
+   596→
+   597→  // ===== SOLAR STAGE =====
+   598→  { id: "first_colony", condition: (s) => !!s.ownedSystems?.["colony_ship"] },
+   599→  // Mid-stage: first solar system built (any solar-stage system owned)
+   600→  { id: "first_orbit", condition: (s) => stageSystemsCount(s, "solar") >= 1 },
+   601→
+   602→  // ===== GALACTIC STAGE =====
+   603→  { id: "ascension_researched", condition: (s) => !!s.technologies?.["ascension_theory"] },
+   604→  // Mid-stage: galactic council forms (data 50+ while in Galactic)
+   605→  {
+   606→    id: "galactic_council_forms",
+   607→    condition: (s) =>
+   608→      currentStage(s) === "galactic" && (s.resources?.data || 0) >= 50,
+   609→  },
+   610→];
+   611→
+   612→function totalSystems(s: any): number {
+   613→  return Object.values(s.ownedSystems || {}).reduce((a: number, b: any) => a + (b || 0), 0) as number;
+   614→}
+   615→
+   616→function stageSystemsCount(s: any, stage: StageId): number {
+   617→  return SYSTEMS
+   618→    .filter((x) => x.stage === stage)
+   619→    .reduce((sum, def) => sum + (s.ownedSystems?.[def.id] || 0), 0);
+   620→}
+   621→
+   622→function hasResourceAtCap(s: any): boolean {
+   623→  if (!s.resources || !s.capacities) return false;
+   624→  for (const r of Object.keys(s.resources)) {
+   625→    const cap = s.capacities[r];
+   626→    if (cap && cap > 0 && (s.resources[r] || 0) >= cap - 0.5) return true;
+   627→  }
+   628→  return false;
+   629→}
+   630→

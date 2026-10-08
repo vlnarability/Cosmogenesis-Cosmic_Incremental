@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→import { create } from "zustand";
+     4→import { persist, createJSONStorage } from "zustand/middleware";
+     5→import type { GameState, GameStore, StageId, TabId } from "./types";
+     6→import { emptyResources, emptyCapacities } from "../data/resources";
+     7→import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
+     8→import { ACTION_MAP } from "../data/actions";
+     9→import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
+    10→import { TECH_MAP, TECHS } from "../data/techs";
+    11→import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
+    12→import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
+    13→import { ARCHETYPE_MAP, dominantArchetype } from "../data/archetypes";
+    14→import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
+    15→import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
+    16→import {
+    17→  CHALLENGES,
+    18→  CHALLENGE_MAP,
+    19→  getMaxRepeats,
+    20→  getChallengeDebuffAtRepeat,
+    21→  challengeMasteryBonusFromRepeats,
+    22→  type ChallengeEffects,
+    23→} from "../data/challenges";
+    24→import { countChallengesCompleted } from "../data/prestigeLayers";
+    25→import {
+    26→  FORESIGHT_NODES,
+    27→  FORESIGHT_NODE_MAP,
+    28→  FORESIGHT_ROUTE_MAP,
+    29→  foresightBonus,
+    30→  routeBonus,
+    31→  countForesightNodes,
+    32→  FORESIGHT_NODES_REQUIRED_FOR_LAYER_3,
+    33→} from "../data/foresight";
+    34→import {
+    35→  OFFERINGS,
+    36→  OFFERING_MAP,
+    37→  RITUALS,
+    38→  RITUAL_MAP,
+    39→  SCRIPTS,
+    40→  BLOOD_PACTS,
+    41→  BLOOD_PACT_MAP,
+    42→  offeringDivinityAtRepeat,
+    43→  activeRitualProductionBonus,
+    44→  activeRitualCapBonus,
+    45→  activeRitualEpBonus,
+    46→  activeRitualPopBonus,
+    47→  transcendenceDivinityPerSecond,
+    48→  allBloodPactsUsed,
+    49→} from "../data/transcendence";
+    50→import {
+    51→  CRADLE_WORLDS,
+    52→  PRIME_CONDITIONS,
+    53→  SACRED_GEOGRAPHIES,
+    54→  DORMANT_SEEDS,
+    55→  DIFFICULTY_TIERS,
+    56→  worldProductionMult,
+    57→  worldCapMult,
+    58→  worldEpMultiplier,
+    59→  worldPopGrowthMult,
+    60→  hasAuthoredWorld,
+    61→  type WorldConfig,
+    62→} from "../data/genesis";
+    63→import {
+    64→  DIVINE_LAWS,
+    65→  DIVINE_LAW_MAP,
+    66→  WORSHIP_MODES,
+    67→  WORSHIP_MODE_MAP,
+    68→  MIRACLES,
+    69→  MIRACLE_MAP,
+    70→  HERESY_RESPONSES,
+    71→  HERESY_RESPONSE_MAP,
+    72→  divineLawBonus,
+    73→  worshipModeBonus,
+    74→  heresyRateMult,
+    75→  heresyResponseProductionMult,
+    76→  hasEnactedThreeLaws,
+    77→} from "../data/apotheosis";
+    78→import {
+    79→  RELIC_LOADOUTS,
+    80→  RELIC_LOADOUT_MAP,
+    81→  LOGIC_CORES,
+    82→  LOGIC_CORE_MAP,
+    83→  relicBonus,
+    84→  logicCoreBonus,
+    85→} from "../data/singularity";
+    86→import {
+    87→  HYBRID_LINEAGES,
+    88→  HYBRID_LINEAGE_MAP,
+    89→  OMNIPOTENCE_STANCES,
+    90→  OMNIPOTENCE_STANCE_MAP,
+    91→  hybridBonus,
+    92→  instabilityRateMult,
+    93→  effectiveInstabilityRate,
+    94→  isOmnipotenceComplete,
+    95→  type OmnipotenceStanceId,
+    96→} from "../data/omnipotence";
+    97→import {
+    98→  PRAYER_CHANNELS,
+    99→  PRAYER_CHANNEL_MAP,
+   100→  DIVINE_MASKS,
+   101→  DIVINE_MASK_MAP,
+   102→  WORSHIP_POLARITIES,
+   103→  WORSHIP_POLARITY_MAP,
+   104→  prayerChannelCost,
+   105→  prayerChannelBonus,
+   106→  divineMaskBonus,
+   107→  worshipPolarityBonus,
+   108→  prayerRate,
+   109→  isDivinityComplete,
+   110→} from "../data/divinity_layer";
+   111→import {
+   112→  ECHO_TYPES,
+   113→  ECHO_TYPE_MAP,
+   114→  FORK_SCENARIOS,
+   115→  FORK_SCENARIO_MAP,
+   116→  FUTURE_DEBT_TIERS,
+   117→  FUTURE_DEBT_TIER_MAP,
+   118→  echoBonus,
+   119→  forkBonus,
+   120→  activeDebtBonus,
+   121→  isInfinityComplete,
+   122→} from "../data/infinity";
+   123→import {
+   124→  TESTAMENT_CLAUSES,
+   125→  TESTAMENT_CLAUSE_MAP,
+   126→  CANONIZATIONS,
+   127→  CANONIZATION_MAP,
+   128→  PERMANENCE_WEAVES,
+   129→  PERMANENCE_WEAVE_MAP,
+   130→  ENDING_CHOICES,
+   131→  ENDING_CHOICE_MAP,
+   132→  testamentClauseBonus,
+   133→  canonizationBonus,
+   134→  permanenceWeaveBonus,
+   135→  cosmicBoonBonus,
+   136→  isEternityComplete,
+   137→} from "../data/eternity";
+   138→import {
+   139→  STAGE_INDEX_TO_THEME,
+   140→  LAYER_ID_TO_THEME,
+   141→} from "../data/themes";
+   142→import { ACTIVE_ABILITIES, ACTIVE_ABILITY_MAP } from "../data/activeAbilities";
+   143→
+   144→const STORAGE_KEY = "evolution_idle_v2";
+   145→
+   146→function initialRunState(): Partial<GameState> {
+   147→  const resources = emptyResources();
+   148→  const capacities = emptyCapacities();
+   149→  resources.atp = 15;
+   150→  resources.glucose = 20;
+   151→  resources.happiness = 75;
+   152→  return {
+   153→    stageIndex: 0,
+   154→    time: 0,
+   155→    population: 8,
+   156→    populationProgress: 0,
+   157→    maxPopulation: 8,
+   158→    resources,
+   159→    capacities,
+   160→    ownedSystems: {},
+   161→    systemEnabled: {},
+   162→    technologies: {},
+   163→    archetypeAffinity: {},
+   164→    lockedArchetype: null,
+   165→    log: ["New run started. The first spark stirs."],
+   166→  };
+   167→}
+   168→
+   169→function initialMetaState(): Partial<GameState> {
+   170→  return {
+   171→    evolutionPoints: 0,
+   172→    totalRuns: 0,
+   173→    galacticWins: 0,
+   174→    stageClearCounts: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+   175→    fastestCellClear: 0,
+   176→    totalEventsResolved: 0,
+   177→    totalPlayTime: 0,
+   178→    totalActions: 0,
+   179→    totalSystemsBuilt: 0,
+   180→    totalTechResearched: 0,
+   181→    upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])),
+   182→    storyUnlocked: { first_spark: true },
+   183→    storyAcknowledged: {},
+   184→    archive: [],
+   185→    archivedArchetypes: [],
+   186→    unlockedLayers: { evolution: true, enlightenment: false, transcendence: false, genesis: false, apotheosis: false, singularity: false, omnipotence: false, divinity: false, infinity: false, eternity: false },
+   187→    achievements: {},
+   188→    newAchievements: [],
+   189→    // Layer 1 — Challenges
+   190→    unlockedChallenges: false,
+   191→    activeChallenge: null,
+   192→    completedChallenges: {},
+   193→    challengeRepeatCounts: {},
+   194→    showChallenges: false,
+   195→    // Auto-action timers (game-time markers for periodic automation)
+   196→    autoTimers: { system: 0, tech: 0, evolve: 0, challenge: 0 },
+   197→
+   198→    // Layer 2 — Enlightenment (Foresight)
+   199→    divinity: 0,
+   200→    foresightNodes: {},
+   201→    activeForesightRoute: null,
+   202→    showEnlightenment: false,
+   203→
+   204→    // Layer 3 — Transcendence
+   205→    transcendenceOfferingsUsed: {},
+   206→    purchasedRituals: {},
+   207→    activeTemporaryRituals: {},
+   208→    activeScripts: {},
+   209→    bloodPactsUsed: {},
+   210→    scriptTimers: {},
+   211→    showTranscendence: false,
+   212→
+   213→    // Layer 4 — Genesis
+   214→    genesisSeeds: 0,
+   215→    authoredWorlds: [],
+   216→    pendingWorldConfig: {},
+   217→    showGenesis: false,
+   218→
+   219→    // Layer 5 — Apotheosis
+   220→    faith: 0,
+   221→    enactedDivineLaws: {},
+   222→    activeWorshipMode: null,
+   223→    performedMiracles: {},
+   224→    miracleTimers: {},
+   225→    heresy: 0,
+   226→    activeHeresyResponse: "hr_ignore",
+   227→    showApotheosis: false,
+   228→
+   229→    // Layer 6 — Singularity
+   230→    singularityCores: 0,
+   231→    equippedRelics: {},
+   232→    activeLogicCores: {},
+   233→    logicCoreTimers: {},
+   234→    showSingularity: false,
+   235→
+   236→    // Layer 7 — Omnipotence
+   237→    equippedHybrids: {},
+   238→    activeOmnipotenceStance: "balanced",
+   239→    instability: 0,
+   240→    peakInstability: 0,
+   241→    showOmnipotence: false,
+   242→
+   243→    // Layer 8 — Divinity (the layer; not the resource)
+   244→    prayer: 0,
+   245→    prayerChannelLevels: {},
+   246→    activeDivineMask: null,
+   247→    activeWorshipPolarity: null,
+   248→    showDivinityLayer: false,
+   249→
+   250→    // Layer 9 — Infinity
+   251→    echoes: 0,
+   252→    purchasedEchoes: {},
+   253→    resolvedForks: {},
+   254→    takenFutureDebts: {},
+   255→    repaidFutureDebts: {},
+   256→    showInfinity: false,
+   257→
+   258→    // Layer 10 — Eternity
+   259→    testamentClauses: 0,
+   260→    purchasedTestamentClauses: {},
+   261→    activeCanonizations: {},
+   262→    activePermanenceWeaves: {},
+   263→    chosenEnding: null,
+   264→    cosmicBoonStacks: 0,
+   265→    showEternity: false,
+   266→
+   267→    currentTab: "actions",
+   268→    speed: 1,
+   269→    paused: false,
+   270→    showShop: false,
+   271→    showEvolve: false,
+   272→    showSettings: false,
+   273→    activeStoryPopup: "first_spark",
+   274→    activeEvent: null,
+   275→    eventCooldown: 60, // first event can fire after 60s
+   276→    eventHistory: [],
+   277→    hasSeenIntro: false,
+   278→    lastSaved: Date.now(),
+   279→    tutorialStep: 0,
+   280→    tutorialActive: true,
+   281→    tutorialDismissed: false,
+   282→    eventFrequency: "normal",
+   283→
+   284→    // Theme customization (Part 1)
+   285→    activeStageTheme: "stage-cell",
+   286→    activeLayerTheme: null,
+   287→    activeSpecialTheme: null,
+   288→    unlockedThemes: { "stage-cell": true },
+   289→
+   290→    // ===== QUICK WINS =====
+   291→    // WIN 2 — Active abilities (runtime, persisted across refresh)
+   292→    activeAbilityCooldowns: {},
+   293→    activeAbilityEffects: {},
+   294→    // WIN 3 — Ritual combo tracking
+   295→    lastRitualTime: 0,
+   296→    lastRitualId: null,
+   297→    ritualComboCount: 0,
+   298→    ritualComboTimer: 0,
+   299→    // WIN 5 — Prestige Points (universal currency)
+   300→    prestigePoints: 0,
+   301→    // WIN 7 — Random layer event timers (game-time markers)
+   302→    layerEventTimers: { trial_of_fortune: 0, vision: 0, divine_whim: 0, heresy_surge: 0 },
+   303→  };
+   304→}
+   305→
+   306→export const useGameStore = create<GameStore>()(
+   307→  persist(
+   308→    (set, get) => ({
+   309→      ...initialRunState(),
+   310→      ...initialMetaState(),
+   311→
+   312→      // ============ TICK ============
+   313→      tick: (dt) => {
+   314→        const s = get();
+   315→        if (s.paused) return;
+   316→
+   317→        // ---- Temporal Acceleration: +0.5× effective speed per level ----
+   318→        const temporalLvl = s.upgrades["temporal_acceleration"] || 0;
+   319→        const temporalMult = 1 + temporalLvl * 0.5;
+   320→        // ---- Prestige Speed Bonus: +50% per total run (Part 2c) ----
+   321→        const prestigeSpeedMult = 1 + (s.totalRuns || 0) * 0.5;
+   322→        // ---- QUICK WIN 5 — Universal Speed upgrade: +10% per level ----
+   323→        const universalSpeedLvlTick = s.upgrades["universal_speed"] || 0;
+   324→        const universalSpeedMultTick = 1 + universalSpeedLvlTick * 0.10;
+   325→        const realDt = dt * s.speed * temporalMult * prestigeSpeedMult * universalSpeedMultTick;
+   326→
+   327→        // ---- Deep Memory: +5% production per level per total run ----
+   328→        const deepMemLvl = s.upgrades["deep_memory"] || 0;
+   329→        const deepMemMult = 1 + deepMemLvl * 0.05 * (s.totalRuns || 0);
+   330→
+   331→        const autoLvl = s.upgrades["inherited_efficiency"] || 0;
+   332→        let autoMult = (1 + autoLvl * 0.15) * deepMemMult;
+   333→
+   334→        // ---- Active challenge debuff (scaled by repeat level) ----
+   335→        let challengeDebuff: ChallengeEffects = {};
+   336→        if (s.activeChallenge && s.unlockedChallenges) {
+   337→          const ch = CHALLENGE_MAP[s.activeChallenge];
+   338→          if (ch) {
+   339→            const repeat = s.challengeRepeatCounts?.[s.activeChallenge] || 0;
+   340→            challengeDebuff = getChallengeDebuffAtRepeat(ch, repeat);
+   341→            if (challengeDebuff.productionMult !== undefined) {
+   342→              autoMult *= challengeDebuff.productionMult;
+   343→            }
+   344→          }
+   345→        }
+   346→
+   347→        // ---- Layers 2-6: aggregate additive bonuses (production, cap, pop, ep, cost) ----
+   348→        const foresight = foresightBonus(s.foresightNodes || {});
+   349→        const route = routeBonus(s.activeForesightRoute);
+   350→        const ritualProd = activeRitualProductionBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
+   351→        const ritualCap = activeRitualCapBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
+   352→        const ritualPop = activeRitualPopBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
+   353→        const wProd = worldProductionMult(s.authoredWorlds || []);
+   354→        const wCap = worldCapMult(s.authoredWorlds || []);
+   355→        const wPop = worldPopGrowthMult(s.authoredWorlds || []);
+   356→        const dLaw = divineLawBonus(s.enactedDivineLaws || {});
+   357→        const wMode = worshipModeBonus(s.activeWorshipMode);
+   358→        const hResp = heresyResponseProductionMult(s.activeHeresyResponse);
+   359→        const relics = relicBonus(s.equippedRelics || {});
+   360→        const cores = logicCoreBonus(s.activeLogicCores || {});
+   361→        // Layer 7 — Omnipotence (hybrids + stance)
+   362→        const hybrids = hybridBonus(s.equippedHybrids || {}, s.activeOmnipotenceStance);
+   363→        // Layer 8 — Divinity (prayer channels + mask + polarity)
+   364→        const chanBonus = prayerChannelBonus(s.prayerChannelLevels || {});
+   365→        const maskBonus = divineMaskBonus(s.activeDivineMask);
+   366→        const polarityBonus = worshipPolarityBonus(s.activeWorshipPolarity);
+   367→        // Layer 9 — Infinity (echoes + forks + active debt)
+   368→        const echoB = echoBonus(s.purchasedEchoes || {});
+   369→        const forkB = forkBonus(s.resolvedForks || {});
+   370→        const debtB = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {});
+   371→        // Layer 10 — Eternity (testament + canonizations + weaves + cosmic boon)
+   372→        const testB = testamentClauseBonus(s.purchasedTestamentClauses || {});
+   373→        const canonB = canonizationBonus(s.activeCanonizations || {});
+   374→        const weaveB = permanenceWeaveBonus(s.activePermanenceWeaves || {});
+   375→        const cosmicBoon = cosmicBoonBonus(s.cosmicBoonStacks || 0);
+   376→
+   377→        const layerProdBonus =
+   378→          foresight.productionMult + route.productionMult + ritualProd +
+   379→          wProd + dLaw.productionMult + wMode.productionMult + hResp +
+   380→          relics.productionMult + cores.productionMult +
+   381→          hybrids.productionMult + chanBonus.productionMult + maskBonus.productionMult +
+   382→          polarityBonus.productionMult + echoB.productionMult + forkB.productionMult +
+   383→          debtB.productionMult + testB.productionMult + canonB.productionMult +
+   384→          weaveB.productionMult + cosmicBoon;
+   385→        const layerCapBonus =
+   386→          foresight.capMult + route.capMult + ritualCap + wCap +
+   387→          dLaw.capMult + relics.capMult + cores.capMult +
+   388→          hybrids.capMult + chanBonus.capMult + maskBonus.capMult +
+   389→          polarityBonus.capMult + echoB.capMult + forkB.capMult +
+   390→          debtB.capMult + testB.capMult + canonB.capMult + weaveB.capMult;
+   391→        const layerPopBonus =
+   392→          foresight.popGrowthMult + route.popGrowthMult + ritualPop + wPop +
+   393→          dLaw.popGrowthMult + relics.popGrowthMult +
+   394→          hybrids.popGrowthMult + chanBonus.popGrowthMult + maskBonus.popGrowthMult +
+   395→          polarityBonus.popGrowthMult + echoB.popGrowthMult + forkB.popGrowthMult +
+   396→          debtB.popGrowthMult + testB.popGrowthMult + canonB.popGrowthMult +
+   397→          weaveB.popGrowthMult;
+   398→
+   399→        // QUICK WIN 2 — Active abilities: Surge (×3 prod) + Overclock (×2 layer bonuses)
+   400→        const surgeActive = (s.activeAbilityEffects?.surge || 0) > 0;
+   401→        const overclockActive = (s.activeAbilityEffects?.overclock || 0) > 0;
+   402→        // QUICK WIN 3 — Divine Combo: +50% all production while ritualComboTimer > 0
+   403→        const divineComboActive = (s.ritualComboTimer || 0) > 0;
+   404→        // QUICK WIN 5 — Universal Boost upgrade: +5% all production per level
+   405→        const universalBoostLvl = s.upgrades["universal_boost"] || 0;
+   406→        const universalBoostMult = 1 + universalBoostLvl * 0.05;
+   407→
+   408→        // Miracle: double production (one-shot temporary effect)
+   409→        const miracleDouble = (s.miracleTimers?.mir_genesis || 0) > 0;
+   410→
+   411→        // Apply: overclock multiplies layer bonuses (foresight, ritual, relics, etc.) by 2
+   412→        const layerProdBonusApplied = layerProdBonus * (overclockActive ? 2 : 1);
+   413→        // Surge multiplies total production output (after layer bonus & miracle)
+   414→        const surgeMult = surgeActive ? 3 : 1;
+   415→        const divineComboMult = divineComboActive ? 1.5 : 1;
+   416→        autoMult *= (1 + layerProdBonusApplied) * (miracleDouble ? 2 : 1) * surgeMult * divineComboMult * universalBoostMult;
+   417→
+   418→        const techMult = techMultiplier(s, "production");
+   419→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+   420→        let capMult = 1 + capBoostLvl * 0.20;
+   421→        capMult *= (1 + layerCapBonus);
+   422→        if (challengeDebuff.capMult !== undefined) capMult *= challengeDebuff.capMult;
+   423→        const hasAutoBalancer = (s.upgrades["auto_balancer"] || 0) > 0;
+   424→
+   425→        // Archetype bonus
+   426→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+   427→        const archAllMult = archetype?.bonus.allProductionMult || 0;
+   428→        const archPopMult = archetype?.bonus.populationGrowthMult || 0;
+   429→        const archCapMult = archetype?.bonus.capMult || 0;
+   430→
+   431→        const resources = { ...s.resources };
+   432→        let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
+   433→
+   434→        // Cost reduction (frugality) — also used by auto-buyer
+   435→        // Layers 2-6: foresight cost reduction (additive, negative = cheaper)
+   436→        const layerCostReduction = foresight.costMult;
+   437→        const costReduction = (s.upgrades["frugality"] || 0) * 0.04 + Math.max(0, -layerCostReduction);
+   438→        // Challenge cost multiplier (debuff)
+   439→        const challengeCostMult = challengeDebuff.costMult ?? 1;
+   440→
+   441→        // Apply system production — with cap-aware pausing
+   442→        for (const [sysId, count] of Object.entries(s.ownedSystems)) {
+   443→          if (!count) continue;
+   444→          const sys = SYSTEM_MAP[sysId];
+   445→          if (!sys) continue;
+   446→          if (sys.requiredTech && !s.technologies[sys.requiredTech]) continue;
+   447→
+   448→          // Check if system is manually disabled
+   449→          const manuallyEnabled = s.systemEnabled[sysId] !== false; // default true
+   450→          if (!manuallyEnabled && !hasAutoBalancer) continue;
+   451→
+   452→          // Cap-aware logic: if all output resources are at cap, idle the system
+   453→          // (don't produce, don't consume upkeep — no waste)
+   454→          const outputsCapped = Object.keys(sys.produces).length > 0 &&
+   455→            Object.keys(sys.produces).every((r) => {
+   456→              const cap = capacities[r] || 0;
+   457→              return (resources[r] || 0) >= cap - 0.01;
+   458→            });
+   459→
+   460→          if (outputsCapped) {
+   461→            // System idles — no production, no upkeep
+   462→            continue;
+   463→          }
+   464→
+   465→          const stageMult = sys.stage === STAGES[s.stageIndex].id ? 1 : 0.5;
+   466→          const mult = autoMult * techMult * stageMult * (1 + archAllMult);
+   467→
+   468→          // Per-resource archetype bonus
+   469→          const produces = sys.produces as Record<string, number>;
+   470→          for (const [r, v] of Object.entries(produces)) {
+   471→            const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+   472→            const rate = v * count * mult * (1 + archResBonus);
+   473→            resources[r] = (resources[r] || 0) + rate * realDt;
+   474→          }
+   475→          // Upkeep
+   476→          if (sys.upkeep) {
+   477→            const upkeep = sys.upkeep as Record<string, number>;
+   478→            for (const [r, v] of Object.entries(upkeep)) {
+   479→              resources[r] = (resources[r] || 0) - v * count * realDt;
+   480→            }
+   481→          }
+   482→        }
+   483→
+   484→        // Clamp resources to capacities (no overflow)
+   485→        for (const r of Object.keys(resources)) {
+   486→          const cap = capacities[r];
+   487→          if (cap != null && resources[r] > cap) resources[r] = cap;
+   488→          if (resources[r] < 0) resources[r] = 0;
+   489→        }
+   490→
+   491→        // Slow passive ATP for cell (keeps early game from stalling)
+   492→        if (STAGES[s.stageIndex].id === "cell") {
+   493→          resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.5 * realDt);
+   494→        }
+   495→
+   496→        // Population growth with progress bar
+   497→        // QUICK WIN 1: 3× faster base rate (0.015 → 0.045) — waiting for pop is the #1 fun killer
+   498→        let popGrowthRate = 0.045; // base per second
+   499→        const happiness = resources.happiness || 50;
+   500→        popGrowthRate *= (1 + (happiness - 40) / 200);
+   501→        popGrowthRate *= (1 + archPopMult);
+   502→        // Layers 2-6: aggregate pop-growth bonus
+   503→        popGrowthRate *= (1 + layerPopBonus);
+   504→        const curStage = STAGES[s.stageIndex];
+   505→        if (["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
+   506→          const foodCap = capacities.food || 1;
+   507→          const waterCap = capacities.water || 1;
+   508→          const foodPct = (resources.food || 0) / foodCap;
+   509→          const waterPct = (resources.water || 0) / waterCap;
+   510→          if (foodPct < 0.1) popGrowthRate *= 0.3;
+   511→          if (waterPct < 0.1) popGrowthRate *= 0.3;
+   512→        }
+   513→        // Challenge pop-growth debuff
+   514→        if (challengeDebuff.popGrowthMult !== undefined) {
+   515→          popGrowthRate *= challengeDebuff.popGrowthMult;
+   516→        }
+   517→
+   518→        let populationProgress = (s.populationProgress || 0) + popGrowthRate * realDt;
+   519→        let population = s.population;
+   520→        while (populationProgress >= 1) {
+   521→          populationProgress -= 1;
+   522→          population += 1;
+   523→        }
+   524→
+   525→        const maxPopulation = Math.max(s.maxPopulation || 0, population);
+   526→
+   527→        const newTime = s.time + realDt;
+   528→
+   529→        // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
+   530→        let ownedSystems = s.ownedSystems;
+   531→        let systemEnabled = s.systemEnabled;
+   532→        let archetypeAffinity = s.archetypeAffinity;
+   533→        let totalSystemsBuilt = s.totalSystemsBuilt || 0;
+   534→        let autoTimers = { ...s.autoTimers };
+   535→        let technologies = s.technologies;
+   536→        let totalTechResearched = s.totalTechResearched || 0;
+   537→
+   538→        // ---- Auto-Builder: every 8s (5s after first prestige — Part 2a), buy cheapest affordable system ----
+   539→        // After first Galactic win (galacticWins >= 1), the auto-buyer is FREE (no shop upgrade needed).
+   540→        const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0 || (s.galacticWins || 0) >= 1;
+   541→        const systemBuyerInterval = (s.galacticWins || 0) >= 1 ? 5 : 8;
+   542→        if (hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
+   543→          const stageId = STAGES[s.stageIndex].id;
+   544→          const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
+   545→          const maxSystemsCap = challengeDebuff.maxSystems ?? Infinity;
+   546→          const canExceedCap = totalSystemsNow < maxSystemsCap;
+   547→          const disableMilitary = !!challengeDebuff.disableMilitary;
+   548→
+   549→          const candidates = SYSTEMS.filter((sys) => sys.stage === stageId)
+   550→            .map((sys) => {
+   551→              const owned = ownedSystems[sys.id] || 0;
+   552→              if (sys.maxOwned && owned >= sys.maxOwned) return null;
+   553→              if (sys.requiredTech && !technologies[sys.requiredTech]) return null;
+   554→              if (disableMilitary && sys.category === "Military") return null;
+   555→              const cost = systemCost(sys, owned, costReduction);
+   556→              const scaledCost: Record<string, number> = {};
+   557→              let totalCost = 0;
+   558→              let canAfford = true;
+   559→              for (const [r, v] of Object.entries(cost)) {
+   560→                const scaled = Math.ceil((v as number) * challengeCostMult);
+   561→                scaledCost[r] = scaled;
+   562→                totalCost += scaled;
+   563→                if ((resources[r] || 0) < scaled) canAfford = false;
+   564→              }
+   565→              return { sys, scaledCost, totalCost, canAfford };
+   566→            })
+   567→            .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
+   568→
+   569→          if (canExceedCap && candidates.length > 0) {
+   570→            candidates.sort((a, b) => a.totalCost - b.totalCost);
+   571→            const pick = candidates[0];
+   572→            // Apply purchase
+   573→            const newResources = { ...resources };
+   574→            for (const [r, v] of Object.entries(pick.scaledCost)) {
+   575→              newResources[r] -= v;
+   576→            }
+   577→            Object.assign(resources, newResources);
+   578→            ownedSystems = { ...ownedSystems, [pick.sys.id]: (ownedSystems[pick.sys.id] || 0) + 1 };
+   579→            if (systemEnabled[pick.sys.id] === undefined) {
+   580→              systemEnabled = { ...systemEnabled, [pick.sys.id]: true };
+   581→            }
+   582→            if (pick.sys.grantsAffinity) {
+   583→              archetypeAffinity = { ...archetypeAffinity };
+   584→              const arch = pick.sys.grantsAffinity.archetype;
+   585→              archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + pick.sys.grantsAffinity.amount;
+   586→            }
+   587→            totalSystemsBuilt += 1;
+   588→            autoTimers.system = newTime;
+   589→          } else {
+   590→            // Even if no purchase happened, advance the timer so we don't retry every tick.
+   591→            autoTimers.system = newTime;
+   592→          }
+   593→        }
+   594→
+   595→        // ---- Auto-Researcher: every 12s (8s after first prestige — Part 2a), research cheapest affordable tech ----
+   596→        // After first Galactic win, auto-researcher is FREE (no shop upgrade needed).
+   597→        const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0 || (s.galacticWins || 0) >= 1;
+   598→        const techBuyerInterval = (s.galacticWins || 0) >= 1 ? 8 : 12;
+   599→        if (hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
+   600→          const stageId = STAGES[s.stageIndex].id;
+   601→          const disableTech = !!challengeDebuff.disableTech;
+   602→          const disableMilitary = !!challengeDebuff.disableMilitary;
+   603→
+   604→          if (!disableTech) {
+   605→            const techCandidates = TECHS.filter((t) => t.stage === stageId && !technologies[t.id])
+   606→              .map((t) => {
+   607→                if (t.requires) {
+   608→                  for (const req of t.requires) {
+   609→                    if (!technologies[req]) return null;
+   610→                  }
+   611→                }
+   612→                if (disableMilitary && t.branch === "Conflict") return null;
+   613→                const cost = t.cost as Record<string, number>;
+   614→                const scaledCost: Record<string, number> = {};
+   615→                let totalCost = 0;
+   616→                let canAfford = true;
+   617→                for (const [r, v] of Object.entries(cost)) {
+   618→                  const scaled = Math.ceil(v * challengeCostMult);
+   619→                  scaledCost[r] = scaled;
+   620→                  totalCost += scaled;
+   621→                  if ((resources[r] || 0) < scaled) canAfford = false;
+   622→                }
+   623→                return { t, scaledCost, totalCost, canAfford };
+   624→              })
+   625→              .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
+   626→
+   627→            if (techCandidates.length > 0) {
+   628→              techCandidates.sort((a, b) => a.totalCost - b.totalCost);
+   629→              const pick = techCandidates[0];
+   630→              const newResources = { ...resources };
+   631→              for (const [r, v] of Object.entries(pick.scaledCost)) {
+   632→                newResources[r] -= v;
+   633→              }
+   634→              Object.assign(resources, newResources);
+   635→              technologies = { ...technologies, [pick.t.id]: true };
+   636→              if (pick.t.grantsAffinity) {
+   637→                archetypeAffinity = { ...archetypeAffinity };
+   638→                const arch = pick.t.grantsAffinity.archetype;
+   639→                archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + pick.t.grantsAffinity.amount;
+   640→              }
+   641→              totalTechResearched += 1;
+   642→              autoTimers.tech = newTime;
+   643→            } else {
+   644→              autoTimers.tech = newTime;
+   645→            }
+   646→          } else {
+   647→            autoTimers.tech = newTime;
+   648→          }
+   649→        }
+   650→
+   651→        // ---- Auto-Evolver: check every 2s, trigger evolve if threshold met ----
+   652→        // After first Galactic win, auto-evolver is FREE (no shop upgrade needed) and uses threshold = 1.0.
+   653→        const autoEvolveLvl = s.upgrades["auto_evolver"] || 0;
+   654→        const hasAutoEvolver = autoEvolveLvl > 0 || (s.galacticWins || 0) >= 1;
+   655→        if (hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
+   656→          autoTimers.evolve = newTime;
+   657→          const stage = STAGES[s.stageIndex];
+   658→          const next = nextStage(stage.id);
+   659→          if (next) {
+   660→            // After first prestige (galacticWins >= 1), use threshold = 1.0 (meet base requirements).
+   661→            // Otherwise: 1.0, 1.2, 1.4, 1.6, 1.8 per auto-evolver level.
+   662→            const threshold = (s.galacticWins || 0) >= 1 ? 1.0 : (1 + autoEvolveLvl * 0.2);
+   663→            const reqs = stage.evolveRequires;
+   664→            const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
+   665→            const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
+   666→            const totalTechNow = Object.keys(technologies).length;
+   667→            if (
+   668→              population >= reqs.minPopulation * evolveBoost * threshold &&
+   669→              totalSystemsNow >= reqs.minSystems * evolveBoost * threshold &&
+   670→              totalTechNow >= reqs.minTech * evolveBoost * threshold
+   671→            ) {
+   672→              // Defer evolve to next tick to avoid mutating state mid-set.
+   673→              setTimeout(() => get().evolveStage(), 0);
+   674→            }
+   675→          }
+   676→        }
+   677→
+   678→        // Check story triggers
+   679→        const newStory = { ...s.storyUnlocked };
+   680→        let activePopup = s.activeStoryPopup;
+   681→        const ctx = { ...s, resources, ownedSystems };
+   682→        for (const trig of STORY_TRIGGERS) {
+   683→          if (!newStory[trig.id] && trig.condition(ctx)) {
+   684→            newStory[trig.id] = true;
+   685→            if (!activePopup) activePopup = trig.id;
+   686→          }
+   687→        }
+   688→
+   689→        // Check achievements periodically (every ~2 seconds of game time)
+   690→        let achievements = s.achievements;
+   691→        let newAchievements = s.newAchievements;
+   692→        const checkInterval = 2.0;
+   693→        const lastCheck = (s as any)._lastAchCheck || 0;
+   694→        if (newTime - lastCheck >= checkInterval) {
+   695→          const curState = { ...s, resources, ownedSystems, technologies, time: newTime } as GameState;
+   696→          const result = checkAchievements(curState);
+   697→          if (result.newOnes.length > 0) {
+   698→            achievements = result.earned;
+   699→            newAchievements = [...(newAchievements || []), ...result.newOnes];
+   700→          } else if (Object.keys(result.earned).length !== Object.keys(achievements || {}).length) {
+   701→            achievements = result.earned;
+   702→          }
+   703→          (s as any)._lastAchCheck = newTime; // not persisted, just a runtime marker
+   704→        }
+   705→
+   706→        // Random event firing — only if no popup/modal is active, and not blocked by challenge
+   707→        let activeEvent = s.activeEvent;
+   708→        let eventCooldown = (s.eventCooldown || 0) - realDt;
+   709→        if (eventCooldown < 0) eventCooldown = 0;
+   710→        const eventFreq = s.eventFrequency || "normal";
+   711→        const eventsAllowed = !challengeDebuff.disableEvents;
+   712→        if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0) {
+   713→          const stageId = STAGES[s.stageIndex].id;
+   714→          const possible = eventsForStage(stageId, newTime);
+   715→          if (possible.length > 0) {
+   716→            const totalWeight = possible.reduce((sum, e) => sum + e.weight, 0);
+   717→            const roll = Math.random() * totalWeight;
+   718→            let cum = 0;
+   719→            for (const ev of possible) {
+   720→              cum += ev.weight;
+   721→              if (roll < cum) {
+   722→                activeEvent = ev.id;
+   723→                const base = eventFreq === "frequent" ? 30 : 90;
+   724→                const range = eventFreq === "frequent" ? 30 : 90;
+   725→                eventCooldown = base + Math.random() * range;
+   726→                break;
+   727→              }
+   728→            }
+   729→          }
+   730→        }
+   731→
+   732→        // ---- Challenge completion check (every 5s) ----
+   733→        let completedChallenges = s.completedChallenges;
+   734→        let challengeRepeatCounts = s.challengeRepeatCounts;
+   735→        let activeChallenge = s.activeChallenge;
+   736→        let unlockedLayers = s.unlockedLayers;
+   737→        // QUICK WIN 5 — Prestige Points (universal currency). Earned from layer activity.
+   738→        let prestigePoints = s.prestigePoints || 0;
+   739→        if (s.activeChallenge && s.unlockedChallenges && newTime - (autoTimers.challenge || 0) >= 5) {
+   740→          autoTimers.challenge = newTime;
+   741→          const ch = CHALLENGE_MAP[s.activeChallenge];
+   742→          if (ch) {
+   743→            let isComplete = false;
+   744→            switch (ch.completeWhen.type) {
+   745→              case "reachPopulation":
+   746→                if (population >= ch.completeWhen.value) isComplete = true;
+   747→                break;
+   748→              case "reachStage":
+   749→                if (STAGES[s.stageIndex].id === ch.completeWhen.stage) isComplete = true;
+   750→                break;
+   751→              case "clearStage": {
+   752→                const targetIdx = STAGE_IDS.indexOf(ch.completeWhen.stage);
+   753→                if (s.stageIndex > targetIdx) isComplete = true;
+   754→                break;
+   755→              }
+   756→              case "reachGalactic":
+   757→                if (s.stageIndex >= STAGES.length - 1) isComplete = true;
+   758→                break;
+   759→              case "stockpileResource":
+   760→                if ((resources[ch.completeWhen.resource] || 0) >= ch.completeWhen.value) isComplete = true;
+   761→                break;
+   762→            }
+   763→            if (isComplete) {
+   764→              const completedCount = (s.completedChallenges?.[s.activeChallenge] || 0) + 1;
+   765→              completedChallenges = { ...(s.completedChallenges || {}), [s.activeChallenge]: completedCount };
+   766→              challengeRepeatCounts = { ...(s.challengeRepeatCounts || {}) };
+   767→              delete challengeRepeatCounts[s.activeChallenge];
+   768→              const chName = ch.name;
+   769→              activeChallenge = null;
+   770→              // QUICK WIN 5 — +1 Prestige Point for completing a trial
+   771→              prestigePoints += 1;
+   772→              // Enlightenment unlocks at 3 challenges completed (not 10)
+   773→              const totalChallengesCompleted = countChallengesCompleted(completedChallenges);
+   774→              if (totalChallengesCompleted >= 3 && !unlockedLayers.enlightenment) {
+   775→                unlockedLayers = { ...unlockedLayers, enlightenment: true };
+   776→              }
+   777→              // Defer log so we don't race with set()
+   778→              setTimeout(() => get().addToLog(`Trial complete: ${chName} (repeat ${completedCount}). Mastery bonus made permanent. (+1 Prestige Point)`), 0);
+   779→            }
+   780→          }
+   781→        }
+   782→
+   783→        // ---- Layers 2-6: passive currency generation, timer decay, unlock chain ----
+   784→        let divinity = s.divinity || 0;
+   785→        let faith = s.faith || 0;
+   786→        let heresy = s.heresy || 0;
+   787→        let activeTemporaryRituals = s.activeTemporaryRituals || {};
+   788→        let miracleTimers = s.miracleTimers || {};
+   789→        const activeScripts = s.activeScripts || {};
+   790→        let scriptTimers = s.scriptTimers || {};
+   791→        const activeLogicCores = s.activeLogicCores || {};
+   792→        let logicCoreTimers = s.logicCoreTimers || {};
+   793→        let bloodPactsUsed = s.bloodPactsUsed || {};
+   794→        const activeHeresyResponse = s.activeHeresyResponse || "hr_ignore";
+   795→
+   796→        // Decay temporary ritual timers
+   797→        if (Object.keys(activeTemporaryRituals).length > 0) {
+   798→          activeTemporaryRituals = { ...activeTemporaryRituals };
+   799→          let changed = false;
+   800→          for (const id of Object.keys(activeTemporaryRituals)) {
+   801→            const remaining = activeTemporaryRituals[id] - realDt;
+   802→            if (remaining <= 0) {
+   803→              delete activeTemporaryRituals[id];
+   804→              changed = true;
+   805→            } else {
+   806→              activeTemporaryRituals[id] = remaining;
+   807→              changed = true;
+   808→            }
+   809→          }
+   810→          void changed;
+   811→        }
+   812→
+   813→        // Decay miracle timers
+   814→        if (Object.keys(miracleTimers).length > 0) {
+   815→          miracleTimers = { ...miracleTimers };
+   816→          for (const id of Object.keys(miracleTimers)) {
+   817→            const remaining = miracleTimers[id] - realDt;
+   818→            if (remaining <= 0) {
+   819→              delete miracleTimers[id];
+   820→            } else {
+   821→              miracleTimers[id] = remaining;
+   822→            }
+   823→          }
+   824→        }
+   825→
+   826→        // QUICK WIN 2 — Decay active ability cooldowns + effect timers
+   827→        let activeAbilityCooldowns = s.activeAbilityCooldowns || {};
+   828→        let activeAbilityEffects = s.activeAbilityEffects || {};
+   829→        if (Object.keys(activeAbilityCooldowns).length > 0) {
+   830→          activeAbilityCooldowns = { ...activeAbilityCooldowns };
+   831→          for (const id of Object.keys(activeAbilityCooldowns)) {
+   832→            const remaining = Math.max(0, activeAbilityCooldowns[id] - realDt);
+   833→            if (remaining <= 0) delete activeAbilityCooldowns[id];
+   834→            else activeAbilityCooldowns[id] = remaining;
+   835→          }
+   836→        }
+   837→        if (Object.keys(activeAbilityEffects).length > 0) {
+   838→          activeAbilityEffects = { ...activeAbilityEffects };
+   839→          for (const id of Object.keys(activeAbilityEffects)) {
+   840→            const remaining = Math.max(0, activeAbilityEffects[id] - realDt);
+   841→            if (remaining <= 0) delete activeAbilityEffects[id];
+   842→            else activeAbilityEffects[id] = remaining;
+   843→          }
+   844→        }
+   845→
+   846→        // QUICK WIN 3 — Decay ritual combo bonus timer
+   847→        let ritualComboTimer = Math.max(0, (s.ritualComboTimer || 0) - realDt);
+   848→
+   849→        // QUICK WIN 7 — Random layer events (log-only state mutations)
+   850→        let layerEventTimers = { ...(s.layerEventTimers || { trial_of_fortune: 0, vision: 0, divine_whim: 0, heresy_surge: 0 }) };
+   851→        // Layer 1 — Trial of Fortune: every 120s, +20% of capacity to 2 random primary resources
+   852→        if (newTime - (layerEventTimers.trial_of_fortune || 0) >= 120 && (layerEventTimers.trial_of_fortune || 0) > 0) {
+   853→          layerEventTimers.trial_of_fortune = newTime;
+   854→          const primRes = ["glucose", "proteins", "lipids", "food", "water", "materials", "wood", "stone", "production", "gold", "influence", "energy", "alloys", "data"];
+   855→          const picks: string[] = [];
+   856→          for (let i = 0; i < 2 && primRes.length > 0; i++) {
+   857→            const idx = Math.floor(Math.random() * primRes.length);
+   858→            picks.push(primRes.splice(idx, 1)[0]);
+   859→          }
+   860→          for (const r of picks) {
+   861→            const cap = capacities[r] || 50;
+   862→            resources[r] = Math.min(cap, (resources[r] || 0) + cap * 0.20);
+   863→          }
+   864→          setTimeout(() => get().addToLog(`🎲 Trial of Fortune! +20% capacity to ${picks.join(", ")}.`), 0);
+   865→        } else if ((layerEventTimers.trial_of_fortune || 0) === 0) {
+   866→          // First-time initialization — wait 120s before first fire
+   867→          layerEventTimers.trial_of_fortune = newTime;
+   868→        }
+   869→        // Layer 2 — Vision: every 90s (after enlightenment unlocked), +5 Divinity
+   870→        if (unlockedLayers.enlightenment) {
+   871→          if ((layerEventTimers.vision || 0) === 0) {
+   872→            layerEventTimers.vision = newTime;
+   873→          } else if (newTime - layerEventTimers.vision >= 90) {
+   874→            layerEventTimers.vision = newTime;
+   875→            divinity += 5;
+   876→            setTimeout(() => get().addToLog("👁️ Vision! +5 Divinity granted."), 0);
+   877→          }
+   878→        }
+   879→        // Layer 3 — Divine Whim: every 120s (after transcendence unlocked), +30 Divinity (≈ half a ritual's cost)
+   880→        if (unlockedLayers.transcendence) {
+   881→          if ((layerEventTimers.divine_whim || 0) === 0) {
+   882→            layerEventTimers.divine_whim = newTime;
+   883→          } else if (newTime - layerEventTimers.divine_whim >= 120) {
+   884→            layerEventTimers.divine_whim = newTime;
+   885→            divinity += 30;
+   886→            setTimeout(() => get().addToLog("🌀 Divine Whim! Ritual energies surge (+30 Divinity)."), 0);
+   887→          }
+   888→        }
+   889→        // Layer 5 — Heresy Surge: every 90s (after apotheosis unlocked), +10 heresy (BAD event)
+   890→        if (unlockedLayers.apotheosis) {
+   891→          if ((layerEventTimers.heresy_surge || 0) === 0) {
+   892→            layerEventTimers.heresy_surge = newTime;
+   893→          } else if (newTime - layerEventTimers.heresy_surge >= 90) {
+   894→            layerEventTimers.heresy_surge = newTime;
+   895→            heresy = Math.min(100, heresy + 10);
+   896→            setTimeout(() => get().addToLog("🔥 Heresy Surge! +10 heresy accrued — the flock doubts."), 0);
+   897→          }
+   898→        }
+   899→
+   900→        // Layer 3 — Divinity generation from active rituals + tithe script
+   901→        if (unlockedLayers.transcendence) {
+   902→          const titheActive = !!activeScripts["script_divinity_tithe"];
+   903→          const divPerSec = transcendenceDivinityPerSecond(activeTemporaryRituals, titheActive);
+   904→          if (divPerSec > 0) divinity += divPerSec * realDt;
+   905→
+   906→          // Divinity Tithe script: drains 1% of all resources per second
+   907→          if (titheActive) {
+   908→            const drained: Record<string, number> = {};
+   909→            for (const r of Object.keys(resources)) {
+   910→              if ((resources[r] || 0) > 1) {
+   911→                const drain = (resources[r] || 0) * 0.01 * realDt;
+   912→                drained[r] = drain;
+   913→              }
+   914→            }
+   915→            for (const [r, v] of Object.entries(drained)) {
+   916→              resources[r] = Math.max(0, (resources[r] || 0) - v);
+   917→            }
+   918→          }
+   919→
+   920→          // Auto-scripts (Layer 3)
+   921→          // Auto-Libation: every 30s, perform cheapest affordable offering
+   922→          if (activeScripts["script_auto_offering"] && newTime - (scriptTimers["script_auto_offering"] || 0) >= 30) {
+   923→            scriptTimers = { ...scriptTimers, script_auto_offering: newTime };
+   924→            const candidates = OFFERINGS.filter((o) => {
+   925→              for (const [r, v] of Object.entries(o.cost)) {
+   926→                if ((resources[r] || 0) < (v as number)) return false;
+   927→              }
+   928→              return true;
+   929→            });
+   930→            if (candidates.length > 0) {
+   931→              const pick = candidates.reduce((a, b) => (a.divinityGain < b.divinityGain ? a : b));
+   932→              for (const [r, v] of Object.entries(pick.cost)) {
+   933→                resources[r] = Math.max(0, (resources[r] || 0) - (v as number));
+   934→              }
+   935→              const repeats = (s.transcendenceOfferingsUsed?.[pick.id] || 0);
+   936→              divinity += offeringDivinityAtRepeat(pick, repeats);
+   937→              setTimeout(() => get().addToLog(`Auto-Libation performed ${pick.name}.`), 0);
+   938→            }
+   939→          }
+   940→
+   941→          // Auto-Ritual: every 120s, perform Silent Hour if affordable & inactive
+   942→          if (activeScripts["script_auto_ritual"] && newTime - (scriptTimers["script_auto_ritual"] || 0) >= 120) {
+   943→            scriptTimers = { ...scriptTimers, script_auto_ritual: newTime };
+   944→            const r = RITUAL_MAP["ritual_silent_hour"];
+   945→            if (r && !(s.purchasedRituals?.["ritual_silent_hour"]) && !(activeTemporaryRituals["ritual_silent_hour"] > 0) && divinity >= r.cost) {
+   946→              divinity -= r.cost;
+   947→              activeTemporaryRituals = { ...activeTemporaryRituals, ritual_silent_hour: r.durationSec || 0 };
+   948→              setTimeout(() => get().addToLog(`Ritualist performed ${r.name}.`), 0);
+   949→            }
+   950→          }
+   951→
+   952→          // Auto-Blood Pact: every 300s, perform cheapest unused blood pact if affordable
+   953→          if (activeScripts["script_auto_blood_pact"] && newTime - (scriptTimers["script_auto_blood_pact"] || 0) >= 300) {
+   954→            scriptTimers = { ...scriptTimers, script_auto_blood_pact: newTime };
+   955→            const candidates = BLOOD_PACTS.filter((p) => !bloodPactsUsed[p.id] && population >= p.popCost);
+   956→            if (candidates.length > 0) {
+   957→              const pick = candidates.reduce((a, b) => (a.popCost < b.popCost ? a : b));
+   958→              population -= pick.popCost;
+   959→              divinity += pick.divinityGain;
+   960→              bloodPactsUsed = { ...bloodPactsUsed, [pick.id]: true };
+   961→              setTimeout(() => get().addToLog(`Crimson Ledger performed ${pick.name} (-${pick.popCost} pop, +${pick.divinityGain} Divinity).`), 0);
+   962→            }
+   963→          }
+   964→
+   965→          // Auto-prestige: every 600s, prestige if at Galactic stage
+   966→          if (activeScripts["script_auto_prestige"] && s.stageIndex >= STAGES.length - 1 && newTime - (scriptTimers["script_auto_prestige"] || 0) >= 600) {
+   967→            scriptTimers = { ...scriptTimers, script_auto_prestige: newTime };
+   968→            setTimeout(() => {
+   969→              get().addToLog("Cycle of Becoming: auto-prestige triggered.");
+   970→              get().triggerPrestige();
+   971→            }, 0);
+   972→          }
+   973→        }
+   974→
+   975→        // Layer 5 — Faith generation, heresy accrual (Apotheosis)
+   976→        if (unlockedLayers.apotheosis) {
+   977→          faith += wMode.faithPerSec * realDt;
+   978→          // Heresy gain = worship mode's heresyPerSec × divine law heresy mult × heresy response mult
+   979→          const heresyGain = wMode.heresyPerSec * dLaw.heresyRateMult * heresyRateMult(activeHeresyResponse);
+   980→          if (heresyGain > 0) {
+   981→            heresy = Math.min(100, heresy + heresyGain * realDt);
+   982→            if (heresy >= 100) {
+   983→              // Run ends — force prestige (deferred to avoid mid-set race)
+   984→              heresy = 100;
+   985→              setTimeout(() => {
+   986→                get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
+   987→                get().triggerPrestige();
+   988→              }, 0);
+   989→            }
+   990→          }
+   991→        }
+   992→
+   993→        // Layer 6 — Logic Core automation (Singularity)
+   994→        if (unlockedLayers.singularity) {
+   995→          // Architect Core: every 10s, buy cheapest affordable system (faster than Auto-Builder)
+   996→          if (activeLogicCores["core_architect"] && newTime - (logicCoreTimers["core_architect"] || 0) >= 10) {
+   997→            logicCoreTimers = { ...logicCoreTimers, core_architect: newTime };
+   998→            const stageId = STAGES[s.stageIndex].id;
+   999→            const candidates = SYSTEMS.filter((sys) => sys.stage === stageId)
+  1000→              .map((sys) => {
+  1001→                const owned = ownedSystems[sys.id] || 0;
+  1002→                if (sys.maxOwned && owned >= sys.maxOwned) return null;
+  1003→                if (sys.requiredTech && !technologies[sys.requiredTech]) return null;
+  1004→                const cost = systemCost(sys, owned, costReduction);
+  1005→                const scaledCost: Record<string, number> = {};
+  1006→                let totalCost = 0;
+  1007→                let canAfford = true;
+  1008→                for (const [r, v] of Object.entries(cost)) {
+  1009→                  const scaled = Math.ceil((v as number) * challengeCostMult);
+  1010→                  scaledCost[r] = scaled;
+  1011→                  totalCost += scaled;
+  1012→                  if ((resources[r] || 0) < scaled) canAfford = false;
+  1013→                }
+  1014→                return { sys, scaledCost, totalCost, canAfford };
+  1015→              })
+  1016→              .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
+  1017→            if (candidates.length > 0) {
+  1018→              candidates.sort((a, b) => a.totalCost - b.totalCost);
+  1019→              const pick = candidates[0];
+  1020→              for (const [r, v] of Object.entries(pick.scaledCost)) {
+  1021→                resources[r] -= v;
+  1022→              }
+  1023→              ownedSystems = { ...ownedSystems, [pick.sys.id]: (ownedSystems[pick.sys.id] || 0) + 1 };
+  1024→              if (systemEnabled[pick.sys.id] === undefined) {
+  1025→                systemEnabled = { ...systemEnabled, [pick.sys.id]: true };
+  1026→              }
+  1027→              totalSystemsBuilt += 1;
+  1028→            }
+  1029→          }
+  1030→
+  1031→          // Sage Core: every 15s, research cheapest affordable tech (faster than Auto-Researcher)
+  1032→          if (activeLogicCores["core_sage"] && newTime - (logicCoreTimers["core_sage"] || 0) >= 15) {
+  1033→            logicCoreTimers = { ...logicCoreTimers, core_sage: newTime };
+  1034→            const stageId = STAGES[s.stageIndex].id;
+  1035→            const techCands = TECHS.filter((t) => t.stage === stageId && !technologies[t.id])
+  1036→              .map((t) => {
+  1037→                if (t.requires) {
+  1038→                  for (const req of t.requires) {
+  1039→                    if (!technologies[req]) return null;
+  1040→                  }
+  1041→                }
+  1042→                const cost = t.cost as Record<string, number>;
+  1043→                let canAfford = true;
+  1044→                let totalCost = 0;
+  1045→                for (const [r, v] of Object.entries(cost)) {
+  1046→                  const scaled = Math.ceil(v * challengeCostMult);
+  1047→                  totalCost += scaled;
+  1048→                  if ((resources[r] || 0) < scaled) canAfford = false;
+  1049→                }
+  1050→                return { t, totalCost, canAfford };
+  1051→              })
+  1052→              .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
+  1053→            if (techCands.length > 0) {
+  1054→              techCands.sort((a, b) => a.totalCost - b.totalCost);
+  1055→              const pick = techCands[0];
+  1056→              for (const [r, v] of Object.entries(pick.t.cost)) {
+  1057→                const scaled = Math.ceil((v as number) * challengeCostMult);
+  1058→                resources[r] = Math.max(0, resources[r] - scaled);
+  1059→              }
+  1060→              technologies = { ...technologies, [pick.t.id]: true };
+  1061→              totalTechResearched += 1;
+  1062→            }
+  1063→          }
+  1064→
+  1065→          // Chronicler Core: every 60s, perform cheapest affordable offering (Layer 3 helper)
+  1066→          if (activeLogicCores["core_chronicler"] && unlockedLayers.transcendence && newTime - (logicCoreTimers["core_chronicler"] || 0) >= 60) {
+  1067→            logicCoreTimers = { ...logicCoreTimers, core_chronicler: newTime };
+  1068→            const candidates = OFFERINGS.filter((o) => {
+  1069→              for (const [r, v] of Object.entries(o.cost)) {
+  1070→                if ((resources[r] || 0) < (v as number)) return false;
+  1071→              }
+  1072→              return true;
+  1073→            });
+  1074→            if (candidates.length > 0) {
+  1075→              const pick = candidates.reduce((a, b) => (a.divinityGain < b.divinityGain ? a : b));
+  1076→              for (const [r, v] of Object.entries(pick.cost)) {
+  1077→                resources[r] = Math.max(0, (resources[r] || 0) - (v as number));
+  1078→              }
+  1079→              const repeats = (s.transcendenceOfferingsUsed?.[pick.id] || 0);
+  1080→              divinity += offeringDivinityAtRepeat(pick, repeats);
+  1081→            }
+  1082→          }
+  1083→        }
+  1084→
+  1085→        // ---- Layer 7 — Omnipotence: instability accrual ----
+  1086→        let instability = s.instability || 0;
+  1087→        let peakInstability = s.peakInstability || 0;
+  1088→        if (unlockedLayers.omnipotence) {
+  1089→          const rate = effectiveInstabilityRate(s.equippedHybrids || {}, s.activeOmnipotenceStance);
+  1090→          if (rate > 0) {
+  1091→            instability = Math.min(100, instability + rate * realDt);
+  1092→            peakInstability = Math.max(peakInstability, instability);
+  1093→            if (instability >= 100) {
+  1094→              instability = 100;
+  1095→              peakInstability = 100;
+  1096→              setTimeout(() => {
+  1097→                get().addToLog("Instability has reached 100. The hybrid god tears itself apart — the run ends.");
+  1098→                get().triggerPrestige();
+  1099→              }, 0);
+  1100→            }
+  1101→          }
+  1102→        }
+  1103→
+  1104→        // ---- Layer 8 — Divinity (layer): Prayer generation ----
+  1105→        let prayer = s.prayer || 0;
+  1106→        if (unlockedLayers.divinity) {
+  1107→          const pRate = prayerRate(population, s.prayerChannelLevels || {}, s.activeDivineMask, s.activeWorshipPolarity);
+  1108→          if (pRate > 0) prayer += pRate * realDt;
+  1109→        }
+  1110→
+  1111→        // ---- Layer unlock chain (Layers 3-6) ----
+  1112→        // Layer 3 (Transcendence): 10+ foresight nodes purchased
+  1113→        if (unlockedLayers.enlightenment && !unlockedLayers.transcendence) {
+  1114→          if (countForesightNodes(s.foresightNodes || {}) >= FORESIGHT_NODES_REQUIRED_FOR_LAYER_3) {
+  1115→            unlockedLayers = { ...unlockedLayers, transcendence: true };
+  1116→            setTimeout(() => get().addToLog("10 Foresight nodes reached. Transcendence layer unlocked."), 0);
+  1117→          }
+  1118→        }
+  1119→        // Layer 4 (Genesis): all 4 blood pacts used at least once
+  1120→        if (unlockedLayers.transcendence && !unlockedLayers.genesis) {
+  1121→          if (allBloodPactsUsed(bloodPactsUsed)) {
+  1122→            unlockedLayers = { ...unlockedLayers, genesis: true };
+  1123→            setTimeout(() => get().addToLog("All 4 Blood Pacts performed. Genesis layer unlocked."), 0);
+  1124→          }
+  1125→        }
+  1126→        // Layer 5 (Apotheosis): authored at least 1 world config
+  1127→        if (unlockedLayers.genesis && !unlockedLayers.apotheosis) {
+  1128→          if (hasAuthoredWorld(s.authoredWorlds || [])) {
+  1129→            unlockedLayers = { ...unlockedLayers, apotheosis: true };
+  1130→            setTimeout(() => get().addToLog("First world authored. Apotheosis layer unlocked."), 0);
+  1131→          }
+  1132→        }
+  1133→        // Layer 6 (Singularity): enacted 3+ divine laws
+  1134→        if (unlockedLayers.apotheosis && !unlockedLayers.singularity) {
+  1135→          if (hasEnactedThreeLaws(s.enactedDivineLaws || {})) {
+  1136→            unlockedLayers = { ...unlockedLayers, singularity: true };
+  1137→            setTimeout(() => get().addToLog("3 Divine Laws enacted. Singularity layer unlocked."), 0);
+  1138→          }
+  1139→        }
+  1140→        // Layer 7 (Omnipotence): 3+ active logic cores
+  1141→        const activeCoreCount = Object.values(s.activeLogicCores || {}).filter(Boolean).length;
+  1142→        if (unlockedLayers.singularity && !unlockedLayers.omnipotence) {
+  1143→          if (activeCoreCount >= 3) {
+  1144→            unlockedLayers = { ...unlockedLayers, omnipotence: true };
+  1145→            setTimeout(() => get().addToLog("3 Logic Cores activated. Omnipotence layer unlocked."), 0);
+  1146→          }
+  1147→        }
+  1148→        // Layer 8 (Divinity): peak instability ≥ 80
+  1149→        if (unlockedLayers.omnipotence && !unlockedLayers.divinity) {
+  1150→          if (isOmnipotenceComplete(peakInstability)) {
+  1151→            unlockedLayers = { ...unlockedLayers, divinity: true };
+  1152→            setTimeout(() => get().addToLog("Peak instability reached 80. Divinity layer unlocked."), 0);
+  1153→          }
+  1154→        }
+  1155→        // Layer 9 (Infinity): 3+ prayer channels leveled AND polarity chosen
+  1156→        if (unlockedLayers.divinity && !unlockedLayers.infinity) {
+  1157→          if (isDivinityComplete(s.prayerChannelLevels || {}, s.activeWorshipPolarity)) {
+  1158→            unlockedLayers = { ...unlockedLayers, infinity: true };
+  1159→            setTimeout(() => get().addToLog("Prayer channels and polarity set. Infinity layer unlocked."), 0);
+  1160→          }
+  1161→        }
+  1162→        // Layer 10 (Eternity): forks resolved + debt repaid
+  1163→        if (unlockedLayers.infinity && !unlockedLayers.eternity) {
+  1164→          if (isInfinityComplete(s.resolvedForks || {}, s.takenFutureDebts || {}, s.repaidFutureDebts || {})) {
+  1165→            unlockedLayers = { ...unlockedLayers, eternity: true };
+  1166→            setTimeout(() => get().addToLog("All forks resolved and debts repaid. Eternity layer unlocked."), 0);
+  1167→          }
+  1168→        }
+  1169→
+  1170→        // ---- Theme auto-unlock (Part 1f) ----
+  1171→        let unlockedThemes = { ...(s.unlockedThemes || { "stage-cell": true }) };
+  1172→        let themesChanged = false;
+  1173→        // Stage themes — unlock the theme for the current stage index
+  1174→        const stageThemeId = STAGE_INDEX_TO_THEME[s.stageIndex];
+  1175→        if (stageThemeId && !unlockedThemes[stageThemeId]) {
+  1176→          unlockedThemes[stageThemeId] = true;
+  1177→          themesChanged = true;
+  1178→        }
+  1179→        // Layer themes — unlock the matching overlay when a layer unlocks
+  1180→        for (const [layerId, themeId] of Object.entries(LAYER_ID_TO_THEME)) {
+  1181→          if (unlockedLayers[layerId] && !unlockedThemes[themeId]) {
+  1182→            unlockedThemes[themeId] = true;
+  1183→            themesChanged = true;
+  1184→          }
+  1185→        }
+  1186→        // Special themes
+  1187→        if ((s.galacticWins || 0) >= 1 && !unlockedThemes["special-void"]) {
+  1188→          unlockedThemes["special-void"] = true;
+  1189→          themesChanged = true;
+  1190→        }
+  1191→        const achCount = Object.values(achievements || {}).filter(Boolean).length;
+  1192→        if (achCount >= 10 && !unlockedThemes["special-retro"]) {
+  1193→          unlockedThemes["special-retro"] = true;
+  1194→          themesChanged = true;
+  1195→        }
+  1196→        const allLayersUnlocked = !!(unlockedLayers.evolution && unlockedLayers.enlightenment && unlockedLayers.transcendence && unlockedLayers.genesis && unlockedLayers.apotheosis && unlockedLayers.singularity && unlockedLayers.omnipotence && unlockedLayers.divinity && unlockedLayers.infinity && unlockedLayers.eternity);
+  1197→        if (allLayersUnlocked && !unlockedThemes["special-cosmic"]) {
+  1198→          unlockedThemes["special-cosmic"] = true;
+  1199→          themesChanged = true;
+  1200→        }
+  1201→        void themesChanged;
+  1202→
+  1203→        set({
+  1204→          resources,
+  1205→          capacities,
+  1206→          time: newTime,
+  1207→          population,
+  1208→          maxPopulation,
+  1209→          populationProgress,
+  1210→          storyUnlocked: newStory,
+  1211→          activeStoryPopup: activePopup,
+  1212→          achievements,
+  1213→          newAchievements,
+  1214→          activeEvent,
+  1215→          eventCooldown,
+  1216→          ownedSystems,
+  1217→          systemEnabled,
+  1218→          archetypeAffinity,
+  1219→          technologies,
+  1220→          totalSystemsBuilt,
+  1221→          totalTechResearched,
+  1222→          autoTimers,
+  1223→          completedChallenges,
+  1224→          challengeRepeatCounts,
+  1225→          activeChallenge,
+  1226→          unlockedLayers,
+  1227→          unlockedThemes,
+  1228→          totalPlayTime: (s.totalPlayTime || 0) + realDt,
+  1229→          // Layer 2-6 currency + state
+  1230→          divinity,
+  1231→          faith,
+  1232→          heresy,
+  1233→          activeTemporaryRituals,
+  1234→          miracleTimers,
+  1235→          activeScripts,
+  1236→          scriptTimers,
+  1237→          activeLogicCores,
+  1238→          logicCoreTimers,
+  1239→          bloodPactsUsed,
+  1240→          // Layer 7-8 state
+  1241→          instability,
+  1242→          peakInstability,
+  1243→          prayer,
+  1244→          // QUICK WINS — runtime timers + universal currency
+  1245→          activeAbilityCooldowns,
+  1246→          activeAbilityEffects,
+  1247→          ritualComboTimer,
+  1248→          layerEventTimers,
+  1249→          prestigePoints,
+  1250→        });
+  1251→      },
+  1252→
+  1253→      // ============ ACTIONS ============
+  1254→      performAction: (actionId) => {
+  1255→        const s = get();
+  1256→        const action = ACTION_MAP[actionId];
+  1257→        if (!action) return;
+  1258→        if (action.stage !== STAGES[s.stageIndex].id) return;
+  1259→
+  1260→        const res = { ...s.resources };
+  1261→
+  1262→        // Check if all output resources are at cap — if so, block (no waste)
+  1263→        const outputs = Object.entries(action.produces);
+  1264→        if (outputs.length > 0) {
+  1265→          const allCapped = outputs.every(([r]) => {
+  1266→            const cap = s.capacities[r] || 0;
+  1267→            return (res[r] || 0) >= cap - 0.001;
+  1268→          });
+  1269→          if (allCapped) return; // action wasted — block it
+  1270→        }
+  1271→
+  1272→        // Check costs
+  1273→        if (action.cost) {
+  1274→          for (const [r, v] of Object.entries(action.cost)) {
+  1275→            if ((res[r] || 0) < (v as number)) return;
+  1276→          }
+  1277→          for (const [r, v] of Object.entries(action.cost)) {
+  1278→            res[r] -= v as number;
+  1279→          }
+  1280→        }
+  1281→
+  1282→        // Manual action multiplier
+  1283→        // (quickened_hands removed; no upgrade scales manual actions now)
+  1284→        const mult = 1;
+  1285→        const techMult = techMultiplier(s, "manual");
+  1286→        const finalMult = mult * techMult;
+  1287→
+  1288→        // Archetype per-resource bonus
+  1289→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+  1290→
+  1291→        for (const [r, v] of Object.entries(action.produces)) {
+  1292→          const cap = s.capacities[r] || 0;
+  1293→          const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
+  1294→          const totalArchMult = 1 + archResBonus + (archetype?.bonus.allProductionMult || 0);
+  1295→          const amount = (v as number) * finalMult * totalArchMult;
+  1296→          res[r] = Math.min(cap, (res[r] || 0) + amount);
+  1297→        }
+  1298→
+  1299→        set({
+  1300→          resources: res,
+  1301→          totalActions: (s.totalActions || 0) + 1,
+  1302→        });
+  1303→      },
+  1304→
+  1305→      buySystem: (systemId, qty) => {
+  1306→        const s = get();
+  1307→        const sys = SYSTEM_MAP[systemId];
+  1308→        if (!sys) return;
+  1309→        if (sys.stage !== STAGES[s.stageIndex].id) return;
+  1310→        // Check tech prerequisite
+  1311→        if (sys.requiredTech && !s.technologies[sys.requiredTech]) return;
+  1312→
+  1313→        // ---- Active challenge restrictions ----
+  1314→        let challengeDebuff: ChallengeEffects = {};
+  1315→        if (s.activeChallenge && s.unlockedChallenges) {
+  1316→          const ch = CHALLENGE_MAP[s.activeChallenge];
+  1317→          if (ch) {
+  1318→            const repeat = s.challengeRepeatCounts?.[s.activeChallenge] || 0;
+  1319→            challengeDebuff = getChallengeDebuffAtRepeat(ch, repeat);
+  1320→          }
+  1321→        }
+  1322→        const challengeCostMult = challengeDebuff.costMult ?? 1;
+  1323→        if (challengeDebuff.disableMilitary && sys.category === "Military") {
+  1324→          get().addToLog(`Trial ${CHALLENGE_MAP[s.activeChallenge!]?.name} forbids military systems.`);
+  1325→          return;
+  1326→        }
+  1327→        if (challengeDebuff.maxSystems !== undefined) {
+  1328→          const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+  1329→          if (totalSystems >= challengeDebuff.maxSystems) {
+  1330→            get().addToLog(`Trial ${CHALLENGE_MAP[s.activeChallenge!]?.name} caps you at ${challengeDebuff.maxSystems} systems.`);
+  1331→            return;
+  1332→          }
+  1333→        }
+  1334→
+  1335→        const costReduction = (s.upgrades["frugality"] || 0) * 0.04
+  1336→          + Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult));
+  1337→        let owned = s.ownedSystems[systemId] || 0;
+  1338→        if (sys.maxOwned && owned >= sys.maxOwned) return;
+  1339→
+  1340→        const res = { ...s.resources };
+  1341→        const ownedSystems = { ...s.ownedSystems };
+  1342→        const systemEnabled = { ...s.systemEnabled };
+  1343→        const archetypeAffinity = { ...s.archetypeAffinity };
+  1344→
+  1345→        let bought = 0;
+  1346→        for (let i = 0; i < qty; i++) {
+  1347→          if (sys.maxOwned && owned + bought >= sys.maxOwned) break;
+  1348→          if (challengeDebuff.maxSystems !== undefined) {
+  1349→            const totalSystems = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
+  1350→            if (totalSystems + bought >= challengeDebuff.maxSystems) break;
+  1351→          }
+  1352→          const cost = systemCost(sys, owned + bought, costReduction);
+  1353→          let canAfford = true;
+  1354→          for (const [r, v] of Object.entries(cost)) {
+  1355→            const scaled = Math.ceil((v as number) * challengeCostMult);
+  1356→            if ((res[r] || 0) < scaled) {
+  1357→              canAfford = false;
+  1358→              break;
+  1359→            }
+  1360→          }
+  1361→          if (!canAfford) break;
+  1362→          for (const [r, v] of Object.entries(cost)) {
+  1363→            const scaled = Math.ceil((v as number) * challengeCostMult);
+  1364→            res[r] -= scaled;
+  1365→          }
+  1366→          bought++;
+  1367→        }
+  1368→
+  1369→        if (bought === 0) return;
+  1370→
+  1371→        ownedSystems[systemId] = owned + bought;
+  1372→        // New systems are enabled by default
+  1373→        if (systemEnabled[systemId] === undefined) systemEnabled[systemId] = true;
+  1374→
+  1375→        // Apply archetype affinity grant
+  1376→        if (sys.grantsAffinity) {
+  1377→          const arch = sys.grantsAffinity.archetype;
+  1378→          archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + sys.grantsAffinity.amount * bought;
+  1379→        }
+  1380→
+  1381→        // Trigger story
+  1382→        const newStory = { ...s.storyUnlocked };
+  1383→        let activePopup = s.activeStoryPopup;
+  1384→        for (const trig of STORY_TRIGGERS) {
+  1385→          if (!newStory[trig.id] && trig.condition({ ...s, resources: res, ownedSystems })) {
+  1386→            newStory[trig.id] = true;
+  1387→            if (!activePopup) activePopup = trig.id;
+  1388→          }
+  1389→        }
+  1390→
+  1391→        set({
+  1392→          resources: res,
+  1393→          ownedSystems,
+  1394→          systemEnabled,
+  1395→          archetypeAffinity,
+  1396→          storyUnlocked: newStory,
+  1397→          activeStoryPopup: activePopup,
+  1398→          totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
+  1399→        });
+  1400→        get().addToLog(`Built ${bought}× ${sys.name}.`);
+  1401→      },
+  1402→
+  1403→      toggleSystem: (systemId) => {
+  1404→        const s = get();
+  1405→        if (!s.ownedSystems[systemId]) return;
+  1406→        const systemEnabled = { ...s.systemEnabled };
+  1407→        systemEnabled[systemId] = systemEnabled[systemId] === false ? true : false;
+  1408→        set({ systemEnabled });
+  1409→      },
+  1410→
+  1411→      enableAllSystems: (enabled) => {
+  1412→        const s = get();
+  1413→        const systemEnabled: Record<string, boolean> = {};
+  1414→        for (const id of Object.keys(s.ownedSystems)) {
+  1415→          systemEnabled[id] = enabled;
+  1416→        }
+  1417→        set({ systemEnabled });
+  1418→      },
+  1419→
+  1420→      buyTech: (techId) => {
+  1421→        const s = get();
+  1422→        const tech = TECH_MAP[techId];
+  1423→        if (!tech) return;
+  1424→        if (s.technologies[techId]) return;
+  1425→        if (tech.stage !== STAGES[s.stageIndex].id) return;
+  1426→        if (tech.requires) {
+  1427→          for (const req of tech.requires) {
+  1428→            if (!s.technologies[req]) return;
+  1429→          }
+  1430→        }
+  1431→
+  1432→        // ---- Active challenge restrictions ----
+  1433→        let challengeDebuff: ChallengeEffects = {};
+  1434→        if (s.activeChallenge && s.unlockedChallenges) {
+  1435→          const ch = CHALLENGE_MAP[s.activeChallenge];
+  1436→          if (ch) {
+  1437→            const repeat = s.challengeRepeatCounts?.[s.activeChallenge] || 0;
+  1438→            challengeDebuff = getChallengeDebuffAtRepeat(ch, repeat);
+  1439→          }
+  1440→        }
+  1441→        const challengeCostMult = challengeDebuff.costMult ?? 1;
+  1442→        if (challengeDebuff.disableTech) {
+  1443→          get().addToLog(`Trial ${CHALLENGE_MAP[s.activeChallenge!]?.name} forbids all tech research.`);
+  1444→          return;
+  1445→        }
+  1446→        if (challengeDebuff.disableMilitary && tech.branch === "Conflict") {
+  1447→          get().addToLog(`Trial ${CHALLENGE_MAP[s.activeChallenge!]?.name} forbids military tech.`);
+  1448→          return;
+  1449→        }
+  1450→
+  1451→        const res = { ...s.resources };
+  1452→        const layerTechCostMult = 1 - Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult));
+  1453→        for (const [r, v] of Object.entries(tech.cost)) {
+  1454→          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+  1455→          if ((res[r] || 0) < scaled) return;
+  1456→        }
+  1457→        for (const [r, v] of Object.entries(tech.cost)) {
+  1458→          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+  1459→          res[r] -= scaled;
+  1460→        }
+  1461→        const technologies = { ...s.technologies, [techId]: true };
+  1462→        const archetypeAffinity = { ...s.archetypeAffinity };
+  1463→        if (tech.grantsAffinity) {
+  1464→          archetypeAffinity[tech.grantsAffinity.archetype] =
+  1465→            (archetypeAffinity[tech.grantsAffinity.archetype] || 0) + tech.grantsAffinity.amount;
+  1466→        }
+  1467→        set({
+  1468→          resources: res,
+  1469→          technologies,
+  1470→          archetypeAffinity,
+  1471→          totalTechResearched: (s.totalTechResearched || 0) + 1,
+  1472→        });
+  1473→        get().addToLog(`Researched ${tech.name}.`);
+  1474→      },
+  1475→
+  1476→      buyUpgrade: (upgradeId) => {
+  1477→        const s = get();
+  1478→        const up = UPGRADE_MAP[upgradeId];
+  1479→        if (!up) return;
+  1480→        if (up.requiresWins && s.galacticWins < up.requiresWins) return;
+  1481→        const owned = s.upgrades[upgradeId] || 0;
+  1482→        if (owned >= up.maxLevel) return;
+  1483→        const cost = upgradeCost(up, owned);
+  1484→        if (s.evolutionPoints < cost) return;
+  1485→        const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
+  1486→        set({
+  1487→          evolutionPoints: s.evolutionPoints - cost,
+  1488→          upgrades,
+  1489→        });
+  1490→        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).`);
+  1491→      },
+  1492→
+  1493→      evolveStage: () => {
+  1494→        const s = get();
+  1495→        const stage = STAGES[s.stageIndex];
+  1496→        const next = nextStage(stage.id);
+  1497→        if (!next) {
+  1498→          get().triggerPrestige();
+  1499→          return;
+  1500→        }
+  1501→        const reqs = stage.evolveRequires;
+  1502→        const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
+  1503→        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+  1504→        const totalTech = Object.keys(s.technologies).length;
+  1505→        const score = computeScore(s);
+  1506→
+  1507→        if (s.population < reqs.minPopulation * evolveBoost) return;
+  1508→        if (totalSystems < reqs.minSystems * evolveBoost) return;
+  1509→        if (totalTech < reqs.minTech * evolveBoost) return;
+  1510→        // Score is NOT a requirement — it only affects EP earned at prestige
+  1511→
+  1512→        const nextStageIdx = s.stageIndex + 1;
+  1513→        const nextStageDef = STAGES[nextStageIdx];
+  1514→
+  1515→        const resources = { ...s.resources };
+  1516→
+  1517→        // Give starting resources for the new stage to prevent deadlocks
+  1518→        const stageStartBonus: Record<string, Record<string, number>> = {
+  1519→          creature: { food: 15, water: 10, materials: 5 },
+  1520→          tribal: { wood: 15, stone: 5, clay: 3 },
+  1521→          civilization: { production: 20, gold: 15 },
+  1522→          empire: { influence: 5, gold: 30 },
+  1523→          solar: { energy: 25, alloys: 8 },
+  1524→          galactic: { data: 15, energy: 40 },
+  1525→        };
+  1526→        const startBonus = stageStartBonus[nextStageDef.id];
+  1527→        if (startBonus) {
+  1528→          for (const [r, v] of Object.entries(startBonus)) {
+  1529→            resources[r] = (resources[r] || 0) + v;
+  1530→          }
+  1531→          get().addToLog(`Starting resources granted: ${Object.entries(startBonus).map(([r,v]) => `${v} ${r}`).join(', ')}`);
+  1532→        }
+  1533→
+  1534→        const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
+  1535→        const capMult = 1 + capBoostLvl * 0.20;
+  1536→        const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+  1537→        const archCapMult = archetype?.bonus.capMult || 0;
+  1538→        const capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
+  1539→
+  1540→        const newStory = { ...s.storyUnlocked };
+  1541→        const storyId = STORY_MAP[
+  1542→          nextStageDef.id === "creature" ? "first_body_stirs"
+  1543→          : nextStageDef.id === "tribal" ? "fire_remembered"
+  1544→          : nextStageDef.id === "civilization" ? "cities_learn_to_dream"
+  1545→          : nextStageDef.id === "empire" ? "distance_begins_to_obey"
+  1546→          : nextStageDef.id === "solar" ? "sky_stops_being_a_wall"
+  1547→          : "galaxy_takes_a_shape"
+  1548→        ];
+  1549→        if (storyId) newStory[storyId.id] = true;
+  1550→
+  1551→        // Lock archetype when evolving from Creature → Tribal
+  1552→        let lockedArchetype = s.lockedArchetype;
+  1553→        if (stage.id === "creature" && !lockedArchetype) {
+  1554→          const dom = dominantArchetype(s.archetypeAffinity);
+  1555→          if (dom) {
+  1556→            lockedArchetype = dom;
+  1557→            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
+  1558→          } else {
+  1559→            lockedArchetype = "humanoid"; // default fallback
+  1560→            get().addToLog(`Lineage locked: Humanoid (no drift).`);
+  1561→          }
+  1562→        }
+  1563→
+  1564→        const stageClearCounts = { ...s.stageClearCounts, [stage.id]: (s.stageClearCounts[stage.id] || 0) + 1 };
+  1565→
+  1566→        // Auto-switch active stage theme if the player was on the previous stage's theme.
+  1567→        // (Respects player's manual selection if they had a different theme active.)
+  1568→        const prevStageThemeId = STAGE_INDEX_TO_THEME[s.stageIndex];
+  1569→        const newStageThemeId = STAGE_INDEX_TO_THEME[nextStageIdx];
+  1570→        let activeStageTheme = s.activeStageTheme || "stage-cell";
+  1571→        if (newStageThemeId && activeStageTheme === prevStageThemeId) {
+  1572→          activeStageTheme = newStageThemeId;
+  1573→        }
+  1574→        // Unlock the new stage's theme
+  1575→        const unlockedThemes = { ...(s.unlockedThemes || { "stage-cell": true }) };
+  1576→        if (newStageThemeId && !unlockedThemes[newStageThemeId]) {
+  1577→          unlockedThemes[newStageThemeId] = true;
+  1578→        }
+  1579→
+  1580→        // Track fastest Cell clear
+  1581→        let fastestCellClear = s.fastestCellClear || 0;
+  1582→        if (stage.id === "cell") {
+  1583→          const clearTime = s.time;
+  1584→          if (fastestCellClear === 0 || clearTime < fastestCellClear) {
+  1585→            fastestCellClear = clearTime;
+  1586→          }
+  1587→        }
+  1588→
+  1589→        // Check achievements after stage clear
+  1590→        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, fastestCellClear } as GameState;
+  1591→        const achResult = checkAchievements(postEvolveState);
+  1592→        const newAchievements = achResult.newOnes.length > 0
+  1593→          ? [...(s.newAchievements || []), ...achResult.newOnes]
+  1594→          : s.newAchievements;
+  1595→
+  1596→        set({
+  1597→          stageIndex: nextStageIdx,
+  1598→          resources,
+  1599→          capacities,
+  1600→          storyUnlocked: newStory,
+  1601→          activeStoryPopup: storyId?.id || s.activeStoryPopup,
+  1602→          stageClearCounts,
+  1603→          fastestCellClear,
+  1604→          lockedArchetype,
+  1605→          achievements: achResult.earned,
+  1606→          newAchievements,
+  1607→          activeStageTheme,
+  1608→          unlockedThemes,
+  1609→        });
+  1610→        get().addToLog(`Evolved to ${nextStageDef.name}. ${nextStageDef.tagline}`);
+  1611→      },
+  1612→
+  1613→      triggerPrestige: () => {
+  1614→        const s = get();
+  1615→        const stage = STAGES[s.stageIndex];
+  1616→        const score = computeScore(s);
+  1617→        const stageMult = [1, 2, 4, 8, 16, 32, 64][s.stageIndex] || 1;
+  1618→        let epEarned = Math.max(1, Math.floor(Math.sqrt(score / 100) * stageMult));
+  1619→
+  1620→        // ---- Cosmic Understanding: +25% EP per level ----
+  1621→        const cosmicLvl = s.upgrades["cosmic_understanding"] || 0;
+  1622→        epEarned = Math.max(1, Math.floor(epEarned * (1 + cosmicLvl * 0.25)));
+  1623→
+  1624→        // ---- Layers 2-6: aggregate EP multiplier (foresight, route, ritual, world, law, relic, core) ----
+  1625→        const fs = foresightBonus(s.foresightNodes || {});
+  1626→        const rb = routeBonus(s.activeForesightRoute);
+  1627→        const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
+  1628→        const wEp = worldEpMultiplier(s.authoredWorlds || []);
+  1629→        const dl = divineLawBonus(s.enactedDivineLaws || {});
+  1630→        const relicEp = relicBonus(s.equippedRelics || {}).epMult;
+  1631→        const coreEp = logicCoreBonus(s.activeLogicCores || {}).epMult;
+  1632→        // Layers 7-10 EP bonus
+  1633→        const hybridEp = hybridBonus(s.equippedHybrids || {}, s.activeOmnipotenceStance).epMult;
+  1634→        const chanEp = prayerChannelBonus(s.prayerChannelLevels || {}).epMult;
+  1635→        const maskEp = divineMaskBonus(s.activeDivineMask).epMult;
+  1636→        const polEp = worshipPolarityBonus(s.activeWorshipPolarity).epMult;
+  1637→        const echoEp = echoBonus(s.purchasedEchoes || {}).epMult;
+  1638→        const forkEp = forkBonus(s.resolvedForks || {}).epMult;
+  1639→        const debtEp = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {}).epMult;
+  1640→        const testEp = testamentClauseBonus(s.purchasedTestamentClauses || {}).epMult;
+  1641→        const canonEp = canonizationBonus(s.activeCanonizations || {}).epMult;
+  1642→        const weaveEp = permanenceWeaveBonus(s.activePermanenceWeaves || {}).epMult;
+  1643→        const layerEpMult = 1 +
+  1644→          fs.epMult + rb.epMult + ritualEp + wEp + dl.epMult + relicEp + coreEp +
+  1645→          hybridEp + chanEp + maskEp + polEp + echoEp + forkEp + debtEp +
+  1646→          testEp + canonEp + weaveEp;
+  1647→        epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
+  1648→
+  1649→        // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
+  1650→        let divinityGain = 0;
+  1651→        if (s.unlockedLayers?.enlightenment) {
+  1652→          divinityGain = Math.max(1, Math.floor(Math.sqrt(score / 200) * stageMult * (1 + fs.divinityMult)));
+  1653→        }
+  1654→        // ---- Layer 4 (Genesis): grant Genesis Seeds based on stage ----
+  1655→        let genesisSeedGain = 0;
+  1656→        if (s.unlockedLayers?.genesis) {
+  1657→          genesisSeedGain = Math.max(1, Math.floor(stageMult / 2));
+  1658→        }
+  1659→        // ---- Layer 6 (Singularity): grant Singularity Cores based on stage ----
+  1660→        let singularityCoreGain = 0;
+  1661→        if (s.unlockedLayers?.singularity) {
+  1662→          singularityCoreGain = Math.max(1, Math.floor(stageMult / 4));
+  1663→        }
+  1664→        // ---- Layer 9 (Infinity): grant Echoes based on stage ----
+  1665→        let echoGain = 0;
+  1666→        if (s.unlockedLayers?.infinity) {
+  1667→          const echoMult = 1 + echoBonus(s.purchasedEchoes || {}).echoMult;
+  1668→          echoGain = Math.max(1, Math.floor(stageMult / 3 * echoMult));
+  1669→        }
+  1670→        // ---- Layer 10 (Eternity): grant Testament Clauses based on stage ----
+  1671→        let testamentGain = 0;
+  1672→        if (s.unlockedLayers?.eternity) {
+  1673→          const testMult = 1 + testamentClauseBonus(s.purchasedTestamentClauses || {}).testamentMult;
+  1674→          testamentGain = Math.max(1, Math.floor(stageMult / 5 * testMult));
+  1675→        }
+  1676→
+  1677→        const archive = [...s.archive];
+  1678→        const archName = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype]?.name : "Humanoid";
+  1679→        archive.unshift({
+  1680→          runId: `run_${s.totalRuns + 1}`,
+  1681→          timestamp: Date.now(),
+  1682→          stage: stage.id,
+  1683→          archetype: s.lockedArchetype || "humanoid",
+  1684→          score,
+  1685→          epEarned,
+  1686→          duration: s.time,
+  1687→          ending: s.stageIndex >= 6 ? "Galactic Ascension" : `${stage.name} Evolution (${archName})`,
+  1688→        });
+  1689→
+  1690→        const archivedArchetypes = Array.from(new Set([
+  1691→          ...(s.archivedArchetypes || []),
+  1692→          ...(s.lockedArchetype ? [s.lockedArchetype] : []),
+  1693→        ]));
+  1694→
+  1695→        // ---- Determine if this prestige unlocks challenges ----
+  1696→        const isFirstGalacticWin = s.stageIndex >= 6 && !s.unlockedChallenges;
+  1697→        const newUnlockedChallenges = s.unlockedChallenges || isFirstGalacticWin;
+  1698→
+  1699→        // ---- Fail any in-progress challenge on prestige (challenge not completed) ----
+  1700→        const failedChallenge = s.activeChallenge;
+  1701→        const newChallengeRepeatCounts = { ...(s.challengeRepeatCounts || {}) };
+  1702→        if (failedChallenge) {
+  1703→          delete newChallengeRepeatCounts[failedChallenge];
+  1704→        }
+  1705→
+  1706→        const fresh = initialRunState();
+  1707→
+  1708→        // ---- Apply new-run upgrades to the fresh state ----
+  1709→        // Warm Start: +5 per level to atp/glucose/proteins/lipids
+  1710→        const warmLvl = s.upgrades["warm_start"] || 0;
+  1711→        if (warmLvl > 0) {
+  1712→          fresh.resources!.atp = (fresh.resources!.atp || 0) + warmLvl * 5;
+  1713→          fresh.resources!.glucose = (fresh.resources!.glucose || 0) + warmLvl * 5;
+  1714→          fresh.resources!.proteins = (fresh.resources!.proteins || 0) + warmLvl * 5;
+  1715→          fresh.resources!.lipids = (fresh.resources!.lipids || 0) + warmLvl * 5;
+  1716→        }
+  1717→        // Ancestral Bounty: +10 of every resource per level
+  1718→        const ancestralLvl = s.upgrades["ancestral_bounty"] || 0;
+  1719→        if (ancestralLvl > 0) {
+  1720→          for (const r of Object.keys(fresh.resources!)) {
+  1721→            fresh.resources![r] = (fresh.resources![r] || 0) + ancestralLvl * 10;
+  1722→          }
+  1723→        }
+  1724→        // Frontier Spirit: +10 starting pop per level
+  1725→        const frontierLvl = s.upgrades["frontier_spirit"] || 0;
+  1726→        let startingPop = 8 + frontierLvl * 10;
+  1727→        let startingMaxPop = startingPop;
+  1728→        // Active challenge startPop override (debuff)
+  1729→        if (s.activeChallenge) {
+  1730→          const ch = CHALLENGE_MAP[s.activeChallenge];
+  1731→          if (ch && ch.debuff.effects.startPop !== undefined) {
+  1732→            startingPop = ch.debuff.effects.startPop;
+  1733→            startingMaxPop = startingPop;
+  1734→          }
+  1735→        }
+  1736→        fresh.population = startingPop;
+  1737→        fresh.maxPopulation = startingMaxPop;
+  1738→
+  1739→        const metaState: Partial<GameState> = {
+  1740→          evolutionPoints: s.evolutionPoints + epEarned,
+  1741→          totalRuns: s.totalRuns + 1,
+  1742→          galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
+  1743→          archive,
+  1744→          archivedArchetypes,
+  1745→          upgrades: s.upgrades,
+  1746→          storyUnlocked: { ...s.storyUnlocked, god_opens_its_eyes: true },
+  1747→          storyAcknowledged: s.storyAcknowledged,
+  1748→          unlockedLayers: s.unlockedLayers,
+  1749→          stageClearCounts: s.stageClearCounts,
+  1750→          fastestCellClear: s.fastestCellClear,
+  1751→          totalEventsResolved: s.totalEventsResolved,
+  1752→          totalPlayTime: s.totalPlayTime,
+  1753→          totalActions: s.totalActions,
+  1754→          totalSystemsBuilt: s.totalSystemsBuilt,
+  1755→          totalTechResearched: s.totalTechResearched,
+  1756→          achievements: s.achievements,
+  1757→          newAchievements: s.newAchievements,
+  1758→          // Layer 1 — Challenges
+  1759→          unlockedChallenges: newUnlockedChallenges,
+  1760→          activeChallenge: null, // challenge ends on prestige (failed or completed)
+  1761→          completedChallenges: s.completedChallenges || {},
+  1762→          challengeRepeatCounts: newChallengeRepeatCounts,
+  1763→          showChallenges: false,
+  1764→          // Reset auto-action timers
+  1765→          autoTimers: { system: 0, tech: 0, evolve: 0, challenge: 0 },
+  1766→
+  1767→          // Layer 2 — Enlightenment (persist meta state, currency accrues)
+  1768→          divinity: (s.divinity || 0) + divinityGain,
+  1769→          foresightNodes: s.foresightNodes || {},
+  1770→          activeForesightRoute: s.activeForesightRoute,
+  1771→          showEnlightenment: false,
+  1772→
+  1773→          // Layer 3 — Transcendence (persist purchases + scripts; reset per-run timers)
+  1774→          transcendenceOfferingsUsed: s.transcendenceOfferingsUsed || {},
+  1775→          purchasedRituals: s.purchasedRituals || {},
+  1776→          activeTemporaryRituals: {}, // reset per-run
+  1777→          activeScripts: s.activeScripts || {},
+  1778→          bloodPactsUsed: {}, // reset per-run
+  1779→          scriptTimers: {}, // reset per-run
+  1780→          showTranscendence: false,
+  1781→
+  1782→          // Layer 4 — Genesis (persist authored worlds; reset pending config)
+  1783→          genesisSeeds: (s.genesisSeeds || 0) + genesisSeedGain,
+  1784→          authoredWorlds: s.authoredWorlds || [],
+  1785→          pendingWorldConfig: {},
+  1786→          showGenesis: false,
+  1787→
+  1788→          // Layer 5 — Apotheosis (persist laws + worship mode + heresy response; reset heresy + miracle timers)
+  1789→          faith: s.faith || 0,
+  1790→          enactedDivineLaws: s.enactedDivineLaws || {},
+  1791→          activeWorshipMode: s.activeWorshipMode,
+  1792→          performedMiracles: {}, // reset per-run
+  1793→          miracleTimers: {}, // reset per-run
+  1794→          heresy: 0, // reset per-run
+  1795→          activeHeresyResponse: s.activeHeresyResponse || "hr_ignore",
+  1796→          showApotheosis: false,
+  1797→
+  1798→          // Layer 6 — Singularity (persist relics + cores; reset timers)
+  1799→          singularityCores: (s.singularityCores || 0) + singularityCoreGain,
+  1800→          equippedRelics: s.equippedRelics || {},
+  1801→          activeLogicCores: s.activeLogicCores || {},
+  1802→          logicCoreTimers: {}, // reset per-run
+  1803→          showSingularity: false,
+  1804→
+  1805→          // Layer 7 — Omnipotence (persist equipped hybrids + stance; reset instability)
+  1806→          equippedHybrids: s.equippedHybrids || {},
+  1807→          activeOmnipotenceStance: s.activeOmnipotenceStance || "balanced",
+  1808→          instability: 0, // reset per-run
+  1809→          peakInstability: 0, // reset per-run
+  1810→          showOmnipotence: false,
+  1811→
+  1812→          // Layer 8 — Divinity (persist channels + mask + polarity; prayer accrues)
+  1813→          prayer: (s.prayer || 0), // currency persists (it accrues like divinity)
+  1814→          prayerChannelLevels: s.prayerChannelLevels || {},
+  1815→          activeDivineMask: s.activeDivineMask,
+  1816→          activeWorshipPolarity: s.activeWorshipPolarity,
+  1817→          showDivinityLayer: false,
+  1818→
+  1819→          // Layer 9 — Infinity (persist echoes + purchased echoes; reset forks + debts per-run)
+  1820→          echoes: (s.echoes || 0) + echoGain,
+  1821→          purchasedEchoes: s.purchasedEchoes || {},
+  1822→          resolvedForks: {}, // reset per-run
+  1823→          takenFutureDebts: {}, // reset per-run
+  1824→          repaidFutureDebts: {}, // reset per-run
+  1825→          showInfinity: false,
+  1826→
+  1827→          // Layer 10 — Eternity (persist clauses + canonizations + weaves + cosmic boon; reset ending)
+  1828→          testamentClauses: (s.testamentClauses || 0) + testamentGain,
+  1829→          purchasedTestamentClauses: s.purchasedTestamentClauses || {},
+  1830→          activeCanonizations: s.activeCanonizations || {},
+  1831→          activePermanenceWeaves: s.activePermanenceWeaves || {},
+  1832→          chosenEnding: null, // reset per-run (player can choose again)
+  1833→          cosmicBoonStacks: (s.cosmicBoonStacks || 0) +
+  1834→            (s.chosenEnding === "reset" ? 1 : 0), // stack on each Reset Universe ending
+  1835→          showEternity: false,
+  1836→
+  1837→          // ===== QUICK WINS — prestige reset rules =====
+  1838→          // prestigePoints is a universal currency — persists across prestiges
+  1839→          prestigePoints: s.prestigePoints || 0,
+  1840→          // Active ability cooldowns persist (real-time cooldowns); effect timers reset (per-run)
+  1841→          activeAbilityCooldowns: s.activeAbilityCooldowns || {},
+  1842→          activeAbilityEffects: {}, // reset per-run
+  1843→          // Ritual combo tracking — reset per-run (lastRitualTime is game time)
+  1844→          lastRitualTime: 0,
+  1845→          lastRitualId: null,
+  1846→          ritualComboCount: 0,
+  1847→          ritualComboTimer: 0,
+  1848→          // Layer event timers — reset per-run
+  1849→          layerEventTimers: { trial_of_fortune: 0, vision: 0, divine_whim: 0, heresy_surge: 0 },
+  1850→        };
+  1851→
+  1852→        // Check achievements after prestige
+  1853→        const postState = { ...s, ...metaState } as GameState;
+  1854→        const achResult = checkAchievements(postState);
+  1855→        metaState.achievements = achResult.earned;
+  1856→        if (achResult.newOnes.length > 0) {
+  1857→          metaState.newAchievements = [...(s.newAchievements || []), ...achResult.newOnes];
+  1858→        }
+  1859→
+  1860→        set({
+  1861→          ...fresh,
+  1862→          ...metaState,
+  1863→          currentTab: "actions",
+  1864→          speed: 1,
+  1865→          paused: false,
+  1866→          showShop: false,
+  1867→          showEvolve: false,
+  1868→          activeStoryPopup: s.totalRuns === 0 ? "god_opens_its_eyes" : null,
+  1869→          hasSeenIntro: true,
+  1870→          lastSaved: Date.now(),
+  1871→          tutorialActive: false,
+  1872→        });
+  1873→        get().addToLog(`Prestige! Earned ${epEarned} Evolution Points.`);
+  1874→        if (isFirstGalacticWin) {
+  1875→          get().addToLog("Layer 1 trials unlocked. Visit the Trials button to begin a Challenge.");
+  1876→        }
+  1877→        if (failedChallenge) {
+  1878→          get().addToLog(`Trial abandoned: ${CHALLENGE_MAP[failedChallenge]?.name}. You may try again.`);
+  1879→        }
+  1880→        if (divinityGain > 0) {
+  1881→          get().addToLog(`Layer 2: +${divinityGain} Divinity accrued (Enlightenment).`);
+  1882→        }
+  1883→        if (genesisSeedGain > 0) {
+  1884→          get().addToLog(`Layer 4: +${genesisSeedGain} Genesis Seeds (Genesis).`);
+  1885→        }
+  1886→        if (singularityCoreGain > 0) {
+  1887→          get().addToLog(`Layer 6: +${singularityCoreGain} Singularity Cores (Singularity).`);
+  1888→        }
+  1889→        if (echoGain > 0) {
+  1890→          get().addToLog(`Layer 9: +${echoGain} Echoes (Infinity).`);
+  1891→        }
+  1892→        if (testamentGain > 0) {
+  1893→          get().addToLog(`Layer 10: +${testamentGain} Testament Clauses (Eternity).`);
+  1894→        }
+  1895→      },
+  1896→
+  1897→      setTab: (tab) => set({ currentTab: tab }),
+  1898→      setSpeed: (speed) => set({ speed }),
+  1899→      togglePause: () => set((s) => ({ paused: !s.paused })),
+  1900→      setShowShop: (v) => set({ showShop: v }),
+  1901→      setShowEvolve: (v) => set({ showEvolve: v }),
+  1902→      setShowSettings: (v) => set({ showSettings: v }),
+  1903→      setShowChallenges: (v) => set({ showChallenges: v }),
+  1904→      setShowEnlightenment: (v) => set({ showEnlightenment: v }),
+  1905→      setShowTranscendence: (v) => set({ showTranscendence: v }),
+  1906→      setShowGenesis: (v) => set({ showGenesis: v }),
+  1907→      setShowApotheosis: (v) => set({ showApotheosis: v }),
+  1908→      setShowSingularity: (v) => set({ showSingularity: v }),
+  1909→      setShowOmnipotence: (v) => set({ showOmnipotence: v }),
+  1910→      setShowDivinityLayer: (v) => set({ showDivinityLayer: v }),
+  1911→      setShowInfinity: (v) => set({ showInfinity: v }),
+  1912→      setShowEternity: (v) => set({ showEternity: v }),
+  1913→
+  1914→      // ---- Layer 1: Challenges ----
+  1915→      // Activating a challenge records the current repeat level (= completed count).
+  1916→      // Each repeat makes the debuff 20% stronger AND the eventual mastery bonus 50% bigger.
+  1917→      setActiveChallenge: (challengeId) => {
+  1918→        const s = get();
+  1919→        if (!challengeId) {
+  1920→          // Clearing an active challenge without completing it.
+  1921→          if (s.activeChallenge) {
+  1922→            const newRepeatCounts = { ...(s.challengeRepeatCounts || {}) };
+  1923→            delete newRepeatCounts[s.activeChallenge];
+  1924→            set({ activeChallenge: null, challengeRepeatCounts: newRepeatCounts });
+  1925→          } else {
+  1926→            set({ activeChallenge: null });
+  1927→          }
+  1928→          return;
+  1929→        }
+  1930→        const ch = CHALLENGE_MAP[challengeId];
+  1931→        if (!ch) return;
+  1932→        if (!s.unlockedChallenges) return;
+  1933→
+  1934→        const hasMastery = (s.upgrades["challenge_mastery"] || 0) > 0;
+  1935→        const maxRepeats = getMaxRepeats(hasMastery);
+  1936→        const completed = s.completedChallenges?.[challengeId] || 0;
+  1937→        if (completed >= maxRepeats) {
+  1938→          get().addToLog(`${ch.name} already mastered ${maxRepeats} times. No more repeats available.`);
+  1939→          return;
+  1940→        }
+  1941→
+  1942→        // Block starting if the player is already past the completeWhen condition (prevents cheese).
+  1943→        const alreadyComplete = checkChallengeComplete(ch, s);
+  1944→        if (alreadyComplete) {
+  1945→          get().addToLog(`Cannot start ${ch.name}: your current state already meets its goal. Prestige or progress further first.`);
+  1946→          return;
+  1947→        }
+  1948→
+  1949→        set({
+  1950→          activeChallenge: challengeId,
+  1951→          challengeRepeatCounts: {
+  1952→            ...(s.challengeRepeatCounts || {}),
+  1953→            [challengeId]: completed, // next repeat = completed count
+  1954→          },
+  1955→        });
+  1956→        get().addToLog(`Trial begun: ${ch.name} (repeat ${completed + 1}/${maxRepeats}).`);
+  1957→      },
+  1958→
+  1959→      // ============ LAYER 2 — ENLIGHTENMENT (FORESIGHT) ============
+  1960→      purchaseForesightNode: (nodeId) => {
+  1961→        const s = get();
+  1962→        if (!s.unlockedLayers?.enlightenment) return;
+  1963→        const node = FORESIGHT_NODE_MAP[nodeId];
+  1964→        if (!node) return;
+  1965→        if (s.foresightNodes?.[nodeId]) return;
+  1966→        if (node.requires && !s.foresightNodes?.[node.requires]) return;
+  1967→        if ((s.divinity || 0) < node.cost) return;
+  1968→        set({
+  1969→          divinity: (s.divinity || 0) - node.cost,
+  1970→          foresightNodes: { ...(s.foresightNodes || {}), [nodeId]: true },
+  1971→          // QUICK WIN 5 — +1 Prestige Point for purchasing a foresight node
+  1972→          prestigePoints: (s.prestigePoints || 0) + 1,
+  1973→        });
+  1974→        get().addToLog(`Foresight: purchased ${node.name} (-${node.cost} Divinity). (+1 PP)`);
+  1975→      },
+  1976→
+  1977→      setForesightRoute: (routeId) => {
+  1978→        const s = get();
+  1979→        if (!s.unlockedLayers?.enlightenment) return;
+  1980→        if (routeId !== null && !FORESIGHT_ROUTE_MAP[routeId]) return;
+  1981→        set({ activeForesightRoute: routeId });
+  1982→        const r = routeId ? FORESIGHT_ROUTE_MAP[routeId] : null;
+  1983→        get().addToLog(r ? `Foresight route chosen: ${r.name}.` : "Foresight route cleared.");
+  1984→      },
+  1985→
+  1986→      // ============ LAYER 3 — TRANSCENDENCE ============
+  1987→      performOffering: (offeringId) => {
+  1988→        const s = get();
+  1989→        if (!s.unlockedLayers?.transcendence) return;
+  1990→        const o = OFFERING_MAP[offeringId];
+  1991→        if (!o) return;
+  1992→        const res = { ...s.resources };
+  1993→        for (const [r, v] of Object.entries(o.cost)) {
+  1994→          if ((res[r] || 0) < (v as number)) return;
+  1995→        }
+  1996→        for (const [r, v] of Object.entries(o.cost)) {
+  1997→          res[r] -= v as number;
+  1998→        }
+  1999→        const repeats = s.transcendenceOfferingsUsed?.[offeringId] || 0;
+  2000→        const gain = offeringDivinityAtRepeat(o, repeats);
+
+[showing lines 1-2000 of 3094; use offset=2001 with limit to continue reading]

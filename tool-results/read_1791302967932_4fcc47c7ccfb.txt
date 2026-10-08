@@ -1,0 +1,252 @@
+     1→(function(){
+     2→  const DATA = {};
+     3→  DATA.STORAGE_KEY = "evolution_idle_v65";
+     4→  DATA.SPEEDS = [1];
+     5→  DATA.DEBUG_SPEEDS = [1,2,5,10,25,50,100];
+     6→  DATA.PRESTIGE_LAYERS = [
+     7→    {id:"evolution",name:"Evolution",kind:"active",unlockStage:"cell",currency:"Evolution Points",resetLabel:"Seed New Life",desc:"The god is barely awake. It learns by testing life through hardship, challenges, and mastery."},
+     8→    {id:"enlightenment",name:"Enlightenment",kind:"locked",unlockStage:"galactic",currency:"Enlightenment",resetLabel:"Awaken to Foresight",desc:"The god becomes self-aware and begins interpreting reality. Enlightenment strengthens foresight, route control, and the reading of fate, while Divinity flows during the run itself."},
+     9→    {id:"transcendence",name:"Transcendence",kind:"locked",unlockStage:"galactic",currency:"Transcendence",resetLabel:"Step Beyond Causality",desc:"The god separates from creation and begins drawing power from offerings, rituals, and scripts."},
+    10→    {id:"genesis",name:"Genesis",kind:"planned",unlockStage:"future",currency:"Genesis",resetLabel:"Author a Cradle World",desc:"The god becomes a true creator, defining cradle worlds, sacred geography, and dormant seeds before life begins."},
+    11→    {id:"apotheosis",name:"Apotheosis",kind:"planned",unlockStage:"future",currency:"Apotheosis",resetLabel:"Reveal the Divine",desc:"Civilization recognizes the god. Divine laws, worship modes, miracles, and heresy define the run."},
+    12→    {id:"singularity",name:"Singularity",kind:"planned",unlockStage:"future",currency:"Singularity",resetLabel:"Merge With the System",desc:"The god enters the machinery of reality itself through relic loadouts, compression, and logic cores."},
+    13→    {id:"omnipotence",name:"Omnipotence",kind:"planned",unlockStage:"future",currency:"Omnipotence",resetLabel:"Deny Natural Boundaries",desc:"Lineage bindings, unstable fusions, and narrow rule rewrites let the god sustain contradiction."},
+    14→    {id:"divinity",name:"Divinity",kind:"planned",unlockStage:"future",currency:"Divinity",resetLabel:"Choose the Divine Face",desc:"Prayer routing, divine masks, and worship polarity decide how creation perceives and feeds the god."},
+    15→    {id:"infinity",name:"Infinity",kind:"planned",unlockStage:"future",currency:"Infinity",resetLabel:"Bind Many Histories",desc:"Echo runs, forks, and future debt turn the god into a curator of timelines rather than one civilization."},
+    16→    {id:"eternity",name:"Eternity",kind:"planned",unlockStage:"future",currency:"Eternity",resetLabel:"Write the Final Testament",desc:"The story ends with canon, permanence, and the final authored universe."}
+    17→  ];
+    18→
+    19→  DATA.ARCHETYPES = [
+    20→    {id:"humanoid",name:"Humanoid",rarity:"basic",unlock:"default",color:"#6ea8fe"},
+    21→    {id:"mammalian",name:"Mammalian",rarity:"basic",unlock:"default",color:"#f3a35c"},
+    22→    {id:"reptilian",name:"Reptilian",rarity:"basic",unlock:"default",color:"#8bd17c"},
+    23→    {id:"avian",name:"Avian",rarity:"basic",unlock:"default",color:"#f4d35e"},
+    24→    {id:"arthropoid",name:"Arthropoid",rarity:"basic",unlock:"default",color:"#ff7aa2"},
+    25→    {id:"molluscoid",name:"Molluscoid",rarity:"basic",unlock:"default",color:"#b78cff"},
+    26→    {id:"fungoid",name:"Fungoid",rarity:"basic",unlock:"default",color:"#c6d66f"},
+    27→    {id:"plantoid",name:"Plantoid",rarity:"basic",unlock:"default",color:"#54d186"},
+    28→    {id:"aquatic",name:"Aquatic",rarity:"basic",unlock:"default",color:"#4dd7e8"},
+    29→    {id:"lithoid",name:"Lithoid",rarity:"rare",unlock:"first_win",color:"#b8a78b"},
+    30→    {id:"necroid",name:"Necroid",rarity:"rare",unlock:"first_win",color:"#9b8aa8"},
+    31→    {id:"toxoid",name:"Toxoid",rarity:"rare",unlock:"first_win",color:"#b7e35f"},
+    32→    {id:"extremophile",name:"Extremophile",rarity:"rare",unlock:"first_win",color:"#ff8f70"}
+    33→  ];
+    34→
+    35→  DATA.RESOURCES = [
+    36→    {id:"atp",name:"ATP",category:"primary",firstStage:"cell",carriesForward:false},
+    37→    {id:"glucose",name:"Glucose",category:"primary",firstStage:"cell",carriesForward:true},
+    38→    {id:"proteins",name:"Proteins",category:"primary",firstStage:"cell",carriesForward:true},
+    39→    {id:"lipids",name:"Lipids",category:"primary",firstStage:"cell",carriesForward:true},
+    40→    {id:"elements",name:"Elements",category:"primary",firstStage:"cell",carriesForward:true},
+    41→    {id:"food",name:"Food",category:"primary",firstStage:"creature",carriesForward:true},
+    42→    {id:"water",name:"Water",category:"primary",firstStage:"creature",carriesForward:true},
+    43→    {id:"materials",name:"Materials",category:"primary",firstStage:"creature",carriesForward:true},
+    44→    {id:"organic_matter",name:"Organic Matter",category:"primary",firstStage:"creature",carriesForward:true},
+    45→    {id:"knowledge",name:"Knowledge",category:"primary",firstStage:"creature",carriesForward:true},
+    46→    {id:"culture",name:"Culture",category:"primary",firstStage:"creature",carriesForward:true},
+    47→    {id:"wood",name:"Wood",category:"primary",firstStage:"tribal",carriesForward:true},
+    48→    {id:"lumber",name:"Lumber",category:"primary",firstStage:"tribal",carriesForward:true},
+    49→    {id:"stone",name:"Stone",category:"primary",firstStage:"tribal",carriesForward:true},
+    50→    {id:"clay",name:"Clay",category:"primary",firstStage:"tribal",carriesForward:true},
+    51→    {id:"science",name:"Science",category:"primary",firstStage:"tribal",carriesForward:true},
+    52→    {id:"happiness",name:"Happiness",category:"primary",firstStage:"tribal",carriesForward:true},
+    53→    {id:"military_power",name:"Military Power",category:"primary",firstStage:"tribal",carriesForward:true},
+    54→    {id:"production",name:"Production",category:"primary",firstStage:"civilization",carriesForward:true},
+    55→    {id:"gold",name:"Gold",category:"primary",firstStage:"civilization",carriesForward:true},
+    56→    {id:"influence",name:"Influence",category:"primary",firstStage:"empire",carriesForward:true},
+    57→    {id:"energy",name:"Energy",category:"primary",firstStage:"solar",carriesForward:true},
+    58→    {id:"alloys",name:"Alloys",category:"primary",firstStage:"solar",carriesForward:true},
+    59→    {id:"data",name:"Data",category:"primary",firstStage:"galactic",carriesForward:true},
+    60→    {id:"divinity_growth",name:"Growth Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    61→    {id:"divinity_harmony",name:"Harmony Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    62→    {id:"divinity_conquest",name:"Conquest Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    63→    {id:"divinity_wealth",name:"Wealth Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    64→    {id:"divinity_knowledge",name:"Knowledge Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    65→    {id:"divinity_transcendence",name:"Transcendence Grace",category:"divinity_channel",firstStage:"galactic",carriesForward:true},
+    66→    {id:"divinity",name:"Divinity",category:"divinity_aggregate",firstStage:"galactic",carriesForward:true},
+    67→    {id:"luxury_total",name:"Luxury Resources",category:"luxury_aggregate",firstStage:"tribal",carriesForward:true},
+    68→    {id:"strategic_total",name:"Strategic Resources",category:"strategic_aggregate",firstStage:"tribal",carriesForward:true}
+    69→  ];
+    70→
+    71→  DATA.SHOP_UPGRADES = [
+    72→    {id:"manual",name:"Quickened Hands",base:2,max:20,desc:function(level){ return "Manual actions +" + (level*20) + "%"; }},
+    73→    {id:"auto",name:"Inherited Efficiency",base:3,max:20,desc:function(level){ return "Passive production +" + (level*15) + "%"; }},
+    74→    {id:"cost",name:"Frugality",base:4,max:15,desc:function(level){ return "System and tech costs -" + (level*4) + "%"; }},
+    75→    {id:"start",name:"Warm Start",base:5,max:10,desc:function(level){ return "Start with +" + (level*5) + " early resources"; }},
+    76→    {id:"objective_cache",name:"Objective Cache",base:4,max:5,desc:function(level){ return level ? "Stage objectives grant +" + Math.ceil(level/2) + " bonus EP" : "Stage objectives grant bonus EP"; }},
+    77→    {id:"emergency_stores",name:"Emergency Stores",base:5,max:5,desc:function(level){ return level ? "Food and water collapse timer +" + (level*12) + "s" : "Longer shortage grace window"; }},
+    78→    {id:"frontier_kit",name:"Frontier Kit",base:6,max:5,desc:function(level){ return level ? "New stages begin with stronger resource footholds (+" + (level*12) + " base pack)" : "Bootstrap new stages with starter supplies"; }},
+    79→    {id:"auto_organelles",name:"Organelle Instinct",base:6,max:10,desc:function(level){ return level ? "Auto-buys affordable Cell organelles every " + Math.max(2,11-level) + "s" : "Auto-buys affordable Cell organelles"; }},
+    80→    {id:"auto_generators",name:"Infrastructure Foreman",base:7,max:10,desc:function(level){ return level ? "Auto-builds affordable production systems after Cell every " + Math.max(2,12-level) + "s" : "Auto-builds affordable production systems after Cell"; }},
+    81→    {id:"rival_scan",name:"Rival Dossiers",base:10,max:5,requiresWin:true,minWins:2,desc:function(level){ return level ? "Rival pressure reveals earlier; dossier perks +" + (level*10) + "%" : "Unlocks better rival reads and dossier perks"; }},
+    82→    {id:"counterintel",name:"Counterplay Bureau",base:12,max:5,requiresWin:true,minWins:3,desc:function(level){ return level ? "Rival counter-project costs -" + (level*8) + "%" : "Cheaper sabotage and detente projects"; }},
+    83→    {id:"archive_pinning",name:"Memory Anchors",base:8,max:1,requiresWin:true,minWins:2,desc:function(level){ return level ? "Archive favorites unlocked" : "Unlocks archive favorites"; }},
+    84→    {id:"cartography",name:"Cartography Office",base:9,max:5,requiresWin:true,minWins:1,desc:function(level){ return level ? "Map expansion costs -" + level + " EP floor-adjusted" : "Cheaper world expansion"; }},
+    85→    {id:"project_haste",name:"Project Cadence",base:10,max:5,requiresWin:true,minWins:1,desc:function(level){ return level ? "Special projects complete +" + (level*12) + "%" : "Faster special projects"; }},
+    86→    {id:"artifact_attunement",name:"Relic Attunement",base:11,max:5,requiresWin:true,minWins:2,desc:function(level){ return level ? "Artifact, relic, and fusion effects +" + (level*10) + "%" : "Stronger inherited relic effects"; }},
+    87→    {id:"rival_brakes",name:"Threat Dampers",base:11,max:5,requiresWin:true,minWins:2,desc:function(level){ return level ? "Rival score growth -" + (level*8) + "%" : "Slows rival victory pressure"; }},
+    88→    {id:"imperial_charters",name:"Imperial Charters",base:9,max:5,requiresWin:true,minWins:1,desc:function(level){ return level ? "Empire and Galactic starts gain +" + (level*10) + " logistics / influence / command support" : "Stronger late-stage frontier kits"; }},
+    89→    {id:"orbital_stockpiles",name:"Orbital Stockpiles",base:10,max:5,requiresWin:true,minWins:2,desc:function(level){ return level ? "Solar and Galactic starts gain +" + (level*12) + " energy / alloys / data support" : "Better Solar and Galactic launch stockpiles"; }},
+    90→    {id:"civic_memory",name:"Civic Memory",base:10,max:5,requiresWin:true,minWins:2,desc:function(level){ return level ? "Late-stage happiness, cohesion, and influence +" + (level*3) + "%" : "Inherited civic stability for late stages"; }},
+    91→    {id:"era_control",name:"Era Foresight",base:12,max:5,requiresWin:true,minWins:3,desc:function(level){ return level ? "Forecasts eras and grants " + level + " reroll/bias strength" : "Unlocks era forecast and control after 3 Galactic wins"; }},
+    92→    {id:"hybridization",name:"Secondary Lineage Influence",base:20,max:3,requiresWin:true,minWins:4,desc:function(level){ return level ? "Secondary lineage influence +" + (level*5) + "%" : "Unlocks a secondary lineage after 4 Galactic wins"; }},
+    93→    {id:"fantasy_pack",name:"Mythic Skin",base:24,max:1,requiresWin:true,minWins:5,desc:function(level){ return level ? "Unlocks the fantasy reskin theme" : "Unlock the fantasy reskin theme"; }}
+    94→  ];
+    95→
+    96→  DATA.ENLIGHTENMENT_UPGRADES = [
+    97→    {id:"route_templates",name:"Route Templates",cost:4,implemented:true,desc:"Save and auto-apply preferred route plans before seeding a world.",lockedText:"Unlocks when Enlightenment is achieved."},
+    98→    {id:"seed_bias",name:"Seed Bias",cost:6,implemented:true,desc:"Guide cradle conditions toward the intended route before the next life cycle begins.",lockedText:"Unlocks when Enlightenment is achieved."},
+    99→    {id:"compressed_frontiers",name:"Compressed Frontiers",cost:8,implemented:true,desc:"Let mastered early stages collapse into swift preludes once fate has moved beyond them.",lockedText:"Unlocks when Enlightenment is achieved."},
+   100→    {id:"template_priority",name:"Template Priority",cost:9,implemented:true,desc:"Saved route intent biases automated purchases toward the chosen backbone, path, and congress bloc.",lockedText:"Unlocks when Enlightenment is achieved."},
+   101→    {id:"policy_autopilot",name:"Policy Autopilot",cost:10,implemented:true,desc:"Auto-resolve simple doctrines, laws, and low-risk world choices according to foresight plans.",lockedText:"Unlocks when Enlightenment is achieved."},
+   102→    {id:"ftl_primers",name:"FTL Primers",cost:11,implemented:true,desc:"Reveal the cleanest FTL proof line and accelerate the chosen doctrine once the shipyard spine is ready.",lockedText:"Unlocks when Enlightenment is achieved."},
+   103→    {id:"counterplay_network",name:"Counterplay Network",cost:12,implemented:true,desc:"Expose rival counterplay windows early enough for a prepared civilization to answer them.",lockedText:"Unlocks when Enlightenment is achieved."},
+   104→    {id:"bloc_blueprints",name:"Bloc Blueprints",cost:13,implemented:true,desc:"Preview stronger congress alignments so a chosen bloc can form with less drift.",lockedText:"Unlocks when Enlightenment is achieved."},
+   105→    {id:"institutional_memory",name:"Institutional Memory",cost:14,implemented:true,desc:"Reveal deeper institutional tendencies and make political pressure legible before it erupts.",lockedText:"Unlocks when Enlightenment is achieved."},
+   106→    {id:"continuity_engine",name:"Continuity Engine",cost:16,implemented:true,desc:"Default routes and seed plans carry stronger inherited momentum into each new run.",lockedText:"Unlocks when Enlightenment is achieved."},
+   107→    {id:"chronicle_lens",name:"Chronicle Lens",cost:17,implemented:true,desc:"Read archive victories and path signatures as living omens that sharpen future route advice.",lockedText:"Unlocks when Enlightenment is achieved."},
+   108→    {id:"proof_scaffolds",name:"Proof Scaffolds",cost:18,implemented:true,desc:"Surface Solar FTL bottlenecks earlier and lower the burden of proving the final jump.",lockedText:"Unlocks when Enlightenment is achieved."},
+   109→    {id:"pressure_omens",name:"Pressure Omens",cost:15,implemented:true,desc:"Early warnings reveal which subsystem will become the next real bottleneck for the current frontier.",lockedText:"Unlocks when Enlightenment is achieved."},
+   110→    {id:"rival_prophecy",name:"Rival Prophecy",cost:16,implemented:true,desc:"Rival intent becomes easier to read, making their likely pressures and endings less opaque.",lockedText:"Unlocks when Enlightenment is achieved."},
+   111→    {id:"resource_threads",name:"Resource Threads",cost:19,implemented:true,desc:"Surface the exact chains that feed the frontier so shortages can be solved before they become collapse timers.",lockedText:"Unlocks when Enlightenment is achieved."},
+   112→    {id:"synergy_visions",name:"Synergy Visions",cost:20,implemented:true,desc:"Reveal hidden route synergies between lineage, project, and stage spine choices.",lockedText:"Unlocks when Enlightenment is achieved."},
+   113→    {id:"bottleneck_index",name:"Bottleneck Index",cost:21,implemented:true,desc:"Track predicted pressure points, solved bottlenecks, and route execution quality across cycles.",lockedText:"Unlocks when Enlightenment is achieved."},
+   114→    {id:"fate_weaving",name:"Fate Weaving",cost:22,implemented:true,desc:"Convert solved omens into stronger momentum so a well-read run accelerates itself.",lockedText:"Unlocks when Enlightenment is achieved."},
+   115→    {id:"destiny_lock",name:"Destiny Lock",cost:24,implemented:true,desc:"Bind a chosen route so its backbone systems and stage-defining choices arrive with less drift.",lockedText:"Unlocks when Enlightenment is achieved."}
+   116→  ];
+   117→
+   118→  DATA.FORESIGHT_NODES = [
+   119→    {id:"route_templates",lane:"Route",tier:1,upgradeId:"route_templates",requires:[],label:"Save routes",desc:"Record preferred run routes and apply them on seed."},
+   120→    {id:"pressure_omens",lane:"Pressure",tier:1,upgradeId:"pressure_omens",requires:[],label:"Read bottlenecks",desc:"Surface the next real stress point before it hits."},
+   121→    {id:"seed_bias",lane:"Route",tier:2,upgradeId:"seed_bias",requires:["route_templates"],label:"Bias the cradle",desc:"Push new worlds toward the intended route."},
+   122→    {id:"template_priority",lane:"Route",tier:2,upgradeId:"template_priority",requires:["route_templates"],label:"Prioritize purchases",desc:"Make automation favor the chosen long-term backbone."},
+   123→    {id:"rival_prophecy",lane:"Conflict",tier:1,upgradeId:"rival_prophecy",requires:[],label:"Read rivals",desc:"Expose likely rival pressure earlier."},
+   124→    {id:"counterplay_network",lane:"Conflict",tier:2,upgradeId:"counterplay_network",requires:["rival_prophecy"],label:"Answer pressure",desc:"Open counterplay windows before rivals peak."},
+   125→    {id:"bloc_blueprints",lane:"Conflict",tier:2,upgradeId:"bloc_blueprints",requires:["rival_prophecy"],label:"Read blocs",desc:"See which congress blocs will actually hold."},
+   126→    {id:"institutional_memory",lane:"Conflict",tier:3,upgradeId:"institutional_memory",requires:["bloc_blueprints"],label:"Track institutions",desc:"Reveal slow-building political strain."},
+   127→    {id:"ftl_primers",lane:"Solar Proof",tier:1,upgradeId:"ftl_primers",requires:[],label:"Plan the leap",desc:"Identify the cleanest FTL doctrine sooner."},
+   128→    {id:"proof_scaffolds",lane:"Solar Proof",tier:2,upgradeId:"proof_scaffolds",requires:["ftl_primers"],label:"Prove the jump",desc:"Reduce the burden of FTL proof."},
+   129→    {id:"policy_autopilot",lane:"Route",tier:3,upgradeId:"policy_autopilot",requires:["template_priority","pressure_omens"],label:"Resolve routine choices",desc:"Handle simple laws, doctrines, and project branches."},
+   130→    {id:"continuity_engine",lane:"Continuity",tier:1,upgradeId:"continuity_engine",requires:[],label:"Carry momentum",desc:"Strengthen inherited setup power between runs."},
+   131→    {id:"chronicle_lens",lane:"Continuity",tier:2,upgradeId:"chronicle_lens",requires:["continuity_engine"],label:"Read history",desc:"Use archive outcomes as route advice."},
+   132→    {id:"compressed_frontiers",lane:"Pressure",tier:3,upgradeId:"compressed_frontiers",requires:["seed_bias","continuity_engine"],label:"Compress mastery",desc:"Turn solved stages into brisk preludes."},
+   133→    {id:"resource_threads",lane:"Pressure",tier:2,upgradeId:"resource_threads",requires:["pressure_omens"],label:"Trace the chains",desc:"Expose which exact resource routes will fail first."},
+   134→    {id:"synergy_visions",lane:"Route",tier:4,upgradeId:"synergy_visions",requires:["template_priority","chronicle_lens"],label:"See hidden synergies",desc:"Surface useful route, lineage, and project combinations before they are obvious."},
+   135→    {id:"bottleneck_index",lane:"Pressure",tier:4,upgradeId:"bottleneck_index",requires:["resource_threads","institutional_memory"],label:"Count solved omens",desc:"Record which predicted bottlenecks have truly been overcome."},
+   136→    {id:"fate_weaving",lane:"Continuity",tier:3,upgradeId:"fate_weaving",requires:["bottleneck_index","chronicle_lens"],label:"Weave solved fate",desc:"Turn successfully resolved pressure into inherited momentum."},
+   137→    {id:"destiny_lock",lane:"Route",tier:5,upgradeId:"destiny_lock",requires:["synergy_visions","fate_weaving"],label:"Lock the destiny",desc:"Bind the chosen route tightly enough that future cycles drift less and arrive cleaner."}
+   138→  ];
+   139→
+   140→  DATA.TRANSCENDENCE_UPGRADES = [
+   141→    {id:"shop_autobuyer",name:"Shop Autobuyer",cost:3,implemented:true,desc:"Automatically buys Evolution and Divinity upgrades from saved priorities.",lockedText:"Unlocks with the first Transcendence."},
+   142→    {id:"instant_seeding",name:"Instant Seeding",cost:5,implemented:true,desc:"Auto-start new worlds after review and shop steps are resolved.",lockedText:"Unlocks with the first Transcendence."},
+   143→    {id:"template_overdrive",name:"Template Overdrive",cost:7,implemented:true,desc:"Template autopilot buys priority systems and techs faster and with a stronger path bias.",lockedText:"Unlocks with the first Transcendence."},
+   144→    {id:"mythic_realm",name:"Mythic Realm",cost:7,implemented:true,desc:"Unlock deeper cosmetic rewrites, alternate banners, and divine reskins.",lockedText:"Unlocks with the first Transcendence."},
+   145→    {id:"seed_orchestra",name:"Seed Orchestra",cost:8,implemented:true,desc:"Default route, theme, and seed mode are orchestrated together so each new cycle opens in the intended style automatically.",lockedText:"Unlocks with the first Transcendence."},
+   146→    {id:"crisis_forecasting",name:"Crisis Forecasting",cost:9,implemented:true,desc:"Galactic crisis windows surface earlier and counterplay gains extra urgency discounts.",lockedText:"Unlocks with the first Transcendence."},
+   147→    {id:"theme_curator",name:"Theme Curator",cost:10,implemented:true,desc:"Cosmetic themes become part of the Transcendence loop, with faster mythic presentation swaps and a clearer shop identity.",lockedText:"Unlocks with the first Transcendence."},
+   148→    {id:"cosmic_relay",name:"Cosmic Relay",cost:11,implemented:true,desc:"Setup and route defaults ripple forward automatically, making post-reset planning much more hands-off.",lockedText:"Unlocks with the first Transcendence."},
+   149→    {id:"mythic_index",name:"Mythic Index",cost:12,implemented:true,desc:"Archive and codex entries gain stronger path-themed cosmetic framing and faster mythic unlock routing.",lockedText:"Unlocks with the first Transcendence."},
+   150→    {id:"offering_altars",name:"Offering Altars",cost:9,implemented:true,desc:"Surplus output becomes fit for sacrifice, turning stable abundance into divine momentum.",lockedText:"Unlocks with the first Transcendence."},
+   151→    {id:"ritual_reserve",name:"Ritual Reserve",cost:10,implemented:true,desc:"Store extra intervention strength for crisis moments instead of wasting all overflow immediately.",lockedText:"Unlocks with the first Transcendence."},
+   152→    {id:"script_lattice",name:"Script Lattice",cost:11,implemented:true,desc:"Divine scripts can react faster and with more expressive priorities than simple autobuyers.",lockedText:"Unlocks with the first Transcendence."},
+   153→    {id:"rule_bending",name:"Rule Bending",cost:13,implemented:true,desc:"Softens hard run assumptions: improves all output, project speed, and shortage grace during remixed cycles.",lockedText:"Unlocks with the first Transcendence."}
+   154→  ];
+   155→
+   156→  DATA.GENESIS_CRADLE_WORLDS = [
+   157→    {id:"oceanic",name:"Oceanic Cradle",desc:"Life begins in abundance and fluid adaptation.",effects:{resourceOutput:{food:0.06,water:0.08},populationGrowth:0.004}},
+   158→    {id:"arid",name:"Arid Cradle",desc:"Scarcity teaches discipline before empire.",effects:{resourceOutput:{materials:0.06,knowledge:0.04},upkeepBonus:-0.003}},
+   159→    {id:"glacial",name:"Glacial Cradle",desc:"Austere cold slows waste and rewards careful survival.",effects:{resourceOutput:{water:0.05,science:0.04,happiness:0.03},upkeepBonus:-0.004}},
+   160→    {id:"lush",name:"Lush Cradle",desc:"Abundance arrives early, but so does dependence on plenty.",effects:{resourceOutput:{food:0.08,medicine:0.05,happiness:0.04}}},
+   161→    {id:"toxic",name:"Toxic Cradle",desc:"Poisoned beginnings reward chemistry, medicine, and harsh adaptation.",effects:{resourceOutput:{science:0.05,medicine:0.05,strategic_total:0.04}}},
+   162→    {id:"volcanic",name:"Volcanic Cradle",desc:"Violence and heat forge productive civilizations.",effects:{resourceOutput:{production:0.06,energy:0.05},allOutput:0.02}},
+   163→    {id:"subterranean",name:"Subterranean Cradle",desc:"Caverns teach dense logistics, hidden wealth, and patient memory.",effects:{resourceOutput:{stone:0.07,materials:0.06,data:0.04}}},
+   164→    {id:"crystalline",name:"Crystalline Cradle",desc:"Ordered worlds support insight, memory, and strange resonance.",effects:{resourceOutput:{science:0.06,data:0.05,rare_matter:0.04}}}
+   165→  ];
+   166→  DATA.GENESIS_PRIME_CONDITIONS = [
+   167→    {id:"abundant_water",name:"Abundant Water",desc:"Reservoirs and rivers swell before the first age.",effects:{resourceOutput:{water:0.08,food:0.04},capacity:{water:30}}},
+   168→    {id:"rich_minerals",name:"Rich Minerals",desc:"The bones of the world are heavy with promise.",effects:{resourceOutput:{materials:0.08,stone:0.06,alloys:0.04}}},
+   169→    {id:"weak_gravity",name:"Weak Gravity",desc:"Expansion and flight come more easily to creation.",effects:{resourceOutput:{energy:0.05,diplomacy:0.04},projectSpeed:0.06}},
+   170→    {id:"fungal_bloom",name:"Fungal Bloom",desc:"Life networks early and remembers how to share abundance.",effects:{resourceOutput:{organic_matter:0.08,medicine:0.05,culture:0.04}}},
+   171→    {id:"unstable_climate",name:"Unstable Climate",desc:"Volatility hardens resilience and makes adaptation politically central.",effects:{resourceOutput:{cohesion:0.05,energy:0.04,science:0.04}}},
+   172→    {id:"sparse_biosphere",name:"Sparse Biosphere",desc:"Life begins thin, making every surviving chain precious.",effects:{resourceOutput:{knowledge:0.06,faith:0.04,divinity_growth:0.03}}}
+   173→  ];
+   174→  DATA.GENESIS_SACRED_GEOGRAPHY = [
+   175→    {id:"wonder_belt",name:"Wonder Belt",desc:"Natural marvels gather near the heartland.",effects:{resourceOutput:{culture:0.06,tourism:0.06,influence:0.04}}},
+   176→    {id:"dead_zone",name:"Consecrated Dead Zone",desc:"Dangerous borders harden survivors and keep rivals wary.",effects:{resourceOutput:{military_power:0.06,cohesion:0.04},allOutput:0.01}},
+   177→    {id:"rich_rift",name:"Rich Rift",desc:"A sacred extraction belt feeds later industry.",effects:{resourceOutput:{production:0.05,gold:0.05,materials:0.05}}},
+   178→    {id:"hidden_ruins",name:"Hidden Ruins",desc:"Forgotten memory waits to be found by the worthy.",effects:{resourceOutput:{knowledge:0.06,faith:0.05,science:0.04}}}
+   179→  ];
+   180→  DATA.GENESIS_DORMANT_SEEDS = [
+   181→    {id:"relic_seed",name:"Dormant Relic",desc:"An ancient relic waits for a compatible civilization.",effects:{resourceOutput:{divinity_knowledge:0.04,divinity_transcendence:0.04}}},
+   182→    {id:"garden_seed",name:"Sleeping Garden",desc:"A later biosphere awakening rewards harmony and care.",effects:{resourceOutput:{food:0.06,happiness:0.05,medicine:0.04}}},
+   183→    {id:"forge_seed",name:"Buried Forge",desc:"A late industrial bloom lies hidden in the world.",effects:{resourceOutput:{production:0.06,alloys:0.05,energy:0.04}}},
+   184→    {id:"veil_seed",name:"Veiled Breach",desc:"A thin place in reality supports later ascension and mystery.",effects:{resourceOutput:{ascension:0.06,faith:0.04,data:0.04}}},
+   185→    {id:"ruin_seed",name:"Buried Testament",desc:"A forgotten sacred archive can awaken when memory and law align.",effects:{resourceOutput:{unity:0.05,influence:0.04,data:0.04}}}
+   186→  ];
+   187→
+   188→  DATA.GENESIS_UPGRADES = [
+   189→    {id:"cradle_memory",name:"Cradle Memory",cost:5,implemented:true,desc:"Selected cradle worlds imprint more strongly on future runs.",lockedText:"Unlocks with the first Genesis."},
+   190→    {id:"prime_attunement",name:"Prime Attunement",cost:7,implemented:true,desc:"Prime conditions gain sharper world-shaping effects.",lockedText:"Unlocks with the first Genesis."},
+   191→    {id:"sacred_cartography",name:"Sacred Cartography",cost:8,implemented:true,desc:"Sacred geography influences maps and stage identity more reliably.",lockedText:"Unlocks with the first Genesis."},
+   192→    {id:"dormant_chorus",name:"Dormant Chorus",cost:9,implemented:true,desc:"Dormant seeds wake earlier and reward compatible development more strongly.",lockedText:"Unlocks with the first Genesis."},
+   193→    {id:"genesis_reserves",name:"Genesis Reserves",cost:10,implemented:true,desc:"New worlds begin with stronger reserve stockpiles drawn from authored creation.",lockedText:"Unlocks with the first Genesis."}
+   194→  ];
+   195→
+   196→  DATA.WORSHIP_MODES = [
+   197→    {id:"devotion",name:"Devotion",desc:"The faithful adore the god through gratitude and steady service.",effects:{resourceOutput:{faith:0.08,happiness:0.05,culture:0.04}}},
+   198→    {id:"fear",name:"Fear",desc:"The world obeys because it dreads divine judgment.",effects:{resourceOutput:{military_power:0.06,influence:0.06,cohesion:0.03},happiness:-0.04}},
+   199→    {id:"mystery",name:"Mystery",desc:"The god hides behind signs, symbols, and impossible whispers.",effects:{resourceOutput:{science:0.04,faith:0.05,data:0.05}}},
+   200→    {id:"duty",name:"Duty",desc:"Worship becomes law, order, and institutional continuity.",effects:{resourceOutput:{cohesion:0.06,influence:0.05,production:0.04}}},
+   201→    {id:"transaction",name:"Transaction",desc:"Faith behaves like covenant and exchange, tying wealth to obedience.",effects:{resourceOutput:{gold:0.06,faith:0.05,influence:0.04}}},
+   202→    {id:"transcendence",name:"Transcendence",desc:"The civilization worships ascent itself as the highest sacred act.",effects:{resourceOutput:{ascension:0.07,unity:0.05,divinity_transcendence:0.04}}}
+   203→  ];
+   204→  DATA.DIVINE_LAWS = [
+   205→    {id:"law_order",name:"Law of Order",desc:"Stability and disciplined growth define the holy state.",effects:{resourceOutput:{cohesion:0.08,happiness:0.03},populationGrowth:0.003}},
+   206→    {id:"law_conquest",name:"Law of Conquest",desc:"Expansion and force are cast as sacred obligations.",effects:{resourceOutput:{military_power:0.08,command:0.06,influence:0.03},happiness:-0.03}},
+   207→    {id:"law_plenty",name:"Law of Plenty",desc:"Abundance itself becomes proof of divine favor.",effects:{resourceOutput:{food:0.08,production:0.05,gold:0.04}}},
+   208→    {id:"law_revelation",name:"Law of Revelation",desc:"Knowledge, archives, and holy inquiry are prized above certainty.",effects:{resourceOutput:{science:0.07,data:0.06,faith:0.03}}},
+   209→    {id:"law_jubilee",name:"Law of Jubilee",desc:"Cycles of forgiveness and renewal soften collapse.",effects:{resourceOutput:{happiness:0.08,culture:0.05,medicine:0.04}}}
+   210→  ];
+   211→  DATA.MIRACLES = [
+   212→    {id:"bless_harvests",name:"Bless Harvests",desc:"Pour grace into mortal abundance.",cost:{divinity_growth:18,divinity_harmony:14},effects:{grant:{food:180,water:140,happiness:20}}},
+   213→    {id:"sanctify_expansion",name:"Sanctify Expansion",desc:"Consecrate the next leap of empire.",cost:{divinity_wealth:14,divinity_conquest:16},effects:{grant:{influence:80,production:120,cohesion:20}}},
+   214→    {id:"jubilant_peace",name:"Jubilant Peace",desc:"Suspend unrest before it becomes fracture.",cost:{divinity_harmony:20,divinity_knowledge:10},effects:{clearShortage:20,grant:{happiness:35,cohesion:35,faith:25}}},
+   215→    {id:"apocalypse_rite",name:"Apocalypse Rite",desc:"Crash divine force through a crisis point and demand victory anyway.",cost:{divinity_conquest:18,divinity_transcendence:18},effects:{surgeSeconds:40,surgeOutput:0.45}},
+   216→    {id:"declare_jubilee",name:"Declare Jubilee",desc:"Reset civic strain through pardon, sacred plenty, and public relief.",cost:{divinity_harmony:16,divinity_wealth:14},effects:{grant:{happiness:28,cohesion:24,gold:120},clearShortage:12}},
+   217→    {id:"curse_dissent",name:"Curse Dissent",desc:"Break a brewing fracture with fear, spectacle, and hard command.",cost:{divinity_conquest:16,divinity_knowledge:12},effects:{grant:{command:70,military_power:90,cohesion:18}}}
+   218→  ];
+   219→  DATA.HERESY_RESPONSES = [
+   220→    {id:"suppress",name:"Suppress",desc:"Crush dissent before it spreads.",effects:{resourceOutput:{cohesion:0.06,military_power:0.04},happiness:-0.04}},
+   221→    {id:"absorb",name:"Absorb",desc:"Fold the new interpretation into orthodoxy.",effects:{resourceOutput:{faith:0.06,culture:0.05,happiness:0.02}}},
+   222→    {id:"legalize",name:"Legalize",desc:"Permit divergence and gain complexity.",effects:{resourceOutput:{science:0.05,data:0.04,influence:0.03},cohesion:-0.03}},
+   223→    {id:"weaponize",name:"Weaponize",desc:"Aim heresy outward as a sacred instrument.",effects:{resourceOutput:{military_power:0.06,influence:0.05,faith:0.03}}}
+   224→  ];
+   225→  DATA.APOTHEOSIS_UPGRADES = [
+   226→    {id:"worship_foundations",name:"Worship Foundations",cost:5,implemented:true,desc:"Prayer and follower output deepen as the divine becomes public.",lockedText:"Unlocks with the first Apotheosis."},
+   227→    {id:"law_tablets",name:"Law Tablets",cost:7,implemented:true,desc:"Divine law slots increase and chosen laws bind more cleanly.",lockedText:"Unlocks with the first Apotheosis."},
+   228→    {id:"miracle_reservoir",name:"Miracle Reservoir",cost:8,implemented:true,desc:"Miracle charges store more deeply and return faster.",lockedText:"Unlocks with the first Apotheosis."},
+   229→    {id:"heresy_doctrine",name:"Heresy Doctrine",cost:9,implemented:true,desc:"Heresy can be turned into usable pressure instead of pure instability.",lockedText:"Unlocks with the first Apotheosis."},
+   230→    {id:"temple_economy",name:"Temple Economy",cost:10,implemented:true,desc:"Faith, culture, and wealth feed one another through worship institutions.",lockedText:"Unlocks with the first Apotheosis."}
+   231→  ];
+   232→
+   233→  DATA.FUTURE_LAYER_UPGRADES = {
+   234→    singularity:[
+   235→      {id:"relic_sockets",name:"Relic Sockets",cost:5,implemented:true,desc:"Future relic loadouts open with stronger baseline flexibility.",lockedText:"Unlocks with Singularity."},
+   236→      {id:"compression_lattice",name:"Compression Lattice",cost:7,implemented:true,desc:"Mastered stage bands abstract faster and with less loss.",lockedText:"Unlocks with Singularity."},
+   237→      {id:"logic_core_seed",name:"Logic Core Seed",cost:9,implemented:true,desc:"Automation priorities awaken earlier in a fresh universe.",lockedText:"Unlocks with Singularity."},
+   238→      {id:"parallel_memory",name:"Parallel Memory",cost:11,implemented:true,desc:"Compressed stages preserve more useful throughput while skipped.",lockedText:"Unlocks with Singularity."},
+   239→      {id:"relic_resonance",name:"Relic Resonance",cost:12,implemented:true,desc:"Equipped relics interact more strongly with one another.",lockedText:"Unlocks with Singularity."}
+   240→    ],
+   241→    omnipotence:[
+   242→      {id:"hybrid_stabilizers",name:"Hybrid Stabilizers",cost:5,implemented:true,desc:"Mixed identities suffer less immediate contradiction strain.",lockedText:"Unlocks with Omnipotence."},
+   243→      {id:"lineage_overtones",name:"Lineage Overtones",cost:7,implemented:true,desc:"Secondary inheritance leaves a stronger mark on the run.",lockedText:"Unlocks with Omnipotence."},
+   244→      {id:"contradiction_walls",name:"Contradiction Walls",cost:9,implemented:true,desc:"Instability rises slower while hybrid systems are still immature.",lockedText:"Unlocks with Omnipotence."},
+   245→      {id:"chimera_treasury",name:"Chimera Treasury",cost:11,implemented:true,desc:"Hybrid identities feed richer late-stage economic blends.",lockedText:"Unlocks with Omnipotence."},
+   246→      {id:"forbidden_accords",name:"Forbidden Accords",cost:12,implemented:true,desc:"Conflicting laws and blocs strain each other less sharply.",lockedText:"Unlocks with Omnipotence."}
+   247→    ],
+   248→    divinity:[
+   249→      {id:"prayer_channels",name:"Prayer Channels",cost:5,implemented:true,desc:"Worship output organizes itself into clearer divine streams.",lockedText:"Unlocks with Divinity."},
+   250→      {id:"mask_gallery",name:"Mask Gallery",cost:7,implemented:true,desc:"Divine identities become easier to switch and sustain.",lockedText:"Unlocks with Divinity."},
+
+[showing lines 1-250 of 2721; use offset=251 with limit to continue reading]

@@ -1,0 +1,962 @@
+  3963→   backfill defaults.
+  3964→2. **Build the `OmnipotenceModal` component.** 3 sections: Hybrid Lineage
+  3965→   cards (8, one selectable per run), Stance cards (3, one selectable),
+  3966→   and the Instability meter with current value, peak value, and effective
+  3967→   rate display. Wire to the new store actions.
+  3968→3. **Update `PrestigeTab` and `Header`.** Replace the Layer 7 locked "???"
+  3969→   placeholder with a real progress panel (bound hybrid + active stance +
+  3970→   peak/instability meters); add an "Omnipotence" header button gated on
+  3971→   `omnipotenceUnlocked` (Lucide icon: Sparkles or Atom).
+  3972→4. **Add an `omnipotence_unlocked` story entry** to `story.ts` (stage:
+  3973→   "meta", category: "layer") describing the god's transition into
+  3974→   paradox-sustained godhood.
+  3975→
+  3976→---
+  3977→
+  3978→## L8-data — Created `src/game/data/divinity_layer.ts` (Layer 8 data file)
+  3979→
+  3980→### Summary
+  3981→Created the Layer 8 (Divinity) data file at `/home/z/my-project/src/game/data/divinity_layer.ts`
+  3982→(~830 lines). The file is named `divinity_layer.ts` (not `divinity.ts`)
+  3983→because `divinity` is already used as a `ResourceId` in `resources.ts`
+  3984→(line 36: `{ id: "divinity", name: "Divinity", category: "divinity", ... }`)
+  3985→and in `state/types.ts` (line 8: `| "divinity" | "evolution_points" | ...`).
+  3986→Defining a `divinity.ts` module would have shadowed the resource's
+  3987→canonical id and made imports ambiguous. The `divinity_layer.ts` name
+  3988→sidesteps the collision while preserving the Layer 8 identity. Defines
+  3989→the 6 Prayer Channels, 6 Divine Masks, 5 Worship Polarities, the prayer
+  3990→base rate constant, the completion threshold constant, five helper
+  3991→functions, and a module-load IIFE validator. Mirrors the structure /
+  3992→doc-style of `apotheosis.ts`, `singularity.ts`, `genesis.ts`, and
+  3993→`omnipotence.ts` (file header comment block, constant section with
+  3994→JSDoc, typed interfaces + dataset arrays + Map records, IIFE validator,
+  3995→helpers section with `*Bonus` interface + function + `is*Complete`).
+  3996→
+  3997→### 1. Constants
+  3998→- `PRAYER_RATE_PER_POPULATION = 0.001` — base prayer generation rate
+  3999→  (prayer per population per second). Matches the task spec wording
+  4000→  "prayer = population × 0.001 per second (base rate)". 1000 pop →
+  4001→  1 prayer/sec.
+  4002→- `DIVINITY_COMPLETION_CHANNELS_REQUIRED = 3` — minimum channels that
+  4003→  must be opened (level ≥ 1) for `isDivinityComplete`. Matches the
+  4004→  `prestigeLayers.ts divinity.completeState` wording "Open 3 Prayer
+  4005→  Channels and align Worship Polarity". 3 of 6 channels = half the pool,
+  4006→  consistent with `APOTHEOSIS_COMPLETION_LAWS_REQUIRED = 3 of 8` and
+  4007→  `SINGULARITY_COMPLETION_CORES_REQUIRED = 3 of 6` precedents.
+  4008→- Length constants: `PRAYER_CHANNEL_COUNT = 6`, `DIVINE_MASK_COUNT = 6`,
+  4009→  `WORSHIP_POLARITY_COUNT = 5`.
+  4010→
+  4011→### 2. Six Prayer Channels (`PRAYER_CHANNELS` + `PRAYER_CHANNEL_MAP`)
+  4012→Each `PrayerChannelDef` carries a single `*PerLevel` effect field
+  4013→(enforced by the IIFE validator — Wealth is the exception; it sets
+  4014→BOTH `goldMultPerLevel` and `productionMultPerLevel` per the spec
+  4015→wording "+15% gold/production per prayer level"). The consumer sums
+  4016→the per-level fields × current channel level via `prayerChannelBonus`.
+  4017→
+  4018→| # | id | name | per-level effect | icon |
+  4019→|---|---|---|---|---|
+  4020→| 1 | `growth` | Growth Channel | +10% pop growth / level (`populationGrowthMultPerLevel: 0.10`) | 🌱 |
+  4021→| 2 | `war` | War Channel | +15% military / level (`militaryMultPerLevel: 0.15`) | ⚔️ |
+  4022→| 3 | `knowledge` | Knowledge Channel | +15% science / level (`scienceMultPerLevel: 0.15`) | 📚 |
+  4023→| 4 | `wealth` | Wealth Channel | +15% gold AND +15% production / level (paired) | 🪙 |
+  4024→| 5 | `faith` | Faith Channel | +0.01 Divinity/sec / level (`divinityPerSecPerLevel: 0.01`) | ✨ |
+  4025→| 6 | `harmony` | Harmony Channel | +5 happiness / level (`happinessFlatPerLevel: 5`) | 🎶 |
+  4026→
+  4027→Channels are NOT one-per-run — all 6 can be opened simultaneously. The
+  4028→"open" check (`level >= 1`) just means the player has invested at least
+  4029→1 prayer level. The level cap is open-ended; the wiring task will define
+  4030→the cost curve (e.g. `cost = 10 × level²`).
+  4031→
+  4032→### 3. Six Divine Masks (`DIVINE_MASKS` + `DIVINE_MASK_MAP`)
+  4033→Each `DivineMaskDef` carries an upside and (except The Sovereign) a
+  4034→trade-off. One active per run (`state.activeMask` is a single id, not a
+  4035→set — mirrors the Worship Mode / Relic Loadout / Hybrid Lineage "pick
+  4036→one" pattern). The consumer reads the active mask's bonuses via
+  4037→`divineMaskBonus(state.activeMask)`.
+  4038→
+  4039→| # | id | name | upside | trade-off | icon |
+  4040→|---|---|---|---|---|---|
+  4041→| 1 | `creator` | The Creator | +25% production, +15% caps | none | 🎨 |
+  4042→| 2 | `destroyer` | The Destroyer | +40% military | −10 happiness/s (`happinessFlat: -10`) | 💥 |
+  4043→| 3 | `preserver` | The Preserver | +30% caps, +20% pop growth | none | 🛡️ |
+  4044→| 4 | `trickster` | The Trickster | +30% science, +20% gold | none | 🃏 |
+  4045→| 5 | `sage` | The Sage | +15% production, +50% Divinity gain (`divinityMult: 0.50`) | none | 🧙 |
+  4046→| 6 | `sovereign` | The Sovereign | +10% production/pop-growth/military/science/gold/caps | none (balanced) | 👑 |
+  4047→
+  4048→`divinityMult` is the multiplier on Divinity-gain modifiers — the
+  4049→consumer multiplies all Divinity gains (per-tick grants, Faith Channel
+  4050→output, etc.) by `(1 + sum_of_divinityMult)`. Sage's +0.50 = ×1.5 Divinity.
+  4051→
+  4052→The Sovereign is enforced by the IIFE validator to set ALL SIX core
+  4053→mult fields (production / pop-growth / military / science / gold / caps),
+  4054→matching its "all bonuses +10%, no downside — balanced" contract.
+  4055→
+  4056→### 4. Five Worship Polarities (`WORSHIP_POLARITIES` + `WORSHIP_POLARITY_MAP`)
+  4057→Each `WorshipPolarityDef` shapes how mortals relate to the god. One
+  4058→active per run. The list intentionally reuses the names from
+  4059→`apotheosis.ts WORSHIP_MODES` (Reverence / Fear / Wonder / Ambition /
+  4060→Mystery) because Layer 8 is the apotheosis-era "Worship Modes" idea
+  4061→refined — a Divinity-layer god chooses the *polarity* of its worship,
+  4062→not the mode. Effects overlap by design (stacking "Fear polarity" on
+  4063→top of "Fear worship mode" gives compounded bonuses).
+  4064→
+  4065→| # | id | name | effects | icon |
+  4066→|---|---|---|---|---|
+  4067→| 1 | `reverence` | Reverence | +15% production | 🙇 |
+  4068→| 2 | `fear` | Fear | +25% military, happiness drain ×0.5 | 😨 |
+  4069→| 3 | `wonder` | Wonder | +20% science, +10 happiness/s | 🌟 |
+  4070→| 4 | `ambition` | Ambition | +25% gold, +10% production | 💰 |
+  4071→| 5 | `mystery` | Mystery | +10% production/military/science/gold, −25% heresy rate | 🌫️ |
+  4072→
+  4073→The Mystery polarity is enforced by the IIFE validator to set at least
+  4074→4 distinct mult fields (production / military / science / gold) AND a
+  4075→negative `heresyRateMult`, matching its "all +10%, slower heresy"
+  4076→contract.
+  4077→
+  4078→### 5. Helper Functions
+  4079→- **`prayerChannelBonus(channels: Record<string, number>): PrayerChannelBonus`**
+  4080→  — aggregates the per-level bonuses across all channels at their
+  4081→  current levels. Each channel's `*PerLevel` field × level is added to
+  4082→  the corresponding result field. Mirrors `logicCoreBonus` /
+  4083→  `divineLawBonus` (Record-input aggregate pattern). Returns all-zero
+  4084→  for empty / unknown ids.
+  4085→- **`divineMaskBonus(maskId: string | null): DivineMaskBonus`** —
+  4086→  returns the active mask's bonuses as an aggregate, defaulted for
+  4087→  null / unknown input. Mirrors `relicBonus` / `hybridBonus` (single-id
+  4088→  aggregate pattern). Defaults `divinityMult` to 0 (not 1) because the
+  4089→  consumer multiplies Divinity gains by `(1 + 0) = 1.0` (multiplicative
+  4090→  identity composed at the call site).
+  4091→- **`worshipPolarityBonus(polarityId: string | null): WorshipPolarityBonus`**
+  4092→  — returns the active polarity's bonuses as an aggregate, defaulted
+  4093→  for null / unknown input. Defaults `happinessDrainMult` to 1.0
+  4094→  (multiplicative identity — drain rate × 1.0 = unchanged).
+  4095→- **`prayerRate(population: number): number`** — returns
+  4096→  `population × PRAYER_RATE_PER_POPULATION` (= `population × 0.001`).
+  4097→  Defensive: negative population clamps to 0. 0 population returns 0.
+  4098→- **`isDivinityComplete(channels: Record<string, number>, polarityId: string | null): boolean`**
+  4099→  — true when (1) ≥3 Prayer Channels have level ≥ 1 AND (2) the
+  4100→  `polarityId` is a non-null, recognized polarity id. Matches
+  4101→  `prestigeLayers.ts divinity.completeState = "Open 3 Prayer Channels
+  4102→  and align Worship Polarity"`. Gates advancement to Layer 9 (Infinity).
+  4103→
+  4104→### 6. Module-Load IIFE Validator
+  4105→`validateDivinityData()` runs at module import and throws on:
+  4106→- `PRAYER_RATE_PER_POPULATION ≤ 0`
+  4107→- `DIVINITY_COMPLETION_CHANNELS_REQUIRED ≤ 0` or > `PRAYER_CHANNEL_COUNT`
+  4108→- Channel count ≠ 6, duplicate channel ids
+  4109→- Any channel with zero `*PerLevel` effect fields
+  4110→- Any channel `*PerLevel` value ≤ 0 (bonuses, never penalties)
+  4111→- Mask count ≠ 6, duplicate mask ids
+  4112→- Any mask with zero bonus fields
+  4113→- Any mask mult field ≤ 0 (only `happinessFlat` may be signed)
+  4114→- "sovereign" mask missing any of the 6 core mult fields
+  4115→- Polarity count ≠ 5, duplicate polarity ids
+  4116→- Any polarity with zero effect fields
+  4117→- Any polarity mult field ≤ 0 (only `happinessDrainMult` /
+  4118→  `heresyRateMult` / `happinessFlat` may be signed by design)
+  4119→- "mystery" polarity missing 4 mult fields or a negative `heresyRateMult`
+  4120→
+  4121→### Exports
+  4122→Required (per task spec):
+  4123→- `PRAYER_CHANNELS`, `PRAYER_CHANNEL_MAP`
+  4124→- `DIVINE_MASKS`, `DIVINE_MASK_MAP`
+  4125→- `WORSHIP_POLARITIES`, `WORSHIP_POLARITY_MAP`
+  4126→- `prayerChannelBonus`, `divineMaskBonus`, `worshipPolarityBonus`
+  4127→- `prayerRate`, `isDivinityComplete`
+  4128→
+  4129→Extras (mirroring apotheosis.ts / singularity.ts / omnipotence.ts
+  4130→conventions):
+  4131→- `PRAYER_RATE_PER_POPULATION`, `DIVINITY_COMPLETION_CHANNELS_REQUIRED`
+  4132→  (semantic constants, like `BASE_HERESY_RATE` / `HERESY_MAX` /
+  4133→  `APOTHEOSIS_COMPLETION_LAWS_REQUIRED` in apotheosis.ts)
+  4134→- `PRAYER_CHANNEL_COUNT`, `DIVINE_MASK_COUNT`, `WORSHIP_POLARITY_COUNT`
+  4135→  (length constants, like `LOGIC_CORE_COUNT` / `HYBRID_LINEAGE_COUNT`)
+  4136→- `PrayerChannelDef`, `DivineMaskDef`, `WorshipPolarityDef` (typed shape
+  4137→  contracts for consumers)
+  4138→- `PrayerChannelBonus`, `DivineMaskBonus`, `WorshipPolarityBonus`
+  4139→  (aggregate return-type contracts, like `RelicBonus` / `HybridBonus`)
+  4140→
+  4141→### State Fields Planned (file header documents these — not wired yet)
+  4142→Per-run (reset on prestige):
+  4143→- `activeMask: string | null` — active Divine Mask id, or null before pick
+  4144→- `activePolarity: string | null` — active Worship Polarity id, or null before pick
+  4145→- `prayerChannels: Record<string, number>` — channel id → current level (0 = unopened)
+  4146→- `prayer: number` — current prayer pool (spent to level channels)
+  4147→- `peakPrayer: number` — max prayer accumulated this run (for diagnostics)
+  4148→
+  4149→Persistent (carry forward across runs, per spec's `persistentReward`:
+  4150→"Each open Prayer Channel permanently raises the cap of its divine
+  4151→currency"):
+  4152→- `masksWornAllTime: Record<string, boolean>` — cumulative masks ever worn
+  4153→- `polaritiesAlignedAllTime: Record<string, boolean>` — cumulative polarities aligned
+  4154→- `channelsOpenedAllTime: Record<string, boolean>` — cumulative channels ever opened
+  4155→
+  4156→### Verification
+  4157→- `bun run lint`: **0 errors, 6 warnings** — all 6 warnings pre-existing
+  4158→  in `upload/logic.js`. No new lint issues introduced by `divinity_layer.ts`.
+  4159→- `bunx tsc --noEmit`: no errors mentioning `divinity_layer` (verified by
+  4160→  filtering output for the filename). The only pre-existing tsc errors
+  4161→  (`stages.ts:125`, `store.ts:212`, `examples/websocket/*`,
+  4162→  `skills/*` per prior worklog entries) are unrelated to this file.
+  4163→- Runtime sanity test (via `bun -e`): all 11 helper functions and the
+  4164→  IIFE validator imported cleanly; 10 `isDivinityComplete` test cases
+  4165→  all passed; all 6 channel / 6 mask / 5 polarity bonus aggregates
+  4166→  returned expected values. Floating-point display artifact noted:
+  4167→  `prayerChannelBonus({ growth: 3 }).populationGrowthMult` shows as
+  4168→  `0.30000000000000004` (standard IEEE-754 — not a defect, just JS
+  4169→  float math; consumers should not compare with strict equality).
+  4170→
+  4171→### Design Decisions
+  4172→- **File named `divinity_layer.ts`, not `divinity.ts`.** The `divinity`
+  4173→  string is already a `ResourceId` in `resources.ts` and `types.ts`.
+  4174→  Naming the module `divinity.ts` would have shadowed the resource id
+  4175→  in import paths and created ambiguity (does
+  4176→  `import { divinity } from "./divinity"` refer to the layer or the
+  4177→  resource?). The `divinity_layer.ts` name sidesteps the collision
+  4178→  while preserving the Layer 8 identity; the exported constants use
+  4179→  the bare prefixes (`PRAYER_CHANNELS`, `DIVINE_MASKS`, etc.)
+  4180→  consistent with the precedent set by `apotheosis.ts` (`DIVINE_LAWS`,
+  4181→  not `apotheosis_laws`).
+  4182→- **Prayer Channels are NOT one-per-run.** The task spec wording "6
+  4183→  Prayer Channels — route prayer output into different divine effects"
+  4184→  describes six parallel conduits the player invests prayer into, not
+  4185→  a single-choice like Divine Masks. The completion check requires
+  4186→  opening 3, which would be impossible if channels were mutually
+  4187→  exclusive. The "pick" is which to LEVEL (and how high), not which
+  4188→  to ENABLE — mirrors the Logic Cores pattern (`installedCores` is a
+  4189→  set, not a single id).
+  4190→- **Channels use `*PerLevel` field names (not the bare mult names).**
+  4191→  Distinguishes the per-level magnitude from the aggregate bonus. The
+  4192→  Def has `populationGrowthMultPerLevel: 0.10`; the Bonus has
+  4193→  `populationGrowthMult: 0.30` (at level 3). This naming makes the
+  4194→  relationship between the two layers of data explicit and matches
+  4195→  the singularity.ts `divinityPerSec` (flat) vs `divinityPerSecPerLevel`
+  4196→  (per-unit) precedent.
+  4197→- **Wealth Channel sets BOTH `goldMultPerLevel` AND `productionMultPerLevel`.**
+  4198→  The spec wording "+15% gold/production per prayer level" parses as a
+  4199→  paired effect on a single channel, not two separate channels. The
+  4200→  IIFE validator's "each channel sets at least one effect" rule is
+  4201→  satisfied; the paired effect is intentional.
+  4202→- **Divine Masks and Worship Polarities return aggregates, not Defs.**
+  4203→  Mirrors the more recent precedent (`omnipotence.ts hybridBonus` /
+  4204→  `singularity.ts relicBonus`) over the older one (`apotheosis.ts
+  4205→  worshipModeBonus` returns the Def directly). Aggregate return type
+  4206→  gives cleaner consumer code: `const m = divineMaskBonus(state.activeMask);
+  4207→  production *= (1 + m.productionMult)` — no null-check needed.
+  4208→- **`divinityMult` defaults to 0 (additive), not 1 (multiplicative).**
+  4209→  The consumer multiplies Divinity gains by `(1 + divinityMult)`, so
+  4210→  the additive identity (0) maps to "no change" (×1.0). This matches
+  4211→  `productionMult` / `militaryMult` / etc. semantics. The Sage's +0.50
+  4212→  means ×1.5 Divinity. Contrast with `happinessDrainMult` on
+  4213→  `WorshipPolarityBonus`, which defaults to 1.0 because it's
+  4214→  multiplicative (drain × 1.0 = unchanged). The split mirrors the
+  4215→  apotheosis.ts `DivineLawBonus` (which has additive `productionMult`
+  4216→  defaulting to 0 alongside multiplicative `worshipMult` defaulting
+  4217→  to 1).
+  4218→- **Worship Polarity names intentionally overlap with apotheosis.ts
+  4219→  Worship Modes.** Layer 8 is the apotheosis-era "Worship Modes" idea
+  4220→  refined — a Divinity-layer god is choosing the *polarity* of its
+  4221→  worship, not the mode. Effects overlap by design (Reverence in both
+  4222→  layers boosts production; Fear in both layers halves happiness drain
+  4223→  + boosts military). Stacking the two layers compounding bonuses is
+  4224→  intended progression, not a bug.
+  4225→- **`isDivinityComplete` accepts a Record + string|null signature.**
+  4226→  Mirrors `isSingularityComplete(installedCores, compressionPerformed)`
+  4227→  and `isApotheosisComplete(lawsCodified, heresySchismResolved)`. The
+  4228→  two conditions (≥3 channels opened AND a polarity aligned) each map
+  4229→  to one argument, keeping the function signature readable.
+  4230→- **Channel "open" check is `level >= 1`, not `level > 0`.** Equivalent
+  4231→  for positive integers but more explicit about the semantic ("a channel
+  4232→  is opened when at least 1 level has been invested"). A channel
+  4233→  absent from the map is treated as level 0 (unopened), via
+  4234→  `channels[c.id] ?? 0`.
+  4235→- **The Faith Channel's `divinityPerSecPerLevel: 0.01` is a flat grant,
+  4236→  not a mult.** The consumer adds this directly to
+  4237→  `state.resources.divinity` per second. This is the only channel that
+  4238→  produces Divinity directly (the others feed production / growth /
+  4239→  military / science / gold / happiness). It creates a self-reinforcing
+  4240→  loop when combined with The Sage mask's `divinityMult: 0.50` — each
+  4241→  Faith level produces 0.015 Divinity/s under The Sage.
+  4242→
+  4243→### Unresolved Issues / Risks
+  4244→1. **No cost curve defined for channel leveling.** The file specifies
+  4245→   the per-level effects but not the prayer cost to open / level a
+  4246→   channel. The wiring task should pick a scaling curve (e.g.
+  4247→   `cost = 10 × level²` for level N+1). The completion check only
+  4248→   requires opening 3 channels (1 level each), so the cost curve doesn't
+  4249→   affect the Layer 8 → 9 gating — only the depth of investment.
+  4250→2. **No level cap on channels.** Currently open-ended; the wiring task
+  4251→   may impose one (e.g. 10 or 100). Without a cap, the Harmony Channel's
+  4252→   +5 happiness/s/level can trivially max happiness (level 1 already
+  4253→   tops off a 100-happiness meter in 20 seconds), making the channel
+  4254→   quickly redundant. A cap would force the player to diversify.
+  4255→3. **Mystery polarity's `heresyRateMult: -0.25` stacks additively with
+  4256→   apotheosis.ts's Mystery worship mode's `-0.25`.** If both are
+  4257→   active, the effective heresy rate becomes
+  4258→   `BASE_HERESY_RATE × (1 + 0 + 0 + -0.25 + -0.25) = BASE × 0.5` —
+  4259→   heresy rises half as fast. This is intentional stacking, but a
+  4260→   playtest should verify it's not too punishing for the heresy meter
+  4261→   to ever fill. If it is, the Mystery polarity's `heresyRateMult`
+  4262→   could be reduced to -0.15.
+  4263→4. **The Destroyer's `-10 happiness/s` is severe.** With no other
+  4264→   happiness source, a civilization with a 100-happiness cap would
+  4265→   drain to 0 in 10 seconds. This forces The Destroyer player to also
+  4266→   invest in Harmony Channel (or stack Wonder polarity / Devotion
+  4267→   worship mode) — likely the intended design ("no god is just
+  4268→   destruction"). The wiring task should verify the multipliers
+  4269→   compose to a playable balance.
+  4270→5. **No state wiring yet.** The file documents the planned GameState
+  4271→   fields in the header comment but does NOT add them to `types.ts` or
+  4272→   `store.ts`. The wiring task (next in the queue) should add the 5
+  4273→   per-run fields + 3 persistent fields, a `setShowDivinity` action,
+  4274→   a `selectDivineMask` action (one-per-run), an `alignWorshipPolarity`
+  4275→   action, a `levelPrayerChannel(channelId, levels=1)` action, the
+  4276→   per-tick prayer generation via `prayerRate(state.population)`, and
+  4277→   the `triggerPrestige` integration that calls `isDivinityComplete`
+  4278→   to gate Layer 9 unlock. Persist version bump will be required
+  4279→   (currently 4 → 5).
+  4280→
+  4281→### Next Actions (for follow-up tasks)
+  4282→1. **Wire divinity into the Zustand store.** Add the 8 new state fields
+  4283→   (5 per-run + 3 persistent), the new actions (`selectDivineMask`,
+  4284→   `alignWorshipPolarity`, `levelPrayerChannel`), the per-tick prayer
+  4285→   generation (using `prayerRate(state.population)`), and the
+  4286→   `triggerPrestige` integration calling `isDivinityComplete`. Bump
+  4287→   persist version (currently 4 → 5) and backfill defaults.
+  4288→2. **Build the `DivinityModal` component.** 3 sections: Prayer Channel
+  4289→   cards (6, all levelable, with current level + cost to next level),
+  4290→   Divine Mask cards (6, one selectable per run, with active highlight),
+  4291→   and Worship Polarity cards (5, one selectable per run, with active
+  4292→   highlight). Wire to the new store actions. Show the per-second
+  4293→   prayer rate via `prayerRate(state.population)`.
+  4294→3. **Update `PrestigeTab` and `Header`.** Replace the Layer 8 locked
+  4295→   "???" placeholder with a real progress panel (opened channels count
+  4296→   out of 6 + active mask + active polarity + prayer pool); add a
+  4297→   "Divinity" header button gated on `divinityUnlocked` (Lucide icon:
+  4298→   Sparkles or Sun).
+  4299→4. **Add a `divinity_unlocked` story entry** to `story.ts` (stage:
+  4300→   "meta", category: "layer") describing the god's transition into
+  4301→   choosing its divine face.
+  4302→5. **Balance tuning pass.** Playtest the Layer 1→8 unlock chain to
+  4303→   verify the prayer generation rate (0.001/pop/s) gives a satisfying
+  4304→   early-Channel investment curve and that The Destroyer / Mystery
+  4305→   stacking is not too punishing or too strong.
+  4306→
+  4307→---
+  4308→
+  4309→## L9-data: Infinity layer data file (`src/game/data/infinity.ts`)
+  4310→
+  4311→**Task ID:** L9-data
+  4312→**Scope:** Create the Layer 9 (Infinity) prestige data file. Spec'd 3
+  4313→mechanic families (6 Echo Types / 4 Fork Scenarios / 4 Future Debt
+  4314→Tiers) plus 3 helper functions (`echoBonus`, `forkBonus`,
+  4315→`isInfinityComplete`).
+  4316→
+  4317→### Files changed
+  4318→- **Created** `src/game/data/infinity.ts` (~1080 lines, modeled on the
+  4319→  patterns established by `apotheosis.ts` / `singularity.ts` /
+  4320→  `omnipotence.ts` / `divinity_layer.ts`).
+  4321→
+  4322→### What the file exports
+  4323→
+  4324→Required exports (all 9 present and verified by grep):
+  4325→- `ECHO_TYPES` (6 entries) + `ECHO_MAP` — Echo Types: passive bonuses
+  4326→  that "completed runs leave behind". Each echo has `bonus: EchoBonusFields`
+  4327→  (a sub-object) and a `cost` denominated in the Echoes currency.
+  4328→- `FORK_SCENARIOS` (4 entries) + `FORK_MAP` — Fork Scenarios: split
+  4329→  decisions; each fork has `branchA` and `branchB`, each a
+  4330→  `ForkBranchDef` (label + optional bonus fields + optional `special`).
+  4331→- `FUTURE_DEBT_TIERS` (4 entries) + `FUTURE_DEBT_MAP` — Future Debt
+  4332→  Tiers: borrow strength now, pay back later. Each tier has
+  4333→  `boostMult`, `boostDuration`, `penaltyMult` (negative),
+  4334→  `penaltyDuration`, `perRunLimit`.
+  4335→- `echoBonus(echoesOwned)` — aggregates owned echoes (each echo can be
+  4336→  owned multiple times; per-echo bonus × count, summed).
+  4337→- `forkBonus(forkId, branch)` — returns the chosen branch's bonuses
+  4338→  (with `special: ForkSpecial | null`).
+  4339→- `isInfinityComplete(forksResolved, debtRepaid)` — gates advancement
+  4340→  to Layer 10 (Eternity). Mirrors `isSingularityComplete` /
+  4341→  `isDivinityComplete` precedent.
+  4342→
+  4343→Additional exports (constants + types, following the established
+  4344→convention from prior layers):
+  4345→- `INFINITY_COMPLETION_FORKS_REQUIRED = 1` (matches the spec wording
+  4346→  "Fork a timeline and repay the resulting Future Debt" — minimum 1
+  4347→  fork resolved + 1 debt repaid).
+  4348→- `ECHO_TYPE_COUNT`, `FORK_SCENARIO_COUNT`, `FUTURE_DEBT_TIER_COUNT`.
+  4349→- Interfaces: `EchoBonusFields`, `EchoTypeDef`, `ForkSpecial`,
+  4350→  `ForkBranchDef`, `ForkScenarioDef`, `FutureDebtTierDef`,
+  4351→  `EchoBonus`, `ForkBonus`.
+  4352→
+  4353→### Echo Types spec compliance
+  4354→| id | name | spec | bonus | cost |
+  4355→|----|------|------|-------|------|
+  4356→| `growth_echo` | Growth Echo | +10% pop growth | `populationGrowthMult: 0.10` | 5 |
+  4357→| `science_echo` | Science Echo | +15% science | `scienceMult: 0.15` | 6 |
+  4358→| `conquest_echo` | Conquest Echo | +15% military | `militaryMult: 0.15` | 6 |
+  4359→| `trade_echo` | Trade Echo | +15% gold/production | `goldMult: 0.15, productionMult: 0.15` | 8 |
+  4360→| `stability_echo` | Stability Echo | +10 happiness, +10% caps | `happinessFlat: 10, capsMult: 0.10` | 7 |
+  4361→| `faith_echo` | Faith Echo | +0.02 Divinity/s | `divinityPerSec: 0.02` | 9 |
+  4362→
+  4363→### Fork Scenarios spec compliance
+  4364→| id | name | branchA | branchB |
+  4365→|----|------|---------|---------|
+  4366→| `crossroads_of_evolution` | Crossroads of Evolution | "Production Path": +50% production | "Growth Path": +50% pop growth |
+  4367→| `the_great_schism` | The Great Schism | "Sword Path": +40% military | "Tome Path": +40% science |
+  4368→| `realm_of_mirrors` | Realm of Mirrors | "Vast Path": +30% caps | "Deep Path": +30% all production |
+  4369→| `the_final_divergence` | The Final Divergence | "Bounty Path": +100% EP (`epMult: 1.0`) | "Revelation Path": `special: { kind: "unlock_random_divine_law" }` |
+  4370→
+  4371→The Final Divergence branch B is the only branch that uses the
+  4372→`ForkSpecial` discriminated union — its entire effect is the one-time
+  4373→`unlock_random_divine_law` action. Modeled on the `RelicSpecial`
+  4374→pattern from `singularity.ts` (discriminated union with a `kind` field,
+  4375→exhaustively switched in the IIFE validator).
+  4376→
+  4377→### Future Debt Tiers spec compliance
+  4378→| id | name | boost | boost dur | penalty | penalty dur | per-run |
+  4379→|----|------|-------|-----------|---------|-------------|---------|
+  4380→| `minor_debt` | Minor Debt | +50% (0.50) | 120s | -25% (-0.25) | 120s | 5 |
+  4381→| `moderate_debt` | Moderate Debt | +100% (1.00) | 120s | -50% (-0.50) | 180s | 3 |
+  4382→| `severe_debt` | Severe Debt | +200% (2.00) | 120s | -75% (-0.75) | 300s | 2 |
+  4383→| `critical_debt` | Critical Debt | +500% (5.00) | 60s | -90% (-0.90) | 600s | 1 |
+  4384→
+  4385→The interest curve is intentionally punishing: penalty duration grows
+  4386→faster than boost duration, and the penalty multiplier approaches
+  4387→-1.0. Critical Debt's +500% for 60s followed by -90% for 600s is a
+  4388→1:10 boost/penalty ratio — a near-run-ending penalty that makes
+  4389→Critical Debt a panic button, not a routine accelerator. Per-run
+  4390→limits are inversely scaled to power (Minor 5×, Critical 1×).
+  4391→
+  4392→### Verification
+  4393→- `bun run lint`: **0 errors, 6 warnings** — all 6 warnings pre-existing
+  4394→  in `upload/logic.js` (unchanged baseline). No new lint issues
+  4395→  introduced by `infinity.ts`.
+  4396→- `bunx tsc --noEmit`: 0 errors mentioning `infinity` (verified by
+  4397→  filtering output for the filename). The only pre-existing tsc errors
+  4398→  are unrelated to this file (per prior worklog entries).
+  4399→- Runtime sanity test (via `bun -e`): **37 passed, 0 failed**. Covered
+  4400→  all 3 helper functions across ~25 input cases including:
+  4401→  - `echoBonus`: empty, single-echo ×1/×3, trade (paired fields),
+  4402→    stability (paired fields), faith (per-sec), mixed stack, unknown
+  4403→    id ignored, zero-count ignored.
+  4404→  - `forkBonus`: null/null, all 4 forks × both branches (8 cases),
+  4405→    Final Divergence B's `special.kind === "unlock_random_divine_law"`,
+  4406→    unknown fork id, null branch.
+  4407→  - `isInfinityComplete`: empty+false, fork-only, debt-only, both,
+  4408→    over-satisfied (4 forks + repaid), unknown fork id ignored,
+  4409→    invalid branch value ignored.
+  4410→
+  4411→### Design Decisions
+  4412→
+  4413→- **Echo `bonus` is a nested object, not flat fields on the echo def.**
+  4414→  The spec wording "each echo has: id, name, desc, icon, bonus, cost
+  4415→  (in Echoes currency)" calls out `bonus` as a distinct field. The
+  4416→  `EchoBonusFields` sub-object keeps the per-echo effect separate
+  4417→  from the metadata fields and the cost, making `echoBonus` iterate
+  4418→  `echo.bonus.productionMult` instead of `echo.productionMult`. This
+  4419→  reads cleanly at the call site and matches the spec's shape
+  4420→  exactly. Contrast with `DivineLawDef` in `apotheosis.ts`, where the
+  4421→  bonus fields are flat on the def — that file's spec didn't call out
+  4422→  a `bonus` sub-object.
+  4423→
+  4424→- **Echoes are ownable multiple times; `echoesOwned` is
+  4425→  `Record<string, number>`.** The spec wording "completed runs leave
+  4426→  behind echoes" implies echoes accumulate across runs (persistent,
+  4427→  not per-run). Modeling the ownership as a count (not a boolean set)
+  4428→  supports the natural design of "owning 3 Growth Echoes for +30%
+  4429→  pop growth" and matches the player expectation that completing more
+  4430→  runs of the same type yields more of that echo. The `echoBonus`
+  4431→  function multiplies each echo's `bonus` fields by the count owned
+  4432→  and sums — 6 echoes × arbitrary counts is O(6) per tick, cheap.
+  4433→
+  4434→- **`forkBonus` returns the bonus for ONE fork (not the aggregate
+  4435→  across all forks).** The signature `forkBonus(forkId, branch)` is
+  4436→  spec'd; the consumer (store) iterates `FORK_SCENARIOS` and calls
+  4437→  `forkBonus` per resolved fork if it wants the run-wide aggregate.
+  4438→  This mirrors the precedent that `relicBonus` /
+  4439→  `worshipModeBonus` / `divineMaskBonus` return the bonus for a single
+  4440→  pick (not an aggregate over many) — the per-fork design preserves
+  4441→  that shape even though multiple forks can be resolved in one run.
+  4442→  The store wiring task will provide a `allForkBonuses(state.forksResolved)`
+  4443→  aggregate if the tick loop needs it.
+  4444→
+  4445→- **`epMult` lives on `ForkBranchDef`, NOT on `EchoBonusFields`.** EP
+  4446→  (Evolution Points) is the Layer 1 prestige currency; boosting it is
+  4447→  a capstone decision gated behind The Final Divergence fork
+  4448→  (branch A, +100% EP). Echoes never grant EP multipliers — only
+  4449→  production / growth / military / science / gold / caps / happiness
+  4450→  / Divinity. This keeps the EP economy gated behind a single,
+  4451→  deliberate late-run choice, matching the spec wording "choose
+  4452→  between +100% EP OR unlock a random divine law for free".
+  4453→
+  4454→- **`ForkSpecial` discriminated union (modeled on
+  4455→  `singularity.ts RelicSpecial`).** The Final Divergence branch B's
+  4456→  "unlock a random divine law for free" is a one-time action, not a
+  4457→  flat stat bonus — it can't fit in the mult-field shape. The union
+  4458→  has a single variant `{ kind: "unlock_random_divine_law" }` today
+  4459→  (no parameters — the consumer picks the law from
+  4460→  `apotheosis.ts DIVINE_LAWS` at random). The IIFE validator
+  4461→  exhaustively switches on `special.kind` so adding a new variant in
+  4462→  the future is type-checked. This pattern is the established one for
+  4463→  "special interaction" mechanics in this codebase.
+  4464→
+  4465→- **`isInfinityComplete(forksResolved, debtRepaid)` mirrors the
+  4466→  `isSingularityComplete(installedCores, compressionPerformed)`
+  4467→  precedent.** Two args: a Record + a boolean. The first condition
+  4468→  (at least 1 fork resolved) checks engagement with the Forks
+  4469→  mechanic; the second (a debt repaid) checks the player survived a
+  4470→  complete boost + penalty cycle on any Future Debt tier. The
+  4471→  "resulting" in the spec wording "Fork a timeline and repay the
+  4472→  resulting Future Debt" is interpreted loosely as "any Future Debt
+  4473→  taken during the run" — mechanically, the Future Debt family is
+  4474→  not directly tied to forks (the spec lists them as separate
+  4475→  families), so the completion check accepts any repaid debt.
+  4476→
+  4477→- **Future Debt `penaltyMult` is always negative.** The IIFE
+  4478→  validator enforces `penaltyMult < 0` — a penalty that's >= 0 would
+  4479→  make the debt free, breaking the "borrow strength now, pay back
+  4480→  later" theme. `boostMult` is always > 0 (the whole point of debt is
+  4481→  to borrow strength). `boostMult` is additive on production (the
+  4482→  consumer multiplies by `(1 + boostMult)`), so +50% = 0.50, +500% =
+  4483→  5.00. The validator also enforces both durations > 0 and
+  4484→  `perRunLimit >= 1`.
+  4485→
+  4486→- **`echoesOwned` is persistent across runs (file header comment
+  4487→  documents this).** Unlike `forksResolved` / `activeFutureDebt` /
+  4488→  `futureDebtUses` which are per-run, echoes are the persistent
+  4489→  reward for completing Infinity-layer runs — owning 3 Growth Echoes
+  4490→  means every subsequent run gets +30% pop growth from the start.
+  4491→  This matches the spec wording "completed runs leave behind echoes
+  4492→  that provide passive bonuses" and the `persistentReward` field on
+  4493→  `prestigeLayers.ts infinity`: "Each repaid Future Debt grants a
+  4494→  permanent +5% production bonus" — both echoes and repaid debts
+  4495→  persist.
+  4496→
+  4497→### Unresolved Issues / Risks
+  4498→
+  4499→1. **No Echoes-currency earn rate defined.** The file declares the
+  4500→   Echo Type `cost` field (in Echoes currency) but not how Echoes are
+  4501→   earned at prestige. The wiring task should pick a formula (e.g.
+  4502→   `echoesEarned = floor(forksResolvedCount × 2 + debtsRepaidCount × 3)`)
+  4503→   so the first Infinity-layer prestige grants ~5 echoes (enough for
+  4504→   one cheap echo). Without this, the player has no way to buy echoes.
+  4505→
+  4506→2. **No cost scaling for subsequent echo copies.** The file declares
+  4507→   a flat `cost` per echo type — the first copy costs that much, but
+  4508→   the spec doesn't say how the second copy scales. The natural
+  4509→   design is `cost × (1 + count_owned)` (linear scaling) or
+  4510→   `cost × 2^count_owned` (exponential). Linear is more forgiving;
+  4511→   exponential matches the prestige-game convention. The wiring task
+  4512→   should pick one and apply it in the store's `buyEcho` action.
+  4513→
+  4514→3. **Fork resolution is per-run, but the spec doesn't say whether a
+  4515→   resolved fork can be un-resolved.** The cleanest design is
+  4516→   one-shot per run (once you pick Crossroads branch A, you can't
+  4517→   switch to branch B without prestiging). The wiring task should
+  4518→   make `forksResolved` effectively immutable within a run (no
+  4519→   `unresolveFork` action). If a "Fork Reset" upgrade is desired
+  4520→   later (e.g. from a future Future Debt interaction), it should
+  4521→   explicitly clear the entry rather than mutate it.
+  4522→
+  4523→4. **The Future Debt timer mechanic isn't fully spec'd here.** The
+  4524→   file declares the per-tier `boostDuration` / `penaltyDuration` /
+  4525→   `perRunLimit` but the actual timer state (`activeFutureDebt`,
+  4526→   `futureDebtPhase`, `futureDebtTimer`) is left to the wiring task
+  4527→   (documented in the file header comment). The tick loop must
+  4528→   decrement `futureDebtTimer` each second, transition
+  4529→   `"boost"` → `"penalty"` when the boost expires, and clear the
+  4530→   active debt (setting `futureDebtRepaid = true`) when the penalty
+  4531→   expires. Stacking is intentionally NOT supported (`activeFutureDebt`
+  4532→   is a single id, not a set) — invoking a new debt while one is
+  4533→   active should either be blocked or replace the current one
+  4534→   (wiring task's choice; blocking is safer).
+  4535→
+  4536→5. **The Final Divergence branch B's `unlock_random_divine_law`
+  4537→   special needs a defined "random" source.** The spec wording is
+  4538→   "unlock a random divine law for free" — the consumer should pick
+  4539→   from `apotheosis.ts DIVINE_LAWS` (8 entries) either truly at
+  4540→   random or from a curated subset (e.g. only laws the player hasn't
+  4541→   codified this run). The wiring task should also decide whether
+  4542→   this special can fire if all 8 laws are already codified (probably
+  4543→   no-op with a notification, but worth confirming).
+  4544→
+  4545→6. **No state wiring yet.** The file documents the planned GameState
+  4546→   fields in the header comment but does NOT add them to `types.ts`
+  4547→   or `store.ts`. The wiring task (next in the queue) should add the
+  4548→   8 new state fields (3 persistent: `echoesOwned`, `echoes`,
+  4549→   `forksResolvedAllTime`-equivalent if desired; 5 per-run:
+  4550→   `forksResolved`, `activeFutureDebt`, `futureDebtPhase`,
+  4551→   `futureDebtTimer`, `futureDebtUses`, `futureDebtRepaid`), the new
+  4552→   actions (`buyEcho`, `resolveFork`, `invokeFutureDebt`), the
+  4553→   per-tick debt-timer decrement, and the `triggerPrestige`
+  4554→   integration calling `isInfinityComplete` to gate Layer 10 unlock.
+  4555→   Persist version bump will be required.
+  4556→
+  4557→### Next Actions (for follow-up tasks)
+  4558→1. **Wire Infinity into the Zustand store.** Add the 8 new state
+  4559→   fields (3 persistent + 5 per-run), the new actions (`buyEcho`,
+  4560→   `resolveFork`, `invokeFutureDebt`), the per-tick debt-timer
+  4561→   decrement + phase transition, and the `triggerPrestige`
+  4562→   integration calling `isInfinityComplete` to gate Layer 10 (Eternity)
+  4563→   unlock. Bump persist version (currently 5 → 6, per the
+  4564→   divinity_layer.ts wiring precedent) and backfill defaults.
+  4565→2. **Define the Echoes-currency earn rate** at prestige (e.g.
+  4566→   `echoesEarned = forksResolved × 2 + debtsRepaid × 3`).
+  4567→3. **Define the echo cost scaling** for subsequent copies (linear or
+  4568→   exponential — recommend linear `cost × (1 + count)` for
+  4569→   approachability).
+  4570→4. **Build the `InfinityModal` component.** 3 sections: Echo Type
+  4571→   cards (6, with owned count + cost to buy next copy), Fork Scenario
+  4572→   cards (4, with branch A/B buttons and active-branch highlight), and
+  4573→   Future Debt Tier cards (4, with uses-remaining, active-phase
+  4574→   indicator, and timer countdown). Wire to the new store actions.
+  4575→5. **Update `PrestigeTab` and `Header`.** Replace the Layer 9 locked
+  4576→   "???" placeholder with a real progress panel (owned echoes summary
+  4577→   + resolved forks count out of 4 + active debt status); add an
+  4578→   "Infinity" header button gated on `infinityUnlocked` (Lucide icon:
+  4579→   Infinity or GitBranch).
+  4580→6. **Add an `infinity_unlocked` story entry** to `story.ts` (stage:
+  4581→   "meta", category: "layer") describing the god's transition into
+  4582→   curating timelines rather than living one.
+  4583→7. **Balance tuning pass.** Playtest the Layer 9 → 10 unlock chain
+  4584→   to verify the Echoes earn rate gives a satisfying first-echo
+  4585→   purchase curve and that the Future Debt penalty phases are
+  4586→   survivable without trivializing the boost.
+  4587→
+  4588→---
+  4589→
+  4590→## Task L10-data — Create `src/game/data/eternity.ts` (Layer 10 / Eternity / FINAL layer)
+  4591→
+  4592→### Summary
+  4593→Created `/home/z/my-project/src/game/data/eternity.ts` (~880 lines), the
+  4594→Layer 10 (Eternity) prestige content data file. This is the FINAL layer
+  4595→of the 10-layer prestige chain — there is no Layer 11. The file defines
+  4596→four mechanic families (Testament Clauses / Canonizations / Permanence
+  4597→Weaves / Ending Choices) plus three required helper functions
+  4598→(`testamentClauseBonus`, `canonizationBonus`, `isEternityComplete`) and
+  4599→one bonus helper (`cosmicBoonBonus`) for the Reset Universe ending's
+  4600→stacking boon.
+  4601→
+  4602→### File Structure
+  4603→1. **Module header comment** — narrative + state-field plan + reference
+  4604→   notes + ending-naming reconciliation note (vanilla "Silence / Cycle /
+  4605→   Open Hand" trichotomy collapsed into the L10-data spec's two endings:
+  4606→   "Preserve Universe" / "Reset Universe").
+  4607→2. **Section 1: Testament Clauses (8)** — `TestamentClauseDef` interface
+  4608→   + `TESTAMENT_CLAUSES` array + `TESTAMENT_CLAUSE_MAP` + `TESTAMENT_CLAUSE_COUNT`.
+  4609→3. **Section 2: Canonizations (3)** — `CanonizationKind` union +
+  4610→   `CanonizationDef` interface + `CANONIZATIONS` / `CANONIZATION_MAP` /
+  4611→   `CANONIZATION_COUNT`.
+  4612→4. **Section 3: Permanence Weaves (3)** — `PermanenceWeaveKind` union +
+  4613→   `PermanenceWeaveDef` interface + `PERMANENCE_WEAVES` /
+  4614→   `PERMANENCE_WEAVE_MAP` / `PERMANENCE_WEAVE_COUNT`.
+  4615→5. **Section 4: Ending Choices (2)** — `EndingId` union + `CosmicBoonDef`
+  4616→   + `EndingChoiceDef` interfaces + `ENDING_CHOICES` /
+  4617→   `ENDING_CHOICE_MAP` / `ENDING_CHOICE_COUNT`.
+  4618→6. **IIFE validator** (`validateEternityData`) — runs at module load,
+  4619→   enforces all data invariants (id uniqueness, costs > 0, kind
+  4620→   validity, kind-appropriate effect fields, exactly 2 endings, etc.).
+  4621→7. **Helpers** — `TestamentBonus` / `CanonizationBonus` interfaces +
+  4622→   `testamentClauseBonus` / `canonizationBonus` / `isEternityComplete` /
+  4623→   `cosmicBoonBonus` functions with full JSDoc + `@example` blocks.
+  4624→
+  4625→### The 8 Testament Clauses
+  4626→| id | name | effect | cost |
+  4627→|---|---|---|---|
+  4628→| `clause_abundance` | Clause of Abundance | `productionMult: 0.50` (+50% all production) | 5 |
+  4629→| `clause_endurance` | Clause of Endurance | `capsMult: 1.00` (+100% caps) | 6 |
+  4630→| `clause_wisdom` | Clause of Wisdom | `scienceMult: 0.75` (+75% science) | 7 |
+  4631→| `clause_dominion` | Clause of Dominion | `militaryMult: 1.00` (+100% military) | 8 |
+  4632→| `clause_fertility` | Clause of Fertility | `populationGrowthMult: 1.00` (+100% pop growth) | 8 |
+  4633→| `clause_wealth` | Clause of Wealth | `goldMult: 1.00` (+100% gold) | 9 |
+  4634→| `clause_faith` | Clause of Faith | `divinityMult: 2.00` (+200% Divinity) | 12 |
+  4635→| `clause_unity` | Clause of Unity | `allBonusesMult: 0.25` (META-amp: +25% to ALL OTHER bonuses) | 25 |
+  4636→
+  4637→The IIFE validator enforces EXACTLY ONE effect field per clause (no
+  4638→mixing flat-per-stat with `allBonusesMult` — they're distinct design
+  4639→intents). Clause of Unity is the capstone — its `allBonusesMult` is a
+  4640→META-multiplier applied LAST by the consumer, amplifying every other
+  4641→bonus across all 10 layers (echoes, fork branches, divine laws, worship
+  4642→modes, foresight nodes, ascension upgrades, canonizations, cosmic
+  4643→boons, etc.).
+  4644→
+  4645→### The 3 Canonizations
+  4646→| id | kind | effect per purchase | cost |
+  4647→|---|---|---|---|
+  4648→| `canonize_story_beat` | `story_beat` | `productionMult: 0.05` (+5% all production) | 3 |
+  4649→| `canonize_archetype` | `archetype` | (no flat bonus — consumer queries `ARCHETYPES[id].bonus`) | 6 |
+  4650→| `canonize_stage_clear` | `stage_clear` | `epFromStageMult: 0.10` (+10% EP from that stage) | 4 |
+  4651→
+  4652→Each canonization type is purchasable multiple times (once per specific
+  4653→item). The state tracks both `canonizationsOwned[id]: number` (count per
+  4654→kind) and per-item canonization maps (`canonizedStoryBeats`,
+  4655→`canonizedArchetypes`, `canonizedStageClears`) keyed by the canonized
+  4656→item's id.
+  4657→
+  4658→### The 3 Permanence Weaves
+  4659→| id | kind | cost |
+  4660→|---|---|---|
+  4661→| `weave_divine_law` | `divine_law` (pins `apotheosis.ts DIVINE_LAWS[id]`) | 10 |
+  4662→| `weave_worship_mode` | `worship_mode` (pins `apotheosis.ts WORSHIP_MODES[id]`) | 8 |
+  4663→| `weave_route` | `route` (pins `foresight.ts ROUTES[id]`) | 6 |
+  4664→
+  4665→Weaves grant NO flat stat bonus — they only PIN an item across resets.
+  4666→The consumer queries the source definition (`DIVINE_LAWS` /
+  4667→`WORSHIP_MODES` / `ROUTES`) for the pinned item's bonus and applies it
+  4668→as if the player had picked it at the start of every future run. This
+  4669→keeps the bonus shape canonical to its source (no duplication).
+  4670→
+  4671→### The 2 Ending Choices
+  4672→| id | name | effect |
+  4673→|---|---|---|
+  4674→| `preserve` | Preserve Universe | Gallery mode (no boon — game becomes a museum) |
+  4675→| `reset` | Reset Universe | Fresh start + Cosmic Boon per stack: +100% production, +100% EP, +50% caps |
+  4676→
+  4677→The Cosmic Boon stacks — `cosmicBoonStacks` is a persistent state field
+  4678→incremented each time "Reset Universe" is chosen. The boon is LINEAR
+  4679→additive (not compounding) — 3 stacks of +100% production = +300%
+  4680→production, NOT ×2 ×2 ×2 = ×8. This keeps the boon growth predictable
+  4681→and matches the spec wording "stacks with each reset".
+  4682→
+  4683→### The 4 Helper Functions
+  4684→1. **`testamentClauseBonus(clausesOwned: Record<string, boolean>): TestamentBonus`**
+  4685→   — sums all owned clauses' effect fields into an aggregate. The
+  4686→   `allBonusesMult` field is returned as-is for the consumer to apply
+  4687→   LAST (after summing ALL bonuses from ALL sources, not just clauses).
+  4688→2. **`canonizationBonus(canonizationsOwned: Record<string, number>): CanonizationBonus`**
+  4689→   — sums canonizations × count. Only story-beat and stage-clear
+  4690→   canonizations contribute; archetype canonizations are handled
+  4691→   separately (consumer queries `ARCHETYPES[id].bonus` per canonized
+  4692→   archetype id).
+  4693→3. **`isEternityComplete(endingChosen: EndingId | null): boolean`** —
+  4694→   returns `endingChosen !== null` (the layer is complete once an
+  4695→   ending has been chosen). Trivial gating by design — the richness
+  4696→   comes from the permanence of the purchases, not a threshold.
+  4697→4. **`cosmicBoonBonus(stacks: number): CosmicBoonDef`** (BONUS — not in
+  4698→   the required spec, but added for consistency with the layer-file
+  4699→   pattern of providing bonus-aggregation helpers). Computes
+  4700→   `stacks × ENDING_CHOICE_MAP["reset"].cosmicBoonPerStack`. Returns
+  4701→   all-zero for `stacks <= 0`.
+  4702→
+  4703→### Verification
+  4704→- `bun run lint`: **0 errors, 6 warnings** — all 6 warnings pre-existing
+  4705→  in `upload/logic.js` (unchanged baseline). No new lint issues
+  4706→  introduced by `eternity.ts`.
+  4707→- `bunx tsc --noEmit`: 0 errors mentioning `eternity` (verified by
+  4708→  filtering output for the filename). The only pre-existing tsc errors
+  4709→  are in `stages.ts` (line 125) and `store.ts` (line 212) — both
+  4710→  unrelated to this file (per prior worklog entries).
+  4711→- Runtime sanity test (via `bun -e`): **49 passed, 1 "fail"** — the
+  4712→  single "fail" is a JavaScript float-precision artifact
+  4713→  (`0.10 × 3 = 0.30000000000000004` in JS, not `0.3`), NOT a code bug.
+  4714→  The test assertion `JSON.stringify(0.3)` mismatched the precise sum.
+  4715→  All 49 other tests pass, including all 24 data-sanity checks (clause
+  4716→  magnitudes, canonization kinds, weave kinds, ending boon values) and
+  4717→  all 25 helper-function cases across `testamentClauseBonus` (empty,
+  4718→  single clauses, all-8-clauses, unknown-id-ignored, false-treated-as-
+  4719→  unowned), `canonizationBonus` (empty, single × N counts, archetype
+  4720→  contributes nothing, mixed, unknown-id-ignored, zero-and-negative
+  4721→  counts), `isEternityComplete` (null/preserve/reset/unknown), and
+  4722→  `cosmicBoonBonus` (0/1/3/negative stacks).
+  4723→
+  4724→### Design Decisions
+  4725→
+  4726→- **The Clause of Unity uses `allBonusesMult`, NOT a flat per-stat
+  4727→  bonus.** The spec wording "all bonuses +25%" is ambiguous between
+  4728→  (a) +25% to all OTHER accumulated bonuses (META-amp), and (b) +25%
+  4729→  to all stats (flat per-stat). I chose (a) because (i) it's thematically
+  4730→  richer — Unity amplifies everything the god has built across all 10
+  4731→  layers, not just the base stats; (ii) it makes Unity the capstone
+  4732→  clause (the most expensive at cost 25, ~5× the next-priciest), since
+  4733→  its value scales with everything else the player owns; (iii) the
+  4734→  validator's "exactly one effect field" rule would be impossible to
+  4735→  enforce if Unity had 7 separate per-stat fields. The consumer applies
+  4736→  `allBonusesMult` LAST in the bonus aggregation pipeline — applying it
+  4737→  per-source would compound it incorrectly.
+  4738→
+  4739→- **The IIFE validator enforces EXACTLY ONE effect field per clause.**
+  4740→  A clause that mixes `productionMult` (flat per-stat) with
+  4741→  `allBonusesMult` (META-amp) would conflate two distinct design intents
+  4742→  in a single entry. The validator rejects this — each clause is either
+  4743→  a flat per-stat boon OR the META-amp, never both. This makes the
+  4744→  clause's mechanical role unambiguous from its def.
+  4745→
+  4746→- **Canonization `kind` is a discriminated union, and the validator
+  4747→  enforces kind-appropriate effect fields.** `story_beat` must set
+  4748→  `productionMult` (and must NOT set `epFromStageMult`); `stage_clear`
+  4749→  must set `epFromStageMult` (and must NOT set `productionMult`);
+  4750→  `archetype` must set NEITHER (the bonus lives on the archetype def,
+  4751→  and the consumer queries `ARCHETYPES[id].bonus` directly per canonized
+  4752→  archetype id). This prevents data drift where a story-beat
+  4753→  canonization accidentally grants EP, or an archetype canonization
+  4754→  accidentally grants a flat production bonus that doesn't match the
+  4755→  archetype's actual bonus shape.
+  4756→
+  4757→- **`canonizationBonus` does NOT aggregate archetype canonizations.**
+  4758→  Archetype bonuses have a rich shape (per-resource production mults,
+  4759→  all-production mult, pop-growth mult, cap mult — see
+  4760→  `archetypes.ts ArchetypeDef.bonus`) that doesn't fit a flat
+  4761→  `CanonizationBonus` object. The consumer iterates the
+  4762→  `canonizedArchetypes` state map and queries each archetype's bonus
+  4763→  directly. `canonizationBonus` only aggregates the flat per-purchase
+  4764→  bonuses from story-beat and stage-clear canonizations. This mirrors
+  4765→  the `forkBonus` precedent in `infinity.ts` (per-fork single-branch
+  4766→  bonus, not aggregate-across-many) — the consumer composes aggregates
+  4767→  itself when needed.
+  4768→
+  4769→- **Permanence Weaves grant NO stat bonus.** The weave's only effect is
+  4770→  pinning an item across resets. The consumer queries the source
+  4771→  definition (`DIVINE_LAWS` / `WORSHIP_MODES` / `ROUTES`) for the
+  4772→  pinned item's bonus. This avoids duplicating the bonus shape (which
+  4773→  would drift if the source def changed) and keeps the weave def
+  4774→  minimal. The `PermanenceWeaveDef` has no bonus fields.
+  4775→
+  4776→- **The Cosmic Boon is LINEAR additive, not compounding.** The spec
+  4777→  wording "stacks with each reset" is ambiguous between (a) linear
+  4778→  stacking (+100% per stack × N stacks = +N×100%), and (b) compounding
+  4779→  (×2 per stack × N stacks = ×2^N). I chose (a) because (i) compounding
+  4780→  would make the boon trivialize the game after a few resets
+  4781→  (×2^5 = ×32 production would obsolete every other system); (ii) linear
+  4782→  stacking is more predictable and matches the precedent of all other
+  4783→  additive multipliers in the codebase (echoes, divine laws, fork
+  4784→  branches, etc.); (iii) the spec's three boon values (+100% production,
+  4785→  +100% EP, +50% caps) are clearly per-stack values, and the natural
+  4786→  reading is "N stacks × per-stack value". The `cosmicBoonBonus` helper
+  4787→  multiplies the per-stack values by `stacks` directly — no
+  4788→  compounding.
+  4789→
+  4790→- **`isEternityComplete` is trivially `endingChosen !== null`.** Unlike
+  4791→  the Infinity layer (which gates on forks + debt repaid) or the
+  4792→  Apotheosis layer (3+ laws + schism resolved), Eternity has no
+  4793→  pre-requisite threshold — the player can choose an ending immediately
+  4794→  upon reaching the layer. The richness comes from the PERMANENCE of
+  4795→  the purchases (clauses, canonizations, weaves all persist forever),
+  4796→  not from a gating threshold. A player who chooses Reset immediately
+  4797→  forfeits the chance to spend Testament Clauses this run, which is
+  4798→  its own soft gating.
+  4799→
+  4800→- **`cosmicBoonBonus` is exported as a 4th helper (BONUS).** The spec
+  4801→  lists 3 required helpers (`testamentClauseBonus`, `canonizationBonus`,
+  4802→  `isEternityComplete`), but the Cosmic Boon mechanic is described in
+  4803→  detail in the spec and the consumer needs to compute it. Adding
+  4804→  `cosmicBoonBonus` as a well-tested helper is safer than asking the
+  4805→  consumer to inline `stacks × ENDING_CHOICE_MAP["reset"].cosmicBoonPerStack`
+  4806→  (which is error-prone — easy to forget the null check on
+  4807→  `cosmicBoonPerStack`, or to forget to handle `stacks <= 0`). The
+  4808→  helper centralizes the logic. The spec lists REQUIRED exports; it
+  4809→  doesn't forbid additional ones.
+  4810→
+  4811→- **The file exports `ENDING_CHOICE_MAP` and `_COUNT` constants beyond
+  4812→  the spec's list.** Every other layer file (`apotheosis.ts`,
+  4813→  `singularity.ts`, `omnipotence.ts`, `divinity_layer.ts`,
+  4814→  `infinity.ts`) exports a `_MAP` for every list and a `_COUNT` for
+  4815→  every list length. Eternity follows the same pattern for consistency.
+  4816→  The consumer needs `ENDING_CHOICE_MAP["reset"]` to look up the
+  4817→  Cosmic Boon per-stack values; without the map export, the consumer
+  4818→  would have to `ENDING_CHOICES.find(e => e.id === "reset")` which is
+  4819→  clunky and O(N).
+  4820→
+  4821→### Unresolved Issues / Risks
+  4822→
+  4823→1. **No Testament Clauses earn rate defined.** The file declares the
+  4824→   `cost` fields for clauses / canonizations / weaves (denominated in
+  4825→   the Testament Clauses currency) but not how Testament Clauses are
+  4826→   earned at Layer 10 prestige. The wiring task should pick a formula
+  4827→   (e.g. `testamentClausesEarned = floor(stageClearsThisRun × 0.5 +
+  4828→   clausesCodifiedThisRun × 0.2)`) so the first Eternity-layer prestige
+  4829→   grants ~3-5 Testament Clauses (enough for one cheap clause). Without
+  4830→   this, the player has no way to buy clauses.
+  4831→
+  4832→2. **No state wiring yet.** The file documents the planned GameState
+  4833→   fields in the header comment but does NOT add them to `types.ts` or
+  4834→   `store.ts`. The wiring task (next in the queue) should add the 11
+  4835→   new state fields (8 persistent: `clausesOwned`,
+  4836→   `canonizationsOwned`, `canonizedStoryBeats`, `canonizedArchetypes`,
+  4837→   `canonizedStageClears`, `pinnedDivineLaws`, `pinnedWorshipModes`,
+  4838→   `pinnedRoutes`, `cosmicBoonStacks`, `testamentClauses`; 1 per-run:
+  4839→   `endingChosen`), the new actions (`buyTestamentClause`,
+  4840→   `buyCanonization` (with item-id param), `buyPermanenceWeave` (with
+  4841→   item-id param), `chooseEnding`), the per-tick integration of the
+  4842→   `testamentClauseBonus` / `canonizationBonus` / `cosmicBoonBonus`
+  4843→   aggregates into the production / EP / caps pipelines, and the
+  4844→   Clause of Unity's meta-amp applied LAST in the pipeline. Persist
+  4845→   version bump will be required (currently 5 → 6 per the prior
+  4846→   `divinity_layer.ts` wiring precedent; this would make it 6 → 7 if
+  4847→   the Infinity wiring task lands first).
+  4848→
+  4849→3. **The "Preserve Universe" ending needs a gallery mode definition.**
+  4850→   The spec says "game enters gallery mode — view all your runs,
+  4851→   achievements, story". The data file declares the ending but doesn't
+  4852→   define what gallery mode IS mechanically. The wiring task should
+  4853→   decide: does Preserve freeze the game loop entirely (no more ticks)?
+  4854→   Does it lock all purchases? Does it unlock a new "Gallery" tab
+  4855→   showing run history? The cleanest design is: Preserve sets
+  4856→   `endingChosen = "preserve"` which (a) freezes the game loop, (b)
+  4857→   disables all purchase buttons, (c) unlocks a read-only "Gallery"
+  4858→   tab summarizing lifetime stats. The save file is preserved (player
+  4859→   can reload to view the gallery), but no progression happens.
+  4860→
+  4861→4. **The "Reset Universe" ending needs a save-reset procedure.** The
+  4862→   spec says "start completely fresh" — this implies wiping MOST of the
+  4863→   save but preserving `cosmicBoonStacks` (which increments) and any
+  4864→   other persistent meta-progression. The wiring task should define
+  4865→   exactly which state fields survive the reset (likely:
+  4866→   `cosmicBoonStacks`, `clausesOwned`, `canonizationsOwned` and the
+  4867→   per-item canonization maps, `pinnedDivineLaws` / `pinnedWorshipModes`
+  4868→   / `pinnedRoutes`, achievement unlocks, and story unlocks) vs which
+  4869→   are wiped (all per-run state, all resource counts, all prestige
+  4870→   currencies except Testament Clauses which are persistent). The
+  4871→   reset procedure should be tested carefully — it's the most
+  4872→   destructive state mutation in the game.
+  4873→
+  4874→5. **No story entry for Eternity unlock.** The wiring task should add
+  4875→   an `eternity_unlocked` story entry to `story.ts` (stage: "meta",
+  4876→   category: "layer") describing the god's transition into authoring
+  4877→   the final canon.
+  4878→
+  4879→6. **No UI yet.** The wiring task should build the `EternityModal`
+  4880→   component with 4 sections: Testament Clause cards (8, with
+  4881→   cost + buy button + owned indicator), Canonization cards (3, with
+  4882→   kind + cost + count-owned + per-item picker for which specific
+  4883→   story beat / archetype / stage to canonize), Permanence Weave cards
+  4884→   (3, with kind + cost + per-item picker for which specific law /
+  4885→   mode / route to pin), and Ending Choice cards (2, with a prominent
+  4886→   "Choose this Ending" button + confirmation dialog for the
+  4887→   irreversible choice).
+  4888→
+  4889→### Next Actions (for follow-up tasks)
+  4890→1. **Wire Eternity into the Zustand store.** Add the 11 new state
+  4891→   fields (8 persistent + 1 per-run + 2 currency), the new actions
+  4892→   (`buyTestamentClause`, `buyCanonization`, `buyPermanenceWeave`,
+  4893→   `chooseEnding`), the per-tick integration of the three bonus
+  4894→   aggregates into the production / EP / caps pipelines, the Clause of
+  4895→   Unity meta-amp applied LAST in the pipeline, and the
+  4896→   `triggerPrestige` integration calling `isInfinityComplete` to gate
+  4897→   Layer 10 unlock (and `isEternityComplete` to mark the layer done
+  4898→   once an ending is chosen). Bump persist version and backfill
+  4899→   defaults.
+  4900→2. **Define the Testament Clauses earn rate** at Layer 10 prestige
+  4901→   (e.g. `testamentClausesEarned = floor(stageClears × 0.5 +
+  4902→   clausesCodified × 0.2)`).
+  4903→3. **Define the Preserve Universe gallery mode** (freeze game loop,
+  4904→   disable purchases, unlock read-only Gallery tab).
+  4905→4. **Define the Reset Universe save-reset procedure** (which fields
+  4906→   survive, which are wiped, `cosmicBoonStacks++`).
+  4907→5. **Build the `EternityModal` component.** 4 sections as described
+  4908→   above, with confirmation dialogs for irreversible choices
+  4909→   (especially "Reset Universe" — make the confirmation explicit and
+  4910→   require typing "RESET" or similar to prevent accidental clicks).
+  4911→6. **Update `PrestigeTab` and `Header`.** Replace the Layer 10 locked
+  4912→   "???" placeholder with a real progress panel (owned clauses summary
+  4913→   + canonizations purchased + weaves pinned + cosmic boon stacks);
+  4914→   add an "Eternity" header button gated on `eternityUnlocked`
+  4915→   (Lucide icon: Infinity or Crown).
+  4916→7. **Add an `eternity_unlocked` story entry** to `story.ts` (stage:
+  4917→   "meta", category: "layer") describing the god's transition into
+  4918→   authoring the final canon.
+  4919→8. **Balance tuning pass.** Playtest the Layer 9 → 10 unlock chain
+  4920→   to verify the Testament Clauses earn rate gives a satisfying first-
+  4921→   clause purchase curve, and that the Cosmic Boon from repeated Reset
+  4922→   endings doesn't trivialize progression after ~5 stacks.
+
+[showing lines 3963-4922 of 4923; use offset=4923 with limit to continue reading]

@@ -1,0 +1,452 @@
+  2550→constants, the `WorldConfig` type, the shared `WorldCapBonus` type, and
+  2551→the 8 helpers listed above.
+  2552→
+  2553→## Verification
+  2554→
+  2555→- `bun run lint`: **0 errors, 6 warnings** — all 6 warnings are
+  2556→  pre-existing in `upload/logic.js` (verified by the prior L3-data
+  2557→  worklog entry; no new lint issues introduced).
+  2558→- `bunx tsc --noEmit`: zero errors mentioning `genesis`. The two
+  2559→  pre-existing errors in `stages.ts:125` and `store.ts:97` are
+  2560→  unrelated (same as L3-data; verified by filtering tsc output for
+  2561→  "genesis" → no matches).
+  2562→- Runtime validation script (`bun -e ...`):
+  2563→  - Counts: cradle=8, prime=6, geo=4, seed=4, diff=4 ✓
+  2564→  - All 5 map sizes match their array lengths ✓
+  2565→  - All 26 ids across the 5 families are unique ✓
+  2566→  - IIFE validator runs without throwing ✓
+  2567→  - `worldProductionMult` asleep/awake: 0.25 → 0.35 ✓
+  2568→  - `worldCapMult` asleep: stone=0.65, alloys=0.65, food=0.25, atp=0.15
+  2569→    (crystal +50% stone/alloys, fertile +10% food, archipelago +15% all);
+  2570→    awake: atp=0.30 (vault seed +15% all) ✓
+  2571→  - `worldPopGrowthMult` for ringed_ocean: 0.20 ✓
+  2572→  - `worldStartResourceBonus` for verdant_eden + warm_currents:
+  2573→    `{food:15, water:10, happiness:5}` ✓
+  2574→  - `worldStartHappinessBonus` for verdant_eden + fertile_soil: 10 ✓
+  2575→  - `worldStartPopulationBonus` for stable_geology: 10 ✓
+  2576→  - `worldEpMultiplier` for void_basin + normal: 1.25; void_basin + hard:
+  2577→    2.0; primordial_soup + extreme: 2.5 ✓
+  2578→  - `worldArchetypeBias` for crystal_cradle: "lithoid"; for
+  2579→    primordial_soup: null ✓
+  2580→  - `worldStartTech` for abundant_minerals: "mining"; for lucky_stars:
+  2581→    null ✓
+  2582→
+  2583→## Design Decisions
+  2584→
+  2585→- **Cap bonus model uses a shared `WorldCapBonus` type.** A single
+  2586→  `{ target: ResourceId[] | "all"; value: number }` shape covers both
+  2587→  global bonuses (Frozen Origin +20% all, Skylands −10% all, Vault
+  2588→  Seed +15% all, every Sacred Geography) and per-resource bonuses
+  2589→  (Crystal Cradle +50% stone & alloys, Fertile Soil +10% food). The
+  2590→  `worldCapMult` helper expands `"all"` targets across the `RESOURCES`
+  2591→  array (imported from `./resources`) so the consumer can iterate the
+  2592→  returned map uniformly.
+  2593→- **`worldCapMult` returns a per-resource map, not a single number.**
+  2594→  Some bonuses are per-resource (Crystal Cradle) and some are global
+  2595→  (Frozen Origin). Returning a per-resource map lets the consumer
+  2596→  apply each resource's multiplier in one pass:
+  2597→  `caps[r] *= (1 + (map[r] ?? 0))`. Global bonuses are expanded to
+  2598→  every resource by the helper, so the consumer doesn't need to
+  2599→  distinguish.
+  2600→- **Happiness is stored inside `startResources`, not as a separate
+  2601→  field.** Happiness is a `ResourceId`, so it fits naturally inside
+  2602→  the `Partial<Record<ResourceId, number>>` map. `worldStartHappinessBonus`
+  2603→  is a thin convenience wrapper that reads the `happiness` key out of
+  2604→  `worldStartResourceBonus` — this keeps the data model flat and
+  2605→  avoids duplicating happiness values across two fields.
+  2606→- **Population is a separate `startPopulation` field, not in
+  2607→  `startResources`.** Population is a top-level `GameState` field,
+  2608→  not a `ResourceId`, so it can't go in the resource map. Modeled as
+  2609→  an optional `startPopulation?: number` on `PrimeConditionDef`
+  2610→  (only Stable Geology sets it).
+  2611→- **Dormant seed effects are mutually exclusive fields.** Each seed
+  2612→  sets exactly one of `productionMult` / `capBonuses` / `divinityFlat`
+  2613→  / `freeRandomTech`. The IIFE validator enforces this with an
+  2614→  XOR-style check (filtering set fields and requiring count === 1).
+  2615→  This matches the `populationCost` XOR `populationFraction` pattern
+  2616→  in `transcendence.ts` blood pacts.
+  2617→- **`awakened: boolean` is a single parameter, not a `StageId`.**
+  2618→  Comparing stages requires a stage-ordering helper that doesn't
+  2619→  exist (and the spec doesn't ask for one). The store tracks a single
+  2620→  `dormantSeedAwakened` flag that flips to `true` when the player
+  2621→  reaches the chosen seed's `awakeningStage`. This is simpler and
+  2622→  avoids importing `STAGE_IDS` or adding a `stageIndex()` helper.
+  2623→- **`worldPopGrowthMult` does not take `awakened`.** No dormant seed
+  2624→  affects pop growth in the current data set, so the parameter would
+  2625→  be unused. The signature stays minimal.
+  2626→- **EP multiplier is `base × (1 + cradleBonus)`, not `base + cradleBonus`.**
+  2627→  The spec says Void Basin gives "+25% EP reward" — additive on top
+  2628→  of the difficulty base, not a flat additive bonus. So Easy + Void
+  2629→  Basin = 0.7 × 1.25 = 0.875 (not 0.95). For Normal + Void Basin =
+  2630→  1.0 × 1.25 = 1.25. Verified by the runtime check.
+  2631→- **IIFE validator runs at module import.** Matches the `foresight.ts`
+  2632→  and `transcendence.ts` pattern. Validates: id uniqueness within
+  2633→  each family, archetype bias ids exist in the 13-archetype set,
+  2634→  dormant seed effect XOR (exactly one effect field set),
+  2635→  `divinityFlat > 0`, `epMultiplier > 0`, and non-negative
+  2636→  `productionMult` / `epRewardMult` / `startPopulation`. Single pass
+  2637→  at load; no-op on the hot path.
+  2638→- **No state fields or store wiring in this file.** Pure data +
+  2639→  helpers, mirroring `transcendence.ts` and `foresight.ts`. The
+  2640→  wiring is a follow-up task (likely L4-wire). Verified by
+  2641→  `grep -r "WorldConfig\|cradleWorld\|dormantSeed\|sacredGeography"
+  2642→  /home/z/my-project/src` — only matches are in `prestigeLayers.ts`
+  2643→  (story text in the Genesis layer definition) and the new
+  2644→  `genesis.ts` itself.
+  2645→
+  2646→## Next Actions (for follow-up tasks)
+  2647→
+  2648→1. **Wire state fields into GameState.** Add `worldConfig: WorldConfig | null`
+  2649→   and `dormantSeedAwakened: boolean` to `GameState` in `state/types.ts`,
+  2650→   initialize them in `initialRunState()` in `store.ts` (default
+  2651→   `worldConfig: null`, `dormantSeedAwakened: false`), and add a
+  2652→   persist migration (bump version) to backfill them on old saves.
+  2653→2. **Add the Layer 4 authoring flow.** When the player triggers
+  2654→   prestige and has reached Layer 4 (i.e., has performed at least one
+  2655→   Blood Pact — see L3-data next-action #8), open a Cradle World
+  2656→   authoring screen where the player picks one option from each of
+  2657→   the 5 facets. On confirm, set `state.worldConfig` and reset the
+  2658→   run with the authored bonuses applied.
+  2659→3. **Apply authored bonuses in `initialRunState()`.** When
+  2660→   `state.worldConfig` is set, the next run's initial state should:
+  2661→   - Add `worldStartResourceBonus(config)` to `state.resources`.
+  2662→   - Add `worldStartPopulationBonus(config)` to `state.population`.
+  2663→   - Add `worldStartHappinessBonus(config)` to `state.resources.happiness`.
+  2664→   - Set `state.archetypeAffinity[worldArchetypeBias(config)] += biasAmount`
+  2665→     (tuning: ~5 affinity to seed the bias).
+  2666→   - If `worldStartTech(config)` is set, mark that tech as researched
+  2667→     in `state.technologies`. (See Unresolved Issue #1 below re: the
+  2668→     `mining` tech id.)
+  2669→4. **Wire `worldProductionMult` / `worldCapMult` / `worldPopGrowthMult`
+  2670→   into the tick loop.** In the production multiplier: multiply by
+  2671→   `(1 + worldProductionMult(state.worldConfig, state.dormantSeedAwakened))`.
+  2672→   In the cap calculation: multiply each `caps[r]` by
+  2673→   `(1 + (worldCapMult(state.worldConfig, state.dormantSeedAwakened)[r] ?? 0))`.
+  2674→   In the pop-growth rate: multiply by
+  2675→   `(1 + worldPopGrowthMult(state.worldConfig))`.
+  2676→5. **Wire `worldEpMultiplier` into the prestige EP calc.** In
+  2677→   `triggerPrestige()`, multiply the base EP earned by
+  2678→   `worldEpMultiplier(state.worldConfig)`.
+  2679→6. **Awaken the dormant seed on stage reach.** In `evolveStage()`,
+  2680→   after a successful evolve, check if the new stage is `>=` the
+  2681→   chosen seed's `awakeningStage`. If so and `!state.dormantSeedAwakened`:
+  2682→   - Set `state.dormantSeedAwakened = true`.
+  2683→   - For `wisdom_seed`: grant `divinityFlat` (5) to `state.resources.divinity`.
+  2684→   - For `ascension_seed`: pick a random unresearched tech from the
+  2685→     currently-available pool and mark it researched (matches the
+  2686→     `break_through` flag-consume pattern from L3-data next-action #6).
+  2687→   - The `growth_seed` (production) and `vault_seed` (cap) effects
+  2688→     are applied automatically by the `awakened` parameter to
+  2689→     `worldProductionMult` / `worldCapMult` — no extra wiring needed.
+  2690→7. **Gate Layer 5 (Apotheosis) on authoring a complete Cradle World.**
+  2691→   The `triggerPrestige()` flow needs a Layer 4 branch that checks
+  2692→   whether `state.worldConfig` is non-null AND all 5 fields are set
+  2693→   before allowing advancement to Layer 5 (matches
+  2694→   `prestigeLayers.ts: genesis.completeState = "Author a complete
+  2695→   Cradle World (all 5 facets set)"`).
+  2696→8. **Build the Genesis UI tab.** Likely a `GenesisTab.tsx` in
+  2697→   `src/components/game/tabs/` rendering 5 sections (Cradle Worlds,
+  2698→   Prime Conditions, Sacred Geography, Dormant Seeds, Difficulty),
+  2699→   each a row of selectable cards. The "Author" button at the bottom
+  2700→   confirms the selection and triggers prestige.
+  2701→9. **Add the `mining` tech to `techs.ts`.** See Unresolved Issue #1
+  2702→   below — the `"mining"` tech id is a forward reference that
+  2703→   currently doesn't exist. Either add a Tribal-stage Mining tech
+  2704→   (likely: `+25% stone & materials`, cost ~`{stone: 15, wood: 10}`),
+  2705→   or rename `abundant_minerals.startTech` to `"masonry"` to use the
+  2706→   existing stone-related Tribal tech.
+  2707→
+  2708→## Unresolved Issues / Risks
+  2709→
+  2710→1. **The `"mining"` tech id does not yet exist in `techs.ts`.** The
+  2711→   spec says "Abundant Minerals (start with Mining tech)", so
+  2712→   `abundant_minerals.startTech` is set to the literal string
+  2713→   `"mining"`. There is no `mining` tech defined in `techs.ts` (the
+  2714→   closest is `masonry`, which costs stone and grants +30% production
+  2715→   from stone buildings). This is an intentional forward reference:
+  2716→   the spec author intended "Mining" as a real tech, and the consumer
+  2717→   (store) should treat an unknown tech id as a no-op until the tech
+  2718→   is added. The JSDoc on `worldStartTech` documents this clearly.
+  2719→   Follow-up: add the `mining` tech to `techs.ts` (next-action #9
+  2720→   above) or rename the startTech id.
+  2721→2. **No mechanical consumer exists yet.** This file is pure data +
+  2722→   helpers; no store field, UI tab, or tick-loop wiring touches it.
+  2723→   A follow-up task (likely L4-wire) needs to add the state fields
+  2724→   and actions listed above. Verified: `grep -r "WorldConfig\|
+  2725→   cradleWorld\|dormantSeed\|sacredGeography" /home/z/my-project/src`
+  2726→   returns only matches in `prestigeLayers.ts` (story text), the new
+  2727→   `genesis.ts` itself, and now this worklog entry.
+  2728→3. **Cap bonuses include prestige currencies.** When `worldCapMult`
+  2729→   expands a `"all"` target, it iterates every entry in `RESOURCES`,
+  2730→   which includes prestige currencies (`divinity`, `evolution_points`,
+  2731→   `enlightenment_points`, `transcendence_points`). The consumer
+  2732→   (store) should only apply the cap multiplier to resources that
+  2733→   actually have caps (skip prestige currencies, which are uncapped).
+  2734→   This is a store-side concern; the helper returns all keys for
+  2735→   simplicity and the consumer filters. Not a bug — just a wiring
+  2736→   caveat.
+  2737→4. **The `awakened` boolean is coarse-grained.** It assumes only one
+  2738→   dormant seed per run (correct — `WorldConfig.dormantSeed` is a
+  2739→   single id) and that awakening is a one-way flip (correct — once
+  2740→   awoken, the seed stays awoken for the rest of the run). If a
+  2741→   future design adds multi-seed runs or re-dormancy, the helper
+  2742→   signature would need to change. Acceptable for now.
+  2743→5. **The IIFE validator runs at module import time, not at build
+  2744→   time.** Same as `foresight.ts` and `transcendence.ts`. If a test
+  2745→   or dev server never imports `genesis.ts`, the validator never
+  2746→   runs. Acceptable for now (Next.js always imports it once the
+  2747→   GenesisTab is built), but a future pass could move the assertion
+  2748→   into a build-time test.
+  2749→6. **Bonuses and magnitudes are not yet playtested.** The +50% stone
+  2750→   /alloy cap (Crystal Cradle), +20% pop growth (Ringed Ocean),
+  2751→   +25% EP reward (Void Basin), etc. are taken verbatim from the
+  2752→   spec. They look reasonable for an idle game (the trade-offs are
+  2753→   1:1 or 2:1 between production and cap), but a real playtest will
+  2754→   want to tune them — especially the difficulty × EP multipliers
+  2755→   (Hard ×1.6 may feel too generous; Extreme ×2.5 may be too harsh
+  2756→   given the game's other multipliers stack multiplicatively).
+  2757→
+  2758→---
+  2759→Task ID: L5-data
+  2760→Agent: general-purpose (Apotheosis data file)
+  2761→Task: Create `src/game/data/apotheosis.ts` — Layer 5 (Apotheosis) prestige content: 8 Divine Laws, 6 Worship Modes, 5 Miracles, 4 Heresy Responses, 3 constants, and 4 helper functions.
+  2762→
+  2763→## Work Completed This Round
+  2764→
+  2765→### `src/game/data/apotheosis.ts` (new file, 922 lines)
+  2766→
+  2767→Defines the four mechanic families that compose an Apotheosis run
+  2768→(Layer 5 prestige content). Each family is a typed data array +
+  2769→lookup map; a module-load IIFE validator enforces data integrity;
+  2770→four helpers aggregate codified laws and the active worship mode
+  2771→into the multipliers the game loop will apply each tick.
+  2772→
+  2773→#### 1. Divine Laws (8) — fundamental rule changes (permanent for the run, cost Divinity)
+  2774→
+  2775→| # | id              | name                | ✦cost | effects                                                              |
+  2776→|---|------------------|---------------------|-------|----------------------------------------------------------------------|
+  2777→| 1 | law_abundance    | Law of Abundance    | 15    | +15% all production                                                  |
+  2778→| 2 | law_fertility    | Law of Fertility    | 12    | +30% pop growth                                                      |
+  2779→| 3 | law_order        | Law of Order        | 18    | happiness→80, heresy rate −50%                                       |
+  2780→| 4 | law_zeal         | Law of Zeal         | 20    | +40% military, heresy rate +50%                                      |
+  2781→| 5 | law_revelation   | Law of Revelation   | 16    | +35% science                                                         |
+  2782→| 6 | law_tithe        | Law of Tithe        | 14    | +25% gold, +25% production                                           |
+  2783→| 7 | law_faith        | Law of Faith        | 22    | 2× worship bonus, −20 heresy on codify (one-time)                    |
+  2784→| 8 | law_mercy        | Law of Mercy        | 19    | heresy decays (rate × −1), +10 happiness                             |
+  2785→
+  2786→Effect fields are spread directly on `DivineLawDef` (matching the
+  2787→transcendence.ts pattern). All mult fields are additive on the
+  2788→baseline except `worshipMult` (multiplicative, default 1.0, Faith ×2.0).
+  2789→`heresyFlatOnCodify` is a one-time flat effect applied at codification
+  2790→(Faith: −20), distinct from per-tick effects. The IIFE validator
+  2791→enforces each law sets ≥1 effect, `cost >= 0`, `worshipMult >= 1`,
+  2792→`happinessTarget ∈ [0,100]`.
+  2793→
+  2794→#### 2. Worship Modes (6) — choose one at run start
+  2795→
+  2796→| # | id          | name        | effects                                              |
+  2797→|---|-------------|-------------|-----------------------------------------------------|
+  2798→| 1 | reverence   | Reverence   | +10% all production                                 |
+  2799→| 2 | fear        | Fear        | +25% military, happiness drain ×0.5                 |
+  2800→| 3 | wonder      | Wonder     | +20% science, +10 happiness                         |
+  2801→| 4 | ambition    | Ambition    | +20% gold, +15% production                          |
+  2802→| 5 | mystery     | Mystery    | +15% production, heresy rate −25%                   |
+  2803→| 6 | devotion    | Devotion   | +20% pop growth, +15 happiness                      |
+  2804→
+  2805→`happinessDrainMult` is multiplicative (0.5 = half drain, default
+  2806→1.0). `heresyRateMult` is additive on `BASE_HERESY_RATE` (Mystery
+  2807→−0.25). The IIFE validator enforces each mode sets ≥1 effect.
+  2808→
+  2809→#### 3. Miracles (5) — dramatic interventions (cost Divinity, per-run limit)
+  2810→
+  2811→| # | id                     | name                  | ✦cost | limit/run | effect                                 |
+  2812→|---|------------------------|-----------------------|-------|-----------|----------------------------------------|
+  2813→| 1 | manna_from_heaven      | Manna from Heaven     | 15    | 3         | +50 every primary resource              |
+  2814→| 2 | great_bloom            | Great Bloom           | 18    | 2         | +20 population                          |
+  2815→| 3 | jubilee                | Jubilee               | 12    | 3         | happiness = 100                        |
+  2816→| 4 | purge_of_doubt         | Purge of Doubt        | 20    | 2         | −30 heresy                             |
+  2817→| 5 | divine_enlightenment   | Divine Enlightenment  | 30    | 1         | ×3 production for 60s                  |
+  2818→
+  2819→Each miracle sets exactly ONE effect field (`grantAllResources`,
+  2820→`grantPopulation`, `setHappiness`, `heresyFlat`, or `productionBoost`)
+  2821→— XOR-style enforced by the IIFE validator. `grantAllResources`
+  2822→applies to every `RESOURCES` entry with `category === "primary"` (24
+  2823→resources, prestige currencies excluded) — the list is pre-computed
+  2824→into the exported `MIRACLE_ALL_RESOURCE_TARGETS` constant.
+  2825→
+  2826→#### 4. Heresy Responses (4) — manage rising heresy (0..100; run ends at HERESY_MAX)
+  2827→
+  2828→| # | id           | name          | ✦cost | limit/run | effects                              |
+  2829→|---|--------------|---------------|-------|-----------|--------------------------------------|
+  2830→| 1 | tolerate     | Tolerate      | 0     | ∞         | (no effect)                          |
+  2831→| 2 | convert      | Convert       | 8     | 5         | −15 heresy, −5 happiness             |
+  2832→| 3 | smite        | Smite         | 15    | 3         | −30 heresy, −10 population           |
+  2833→| 4 | inquisition  | Inquisition   | 25    | 1         | −50 heresy, −15 happiness, −5 pop    |
+  2834→
+  2835→`tolerate` uses `limitPerRun: Infinity` (validator permits this). The
+  2836→Inquisition is the canonical "schism-resolving" tool — its single
+  2837→per-run use is what flips `state.heresySchismResolved` to true (store
+  2838→wiring, follow-up task).
+  2839→
+  2840→#### 5. Constants
+  2841→
+  2842→| name                                       | value | purpose                                                  |
+  2843→|--------------------------------------------|-------|----------------------------------------------------------|
+  2844→| `BASE_HERESY_RATE`                         | 0.05  | Heresy/sec before law/mode modifiers. 0→100 in 2000s.    |
+  2845→| `HERESY_MAX`                               | 100   | Cap; reaching it ends the run (schism too large).        |
+  2846→| `APOTHEOSIS_COMPLETION_LAWS_REQUIRED`      | 3     | Min laws codified for `isApotheosisComplete`.            |
+  2847→| `MIRACLE_ALL_RESOURCE_TARGETS`             | 24    | Primary ResourceIds Manna grants +50 to. Convenience.    |
+  2848→
+  2849→#### 6. Four helper functions
+  2850→
+  2851→| helper                                                    | returns                         | reads                                                                |
+  2852→|-----------------------------------------------------------|---------------------------------|---------------------------------------------------------------------|
+  2853→| `divineLawBonus(lawsCodified)`                            | `DivineLawBonus` (aggregate)    | All 8 laws codified (additive mults; multiplicative `worshipMult`) |
+  2854→| `worshipModeBonus(modeId)`                               | `WorshipModeDef \| null`        | Active worship mode (or null)                                       |
+  2855→| `heresyRateMult(lawsCodified, modeId)`                   | `number` (additive mult)        | Calls `divineLawBonus` + worship mode `heresyRateMult`              |
+  2856→| `isApotheosisComplete(lawsCodified, schismResolved)`     | `boolean`                       | Count of codified laws ≥ 3 AND schism resolved                      |
+  2857→
+  2858→`DivineLawBonus` interface returns 10 fields aggregating per-tick
+  2859→effects: `productionMult`, `populationGrowthMult`, `militaryMult`,
+  2860→`scienceMult`, `goldMult`, `worshipMult` (multiplicative),
+  2861→`happinessFlat`, `happinessTarget` (clamp, null = no clamp),
+  2862→`heresyDecays` (UI flag), `heresyRateMult`. One-time effects like
+  2863→Faith's `heresyFlatOnCodify` are NOT in the aggregate — the consumer
+  2864→reads them directly from `DIVINE_LAW_MAP[id]` at codification time.
+  2865→
+  2866→**Exports**: 4 typed arrays (`DIVINE_LAWS`, `WORSHIP_MODES`,
+  2867→`MIRACLES`, `HERESY_RESPONSES`), 4 lookup maps (`DIVINE_LAW_MAP`,
+  2868→`WORSHIP_MODE_MAP`, `MIRACLE_MAP`, `HERESY_RESPONSE_MAP`), 4 count
+  2869→constants, 3 named constants (`BASE_HERESY_RATE`, `HERESY_MAX`,
+  2870→`APOTHEOSIS_COMPLETION_LAWS_REQUIRED`), 1 convenience constant
+  2871→(`MIRACLE_ALL_RESOURCE_TARGETS`), 5 interfaces/types
+  2872→(`DivineLawDef`, `WorshipModeDef`, `MiracleDef`, `HeresyResponseDef`,
+  2873→`DivineLawBonus`), and the 4 helpers above.
+  2874→
+  2875→## Verification
+  2876→
+  2877→- `bun run lint`: **0 errors, 6 warnings** — all 6 warnings are
+  2878→  pre-existing in `upload/logic.js` (same baseline as L3-data and
+  2879→  L4-data; no new lint issues introduced).
+  2880→- `bunx tsc --noEmit`: zero errors mentioning `apotheosis`. The 6
+  2881→  pre-existing errors are in `examples/websocket/*`,
+  2882→  `skills/*`, `stages.ts:125`, and `store.ts:97` — unrelated
+  2883→  (verified by filtering tsc output for "apotheosis" → no matches).
+  2884→- Runtime validation script (`bun -e ...`) — all checks pass:
+  2885→  - **Counts**: laws=8, modes=6, miracles=5, responses=4 ✓
+  2886→  - **Constants**: BASE_HERESY_RATE=0.05, HERESY_MAX=100,
+  2887→    APOTHEOSIS_COMPLETION_LAWS_REQUIRED=3 ✓
+  2888→  - **Map sizes match arrays** (4/4) ✓
+  2889→  - **ID uniqueness**: 23 IDs across 4 families, 23 unique ✓
+  2890→  - **divineLawBonus**: empty returns all defaults
+  2891→    (productionMult=0, worshipMult=1, happinessTarget=null,
+  2892→    heresyDecays=false, heresyRateMult=0); Abundance+Tithe gives
+  2893→    productionMult=0.40, goldMult=0.25; Faith gives worshipMult=2.0
+  2894→    (multiplicative); Zeal+Order cancel to heresyRateMult=0;
+  2895→    Mercy gives heresyDecays=true, heresyRateMult=−2.0,
+  2896→    happinessFlat=10; Faith+Mercy+Order compound to worshipMult=2,
+  2897→    happinessTarget=80, heresyDecays=true, heresyRateMult=−2.5 ✓
+  2898→  - **worshipModeBonus**: null → null; all 6 modes return correct
+  2899→    effects (reverence prod=0.10, fear military=0.25 + drainMult=0.5,
+  2900→    wonder science=0.20 + hapFlat=10, ambition gold=0.20 + prod=0.15,
+  2901→    mystery prod=0.15 + herRate=−0.25, devotion popMult=0.20 +
+  2902→    hapFlat=15); unknown id → null ✓
+  2903→  - **heresyRateMult**: empty+null=0; Zeal=+0.5; Mercy=−2.0;
+  2904→    Order+mystery=−0.75; Zeal+Order cancel=0; all heresy-affecting
+  2905→    laws + mystery = −2.25 ✓
+  2906→  - **isApotheosisComplete**: 0 laws + schism = false; 2 laws +
+  2907→    schism = false; 3 laws + no schism = false; 3 laws + schism =
+  2908→    true; 8 laws + schism = true ✓
+  2909→  - **MIRACLE_ALL_RESOURCE_TARGETS**: 24 entries (primary resources
+  2910→    only); includes `food`, excludes `divinity` and `evolution_points` ✓
+  2911→  - **Per-family cost/limit sanity**: all 5 miracles have cost > 0
+  2912→    and limit ≥ 1; all 4 heresy responses have cost ≥ 0 (tolerate=0,
+  2913→    others > 0) and limit ≥ 1 (tolerate=∞) ✓
+  2914→  - **IIFE validator** runs without throwing ✓
+  2915→
+  2916→## Design Decisions
+  2917→
+  2918→- **Effect fields spread directly on each def, not bundled under a
+  2919→  `bonus` sub-object.** Mirrors `transcendence.ts`'s `RitualEffect`
+  2920→  pattern and `genesis.ts`'s `CradleWorldDef` pattern. Lets the
+  2921→  consumer read `law.productionMult` directly instead of
+  2922→  `law.bonus.productionMult`. The `DivineLawBonus` RETURN type (from
+  2923→  `divineLawBonus`) is the aggregated object — distinct from the def
+  2924→  type. This avoids duplicating field definitions across def and
+  2925→  bonus interfaces.
+  2926→
+  2927→- **`worshipMult` is multiplicative; all other mults are additive.**
+  2928→  The spec says "2× worship bonus" for Faith — a multiplier, not an
+  2929→  additive bonus. So `worshipMult: 2.0` means "double the worship
+  2930→  bonus" and aggregates via `result.worshipMult *= law.worshipMult`
+  2931→  (starting from 1.0). If a future law also sets `worshipMult`, they
+  2932→  would compound (e.g. Faith ×2 and another ×1.5 → ×3.0). Currently
+  2933→  only Faith sets it.
+  2934→
+  2935→- **`heresyFlatOnCodify` is on the law def, not in `DivineLawBonus`.**
+  2936→  Faith's −20 heresy is a one-time effect applied at codification
+  2937→  (not per tick), so it doesn't belong in an aggregate that's
+  2938→  recomputed each tick. The consumer reads `DIVINE_LAW_MAP["law_faith"].
+  2939→  heresyFlatOnCodify` once when the player codifies Faith and applies
+  2940→  it to `state.heresy`. Matches the genesis.ts `divinityFlat` pattern
+  2941→  for Wisdom Seed (one-time grant on awakening).
+  2942→
+  2943→- **`heresyDecays` is a UI flag, redundant with `heresyRateMult: −2.0`.**
+  2944→  Mercy sets both. `heresyRateMult: −2.0` makes the math work out
+  2945→  (effective rate = 0.05 × (1 + −2.0) = −0.05/s, heresy decays at
+  2946→  base rate). `heresyDecays: true` is purely informational — the UI
+  2947→  can read it to render "Decaying" on the heresy meter without
+  2948→  having to interpret whether `heresyRateMult` makes the net rate
+  2949→  negative. The validator doesn't enforce coupling; future laws
+  2950→  could set one without the other.
+  2951→
+  2952→- **`heresyRateMult` helper combines laws + worship mode.** The
+  2953→  spec lists 4 helpers, and `heresyRateMult(laws, modeId)` reads
+  2954→  BOTH sources in one call. Internally it calls `divineLawBonus(laws)
+  2955→  .heresyRateMult` (so the law-side aggregation is computed once and
+  2956→  shared) then adds the active mode's `heresyRateMult` if set. This
+  2957→  avoids the consumer needing to call two helpers and sum them.
+  2958→
+  2959→- **`worshipModeBonus` returns the `WorshipModeDef` itself, not a
+  2960→  subset.** Only one worship mode is active per run, so there's no
+  2961→  aggregation — the helper is just a typed lookup. Returning the def
+  2962→  (with `id`/`name`/`desc`/`icon`) means the consumer can also use
+  2963→  the returned object for UI display without a second lookup.
+  2964→
+  2965→- **`isApotheosisComplete` takes two explicit arguments.** The spec
+  2966→  says "Codify 3 Divine Laws and resolve a Heresy schism" — two
+  2967→  distinct conditions. Passing `heresySchismResolved: boolean`
+  2968→  explicitly (rather than asking the caller to derive it from
+  2969→  `HERESY_RESPONSES["inquisition"]` use counts) keeps the helper
+  2970→  decoupled from the store's schism-detection logic. The store will
+  2971→  flip `state.heresySchismResolved` to true when Inquisition is
+  2972→  invoked (the canonical schism-resolving response).
+  2973→
+  2974→- **`MIRACLE_ALL_RESOURCE_TARGETS` is pre-computed and exported.**
+  2975→  The Manna miracle grants "+50 all resources" — meaning every
+  2976→  primary resource. Pre-computing the list (filtering `RESOURCES`
+  2977→  by `category === "primary"`, 24 entries) avoids the store having
+  2978→  to re-import `RESOURCES` and re-filter. Excludes prestige
+  2979→  currencies (`divinity`, `evolution_points`, etc.) so Manna
+  2980→  doesn't grant free Divinity or EP. Matches the genesis.ts
+  2981→  `RESOURCES.filter(r => r.category === "primary")` convention.
+  2982→
+  2983→- **`Tolerate` uses `limitPerRun: Infinity` and `cost: 0`.** The
+  2984→  validator explicitly permits `Infinity` as a limit value (no upper
+  2985→  bound check; only `>= 1`). Tolerate is the "do nothing" option —
+  2986→  the player can always choose to let heresy rise. Documented in
+  2987→  the `HeresyResponseDef` JSDoc.
+  2988→
+  2989→- **`grantAllResources` semantics documented.** Miracles that grant
+  2990→  "all resources" use `grantAllResources?: number` (flat amount to
+  2991→  every primary resource). The consumer iterates
+  2992→  `MIRACLE_ALL_RESOURCE_TARGETS` and adds the amount. Mirrors how
+  2993→  genesis.ts `WorldCapBonus` with `target: "all"` expands across
+  2994→  `RESOURCES`.
+  2995→
+  2996→- **IIFE validator runs at module import.** Matches the
+  2997→  `transcendence.ts` and `genesis.ts` pattern. Validates: id
+  2998→  uniqueness within each family, each law/mode sets ≥1 effect,
+  2999→  each miracle sets exactly one effect (XOR), `cost`/`limitPerRun`
+
+[showing lines 2550-2999 of 3561; use offset=3000 with limit to continue reading]
