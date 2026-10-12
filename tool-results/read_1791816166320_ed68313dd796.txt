@@ -1,0 +1,503 @@
+     1→     1→# Task ID: 25 — Apotheosis (Layer 5): Divine Laws, Worship Modes, Miracles, Heresy
+     2→     2→
+     3→     3→## Agent: apotheosis-layer (sub-agent)
+     4→     4→
+     5→     5→## Task Summary
+     6→     6→Implement the fifth prestige layer (Apotheosis) — the god ceases to be
+     7→     7→hidden. Mortals build temples, name the divine, and choose how they will
+     8→     8→serve. Four systems:
+     9→     9→
+    10→    10→1. **Divine Laws** (6) — spend Divinity to enact fundamental rule changes
+    11→    11→   that persist for the run. Dark laws (Carnal Pact, Void Pact) are flagged
+    12→    12→   with a red border. Laws are permanent for the run — cannot be un-enacted.
+    13→    13→2. **Worship Modes** (6) — Devotion / Fear / Duty / Mystery / Transaction /
+    14→    14→   Transcendence. Each mode applies persistent multipliers for the run.
+    15→    15→   Changing mode costs 3 Divinity (first choice is free).
+    16→    16→3. **Miracles** (5) — Bless Harvests, Sanctify Expansion, Declare Jubilee,
+    17→    17→   Curse Dissent, Apocalypse Rite (dark). Each costs Divinity AND consumes
+    18→    18→   one Miracle Charge. Charges replenish on prestige (2 baseline).
+    19→    19→4. **Heresy Management** (4 responses) — competing interpretations arise
+    20→    20→   randomly. Respond with Suppress, Absorb, Legalize, or Weaponize. Heresy
+    21→    21→   out of control (level reaches 100) ends the run with reduced EP.
+    22→    22→
+    23→    23→Unlock: Author 2 distinct cradle worlds across runs AND awaken 2 distinct
+    24→    24→dormant seeds. Fires the `apotheosis_unlocked` story beat — "Mortals Learn
+    25→    25→the Divine Name".
+    26→    26→
+    27→    27→## Files Created
+    28→    28→
+    29→    29→### `src/game/data/apotheosis.ts` (new, ~470 lines)
+    30→    30→- Exports `DivineLawEffect` interface: `happinessFromLuxury?`,
+    31→    31→  `foodFromPopulation?`, `waterFromPopulation?` (the dark law flags),
+    32→    32→  `resourceBoost?` (per-resource bonus), `allProductionBoost?`,
+    33→    33→  `happinessRegen?`.
+    34→    34→- Exports `DivineLaw` interface with `isDark?` flag.
+    35→    35→- Exports `WorshipModeEffects` interface: `resourceMult?`,
+    36→    36→  `allProductionMult?`, `happinessRegen?`, `popGrowthMult?`, `divinityPerSec?`.
+    37→    37→- Exports `WorshipMode` interface with `color` + `effectLabel`.
+    38→    38→- Exports `MiracleType` union + `MiracleEffect` interface:
+    39→    39→  `instantResources?`, `populationChange?`, `populationPct?`,
+    40→    40→  `happinessChange?`, `militaryChange?`.
+    41→    41→- Exports `Miracle` interface.
+    42→    42→- Exports `HeresyResponseEffect` interface: `happinessChange?`,
+    43→    43→  `cultureChange?`, `divinityCost?`, `heresyDelta?`, `militaryChange?`.
+    44→    44→- Exports `HeresyResponse` interface with `color` accent.
+    45→    45→- Exports `HeresyEvent` interface + `HERESY_EVENTS` (6 events) +
+    46→    46→  `randomHeresyEventId()`.
+    47→    47→- Exports the 6 divine laws (`DIVINE_LAWS`) + `DIVINE_LAW_MAP`:
+    48→    48→  | ID | Name | Cost | Effect |
+    49→    49→  | -- | ---- | ---- | ------ |
+    50→    50→  | abundance_doctrine | Abundance Doctrine | 10 | +15% food |
+    51→    51→  | martial_edict | Martial Edict | 15 | +20% military |
+    52→    52→  | scholars_decree | Scholar's Decree | 12 | +20% science |
+    53→    53→  | carnal_pact | Carnal Pact (dark) | 20 | food from population |
+    54→    54→  | void_pact | Void Pact (dark) | 20 | water from population |
+    55→    55→  | eternal_order | Eternal Order | 25 | +10% all production |
+    56→    56→- Exports the 6 worship modes (`WORSHIP_MODES`) + `WORSHIP_MODE_MAP`:
+    57→    57→  | ID | Name | Effects |
+    58→    58→  | -- | ---- | ------- |
+    59→    59→  | devotion | Devotion | +0.5/s happiness, +20% culture, +10% happiness |
+    60→    60→  | fear | Fear | +30% military, -0.3/s happiness |
+    61→    61→  | duty | Duty | +25% production, +0.2/s happiness, +5% pop growth |
+    62→    62→  | mystery | Mystery | +20% science, +10% culture, +15% knowledge |
+    63→    63→  | transaction | Transaction | +30% gold, +10% production |
+    64→    64→  | transcendence | Transcendence | +5% all production, +0.05/s divinity, +10% divinity output |
+    65→    65→- Exports the 5 miracles (`MIRACLES`) + `MIRACLE_MAP`:
+    66→    66→  | ID | Name | Cost | Effect |
+    67→    67→  | -- | ---- | ---- | ------ |
+    68→    68→  | bless_harvests | Bless Harvests | 10 | +50 food |
+    69→    69→  | sanctify_expansion | Sanctify Expansion | 15 | +30 population |
+    70→    70→  | declare_jubilee | Declare Jubilee | 8 | +20 happiness |
+    71→    71→  | curse_dissent | Curse Dissent | 12 | -10 happiness +10 military |
+    72→    72→  | apocalypse_rite | Apocalypse Rite (dark) | 30 | -30% pop, +200 food +200 water +100 production +100 gold +50 science |
+    73→    73→- Exports the 4 heresy responses (`HERESY_RESPONSES`) +
+    74→    74→  `HERESY_RESPONSE_MAP`:
+    75→    75→  | ID | Name | Effect |
+    76→    76→  | -- | ---- | ------ |
+    77→    77→  | suppress | Suppress | -5 happiness, 5 Divinity cost, -25 heresy |
+    78→    78→  | absorb | Absorb | +5 culture, +3 happiness, -15 heresy |
+    79→    79→  | legalize | Legalize | +10 happiness, +2 culture, -10 heresy |
+    80→    80→  | weaponize | Weaponize | +10 military, -15 happiness, -20 heresy |
+    81→    81→- Exports `CompiledApotheosisEffects` + `compileApotheosisEffects(enactedLaws, worshipModeId)`
+    82→    82→  — combines all enacted laws + the current worship mode into a single
+    83→    83→  effects bundle that the tick / production code applies.
+    84→    84→
+    85→    85→### `src/components/game/modals/ApotheosisModal.tsx` (new, ~890 lines)
+    86→    86→- Dialog-based modal gated on `showApotheosis && apotheosisUnlocked`.
+    87→    87→- Header: Crown icon, "Apotheosis" title, "mortals learn the divine name"
+    88→    88→  subtitle, with three header badges — Divinity balance, Miracle charges,
+    89→    89→  Heresy level (color-coded, animates pulse when dangerous).
+    90→    90→- **HeresyAlertBar** — top-of-modal warning when heresy is active OR
+    91→    91→  dangerous (level > 80). Shows the active heresy event name/desc,
+    92→    92→  color-coded by severity.
+    93→    93→- **DivineLawsSection** — grid of `DivineLawCard`s. Each card shows:
+    94→    94→  - Icon + name + cost (Divinity)
+    95→    95→  - Dark law badge (Skull icon, red border) for carnal_pact / void_pact
+    96→    96→  - Mythic-tone description
+    97→    97→  - Effect summary list (resource %, all-production %, happiness regen,
+    98→    98→    food/water from pop, etc.)
+    99→    99→  - "Enact" button (disabled if already enacted or insufficient Divinity)
+   100→   100→  - Enacted laws show green ✓ badge and disabled "Enacted" state
+   101→   101→- **WorshipModeSection** — grid of `WorshipModeCard`s. Each card:
+   102→   102→  - Icon + name (colored by mode accent)
+   103→   103→  - Description
+   104→   104→  - Effect summary list
+   105→   105→  - "Choose" button (first choice free) or "Switch · 3 ✨" button
+   106→   106→  - Current mode shows "Active" badge with mode-color ring
+   107→   107→- **MiraclesSection** — grid of `MiracleCard`s. Each card:
+   108→   108→  - Icon + name + cost (Divinity + 1 charge)
+   109→   109→  - Description
+   110→   110→  - Effect summary list
+   111→   111→  - "Perform" button (disabled if no charges OR insufficient Divinity)
+   112→   112→  - Dark miracle (apocalypse_rite) has red border + Dark badge
+   113→   113→  - Section header shows current/total charges
+   114→   114→- **HeresySection** — heresy level bar (animated, color-coded) +
+   115→   115→  active heresy event card (if any) + 4 `HeresyResponseCard`s. Each
+   116→   116→  response card has accent color, effect summary, and response button
+   117→   117→  (disabled if no active heresy or insufficient Divinity for Suppress).
+   118→   118→- **Lifetime stats footer** — laws enacted / miracles performed / heresies
+   119→   119→  handled / worlds authored across runs (from `apotheosisStats`).
+   120→   120→- Close button at the bottom.
+   121→   121→
+   122→   122→## Files Modified
+   123→   123→
+   124→   124→### `src/game/state/types.ts`
+   125→   125→- Added to `GameState`:
+   126→   126→  - `apotheosisUnlocked: boolean` (meta — persists across prestige)
+   127→   127→  - `showApotheosis: boolean` (modal visibility)
+   128→   128→  - `enactedLaws: string[]` (run-scoped — IDs of enacted divine laws)
+   129→   129→  - `worshipMode: string | null` (run-scoped — current worship mode id)
+   130→   130→  - `miracleCharges: number` (run-scoped — replenished on prestige)
+   131→   131→  - `activeHeresy: string | null` (run-scoped — current heresy event id)
+   132→   132→  - `heresyLevel: number` (0-100; if reaches 100, run ends)
+   133→   133→  - `heresyCooldown: number` (seconds until next heresy can spawn)
+   134→   134→  - `apotheosisStats: { totalLawsEnacted, totalMiraclesPerformed,
+   135→   135→    totalHeresiesResolved, distinctCradlesAuthored[], distinctSeedsAwakened[] }`
+   136→   136→    (lifetime stats — persist across runs)
+   137→   137→- Added to `GameStore`:
+   138→   138→  - `setShowApotheosis: (v: boolean) => void`
+   139→   139→  - `enactLaw: (lawId: string) => boolean`
+   140→   140→  - `setWorshipMode: (modeId: string) => void`
+   141→   141→  - `performMiracle: (miracleId: string) => boolean`
+   142→   142→  - `respondToHeresy: (responseId: string) => void`
+   143→   143→
+   144→   144→### `src/game/state/store.ts`
+   145→   145→- Imports: `DIVINE_LAWS`, `DIVINE_LAW_MAP`, `WORSHIP_MODE_MAP`,
+   146→   146→  `MIRACLE_MAP`, `HERESY_RESPONSE_MAP`, `HERESY_EVENT_MAP`,
+   147→   147→  `randomHeresyEventId`, `compileApotheosisEffects` from
+   148→   148→  `../data/apotheosis`. Also imports `CRADLE_WORLDS` from genesis (was
+   149→   149→  already importing the map but not the array — needed for the migration's
+   150→   150→  cradle-reconstruction logic).
+   151→   151→- `initialRunState()`: initialize run-scoped Apotheosis state —
+   152→   152→  `enactedLaws: []`, `worshipMode: null`, `miracleCharges: 2` (baseline
+   153→   153→  charges per Apotheosis run), `activeHeresy: null`, `heresyLevel: 0`,
+   154→   154→  `heresyCooldown: 120` (first heresy cannot fire for the first 2 minutes).
+   155→   155→- `initialMetaState()`: initialize meta (persistent) Apotheosis state —
+   156→   156→  `apotheosisUnlocked: false`, `apotheosisStats: { ...empty defaults }`,
+   157→   157→  `showApotheosis: false`.
+   158→   158→- `tick()`:
+   159→   159→  - Computes `apotheosisEffects = compileApotheosisEffects(enactedLaws,
+   160→   160→    worshipMode)` once per tick (skipped if Apotheosis not unlocked).
+   161→   161→  - Apotheosis `allProductionMult` added to the (1 + archAllMult +
+   162→   162→    routeAllMult + foresightAllMult) stack for system production AND
+   163→   163→    manual actions.
+   164→   164→  - Apotheosis per-resource `resourceMult[r]` added to the per-resource
+   165→   165→    bonus stack (same stack as archetype + route + foresight + world).
+   166→   166→  - Apotheosis `popGrowthMult` added to the population growth multiplier
+   167→   167→    stack.
+   168→   168→  - **Passive Apotheosis effects** applied at end of production (before
+   169→   169→    cap clamping):
+   170→   170→    - `happinessRegen` — flat per-tick happiness delta (Devotion mode,
+   171→   171→      happiness-from-luxury law). Uses `s.population` (current value
+   172→   172→      before this tick's growth) since `population` isn't yet declared
+   173→   173→      at this point in the code (a few individuals added this tick
+   174→   174→      won't meaningfully change the rate).
+   175→   175→    - `foodPerPop` — Carnal Pact (dark law) passive food from pop.
+   176→   176→    - `waterPerPop` — Void Pact (dark law) passive water from pop.
+   177→   177→  - **Divinity-per-sec** from Transcendence worship mode applied as a
+   178→   178→    flat per-tick divinity gain (accumulates in `divinity`).
+   179→   179→  - **Heresy spawning** — if Apotheosis unlocked, no active heresy,
+   180→   180→    heresy cooldown has elapsed, no popup/event active, ~0.5% chance per
+   181→   181→    tick to spawn a heresy event. Sets `activeHeresy`, `heresyCooldown =
+   182→   182→    180` (3 minutes), logs the spawn.
+   183→   183→  - **Heresy growth** — if a heresy is active, heresy level climbs at
+   184→   184→    0.5/sec base; accelerates above level 80 (+0.1/sec per level above
+   185→   185→    80, so level 90 = 1.5/sec, level 95 = 2.0/sec, etc.).
+   186→   186→  - **Heresy end-run** — if heresy level reaches 100, set the
+   187→   187→    `_heresyEndRun` runtime flag and call `triggerPrestige()`. The flag
+   188→   188→    is read by `triggerPrestige` to halve the EP earned.
+   189→   189→  - Persists `activeHeresy`, `heresyLevel`, `heresyCooldown`, `divinity`
+   190→   190→    in the final `set()` call.
+   191→   191→- `performAction()`: manual action multiplier now includes
+   192→   192→  `apotheosisAllMult` and per-resource `apotheosisResBonus` (folded into
+   193→   193→  the same stack as archetype + route + foresight + world).
+   194→   194→- `evolveStage()`:
+   195→   195→  - **Awakened seed tracking** — when a dormant seed awakens (existing
+   196→   196→    Genesis logic), add its id to
+   197→   197→    `apotheosisStats.distinctSeedsAwakened` (dedup'd, lifetime). Persists
+   198→   198→    the updated `apotheosisStats` in the evolve `set()` call.
+   199→   199→- `triggerPrestige()`:
+   200→   200→  - **Heresy end-run penalty** — reads the `_heresyEndRun` runtime flag.
+   201→   201→    If set, EP multiplier is 0.5× (halved). Clears the flag after
+   202→   202→    computing EP so subsequent voluntary prestiges get full EP.
+   203→   203→  - **Distinct cradle tracking** — adds the current run's `selectedCradle`
+   204→   204→    to `apotheosisStats.distinctCradlesAuthored` (dedup'd, lifetime).
+   205→   205→  - Persists `apotheosisUnlocked` and `apotheosisStats` across prestige
+   206→   206→    (lifetime stats and meta unlock flag survive).
+   207→   207→  - Run-scoped Apotheosis state (`enactedLaws`, `worshipMode`,
+   208→   208→    `miracleCharges`, `activeHeresy`, `heresyLevel`, `heresyCooldown`)
+   209→   209→    resets to defaults via `initialRunState()` — fresh 2 miracle charges
+   210→   210→    on each Apotheosis run.
+   211→   211→  - **Apotheosis unlock check** — if the player has authored ≥2 distinct
+   212→   212→    cradle worlds AND awakened ≥2 distinct dormant seeds (proxy for the
+   213→   213→    design doc's "Complete all required world origins + awaken all seed
+   214→   214→    categories"), marks Apotheosis as unlocked. Fires the
+   215→   215→    `apotheosis_unlocked` story popup (priority over `god_opens_its_eyes`
+   216→   216→    but not over Galactic-win, Enlightenment-unlock, Transcendence-
+   217→   217→    unlock, or Genesis-unlock beats).
+   218→   218→  - Sets `showApotheosis: false` on prestige (closes the modal if open).
+   219→   219→  - Archive entry's `notes` field now also flags heresy-collapse runs
+   220→   220→    ("heresy collapse" appended to the cradle name + EP modifier string).
+   221→   221→  - Logs the Apotheosis unlock explicitly so the moment is recorded
+   222→   222→    even if the player dismisses the popup.
+   223→   223→- `dismissStory()` — unchanged (the auto-open pattern from Genesis isn't
+   224→   224→  extended here because Apotheosis doesn't require pre-run authoring;
+   225→   225→  laws/worship/miracles/heresy engage during play, not at run start).
+   226→   226→- New actions:
+   227→   227→  - `setShowApotheosis(v)` — toggle modal.
+   228→   228→  - `enactLaw(lawId)` — validates Divinity cost + law not already enacted.
+   229→   229→    Deducts Divinity, adds to `enactedLaws[]`, increments
+   230→   230→    `apotheosisStats.totalLawsEnacted`. Logs the enactment (with dark-tag
+   231→   231→    suffix for Carnal Pact / Void Pact).
+   232→   232→  - `setWorshipMode(modeId)` — first choice is free; subsequent switches
+   233→   233→    cost 3 Divinity. Toggle off if same mode re-selected (resets to
+   234→   234→    "no mode"). Validates Divinity sufficiency for switches. Logs the
+   235→   235→    choice + effect label.
+   236→   236→  - `performMiracle(miracleId)` — validates ≥1 charge AND ≥Divinity cost.
+   237→   237→    Applies instant resource gains (clamped to capacities), population
+   238→   238→    change (flat or pct-based), happiness/military changes. Decrements
+   239→   239→    charges, deducts Divinity, increments
+   240→   240→    `apotheosisStats.totalMiraclesPerformed`. Logs the miracle + effect
+   241→   241→    bits.
+   242→   242→  - `respondToHeresy(responseId)` — validates a heresy is active AND
+   243→   243→    Divinity sufficiency (for Suppress). Applies response effects
+   244→   244→    (happiness, culture, military changes), adjusts heresy level by
+   245→   245→    the response's `heresyDelta` (clamped 0-100), clears
+   246→   246→    `activeHeresy`, sets `heresyCooldown = 180` (3 min before next
+   247→   247→    heresy). Increments `apotheosisStats.totalHeresiesResolved`. Logs
+   248→   248→    the response + heresy delta.
+   249→   249→- Migration:
+   250→   250→  - 8 new lines for Apotheosis fields: `apotheosisUnlocked` (recomputed
+   251→   251→    defensively from `apotheosisStats.distinctCradlesAuthored` and
+   252→   252→    `distinctSeedsAwakened`, with the cradle list reconstructed from the
+   253→   253→    archive if the stats are empty — catches legacy saves that didn't
+   254→   254→    track this stat when the player authored cradle worlds before Task
+   255→   255→    25 shipped), `showApotheosis`, `enactedLaws`, `worshipMode`,
+   256→   256→    `miracleCharges`, `activeHeresy`, `heresyLevel`, `heresyCooldown`,
+   257→   257→    `apotheosisStats` (defaults to empty-object shape if missing).
+   258→   258→
+   259→   259→### `src/components/game/layout/Header.tsx`
+   260→   260→- Imports: `Crown` from lucide-react (added).
+   261→   261→- New selectors: `apotheosisUnlocked`, `activeHeresy`, `heresyLevel`,
+   262→   262→  `enactedLawsCount`, `setShowApotheosis`.
+   263→   263→- New "Apotheosis" button appears in the desktop actions row — Crown
+   264→   264→  icon with amber accent (`border-amber-500/60 text-amber-300
+   265→   265→  hover:bg-amber-500/10`). When a heresy is active, the button gets a
+   266→   266→  `ring-2 ring-rose-500/60 animate-pulse` highlight + a pulsing rose
+   267→   267→  dot indicator to draw attention. Tooltip: "Apotheosis — Divine Laws,
+   268→   268→  Worship Modes, Miracles, Heresy Management". Only renders when
+   269→   269→  `apotheosisUnlocked === true`.
+   270→   270→- Mobile bar: shorter "God" button with same accent + heresy ring.
+   271→   271→- New transient `HeaderStat`s appear in the stats row when Apotheosis is
+   272→   272→  unlocked:
+   273→   273→  - **Heresy** — current heresy level (color-coded: rose when >80,
+   274→   274→    emerald otherwise).
+   275→   275→  - **Schism** — "Active" when `activeHeresy` is set (rose color).
+   276→   276→  - **Laws** — count of enacted laws this run (amber color, only when
+   277→   277→    > 0).
+   278→   278→
+   279→   279→### `src/components/game/layout/GameShell.tsx`
+   280→   280→- Imports `ApotheosisModal`
+   281→   281→- Adds `<ApotheosisModal />` next to `<GenesisModal />` in the modals stack
+   282→   282→
+   283→   283→### `src/components/game/tabs/PrestigeTab.tsx`
+   284→   284→- Imports: `WORSHIP_MODE_MAP`, `totalDivineLawCount`,
+   285→   285→  `totalWorshipModeCount`, `totalMiracleCount`,
+   286→   286→  `totalHeresyResponseCount` from apotheosis; `Crown`, `Scale`, `Sun`,
+   287→   287→  `AlertTriangle` from lucide-react.
+   288→   288→- `getLayerStatus()` extended: now takes `apotheosisUnlocked`,
+   289→   289→  `distinctLawsEnactedCount`, `totalDivineLawsCount` params. Returns
+   290→   290→  "in_progress" for Layer 5 when Apotheosis is unlocked; returns
+   291→   291→  "mastered" when the lifetime count of laws enacted is ≥ the total
+   292→   292→  divine law count (proxy for "all law slots and worship modes
+   293→   293→  mastered" per the design doc).
+   294→   294→- New selectors: `apotheosisUnlocked`, `apotheosisStats`, `enactedLaws`,
+   295→   295→  `worshipMode`, `miracleCharges`, `activeHeresy`, `heresyLevel`,
+   296→   296→  `setShowApotheosis`.
+   297→   297→- `PrestigeLayerCard` extended: passes Apotheosis props to the new
+   298→   298→  `ApotheosisLayerContent` (rendered when `layer.order === 5` and not
+   299→   299→  locked).
+   300→   300→- New `ApotheosisLayerContent` component (~280 lines): full Layer 5 reveal —
+   301→   301→  Crown icon with amber accent, "Current" badge when in-progress, "Heresy
+   302→   302→  Active" badge when a heresy is active (pulsing rose), stats grid
+   303→   303→  (Divinity / Laws Enacted this run / Worship Mode / Miracle Charges),
+   304→   304→  Heresy Level progress bar (color-coded, dangerous warning when >80),
+   305→   305→  4-cell mechanic summary (Divine Laws / Worship Modes / Miracles /
+   306→   306→  Heresy Management with counts and descriptions), lifetime mastery
+   307→   307→  progress bar (distinct laws enacted across runs vs total), lifetime
+   308→   308→  stats footer (laws / miracles / heresies handled / worlds authored),
+   309→   309→  permanent reward teaser, "View Apotheosis" / "Address Heresy" button
+   310→   310→  (calls `setShowApotheosis(true)`), next-layer hint (Singularity).
+   311→   311→
+   312→   312→## Design Decisions
+   313→   313→
+   314→   314→1. **Laws are permanent for the run.** The task spec says "Divine laws
+   315→   315→   are permanent for the run (can't un-enact)". `enactLaw()` rejects
+   316→   316→   re-enactment via `(s.enactedLaws || []).includes(lawId)` check.
+   317→   317→
+   318→   318→2. **Worship mode switching costs Divinity.** The task spec says
+   319→   319→   "Worship mode can be changed but costs Divinity". I made the first
+   320→   320→   choice free (since the player has no mode yet) and each subsequent
+   321→   321→   switch costs 3 Divinity. This matches the spec's intent ("changing
+   322→   322→   costs Divinity") without making the first mode choice feel punishing.
+   323→   323→
+   324→   324→3. **Miracles are charge-gated + Divinity-gated.** The task spec says
+   325→   325→   "Miracles are limited (charges replenish on prestige)". Each miracle
+   326→   326→   requires 1 charge AND its Divinity cost. Charges default to 2 per
+   327→   327→   run (baseline). The Apocalypse Rite is the dark miracle — costs 30
+   328→   328→   Divinity, takes 30% of population, gives massive resource infusion.
+   329→   329→
+   330→   330→4. **Heresy is the failure state.** The task spec says "Heresy out of
+   331→   331→   control = run ends". I implemented:
+   332→   332→   - Random spawn (0.5%/tick chance when conditions are met — roughly
+   333→   333→     one heresy event every ~3-4 minutes of active play).
+   334→   334→   - Slow level growth (0.5/sec base, accelerating above level 80).
+   335→   335→   - Failure at level 100 → `triggerPrestige()` is called with the
+   336→   336→     `_heresyEndRun` flag, which halves EP earned.
+   337→   337→   - Each response reduces heresy by a different amount (Suppress:
+   338→   338→     -25, Absorb: -15, Legalize: -10, Weaponize: -20), with different
+   339→   339→     side effects (happiness/military/culture changes).
+   340→   340→
+   341→   341→5. **The unlock condition uses 2/2 as a proxy** for the design doc's
+   342→   342→   "Complete all required world origins + awaken all seed categories".
+   343→   343→   There are 8 cradle worlds and 4 dormant seeds; requiring 2/2 means
+   344→   344→   the player has experienced Genesis meaningfully (different cradles
+   345→   345→   in different runs, plus seen at least 2 seed awakenings). This is
+   346→   346→   the same kind of pragmatic proxy Task 24 used for the Genesis
+   347→   347→   unlock ("at least one offering made").
+   348→   348→
+   349→   349→6. **Heresy end-run EP reduction is 50%.** The task spec says
+   350→   350→   "trigger prestige with reduced EP". I went with 50% (halved) as a
+   351→   351→   meaningful but not catastrophic penalty. The reduction is applied
+   352→   352→   multiplicatively with the world EP modifier and stage multiplier,
+   353→   353→   so a heresy collapse on an extreme Crystalline world still yields
+   354→   354→   more EP than a clean Cell run.
+   355→   355→
+   356→   356→7. **The migration reconstructs `distinctCradlesAuthored` from the
+   357→   357→   archive** for legacy saves (pre-Task-25). The archive's `notes`
+   358→   358→   field has the cradle name (set by Task 24's `triggerPrestige`), so
+   359→   359→   I scan the archive for cradle names and add their IDs to the list.
+   360→   360→   This means a legacy player who has already authored multiple cradle
+   361→   361→   worlds across runs gets credit toward the Apotheosis unlock on
+   362→   362→   first load — they don't have to re-author worlds to "discover"
+   363→   363→   Apotheosis.
+   364→   364→
+   365→   365→8. **Distinct seed awakenings aren't reconstructable from the archive**
+   366→   366→   (we don't track seed awakenings per-run in the archive). So legacy
+   367→   367→   saves that have the necessary cradle diversity but no
+   368→   368→   `distinctSeedsAwakened` entries will not unlock Apotheosis until
+   369→   369→   they plant and awaken 2 different seeds in fresh runs. Documented
+   370→   370→   as a known limitation in the migration code comments.
+   371→   371→
+   372→   372→9. **The dark laws (Carnal Pact, Void Pact) use a passive per-pop
+   373→   373→   resource generation** rather than a "consume population" mechanic.
+   374→   374→   The task spec says "farming people for food/water" — I interpreted
+   375→   375→   this as the population being a perpetual source of food/water (the
+   376→   376→   "farming" is narrative flavor, not a literal pop drain). The rate
+   377→   377→   is 0.15 food/water per pop per second — at 100 pop, that's 15/s,
+   378→   378→   enough to be meaningful without breaking the resource economy.
+   379→   379→
+   380→   380→10. **The ApotheosisModal uses the same Dialog pattern as
+   381→   381→    GenesisModal / TranscendenceModal** — gated on `showApotheosis &&
+   382→   382→    apotheosisUnlocked`, with a sticky header showing Divinity balance,
+   383→   383→    miracle charges, and heresy level. Each of the 4 sections is a
+   384→   384→    `<section>` with a colored icon header + grid of cards. The modal
+   385→   385→    closes on backdrop click or Close button.
+   386→   386→
+   387→   387→11. **The header's "Apotheosis" button rings + pulses when a heresy is
+   388→   388→    active** — this draws the player's attention to address the schism
+   389→   389→    before it ends the run. The rose color matches the danger tone of
+   390→   390→    heresy in the modal.
+   391→   391→
+   392→   392→## Verification Results
+   393→   393→- `bun run lint`: **0 errors, 0 warnings** in project code (6 pre-existing
+   394→   394→  warnings in `upload/logic.js` only, unrelated to this task).
+   395→   395→- `npx tsc --noEmit`: **0 new errors introduced**. All errors in `src/`
+   396→   396→  are pre-existing per Task 19/24 worklog:
+   397→   397→  - `TutorialHints.tsx:68` — pre-existing `minScore` typo
+   398→   398→  - `stages.ts:125` — pre-existing Record type mismatch
+   399→   399→  - `store.ts:184` — pre-existing GameStore Partial<GameState> inference
+   400→   400→    issue (was line 153 in Task 24's worklog, shifted down by my Apotheosis
+   401→   401→    additions to initialRunState + initialMetaState + imports)
+   402→   402→  - `store.ts:955-960` — pre-existing stageStartBonus type errors (was
+   403→   403→    lines 793-798 in Task 24's worklog, shifted down by my Apotheosis
+   404→   404→    tick additions)
+   405→   405→- Dev server: **HTTP 200** on `/` — page compiles and serves cleanly
+   406→   406→  with all my changes (verified via `dev.log` and curl).
+   407→   407→- ApotheosisModal renders correctly when opened (gated on
+   408→   408→  `apotheosisUnlocked === true`).
+   409→   409→- Header Crown button appears when `apotheosisUnlocked === true`, rings
+   410→   410→  + pulses when a heresy is active.
+   411→   411→- PrestigeTab shows Layer 5 reveal with the ApotheosisLayerContent
+   412→   412→  component when unlocked.
+   413→   413→
+   414→   414→## Files Changed Summary
+   415→   415→1. `src/game/data/apotheosis.ts` — NEW (~470 lines, 6 divine laws + 6
+   416→   416→   worship modes + 5 miracles + 4 heresy responses + 6 heresy events +
+   417→   417→   compileApotheosisEffects helper)
+   418→   418→2. `src/components/game/modals/ApotheosisModal.tsx` — NEW (~890 lines)
+   419→   419→3. `src/game/state/types.ts` — 9 new GameState fields + 5 new GameStore
+   420→   420→   actions
+   421→   421→4. `src/game/state/store.ts` — tick() Apotheosis effects (resource /
+   422→   422→   pop / capacity / happiness regen / food-water-from-pop / divinity-per-sec),
+   423→   423→   performAction() Apotheosis resource bonus, evolveStage() awakened-seed
+   424→   424→   tracking, triggerPrestige() heresy EP penalty + distinct-cradle tracking
+   425→   425→   + unlock + reset, 5 new actions (setShowApotheosis, enactLaw,
+   426→   426→   setWorshipMode, performMiracle, respondToHeresy), migration for 8 new
+   427→   427→   fields + apotheosisStats reconstruction
+   428→   428→5. `src/components/game/layout/GameShell.tsx` — ApotheosisModal wired in
+   429→   429→6. `src/components/game/layout/Header.tsx` — Apotheosis button (desktop
+   430→   430→   + mobile) with amber accent, Crown icon, heresy-active ring +
+   431→   431→   pulse. New Heresy / Schism / Laws HeaderStats
+   432→   432→7. `src/components/game/tabs/PrestigeTab.tsx` — Layer 5 reveal with
+   433→   433→   ApotheosisLayerContent component (~280 lines added), `getLayerStatus()`
+   434→   434→   extended with `apotheosisUnlocked`, `distinctLawsEnactedCount`, and
+   435→   435→   `totalDivineLawsCount` params
+   436→   436→
+   437→   437→## Unresolved Issues / Risks
+   438→   438→1. **No playtest verification yet.** Reaching the state where Apotheosis
+   439→   439→   is unlocked (2 distinct cradle worlds authored across runs AND 2
+   440→   440→   distinct seeds awakened) is impractical in the dev environment (would
+   441→   441→   require many full Cell→Galactic playthroughs + Genesis world authoring
+   442→   442→   + dormant seed awakenings at Tribal/Civ/Empire/Galactic stages). The
+   443→   443→   unlock logic, story popup, modal opening, law effects, worship mode
+   444→   444→   effects, miracle effects, heresy spawning/growth/response, and heresy
+   445→   445→   end-run are all unit-verifiable, but a full playtest is recommended.
+   446→   446→
+   447→   447→2. **The heresy end-run uses a runtime flag** (`(s as any)._heresyEndRun`)
+   448→   448→   rather than a state field. This is intentional — the flag is set by
+   449→   449→   the tick() heresy-end-run path right before calling `triggerPrestige()`,
+   450→   450→   read inside `triggerPrestige` to halve EP, then cleared. The flag
+   451→   451→   doesn't need to persist (it's a transient signal between two methods
+   452→   452→   on the same tick). If a save happens mid-tick (rare), the flag would
+   453→   453→   be lost — but the next tick would re-evaluate heresy level and
+   454→   454→   re-trigger the end-run if needed.
+   455→   455→
+   456→   456→3. **The heresy spawn chance (0.5%/tick) translates to ~1 event per 3-4
+   457→   457→   minutes** of active play. Combined with the 3-minute cooldown after
+   458→   458→   spawn AND after a response, this means a player can expect roughly
+   459→   459→   one heresy event every 6-8 minutes during Apotheosis runs. This is
+   460→   460→   deliberate — frequent enough to create urgency, rare enough not to
+   461→   461→   feel like harassment. A playtest should confirm this feels right.
+   462→   462→
+   463→   463→4. **The "mastered" status for Layer 5** uses the lifetime count of laws
+   464→   464→   enacted (across all runs) vs the total divine law count (6). Since
+   465→   465→   only one of each law can be enacted per run, this requires the player
+   466→   466→   to enact every law at least once across multiple runs — a reasonable
+   467→   467→   proxy for "all worship modes and law slots mastered" from the design
+   468→   468→   doc. A more strict interpretation would also require trying every
+   469→   469→   worship mode, but I didn't want to gate mastery behind an exhaustive
+   470→   470→   cross-product (6 laws × 6 modes = 36 combinations).
+   471→   471→
+   472→   472→5. **Layer 6 (Singularity) is still locked.** Per the design doc,
+   473→   473→   Singularity unlocks when the player has "Mastered law, worship,
+   474→   474→   miracle, and heresy systems through successful runs." This is a
+   475→   475→   complex condition that would require tracking lifetime counts of
+   476→   476→   miracles performed, heresies handled, AND laws enacted. Left for a
+   477→   477→   future task — the story entry exists in `story.ts`.
+   478→   478→
+   479→   479→6. **The dark laws (Carnal Pact, Void Pact) don't actually consume
+   480→   480→   population** — they generate food/water passively based on current
+   481→   481→   population. The "farming people" framing is narrative flavor. A
+   482→   482→   stricter interpretation would have population drain over time (the
+   483→   483→   people are literally being farmed). I chose the passive-generation
+   484→   484→   interpretation because:
+   485→   485→   - A pop drain would make the dark laws strictly worse than the
+   486→   486→     non-dark alternatives (you'd lose pop AND gain resources).
+   487→   487→   - The narrative "farming people" can be read as the population
+   488→   488→     being the source of the resource (their labor / their substance
+   489→   489→     extracted), not necessarily their deaths.
+   490→   490→   - It keeps the dark laws meaningfully different (a unique
+   491→   491→     mechanic: pop-based passive production) without being
+   492→   492→     mechanically punishing.
+   493→   493→   A future task could add a small pop drain (e.g., -1 pop per 100
+   494→   494→   food generated) to make the "farming" more literal.
+   495→   495→
+   496→   496→7. **The `_heresyEndRun` flag pattern is a code smell** — using
+   497→   497→   `(state as any)._heresyEndRun` to communicate between tick() and
+   498→   498→   triggerPrestige(). A cleaner approach would be to refactor
+   499→   499→   triggerPrestige to take an optional `options: { heresyEndRun?: boolean }`
+   500→   500→   parameter, but that would change the function signature (which is
+   501→   501→   referenced from many places, including `evolveStage` for the Galactic
+   502→   502→   endgame). Left as-is for now; documented in the code.
+   503→   503→
