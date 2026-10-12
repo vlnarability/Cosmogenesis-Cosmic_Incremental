@@ -617,6 +617,12 @@ export const useGameStore = create<GameStore>()(
         const keptB = keptGodsBonus(s.keptGods || []);
         const cosmicBoon = cosmicBoonBonus(s.cosmicBoonStacks || 0);
 
+        // L4 FIX — Sacred Grid tile bonuses (were display-only, now applied to production).
+        // Each placed tile gives +5% production. Mountains also give +5% capacity (sturdy).
+        const gridTiles = (s.worldGrid || []).filter((t) => t !== null);
+        const sacredGridProdBonus = gridTiles.length * 0.05;  // +5% per tile
+        const sacredGridCapBonus = gridTiles.filter((t) => t === "mountain").length * 0.05;  // +5% cap per mountain
+
         // TRIALS-7 — Layer 1 trial realm rewards (permanent bonuses from completed realms)
         const trialReward = trialRealmRewardBonus(s.trialRealmsCompleted || {});
         // Late Bloom: +25% pop growth only when current population < 50
@@ -633,6 +639,7 @@ export const useGameStore = create<GameStore>()(
           echoB.productionMult + forkB.productionMult + debtB.productionMult +
           fragmentB.productionMult + testB.productionMult + canonB.productionMult +
           weaveB.productionMult + universeB.productionMult + keptB.productionMult + cosmicBoon +
+          sacredGridProdBonus +  // L4 Sacred Grid tile bonus
           trialReward.prodMult;
         const layerCapBonus =
           constB.capMult +
@@ -643,6 +650,7 @@ export const useGameStore = create<GameStore>()(
           echoB.capMult + forkB.capMult + debtB.capMult +
           fragmentB.capMult + testB.capMult + canonB.capMult +
           weaveB.capMult + universeB.capMult + keptB.capMult +
+          sacredGridCapBonus +  // L4 Sacred Grid mountain capacity bonus
           trialReward.capMult;
         const layerPopBonus =
           constB.popGrowthMult +
@@ -1125,6 +1133,15 @@ export const useGameStore = create<GameStore>()(
             } else {
               miracleTimers[id] = remaining;
             }
+          }
+        }
+
+        // L8 FIX — Decay per-god Negotiate cooldowns + L5 miracle cooldowns (stored as negotiate_<godId> / miracleCd_<id> fields)
+        let negotiateCooldowns: Record<string, number> = {};
+        for (const k of Object.keys(s)) {
+          if ((k.startsWith("negotiate_") || k.startsWith("miracleCd_")) && typeof (s as any)[k] === "number") {
+            const remaining = (s as any)[k] - realDt;
+            if (remaining > 0) negotiateCooldowns[k] = remaining;
           }
         }
 
@@ -2166,6 +2183,8 @@ export const useGameStore = create<GameStore>()(
           activeLogicCores,
           logicCoreTimers,
           bloodPactsUsed,
+          // L8 FIX — per-god Negotiate cooldowns
+          ...negotiateCooldowns,
           // Layer 7-8 state
           instability,
           geneticInstability,
@@ -2912,12 +2931,8 @@ export const useGameStore = create<GameStore>()(
         if (isFirstGalacticWin) {
           get().addToLog("Layer 1 trials unlocked. Visit the Trials button to begin a Challenge.");
         }
-        // BACKGROUND-SIMULATION — log on Galactic prestige (first vs subsequent).
-        if (isGalacticPrestige && wasZero) {
-          get().addToLog("🌌 Your first civilization ascends to the background. It now generates Divinity passively based on your peak production.");
-        } else if (isGalacticPrestige) {
-          get().addToLog(`🌌 Another civilization joins the background. ${newBackgroundSimulations} simulations now generating Divinity.`);
-        }
+        // NOTE: Background simulations are now computed from (3 + starsLit) × simMult,
+        // not incremented on prestige. No log needed here — the sim system runs at L2+.
         if (failedChallenge) {
           get().addToLog(`Trial abandoned: ${CHALLENGE_MAP[failedChallenge]?.name}. You may try again.`);
         }
@@ -3215,6 +3230,14 @@ export const useGameStore = create<GameStore>()(
         const m = MIRACLE_MAP[miracleId];
         if (!m) return;
         if ((s.faith || 0) < m.faithCost) return;
+        // L5 FIX — per-miracle cooldown (default 120s, mir_blessing = 60s).
+        // Stored as `miracleCd_<id>` on state, decayed each tick.
+        const cdKey = `miracleCd_${miracleId}`;
+        const cdRemaining = (s as any)[cdKey] || 0;
+        if (cdRemaining > 0) {
+          get().addToLog(`${m.name} is on cooldown (${Math.ceil(cdRemaining)}s remaining).`);
+          return;
+        }
         if (m.effect === "doubleProduction" && (s.miracleTimers?.[miracleId] || 0) > 0) {
           get().addToLog(`${m.name} already active.`);
           return;
@@ -3245,6 +3268,7 @@ export const useGameStore = create<GameStore>()(
             miracleTimers[miracleId] = m.magnitude;
             break;
         }
+        const cdSec = m.cooldownSec ?? 120;
         set({
           resources: res,
           population: pop,
@@ -3253,7 +3277,9 @@ export const useGameStore = create<GameStore>()(
           heresy,
           miracleTimers,
           performedMiracles,
+          [cdKey]: cdSec,
         });
+        get().addToLog(`${m.name} performed!${cdSec > 0 ? ` (${cdSec}s cooldown)` : ""}`);
         get().addToLog(`Miracle: ${m.name}.`);
       },
 
@@ -4113,6 +4139,19 @@ export const useGameStore = create<GameStore>()(
         if (!s.unlockedLayers?.divinity) return;
         const god = MINOR_GOD_MAP[godId];
         if (!god) return;
+        // L8 FIX — Negotiate now costs 10 Divinity + has a 30s cooldown per god.
+        const NEGOTIATE_COST = 10;
+        const NEGOTIATE_COOLDOWN = 30;
+        const cdKey = `negotiate_${godId}`;
+        const cdRemaining = (s as any)[cdKey] || 0;
+        if (cdRemaining > 0) {
+          get().addToLog(`${god.name} is still cooling down (${Math.ceil(cdRemaining)}s).`);
+          return;
+        }
+        if ((s.divinity || 0) < NEGOTIATE_COST) {
+          get().addToLog(`Negotiate with ${god.name} requires ${NEGOTIATE_COST} Divinity (you have ${Math.floor(s.divinity || 0)}).`);
+          return;
+        }
         const relationships = { ...(s.godRelationships || {}) };
         const cur = relationships[godId] || god.startingRelationship;
         if (cur >= RELATIONSHIP_MAX) {
@@ -4129,8 +4168,12 @@ export const useGameStore = create<GameStore>()(
         const diploMult = 1 + dgLvl;
         const gain = Math.round(RELATIONSHIP_NEGOTIATE_GAIN * ampMult * diploMult);
         relationships[godId] = Math.min(RELATIONSHIP_MAX, cur + gain);
-        set({ godRelationships: relationships });
-        get().addToLog(`Negotiated with ${god.name}: +${gain} relationship (now ${relationships[godId]}/100)${hasAmplifier ? ` (Amplifier ×${ampMult.toFixed(1)})` : ""}.`);
+        set({
+          godRelationships: relationships,
+          divinity: (s.divinity || 0) - NEGOTIATE_COST,
+          [cdKey]: NEGOTIATE_COOLDOWN,
+        });
+        get().addToLog(`Negotiated with ${god.name}: +${gain} relationship (now ${relationships[godId]}/100)${hasAmplifier ? ` (Amplifier ×${ampMult.toFixed(1)})` : ""}. (-${NEGOTIATE_COST} Divinity, ${NEGOTIATE_COOLDOWN}s cooldown)`);
       },
 
       tradeWithGod: (godId) => {

@@ -1,10 +1,9 @@
 // ===========================================================================
 // LAYER 1 — TRIAL REALMS
 // ===========================================================================
-// Each realm is a distinct mini-game with its own win condition. Three are
-// fully playable (Growth, Discontent, Swiftness); the remaining seven ship as
-// "Coming Soon" placeholders with full data definitions so the layer reads as
-// a coherent system.
+// Each realm is a distinct mini-game with its own win condition. All 10 are
+// fully playable: Growth, Famine, Discontent, Ignorance, Stagnation, Weakness,
+// Late Bloom, Purity, Ascetic, Swiftness.
 // ===========================================================================
 
 export type TrialRealmStatus = "available" | "inProgress" | "completed" | "comingSoon";
@@ -279,8 +278,10 @@ export const REALM_FAMINE_PUMP_FROM = 6;             // pump source drain (per c
 export const REALM_FAMINE_PUMP_TO = 10;              // pump target gain (per click)
 
 // ---- Realm of Ignorance (10-node tech tree) ----
+// Budget is intentionally LESS than total cost (100) so the player must choose
+// which nodes to skip — real pathfinding decisions, not just "buy everything".
 export const REALM_IGNORANCE_NODE_COUNT = 10;
-export const REALM_IGNORANCE_BUDGET = 100;
+export const REALM_IGNORANCE_BUDGET = 70;  // was 100 — now player can't buy all nodes
 export const REALM_IGNORANCE_NODE_COSTS = [5, 7, 9, 10, 10, 11, 11, 12, 12, 13]; // sums to 100
 
 // ---- Realm of Stagnation (4-stage production chain) ----

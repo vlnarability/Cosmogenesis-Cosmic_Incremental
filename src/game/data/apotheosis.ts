@@ -177,6 +177,7 @@ export interface Miracle {
   desc: string;
   icon: string;
   faithCost: number;
+  cooldownSec?: number;  // optional per-miracle cooldown (default 120s in performMiracle)
   effect: "instantFaith" | "instantPop" | "instantResources" | "reduceHeresy" | "doubleProduction";
   magnitude: number;
 }
@@ -185,9 +186,10 @@ export const MIRACLES: Miracle[] = [
   {
     id: "mir_blessing",
     name: "Blessing of the Throne",
-    desc: "Instantly gain 50 Faith.",
+    desc: "Instantly gain 50 Faith. (60s cooldown)",
     icon: "✨",
     faithCost: 0,
+    cooldownSec: 60,
     effect: "instantFaith",
     magnitude: 50,
   },

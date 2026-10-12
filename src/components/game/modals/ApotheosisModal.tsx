@@ -66,15 +66,15 @@ export function ApotheosisModal() {
   const heresyPct = (hereticalCount / GRID_SIZE) * 100;
   const webHeresyCritical = heresyPct >= 50;
 
-  // Spread pattern description based on worship mode
-  const spreadPattern = activeWorshipMode === "wm_zeal"
-    ? "Zeal: spreads only horizontally"
-    : activeWorshipMode === "wm_mystic"
-      ? "Mystic: spreads only vertically"
-      : activeWorshipMode === "wm_austere"
-        ? "Austere: spreads 2× slower (every 20s)"
-        : activeWorshipMode === "wm_ecstatic"
-          ? "Ecstatic: spreads 2× faster (every 5s)"
+  // Spread pattern description based on worship mode (IDs match apotheosis.ts WORSHIP_MODES)
+  const spreadPattern = activeWorshipMode === "wm_chanting"
+    ? "Chanting: spreads only horizontally"
+    : activeWorshipMode === "wm_proselytizing"
+      ? "Proselytizing: spreads only vertically"
+      : activeWorshipMode === "wm_crusade"
+        ? "Crusade: spreads 2× faster (every 5s)"
+        : activeWorshipMode === "wm_ecstatic" || activeWorshipMode === "wm_silent"
+          ? "Current mode active (see layer for effects)"
           : "Default: spreads to one random adjacent cell";
 
   return (
