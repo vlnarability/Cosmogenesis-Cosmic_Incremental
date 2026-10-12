@@ -40,7 +40,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: "auto_system_buyer",
     name: "Auto-Builder",
-    desc: (l) => l ? "Every 8 seconds, the cheapest affordable system in your current stage is auto-purchased." : "Auto-buys the cheapest affordable system every 8s",
+    desc: (l) => l ? "Every 8 seconds, the cheapest affordable system in your current stage is auto-purchased. Recommended first purchase — frees you to focus on strategy." : "Auto-buys the cheapest affordable system every 8s. Recommended first buy after your first prestige.",
     baseCost: 8,
     maxLevel: 1,
     costGrowth: 1.0,
@@ -60,11 +60,10 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: "auto_evolver",
     name: "Auto-Evolver",
-    desc: (l) => l ? `Auto-evolves at ${(100 + l * 20)}% of requirements (level ${l}). No more clicking the Evolve button.` : "Auto-evolves when requirements are met (threshold scales per level)",
+    desc: (l) => l ? `Auto-evolves at ${(100 + l * 20)}% of requirements (level ${l}). Higher levels trigger evolve EARLIER. No more clicking the Evolve button.` : "Auto-evolves when requirements are exceeded (threshold scales per level)",
     baseCost: 15,
     maxLevel: 5,
     costGrowth: 1.8,
-    requiresWins: 1,
     category: "automation",
     effect: { type: "auto_evolver", value: 0.2 },
   },
@@ -425,9 +424,9 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: "paradox_insight",
     name: "Paradox Insight",
-    desc: (l) => `Forbidden Word paradox threshold +${l} per level (max 2 — threshold becomes 5).`,
+    desc: (l) => `Forbidden Word paradox threshold +${l} per level (max 1 — base threshold 2 → 3, allowing exactly one Forbidden Word safely).`,
     baseCost: 40,
-    maxLevel: 2,
+    maxLevel: 1,
     costGrowth: 1.7,
     requiresLayer: "eternity",
     category: "layer",

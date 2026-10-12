@@ -230,11 +230,28 @@ export interface GameState {
   // Auto-action timers (game-time markers for periodic automation)
   autoTimers: { system: number; tech: number; evolve: number; challenge: number };
 
-  // Layer 2 — Enlightenment (Foresight)
-  divinity: number; // prestige currency earned at prestige when this layer is unlocked
-  foresightNodes: Record<string, boolean>; // purchased foresight node ids
-  activeForesightRoute: string | null; // currently active route id
+  // Layer 2 — Enlightenment (Foresight / Constellation Map)
+  // Currency = Divinity (earned at prestige while this layer is unlocked).
+  divinity: number;
+  /** LEGACY compat: kept for old saves. Always `{}` in the new design. */
+  foresightNodes: Record<string, boolean>;
+  /** Currently active foresight route id (cosmetic / bonus layer). */
+  activeForesightRoute: string | null;
   showEnlightenment: boolean;
+
+  // Layer 2 — Constellation Map (the new L2 loop — see src/game/data/constellations.ts)
+  /** starId → true (lit). All stars across all 88 constellations live in one map. */
+  constellationStars: Record<string, boolean>;
+  /** constellationId → count of lit stars. */
+  constellationProgress: Record<string, number>;
+  /** constellationId → started (≥1 lit star). */
+  constellationsStarted: Record<string, boolean>;
+  /** constellationId → fully lit (all stars illuminated). */
+  constellationsCompleted: Record<string, boolean>;
+  /** LEGACY compat: kept for old saves. Always `{}` in the new design. */
+  constellationNodes: Record<string, boolean>;
+  /** Connections revealed by Stargaze (constellationId → true). */
+  constellationRevealed: Record<string, boolean>;
 
   // Layer 3 — Transcendence
   transcendenceOfferingsUsed: Record<string, number>; // offeringId -> repeat count
@@ -267,6 +284,9 @@ export interface GameState {
   activeLogicCores: Record<string, boolean>; // coreId -> on
   logicCoreTimers: Record<string, number>; // coreId -> last-fired game-time
   showSingularity: boolean;
+  // L6 FIX — Dimension Engine: +1 core per dimension reaching Galactic,
+  // +5 bonus (one-time per run) when all 3 reach Galactic. Resets on prestige.
+  dimensionEngineBonusClaimed: boolean;
 
   // Layer 7 — Omnipotence (Bio-engineering)
   equippedHybrids: Record<string, boolean>; // LEGACY: kept for migration; unused by new logic
@@ -371,9 +391,9 @@ export interface GameState {
   trialRealmState: Record<string, any>;        // per-realm runtime state
   trialRealmsCompleted: Record<string, boolean>;
   trialRealmBestTimes: Record<string, number>; // realmId → best completion time (seconds) — LOCAL leaderboard (no login)
-  // Layer 2 — Constellation Map (visual foresight grid)
-  constellationNodes: Record<string, boolean>; // node id → illuminated
-  constellationRevealed: Record<string, boolean>; // connections revealed by Stargaze
+  // Layer 2 — Constellation Map: state fields live above (next to foresightNodes);
+  // constellationRevealed, constellationStars, constellationProgress, constellationsStarted,
+  // constellationsCompleted are declared alongside the other L2 fields.
   // Layer 3 — Divine Market (price simulation)
   marketPrices: Record<string, number>;        // resource id → current price
   priceHistory: Record<string, number[]>;     // resource id → last N prices (sparkline)
@@ -452,10 +472,18 @@ export interface GameStore extends GameState {
   addToLog: (msg: string) => void;
   debugUnlockAll: () => void;
 
-  // Layer 2 — Enlightenment (Foresight)
+  // Layer 2 — Enlightenment (Foresight / Constellation Map)
   setShowEnlightenment: (v: boolean) => void;
+  /** LEGACY stub — old action, kept for compatibility. No-op in the new design. */
   purchaseForesightNode: (nodeId: string) => void;
   setForesightRoute: (routeId: string | null) => void;
+  /**
+   * Layer 2 — Constellation Map: illuminate a single star within a constellation.
+   * Deducts Divinity via `starCost()`, sets `constellationStars[starId] = true`,
+   * increments `constellationProgress[constellationId]`, marks the constellation
+   * as started, and — if all stars lit — marks it completed (bonus applies).
+   */
+  illuminateStar: (constellationId: string, starId: string) => void;
 
   // Layer 3 — Transcendence
   setShowTranscendence: (v: boolean) => void;
@@ -551,10 +579,22 @@ export interface GameStore extends GameState {
   realmAsceticBuildSystem: (systemId: number) => void;            // Realm of the Ascetic — build one of 7 unique systems
 
   // Layer 2 — Constellation Map
+  /** LEGACY stub — old action signature, kept for compatibility. No-op. */
   illuminateConstellationNode: (nodeId: string) => void;
-  stargazeReveal: () => void;                // active ability: reveal connections
-  supernovaIlluminate: (nodeId: string) => void; // illuminate adjacent
-  blackHoleReset: () => void;                // refund + reset
+  /** Reveal all constellation connection lines visually (active ability). */
+  stargazeReveal: () => void;
+  /**
+   * Supernova active ability: lights `starId` AND every star connected to it
+   * via the constellation's connection list, for free (no Divinity cost per star
+   * — but still costs the 50 Divinity Supernova fee).
+   */
+  supernovaIlluminate: (constellationId: string, starId: string) => void;
+  /**
+   * Black Hole active ability: refunds 50% of the BASE cost spent on every lit
+   * star in the given constellation, then clears that constellation's stars.
+   * Lets the player reallocate Divinity.
+   */
+  blackHoleReset: (constellationId: string) => void;
 
   // Layer 3 — Divine Market
   marketBuyResource: (resourceId: string, qty: number) => void;

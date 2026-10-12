@@ -34,6 +34,10 @@ export function OmnipotenceModal() {
   const instability = useGameStore((s) => s.instability || 0);
   const peakInstability = useGameStore((s) => s.peakInstability || 0);
   const draft = useGameStore((s) => s.creatureDesignDraft);
+  // L7 FIX Bug 1 — cost & capacity state for Create Creature button
+  const divinity = useGameStore((s) => s.divinity || 0);
+  const faith = useGameStore((s) => s.faith || 0);
+  const universeRules = useGameStore((s) => s.universeRules || []);
 
   const setCreatureDesignDraft = useGameStore((s) => s.setCreatureDesignDraft);
   const createCreature = useGameStore((s) => s.createCreature);
@@ -47,6 +51,15 @@ export function OmnipotenceModal() {
   const lb = legionBonus(creatures, legions, activeStance);
   const rate = effectiveInstabilityRate(creatures, legions, activeStance);
   const stanceRateMult = instabilityRateMult(activeStance);
+
+  // L7 FIX Bug 1 — Capacity = 5 base + 1 per L10 universe slot filled.
+  const filledUniverseSlots = universeRules.filter(Boolean).length;
+  const maxCreatures = 5 + filledUniverseSlots;
+  const createCostDiv = 5;
+  const createCostFaith = 5;
+  const canAffordCreature = divinity >= createCostDiv && faith >= createCostFaith;
+  const atCapacity = creatures.length >= maxCreatures;
+  const canCreateCreature = canAffordCreature && !atCapacity;
 
   const [selectedLegionId, setSelectedLegionId] = useState<string | null>(null);
 
@@ -74,7 +87,7 @@ export function OmnipotenceModal() {
             </span>
             <div className="flex gap-1">
               <Badge variant="outline" className="text-violet-300 border-violet-400/40">
-                {creatures.length} creatures
+                {creatures.length}/{maxCreatures} creatures
               </Badge>
               <Badge variant="outline" className="text-amber-300 border-amber-400/40">
                 {legions.length} legions
@@ -188,8 +201,27 @@ export function OmnipotenceModal() {
                     <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">SPD {draftStats.speed}</Badge>
                   </div>
                 )}
-                <div className="flex justify-end">
-                  <Button size="sm" className="h-7" onClick={() => createCreature()}>
+                {/* L7 FIX Bug 1 — Cost + capacity gating for Create Creature */}
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <div className="text-[0.6rem] text-muted-foreground leading-tight">
+                    Cost: <span className={canAffordCreature ? "text-amber-300" : "text-rose-400"}>{createCostDiv} Div</span>
+                    {" + "}
+                    <span className={canAffordCreature ? "text-amber-300" : "text-rose-400"}>{createCostFaith} Faith</span>
+                    <span className="block">
+                      Capacity: {creatures.length}/{maxCreatures}
+                      {filledUniverseSlots > 0 && <span className="text-violet-300/80"> (+{filledUniverseSlots} from universe slots)</span>}
+                    </span>
+                    {atCapacity && (
+                      <span className="block text-rose-400">At capacity — author more universe rules or release a creature.</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-7"
+                    disabled={!canCreateCreature}
+                    onClick={() => createCreature()}
+                    title={atCapacity ? "Lab at capacity" : !canAffordCreature ? "Not enough Divinity/Faith" : "Create Creature"}
+                  >
                     <Plus className="w-3 h-3 mr-1" /> Create Creature
                   </Button>
                 </div>

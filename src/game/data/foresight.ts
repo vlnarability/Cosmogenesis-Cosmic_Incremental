@@ -1,12 +1,19 @@
 // ===========================================================================
 // LAYER 2 — ENLIGHTENMENT (FORESIGHT)
 // ===========================================================================
-// After 3 challenges mastered, the god opens its eyes. Foresight is the first
-// act of an awakened deity: choosing a Route through the cosmic tree, then
-// purchasing Foresight Nodes that grant permanent production / capacity / EP
-// multipliers. Currency = Divinity (earned on prestige when this layer is
-// unlocked). Only 10 of 20 nodes need to be purchased to advance to Layer 3.
+// NOTE: This file is kept for backward compatibility. In the new L2 design,
+// the constellation map (see `./constellations.ts`) is the source of truth —
+// `foresightNodes` is always `{}` for new saves. `foresightBonus()` detects
+// whether it's called with the legacy shape (`Record<string, boolean>`) or
+// the new constellation-state shape and returns the appropriate aggregate.
+// `FORESIGHT_ROUTES` is still used by the cosmetic Route picker in the modal.
 // ===========================================================================
+
+import {
+  constellationBonus,
+  type ConstellationState,
+  type ConstellationAggregateBonus,
+} from "./constellations";
 
 export type ForesightRouteId =
   | "growth"
@@ -327,36 +334,37 @@ export const FORESIGHT_NODES_REQUIRED_FOR_LAYER_3 = 10;
 // ----- Helpers -----
 
 /**
- * Aggregated bonus from all purchased foresight nodes.
- * Returns the sum of each bonus dimension across the purchased set.
+ * Aggregated bonus from all purchased foresight nodes — OR, when called with
+ * the new constellation-state shape, the aggregate from the constellation map.
+ *
+ * Accepts two shapes:
+ *   (1) Legacy: `Record<string, boolean>` (foresightNodes) — returns all zeros
+ *       for new saves (the legacy FORESIGHT_NODES no longer drive production).
+ *   (2) New: `ConstellationState` (has `constellationStars` etc.) — delegates
+ *       to `constellationBonus()` from `./constellations.ts`.
+ *
+ * Callers in store.ts and PrestigeTab still pass the legacy shape; this is a
+ * no-op until they migrate to the new shape.
  */
 export function foresightBonus(
-  purchased: Record<string, boolean>
-): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-  costMult: number;
-  divinityMult: number;
-} {
-  let productionMult = 0;
-  let capMult = 0;
-  let epMult = 0;
-  let popGrowthMult = 0;
-  let costMult = 0;
-  let divinityMult = 0;
-  for (const node of FORESIGHT_NODES) {
-    if (!purchased[node.id]) continue;
-    const b = node.bonus;
-    productionMult += b.productionMult || 0;
-    capMult += b.capMult || 0;
-    epMult += b.epMult || 0;
-    popGrowthMult += b.popGrowthMult || 0;
-    costMult += b.costMult || 0;
-    divinityMult += b.divinityMult || 0;
+  purchased: Record<string, boolean> | ConstellationState
+): ConstellationAggregateBonus {
+  // Detect new shape (has `constellationStars`).
+  if (
+    purchased &&
+    typeof (purchased as ConstellationState).constellationStars !== "undefined"
+  ) {
+    return constellationBonus(purchased as ConstellationState);
   }
-  return { productionMult, capMult, epMult, popGrowthMult, costMult, divinityMult };
+  // Legacy shape — return zeros (the legacy FORESIGHT_NODES are decorative).
+  return {
+    productionMult: 0,
+    capMult: 0,
+    epMult: 0,
+    popGrowthMult: 0,
+    costMult: 0,
+    divinityMult: 0,
+  };
 }
 
 /**

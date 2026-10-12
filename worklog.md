@@ -2874,3 +2874,130 @@ Stage Summary:
 - All buttons work. UI is intuitive. The game is playable end-to-end from Cell stage through all 10 prestige layers (via debug unlock).
 - 3 critical gameplay bugs identified by the review subagents (L9 unloseable battles, L5 heretics never spawn, L6 dimension engine no reward) — these are the top priority fixes.
 - Full comprehensive review delivered to the user in the chat response.
+
+---
+Task ID: FIX-L6-L7-L10
+Agent: general-purpose (subagent G)
+Task: Fix bugs flagged in REVIEW-L6-L10 (L6 Dimension Engine grants nothing; L7 free+uncapped creature creation, mutatedStat unused, special abilities reference non-existent HP; L10 Forbidden Words strictly dominant, chooseEnding no confirmation).
+
+Work Log:
+- Read worklog REVIEW-L6-L10 section (lines ~2276-2445) for full bug context.
+- L6 FIX (Dimension Engine rewards):
+  - Added `dimensionEngineBonusClaimed: boolean` to `GameState` in `src/game/state/types.ts:264-272`.
+  - Initialized to `false` in `initialRunState()` at `src/game/state/store.ts:349-350`.
+  - Migration: `if (persisted.dimensionEngineBonusClaimed === undefined) persisted.dimensionEngineBonusClaimed = false;` at `src/game/state/store.ts:4717-4718`.
+  - Tick (L6 dimension loop, `store.ts:1912-1952`): track Galactic transitions; on `reachedGalactic` false→true, grant +1 Singularity Core and log "Dimension X reached Galactic! +1 Singularity Core."; after the loop, if all 3 are Galactic and `dimensionEngineBonusClaimed` is false, grant +5 cores, set the flag true, log "All dimensions synchronized! +5 Singularity Core bonus."
+  - Wrote `singularityCores` and `dimensionEngineBonusClaimed` back to state via `set({...})` at `store.ts:2065-2067`. Galactic log messages dispatched via setTimeout (avoid setState-in-loop).
+  - Reset `dimensionEngineBonusClaimed: false` on prestige at `store.ts:2632-2633`.
+  - UI: updated `SingularityModal.tsx` to show a clear reward hint ("+1 Singularity Core per dimension reaching Galactic, and a one-time +5 bonus when all 3 reach Galactic.") and a banner update ("Singularity engine complete (+5 Singularity Core bonus awarded).").
+
+- L7 FIX Bug 1 (free + uncapped creature creation):
+  - `createCreature` in `store.ts:3809-3873`: added cost = 5 Divinity + 5 Faith; refuses with log message if player can't afford. Cap = 5 + (filled L10 universe slot count) — so authoring L10 universe rules expands the lab. Refuses with log "Creature lab at capacity (X/N). Author more universe rules or release a creature." when at cap. Cost deducted on success.
+  - `OmnipotenceModal.tsx`: subscribe to `divinity`, `faith`, `universeRules`; compute `maxCreatures`, `canAffordCreature`, `atCapacity`, `canCreateCreature`. Show "{creatures.length}/{maxCreatures} creatures" badge. The "Create Creature" button now shows the cost (5 Div + 5 Faith) in red when unaffordable, is disabled when at cap or unaffordable, and shows an "At capacity — author more universe rules or release a creature." message.
+
+- L7 FIX Bug 2 (mutatedStat unused):
+  - `createCreature` (`store.ts:3842-3850`): renamed local var `mutatedStats` → `mutatedStat` (matching the field name) and applied the ×1.5 mutation bonus ONLY to the rolled stat. Other two stats remain at base. Log message updated to "(+50% to {stat}, +20% instability)".
+
+- L7 FIX Bug 3 (special abilities reference HP that doesn't exist):
+  - In `attackOldGod` (`store.ts:4118-4155`): iterated deployed legions' creatures and counted `berserk`, `shield`, `regen` specials. Applied: berserk → +20% player damage per berserk creature (multiplier `1 + 0.20 * berserkCount`); shield → -20% boss damage per shield creature (multiplier `Math.max(0, 1 - 0.20 * shieldCount)`, min 1 damage). Left an explicit `TODO(regen)` comment for healing player HP by 1 per regen creature per turn — requires `BattleState.playerHp` which Subagent F is adding in parallel. `regenCount` is reserved via `void regenCount;` so the count is computed and ready to wire when the field arrives.
+  - NOTE: Subagent F had added `playerHp`/`playerMaxHp` to BattleState in an earlier commit but those changes were reverted by a parallel `git reset` during this session — so currently BattleState does NOT have playerHp. Left TODO accordingly.
+
+- L10 FIX Bug 1 (Forbidden Words strictly dominant):
+  - `eternity.ts:59, 81, 93`: nerfed forbidden word bonuses. phys_paradox: +80% prod & +40% cap → +30% prod & +20% cap. magic_paradox: +100% prod & +50% EP → +35% prod & +25% EP. time_paradox: +90% prod & +60% EP → +25% prod & +30% EP. Descriptions updated to match.
+  - `upgrades.ts:426-434`: paradox_insight `maxLevel: 2` → `maxLevel: 1`. Effect unchanged (+1 threshold per level). Max threshold now 2 (base) + 1 (maxed) = 3, allowing exactly one Forbidden Word safely. Description updated.
+  - `store.ts setUniverseRule` (line 4254-4259): changed base paradox threshold from `3 + piLvl` to `2 + piLvl`. Comment added explaining the nerf rationale.
+  - `EternityModal.tsx`: added `paradoxInsightLvl` subscription and computed `paradoxThreshold = 2 + paradoxInsightLvl`. Paradox badge now displays `{universeParadox}/{paradoxThreshold}` (dynamic, not hardcoded /3). Added red warning whenever `universeParadox >= 1` (was previously only at >= 2). Warning text adapts: at threshold → "PARADOX OVERLOAD!" message; below threshold → "Paradox risk active (X/N) — one more Forbidden Word will reset your universe."
+  - Forbidden word option descriptions (with nerfed bonuses) propagate automatically from `eternity.ts` to the UI via the existing option list rendering.
+
+- L10 FIX Bug 2 (chooseEnding has no confirmation):
+  - `EternityModal.tsx`: imported shadcn `AlertDialog` + sub-components. Added local `useState<"preserve" | "reset" | null>(null)` for `pendingEnding`. Replaced direct `chooseEnding(e.id)` call in onClick with `setPendingEnding(e.id)`. Added an `AlertDialog` below the `DialogContent` that shows when `pendingEnding !== null` with two distinct descriptions:
+    - Preserve: "Are you sure? This will lock in your universe rules and end the layer. Your rules will persist as permanent bonuses. This cannot be undone."
+    - Reset: "Are you sure? This will reset your universe rules and grant a Cosmic Boon stack (+10% all production permanently). The layer will restart from scratch. This cannot be undone."
+  - AlertDialogAction styled red (`bg-rose-600 hover:bg-rose-700 text-white`) for Reset to emphasize the destructive action. Cancel button restores state without committing. `chooseEnding` is only invoked from `confirmEnding()` after the player clicks the confirm action.
+
+- Lint: ran `bun run lint` — 0 errors, 6 pre-existing warnings in `upload/logic.js` (ignored per task spec).
+- Verified my edited files (SingularityModal/OmnipotenceModal/EternityModal/eternity.ts/upgrades.ts) introduce NO new TS errors. (Pre-existing TS errors in unrelated files like CosmeticsModal/DebugModal/VariantPicker/stages.ts remain — not in scope.)
+- Note on parallel work: discovered that an earlier subagent's commits to attackOldGod (L9 weakness fix, player HP, phase modifiers) were reverted by a `git reset` during this session. My L7-Bug-3 specials wiring is additive and does not conflict with future L9 re-application — the `regenCount`/`berserkCount`/`shieldCount` calculations stand alone in attackOldGod and remain valid regardless of whether Subagent F re-adds player HP / fail-state code.
+
+Stage Summary:
+- 6 bugs fixed across L6/L7/L10 (L6 dimension engine rewards; L7 creature cost+cap, mutatedStat, specials; L10 forbidden words balance, ending confirmation).
+- 1 new GameState field (`dimensionEngineBonusClaimed: boolean`) + initial state + migration + per-run reset.
+- 1 upgrade rebalanced (`paradox_insight` maxLevel 2→1).
+- 3 forbidden word option values nerfed in `eternity.ts`.
+- Lint passes with 0 errors.
+- 1 TODO comment left in `attackOldGod` for wiring `regen` to `playerHp` once Subagent F re-adds it to BattleState.
+
+---
+Task ID: L2-CONSTELLATION-REDESIGN
+Agent: general-purpose (subagent E)
+Task: Complete redesign of Layer 2 (Enlightenment) as a star-map constellation system inspired by "Cell to Singularity Constellations" and the 88 IAU constellations. Replaces the 5×4 foresight node grid with a real star map: 28 curated IAU constellations (all 12 zodiac + 8 northern + 4 equatorial + 4 southern), each with normalized 0-100 star coordinates and canonical connection lines. New cost model matches user spec: within-constellation growth 1.5×, plus 2.0× per OTHER started constellation (sticky penalty). L3 gate now requires 10 constellations COMPLETED (not 10 nodes purchased).
+
+Work Log:
+- Read worklog REVIEW-L1-L5 section (lines 2597-2876) to identify the L2 bugs flagged: Supernova hardcoded to FORESIGHT_NODES[0] (line 2659), constellation combo bonus never applied to production (line 2660), dead duplicate state constellationNodes (line 2661), Stargaze reveals lock icons only (lines 2663-2666), combo caps at +8% (line 2668).
+- Read foresight.ts (402 lines), EnlightenmentModal.tsx (351 lines), types.ts (421 lines), store.ts L2 sections (5237 lines total).
+- Created /home/z/my-project/src/game/data/constellations.ts (919 lines): 28 IAU constellations with normalized 0-100 star coordinates, canonical connection pairs, completion bonus (production/cap/EP/pop/costMult/divinityMult), category (zodiac/northern/southern/equatorial), accent colors per category. Architecture documented as supporting all 88 (just append more entries).
+- Cost model in constellations.ts: `starCost(constellationId, state, starId?, opts?)` = baseCost × 1.5^(stars lit in this constellation) × 2.0^N, where N = (# started constellations) − (1 if THIS constellation is already started, else 0). Verified against user's spec example: A·star1=10, A·star2=15, A·star3=23, B·star1=20, B·star2=30, Cass·star1=40 — all match.
+- Bonus aggregation: `constellationBonus(state)` returns additive production/cap/EP/pop/costMult/divinityMult. Per-star: +0.5% production per lit star. Per-completed-constellation: the constellation's defined bonus. Plus `countCompletedConstellations()`, `countLitStars()`, `canAdvanceToTranscendence()`.
+- `CONSTELLATIONS_REQUIRED_FOR_LAYER_3 = 10` replaces `FORESIGHT_NODES_REQUIRED_FOR_LAYER_3`.
+- Updated types.ts: GameState adds `constellationStars`, `constellationProgress`, `constellationsStarted`, `constellationsCompleted`. `foresightNodes`, `constellationNodes` kept as legacy empty records. Actions: `illuminateStar(constellationId, starId)` replaces `illuminateConstellationNode(nodeId)` (now a no-op stub); `supernovaIlluminate(constellationId, starId)` replaces `(nodeId)`; `blackHoleReset(constellationId)` replaces `()`. `purchaseForesightNode` kept as no-op stub.
+- Updated foresight.ts: header comment now explains it's a backward-compat shim. `foresightBonus(purchased)` accepts either legacy `Record<string, boolean>` (returns zeros) OR a `ConstellationState` (delegates to `constellationBonus()`). FORESIGHT_ROUTES preserved for the modal's cosmetic Route picker.
+- Updated store.ts:
+  * Initial state: added 4 new constellation records (all empty), kept legacy `foresightNodes`/`constellationNodes`/`constellationRevealed` as empty records.
+  * Tick: computed `constellationState` once, derived `constB = constellationBonus(constellationState)`. Added `constB.productionMult` to `layerProdBonus`, `constB.capMult` to `layerCapBonus`, `constB.popGrowthMult` to `layerPopBonus`, `constB.costMult` to `layerCostReduction`. Wired into both `buySystem`'s `costReduction` and `buyTech`'s `layerTechCostMult` (multiplicative).
+  * L3 unlock check now uses `canAdvanceToTranscendence(constellationState)` (10 completed constellations).
+  * Prestige trigger persists all 4 new constellation fields; EP multiplier and Divinity gain both add `constBp.epMult` / `constBp.divinityMult`.
+  * `illuminateStar(constellationId, starId)` action: validates, computes cost via `starCost()` with foresight_discount upgrade, deducts Divinity, sets star lit, increments progress, marks started, marks completed (if all stars lit), awards +1 PP boosted by constellation_boost upgrade. Logs completion loudly.
+  * `illuminateConstellationNode(nodeId)` kept as no-op for legacy callers.
+  * `stargazeReveal()` now reveals all constellation ids in `constellationRevealed` (visual line brightening).
+  * `supernovaIlluminate(constellationId, starId)` lights the target + every star connected to it via `cdef.connections` (replaces the broken hardcoded FORESIGHT_NODES[0] target).
+  * `blackHoleReset(constellationId)` refunds 50% of the re-computed base cost per lit star in the constellation (re-runs `starCost()` in purchase-order simulation), then clears that constellation's stars/progress/started/completed.
+  * `purchaseForesightNode(_nodeId)` is now a no-op stub.
+  * Migration: adds `constellationStars={}`, `constellationProgress={}`, `constellationsStarted={}`, `constellationsCompleted={}` for old saves. Legacy `foresightNodes`/`constellationNodes`/`constellationRevealed` remain empty records.
+- Redesigned EnlightenmentModal.tsx (~700 lines):
+  * SVG star map (1000×600 viewBox, responsive aspect ratio) with subtle starfield background, constellation connection lines (dim until completed/revealed), star dots (small dim for unlit, glowing accent-colored for lit), constellation labels (italic serif, faded if not started).
+  * Click a star to illuminate (calls `illuminateStar(constellationId, starId)`); on hover shows cost as inline SVG text label (with ✦ marker if new-constellation penalty applies).
+  * Three active abilities: Stargaze (25 Div, reveals all connection lines), Supernova (50 Div, arms "click a star" mode that ignites target + connected stars for free), Black Hole (refund 50%, arms "click a star" mode that collapses that constellation). All three cost the standard amounts and apply ability-mode banners.
+  * Sidebar (320px): progress stats (completed/started/stars-lit/Divinity, bonus badges for prod/cap/EP/pop/costMult/divinityMult), three ability buttons with tooltips, focused-constellation cost preview ("Next star in Orion: 15 Div" or "✦ new-constellation penalty ×2.0=2.0"), new-constellation preview card, cost-formula explainer (collapsible), full constellation list (click to focus/zoom the SVG), Route picker (cosmetic).
+  * SVG pans/zooms to focus on a clicked constellation (computed viewBox clamps to map bounds).
+  * Category legend (zodiac/northern/equatorial/southern accent colors) shown bottom-left of map.
+  * Mobile-responsive: grid layout `lg:grid-cols-[1fr_320px]` collapses to single column on narrow screens.
+- Updated PrestigeTab.tsx: Enlightenment layer card now shows "Constellations completed (X/10)", "Stars illuminated (X/total)", "Constellations started (X/28)" instead of the old foresightNode counts. LayerNextProgress uses the new constellation-completion metric. Imports `CONSTELLATIONS`, `CONSTELLATIONS_REQUIRED_FOR_LAYER_3`, `countCompletedConstellations`, `countLitStars`, `ConstellationState` from constellations.ts. Old `FORESIGHT_NODES`/`FORESIGHT_NODES_REQUIRED_FOR_LAYER_3` imports removed (no longer used).
+- Ran `bun run lint`: **0 errors, 6 pre-existing warnings** (all in `upload/logic.js`, which the task spec said to ignore).
+- Ran `bunx tsc --noEmit` for sanity: the only error in edited files is a pre-existing "stageIndex number | undefined" mismatch at the store.ts create() call (verified it pre-exists on the unmodified git baseline at line 481; my edits just shifted it to line 501). No new TS errors introduced by my changes.
+- Sanity-tested the cost model with a throwaway bun script: confirmed A·star1=10, A·star2=15, A·star3=23, B·star1=20, B·star2=30 (sticky penalty!), Cass·star1=40 — all match the user spec exactly.
+
+Stage Summary:
+- **Constellations defined**: 28 (all 12 zodiac + 8 northern + 4 equatorial + 4 southern). Architecture documented as supporting all 88 — just append more entries to `CONSTELLATIONS`.
+- **Cost formula**: `cost = baseCost(10) × 1.5^(stars lit in this constellation) × 2.0^N` where N = (# started constellations) − (1 if THIS constellation is already started, else 0). The penalty sticks for every star in a started constellation (so switching to B before finishing A makes every B star 2× more expensive — encourages finishing before switching).
+- **New state fields**: `constellationStars`, `constellationProgress`, `constellationsStarted`, `constellationsCompleted`. Legacy `foresightNodes`/`constellationNodes`/`constellationRevealed` kept as empty records for save-compat.
+- **New/updated actions**: `illuminateStar(cId, sId)`, `stargazeReveal()` (reveals all constellation lines), `supernovaIlluminate(cId, sId)` (lights target + connected stars for free), `blackHoleReset(cId)` (refunds 50% of computed cost in target constellation, clears it). Legacy `illuminateConstellationNode` and `purchaseForesightNode` are no-op stubs.
+- **Tick**: `constellationBonus(state)` aggregates per-star (+0.5% prod) + per-completed-constellation (defined bonus) into additive layerProdBonus/layerCapBonus/layerPopBonus/layerCostReduction. EP multiplier and Divinity gain also boosted by constellation completion.
+- **UI**: SVG star map (1000×600 viewBox, responsive) with all 28 constellations plotted. Lit stars glow with accent colors per category. Connection lines dim until completed/revealed. Sidebar with stats, 3 active abilities (Stargaze/Supernova/Black Hole), focused-constellation cost preview, new-constellation penalty preview, full constellation list with click-to-focus, Route picker (cosmetic). Mobile-responsive grid.
+- **L3 unlock threshold**: 10 constellations COMPLETED (was 10 foresight nodes purchased). `canAdvanceToTranscendence(state)` helper.
+- **Lint**: 0 errors (6 pre-existing warnings in `upload/logic.js` ignored per task spec).
+
+---
+Task ID: AUTOBUYER-TUTORIAL-FIXES
+Agent: main
+Task: Auto-buyer no longer free after first prestige + tutorial suggests auto-builder as first purchase + achievement count fix
+
+Work Log:
+- **Removed "free after first prestige" auto-buyer logic** (3 spots in store.ts):
+  - `hasAutoSystemBuyer`: was `(s.upgrades["auto_system_buyer"] || 0) > 0 || (s.galacticWins || 0) >= 1` → now just `(s.upgrades["auto_system_buyer"] || 0) > 0`. Interval fixed at 8s (was 5s after first prestige).
+  - `hasAutoTechBuyer`: same change. Interval fixed at 12s (was 8s after first prestige).
+  - `hasAutoEvolver`: was `autoEvolveLvl > 0 || (s.galacticWins || 0) >= 1` → now just `autoEvolveLvl > 0`. Threshold is now always `1 + autoEvolveLvl * 0.2` (was forced to 1.0 after first prestige). Higher levels = auto-evolves EARLIER.
+- **Removed `requiresWins: 1` from auto_evolver** in upgrades.ts — now purchasable immediately after first prestige.
+- **Updated upgrade descriptions**: auto_system_buyer now says "Recommended first purchase — frees you to focus on strategy." auto_evolver clarifies "Higher levels trigger evolve EARLIER."
+- **Updated StagePanel auto-running indicator**: was `galacticWins >= 1` → now `(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"])`. Shows only when player actually owns an auto-buyer.
+- **Updated PrestigeTab auto-running banner**: same condition change + text updated from "auto-buyer, auto-researcher, and auto-evolver all run free" → "auto-progresses via your purchased auto-buyer upgrades".
+- **Added 2 new tutorial hints** in TutorialHints.tsx:
+  1. `first_prestige_shop`: fires when player has ≥8 EP, hasn't bought auto_system_buyer, and has ≥1 galactic win. Text: "Open the Shop and buy 'Auto-Builder' first (8 EP) — it auto-purchases systems every 8s..." CTA opens the Shop modal directly via `useGameStore.getState().setShowShop(true)`.
+  2. `auto_builder_running`: fires when player owns auto_system_buyer but not auto_tech_buyer. Suggests buying Auto-Researcher next.
+- **Fixed achievement count bugs**: `discover_all_systems` was checking ≥32 (actual 39 systems) → now ≥39. `research_all_techs` was checking ≥23 (actual 30 techs) → now ≥30. Both achievement descriptions updated to match.
+
+Stage Summary:
+- Auto-buyer upgrades are no longer free after first prestige — player must purchase them with EP (8/10/15 EP respectively).
+- Tutorial now guides new prestigers to buy Auto-Builder first, then Auto-Researcher, then Auto-Evolver.
+- Achievement counts now match actual system/tech counts (39 systems, 30 techs).
+- 0 lint errors. Dev server responds HTTP 200 (SSR HTML contains "Evolve to Creature", "Absorb Glucose", "First Spark" — game shell renders correctly).
+- Note: agent-browser triggers a heavy browser-specific recompile that OOM-kills the next-server process (4GB RAM environment). The game itself is stable — verified via curl that the SSR HTML renders the game shell correctly. This is an environment constraint, not a code bug.

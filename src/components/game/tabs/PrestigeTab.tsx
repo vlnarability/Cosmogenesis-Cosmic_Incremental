@@ -7,7 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, ArrowRight } from "lucide-react";
 import { CHALLENGES, getMaxRepeats } from "@/game/data/challenges";
-import { FORESIGHT_NODES, countForesightNodes, FORESIGHT_NODES_REQUIRED_FOR_LAYER_3 } from "@/game/data/foresight";
+import { countForesightNodes } from "@/game/data/foresight";
+import {
+  CONSTELLATIONS,
+  CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+  countCompletedConstellations,
+  countLitStars,
+  type ConstellationState,
+} from "@/game/data/constellations";
 import { BLOOD_PACTS } from "@/game/data/transcendence";
 import { DIVINE_LAWS } from "@/game/data/apotheosis";
 import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES } from "@/game/data/omnipotence";
@@ -90,6 +97,11 @@ export function PrestigeTab() {
   // Layer 2-6 state
   const divinity = useGameStore((s) => s.divinity);
   const foresightNodes = useGameStore((s) => s.foresightNodes || {});
+  // L2 — Constellation Map (new design)
+  const constellationStars = useGameStore((s) => s.constellationStars || {});
+  const constellationProgress = useGameStore((s) => s.constellationProgress || {});
+  const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
+  const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
   const activeForesightRoute = useGameStore((s) => s.activeForesightRoute);
   const setShowEnlightenment = useGameStore((s) => s.setShowEnlightenment);
 
@@ -152,6 +164,16 @@ export function PrestigeTab() {
   const maxRepeats = getMaxRepeats(hasMastery);
 
   const foresightCount = countForesightNodes(foresightNodes);
+  // L2 — Constellation Map counts
+  const constellationState: ConstellationState = {
+    constellationStars,
+    constellationProgress,
+    constellationsStarted,
+    constellationsCompleted,
+  };
+  const constellationsCompletedCount = countCompletedConstellations(constellationState);
+  const litStarsCount = countLitStars(constellationState);
+  const constellationsStartedCount = Object.values(constellationsStarted).filter(Boolean).length;
   const pactsUsedCount = BLOOD_PACTS.filter((p) => bloodPactsUsed[p.id]).length;
   const lawsEnactedCount = DIVINE_LAWS.filter((l) => enactedDivineLaws[l.id]).length;
   const relicsCount = Object.values(equippedRelics).filter(Boolean).length;
@@ -178,8 +200,8 @@ export function PrestigeTab() {
 
   return (
     <div className="space-y-4">
-      {/* Auto-running banner (Part 2d) — shown once the player has prestiged at least once */}
-      {unlockedChallenges && (
+      {/* Auto-running banner — shown when the player owns any auto-buyer upgrade */}
+      {(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
         <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-3 flex items-start gap-3">
           <div className="text-2xl shrink-0">🌌</div>
           <div className="flex-1 min-w-0">
@@ -187,7 +209,7 @@ export function PrestigeTab() {
               Your civilization runs itself now. Focus on your next trial.
             </div>
             <div className="text-xs text-emerald-200/80 mt-0.5 leading-relaxed">
-              The base game (Cell → Galactic) auto-progresses — auto-buyer, auto-researcher, and auto-evolver all run free.
+              The base game (Cell → Galactic) auto-progresses via your purchased auto-buyer upgrades.
               Prestige speed bonus scales with each run (+50% per run). Direct your attention to the prestige layers below.
             </div>
           </div>
@@ -357,8 +379,9 @@ export function PrestigeTab() {
             viewLabel="View Foresight"
             viewIcon={<Eye className="w-3 h-3 mr-1" />}
           >
-            <ProgressRow label="Foresight nodes" value={foresightCount} max={FORESIGHT_NODES.length} />
-            <ProgressRow label="Toward Transcendence" value={foresightCount} max={FORESIGHT_NODES_REQUIRED_FOR_LAYER_3} />
+            <ProgressRow label="Constellations completed" value={constellationsCompletedCount} max={CONSTELLATIONS_REQUIRED_FOR_LAYER_3} />
+            <ProgressRow label="Stars illuminated" value={litStarsCount} max={CONSTELLATIONS.reduce((a, c) => a + c.stars.length, 0)} />
+            <ProgressRow label="Constellations started" value={constellationsStartedCount} max={CONSTELLATIONS.length} />
             <div className="text-[0.6rem] text-amber-300/80 mt-1">
               Route: {activeForesightRoute || "none chosen"}
             </div>
@@ -367,9 +390,9 @@ export function PrestigeTab() {
                 currentLayerName: "Enlightenment",
                 nextLayerName: "Transcendence",
                 nextLayerKey: "transcendence",
-                current: foresightCount,
-                max: FORESIGHT_NODES_REQUIRED_FOR_LAYER_3,
-                metricLabel: "Foresight nodes purchased",
+                current: constellationsCompletedCount,
+                max: CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+                metricLabel: "constellations completed",
               }}
               currentLayerUnlocked={!!unlockedLayers?.enlightenment}
               nextLayerUnlocked={!!unlockedLayers?.transcendence}

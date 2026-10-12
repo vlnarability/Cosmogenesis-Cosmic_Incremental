@@ -66,6 +66,24 @@ const HINTS: Hint[] = [
              totalTech >= stage.evolveRequires.minTech * evolveBoost;
     },
   },
+  {
+    id: "first_prestige_shop",
+    title: "Spend your Evolution Points",
+    body: "You've earned Evolution Points (EP)! Open the Shop (top-right) and buy \"Auto-Builder\" first (8 EP) — it auto-purchases systems every 8s so you can focus on strategy instead of clicking. Then grab Auto-Researcher and Auto-Evolver to fully automate the base game.",
+    cta: "Open Shop",
+    action: () => useGameStore.getState().setShowShop(true),
+    show: (s) =>
+      (s.evolutionPoints || 0) >= 8 &&
+      (s.upgrades["auto_system_buyer"] || 0) === 0 &&
+      (s.galacticWins || 0) >= 1,
+  },
+  {
+    id: "auto_builder_running",
+    title: "Auto-Builder is running!",
+    body: "Your Auto-Builder is now purchasing systems automatically. You'll see new buildings appear every 8 seconds. Consider Auto-Researcher next to automate techs, then Auto-Evolver to auto-advance stages.",
+    cta: "Nice",
+    show: (s) => (s.upgrades["auto_system_buyer"] || 0) > 0 && (s.upgrades["auto_tech_buyer"] || 0) === 0,
+  },
 ];
 
 export function TutorialHints() {

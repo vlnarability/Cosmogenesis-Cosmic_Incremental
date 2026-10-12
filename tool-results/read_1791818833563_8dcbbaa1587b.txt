@@ -1,0 +1,302 @@
+  2268→Task ID: REVIEW-L6-L10
+  2269→Agent: code-review subagent
+  2270→Task: Deep review of Layers 6-10 (Singularity / Omnipotence / Divinity / Infinity / Eternity) — fun assessment, bugs, and improvement ideas
+  2271→
+  2272→Scope: data files (singularity.ts, omnipotence.ts, divinity_layer.ts, infinity.ts, eternity.ts), modal UIs (Singularity/Omnipotence/Divinity/Infinity/Eternity), and the corresponding actions in store.ts (toggleRelicLoadout, toggleLogicCore, setDimensionSpeed, syncDimension, collapseDimensions, initDimensions, createCreature, setOmnipotenceStance, negotiateWithGod, tradeWithGod, formAlliance, placeAmplifier, removeAmplifier, startOldGodBattle, deployLegionToBattle, callAllyToBattle, attackOldGod, stabilizeTime, setUniverseRule, toggleKeptGod, chooseEnding, resolveParadox).
+  2273→
+  2274→---
+  2275→
+  2276→## Layer 6 — Singularity (Dimension Engine)
+  2277→
+  2278→### Core Loop
+  2279→The player sets time speed (1×/0.5×/0.25×) on three parallel dimensions (Alpha/Beta/Gamma) that passively accrue resources and population, stage up every 100 resources, and eventually reach "Galactic" status. Periodic Rift events every 60s shuffle 25 resources between two dimensions. Player can pay 50 Divinity to sync (copy stage + 50% pop from one dim to another) or collapse (merge two same-stage dims into one with combined speed/pop/resources). Below that sits the original Relic Loadout (8 relics with upside/downside) and Logic Cores (6 toggles for automation + passive bonuses).
+  2280→
+  2281→### Fun Assessment
+  2282→🪲 Boring or broken
+  2283→The Dimension Engine is the headline feature of L6 and it is fundamentally a passive progress bar watcher with no reward. The player sets 3 speeds, then waits ~30 min for the slowest dimension (Gamma, speed 0.25) to crawl to Galactic — and when all 3 finally arrive, NOTHING happens. There is no core gain, no bonus, no fragment, no unlock (Layer 7 unlocks from "3+ logic cores toggled", which takes 5 seconds). The sync/collapse decisions exist but have no end-state purpose. Meanwhile the legacy relics (Heart of Overdrive etc.) and Logic Cores carry the actual gameplay and reward, making the new Dimension Engine feel like decoration bolted onto a working layer.
+  2284→
+  2285→### Issues Spotted
+  2286→- `src/components/game/modals/SingularityModal.tsx:237-241` — "All 3 dimensions have reached Galactic! Singularity engine complete." banner displays, but there is no corresponding state mutation, currency grant, or unlock trigger anywhere in `store.ts`. `singularityCores` is granted only at prestige from stage reached (store.ts:2461-2465), NOT from the engine completing. The Dimension Engine's completion is purely cosmetic.
+  2287→- `src/game/state/store.ts:1919-1933` — Dimension progress loop is fully passive; no player decision affects accrual beyond the speed setting and the 50-Divinity sync/collapse action. Pop grows linearly with no cap, so by mid-game pop inflates to absurd values with no consequence.
+  2288→- `src/game/state/store.ts:1959` — Rift transfer is fixed at `Math.min(dimensions[fromIdx].resources, 25)` — by mid-game resources are in the hundreds, so 25 is invisible. Rifts feel trivial.
+  2289→- `src/game/data/singularity.ts:97-105` — "Omega Shard" relic is a noob trap. +30% to all four (the soft cap "cannot equip any other relic") is strictly worse than stacking Heart of Overdrive (+75% prod) + Cradle of Vastness (+60% cap) + Echo of the Ancient (+50% EP + 25% prod) + Song of the Swarm (+80% pop). No real reason to ever pick Omega.
+  2290→- `src/game/state/store.ts:1379-1385` — Layer 7 unlock requires `activeCoreCount >= 3` but Logic Cores cost nothing to toggle and have no downside, so a player just toggles 3 of them and immediately unlocks L7. The "Dimension Engine" theme of the layer is irrelevant to progression.
+  2291→- `src/game/data/singularity.ts:123-167` — LOGIC_CORES: `core_eternal`, `core_bulwark`, `core_ascendant` give passive bonuses while active. There's no reason to ever turn these OFF once on, so they're effectively free permanent buffs dressed up as a "choice."
+  2292→- `src/components/game/modals/SingularityModal.tsx:124` — JSX `dimensions.every((d) => !dimensions.some((o) => ...))` is a confusing nested every/some. It works but is hard to read; refactor as a simple "any pair exists" check.
+  2293→
+  2294→### Improvement Ideas (concrete)
+  2295→1. Make Dimension Engine completion grant a tangible reward: +1 Singularity Core per dimension that reaches Galactic, and a bonus +5 Cores if all 3 reach it. Without this, the entire mini-game has no payoff. — Expected impact: gives the player a reason to engage with sync/collapse decisions instead of ignoring them.
+  2296→2. Add an active "Convergence" mechanic: when two dimensions reach the same stage within 10s of each other, trigger a free Sync (no Divinity cost). This rewards active play instead of passively watching bars. — Expected impact: 30-minute passive wait → 5-minute active decision loop.
+  2297→3. Make Rift events impactful and reactive: increase transfer to 10% of sender's resources, and add a "Rift Storm" variant (every 5th rift) that randomly *destroys* resources unless the player clicks a "Seal Rift" button within 5 seconds. — Expected impact: adds tension and a reason to keep the modal open.
+  2298→4. Rework Omega Shard to be a real choice: "+50% to all four, but disables ALL other relic bonuses AND halves production from systems." Make it the "true solo relic" — high ceiling, low floor, not strictly worse than stacking.
+  2299→5. Make Logic Cores consume something (e.g. each active core costs 1 Singularity Core/min, or each active core increases instability/dimension rift rate). Currently they're free toggles with no tradeoff.
+  2300→
+  2301→---
+  2302→
+  2303→## Layer 7 — Omnipotence / Bio-Engineering (Creation Lab)
+  2304→
+  2305→### Core Loop
+  2306→The player picks body type (6 options: predator/grazer/flyer/swimmer/burrower/psionic), diet (4 options), and special ability (6 options) for a creature; computeCreatureStats produces attack/defense/speed. 10% chance of mutation (+50% all stats, +20% instability). Creatures are grouped into Legions (max 5 each) for use in Layer 9 battles. Each active creature adds production/cap/EP/pop bonuses but also accrues genetic instability (rate ~0.3/s base). Peak instability ≥ 80 unlocks Layer 8. At instability = 100, the run collapses.
+  2307→
+  2308→### Fun Assessment
+  2309→😐 OK but flat
+  2310→The creature designer is the right idea — 6 × 4 × 6 = 144 combinations is genuinely interesting on paper. But there's no feedback loop in this layer alone: you design creatures → they sit in a list → their only purpose is to be deployed later in Layer 9. There's no battle in this layer to test designs, no "training" mechanic, no breeding/evolution. The stance system (contained/balanced/embraced) is a 3-way toggle that mathematically has a clear best answer (embraced = 2× bonus for 1.5× instability, which is strictly better than balanced when you're going to prestige soon). The layer's purpose is to feed Layer 9, and that's it.
+  2311→
+  2312→### Issues Spotted
+  2313→- `src/game/state/store.ts:1330-1337` — Instability reaching 100 triggers `triggerPrestige()` but the player loses ALL run progress (including creatures, since `creatures: s.creatures || []` actually preserves them — wait, line 2614 does persist creatures). So the "run collapses" punishment is mild: creatures persist, only instability/peakInstability reset. The collapse is more of a "prestige early" than a true fail state. Players may intentionally push to 100 to refresh instability.
+  2314→- `src/game/data/omnipotence.ts:155` — `BASE_INSTABILITY_RATE = 0.3` per second. With no creatures active, instability still climbs to 80 in 80/0.3 = 267 seconds (~4.5 min). With genetic_stabilizer upgrade (max 4 → 0%), the player can turn off instability entirely. So peak 80 can be reached passively with NO creatures designed, which trivializes the L8 unlock gate.
+  2315→- `src/game/data/omnipotence.ts:239-243` — `legionBonus` gives +1% production per active creature. With 5 creatures × 5 legions = 25 active creatures (assuming max), that's only +25% production in "contained" stance or +50% in "embraced". Compared to relics that give +75% or +150%, the legion bonuses are weak.
+  2316→- `src/game/data/omnipotence.ts:88-95` — Special abilities like "regen" (heals 1 HP/sec in battle) reference HP, but battles in Layer 9 have no player HP. So "regen" does literally nothing in the current implementation.
+  2317→- `src/game/data/omnipotence.ts:142-144` — "Embraced" stance is mathematically dominant: 1.5× instability for 2× bonuses. Since instability can be reset by prestige anyway and creatures persist, there's no real cost. Should be more like 2× instability for 1.5× bonus (an actual tradeoff).
+  2318→- `src/game/state/store.ts:3799` — `mutatedStats` is computed (random pick of attack/defense/speed) but never used — line 3801-3808 multiplies ALL stats by 1.5 regardless of which stat was "rolled". The `mutatedStat` field on the Creature is therefore misleading — it's purely cosmetic.
+  2319→- `src/components/game/modals/OmnipotenceModal.tsx:159` — Default draft is `predator/herbivore/regen` if user hasn't touched it, but the user can click "Create Creature" with default draft and get a generic creature. There's no cost (no Divinity, no resource, no cooldown). So a player can spam-create infinite creatures and the only limit is instability. With genetic_stabilizer maxed, even that limit disappears. This is an exploit: infinite creatures = infinite (small) production bonuses.
+  2320→- `src/game/state/store.ts:3867` — `createLegion` has no cost and no cap. A player can create hundreds of empty legions for free, then delete them. No reason to gate this, but it indicates the layer was designed with no resource friction.
+  2321→
+  2322→### Improvement Ideas (concrete)
+  2323→1. Add a "Skirmish Arena" sub-section in this layer: deploy a legion vs. a procedurally-generated "wild beast" to test designs and earn minor resources. This gives the creature designer an immediate feedback loop instead of waiting until Layer 9. — Expected impact: transforms the layer from "setup for later" to "play now".
+  2324→2. Make creature creation cost a resource (e.g. 5 Divinity + 5 Faith per creature). This forces the player to think about which designs are worth making. Currently free = no friction = no decision.
+  2325→3. Make the "Embraced" stance a real tradeoff: 2× instability rate, 1.5× bonuses (currently 1.5× / 2× — strictly upside). Or give each stance a unique mechanic (contained = creatures don't die on loss; balanced = +1 mutation reroll; embraced = +50% mutation chance).
+  2326→4. Wire the `regen`/`berserk`/`shield`/`swarm`/`venom`/`phase` specials to actually do something in battle. Currently `legionPower()` only sums attack/defense/speed; specials are ignored. Make specials modify damage taken, turn order, DoT, etc. in `attackOldGod`.
+  2327→5. Use `mutatedStat` as designed: only multiply the rolled stat by 1.5 (not all three). This creates variety in mutations and gives the player a reason to reroll for the stat they want.
+  2328→6. Add breeding/fusion: combine two creatures to produce an offspring that inherits one body/diet/special from each parent. Adds depth and player investment in their creature lineup.
+  2329→
+  2330→---
+  2331→
+  2332→## Layer 8 — Divinity (Diplomacy Network)
+  2333→
+  2334→### Core Loop
+  2335→The player has 6 minor god NPCs with starting relationship values (5-30). Click "Negotiate" (+5 relationship, free) or "Trade" (pay god's demand resource, receive reward resource, +3 relationship) to climb toward 60 relationship. At 60+, click "Ally" to form a permanent alliance (passive bonuses + usable in Layer 9 battles). Each god has a personality, power level, and a fixed demand/reward pair. Layer 9 unlocks at 2+ alliances. Amplifiers (max 3, 30 Divinity each) double the Negotiate gain with a specific god.
+  2336→
+  2337→### Fun Assessment
+  2338→😐 OK but flat
+  2339→The diplomacy concept is fine but the loop is "click 8 times to gain relationship" with no decision-making. Negotiate is free and gives +5, so the optimal strategy is to spam Negotiate on every god until 100 relationship, then click Ally. There's no resource scarcity driving trade decisions because Negotiate is free. The 6 gods are functionally identical except for which resources they demand/reward and their power level. Personalities (warm/cunning/mystic/warlike/patient/chaotic) are flavor text with no mechanical effect.
+  2340→
+  2341→### Issues Spotted
+  2342→- `src/game/state/store.ts:3893-3916` — `negotiateWithGod` is free (no resource cost, no cooldown). The optimal strategy is to spam-click Negotiate on every god. With Amplifier (30 Divinity once) + diplomatic_gift maxed (×4) + amplifier_overcharge maxed (×3.5 ampMult), each Negotiate gives 5 × 3.5 × 4 = 70 relationship. A single click maxes a god from 0 → 70 → ally-ready.
+  2343→- `src/game/state/store.ts:3701-3720` — `placeAmplifier` is permanent — once placed, the amplifier doubles Negotiate gains forever. There's no reason to remove an amplifier, so the "removeAmplifier" action is dead UI. Should be consumable or expire.
+  2344→- `src/game/data/divinity_layer.ts:107-110` — Relationship gains are flat (+5/+3) regardless of god personality. A "cunning" god should respond differently than a "warm" god. Personality is currently 100% flavor.
+  2345→- `src/game/data/divinity_layer.ts:163-166` — `isDivinityComplete` requires 2+ alliances. With 6 gods and free Negotiate spam, the player can reach this in <1 minute of clicking. No depth.
+  2346→- `src/game/data/divinity_layer.ts:34-37` — Aurelia trades 20 divinity for 15 faith (net -5). Thane trades 25 faith for 30 divinity (net +5 divinity). With 100 faith you can do 4 Thane trades → 120 divinity, then 6 Aurelia trades → 90 faith + relationship on both sides. This is a near-lossless conversion loop that lets the player arbitrarily convert divinity ↔ faith while farming relationship. The trade values aren't balanced for cyclical exploitation.
+  2347→- `src/components/game/modals/DivinityLayerModal.tsx:251-253` — `void MINOR_GOD_MAP; void isDivinityComplete;` — these are "unused import" hacks. The data file should be cleaned up instead.
+  2348→- `src/game/state/store.ts:3947-3964` — `formAlliance` is instantaneous and free. No "marriage contract" or trade required. Just a button press once relationship ≥ 60.
+  2349→
+  2350→### Improvement Ideas (concrete)
+  2351→1. Add a Negotiate cooldown (e.g. 30s real time per god) OR make Negotiate cost a small faith/prayer resource. This forces the player to choose which gods to invest in rather than spam-clicking all of them.
+  2352→2. Make personalities mechanical: warm gods gain double from Trade; cunning gods occasionally reject Negotiate (wasting the click); warlike gods require an "armed envoy" (deployed legion) to negotiate; chaotic gods give random relationship ±5 each Negotiate.
+  2353→3. Make Amplifiers consumable: each Amplifier lasts for 5 Negotiate uses, then breaks. Forces the player to choose which god to boost and when. Or make them expire after 60s of inactivity on that god.
+  2354→4. Break the divinity↔faith↔prayer trade loop: each god should have a unique trade that doesn't loop back. Aurelia gives faith for divinity (one-way), Thane gives production bonus for faith (one-way), etc. No resource cycle.
+  2355→5. Add god-to-god dynamics: forming an alliance with Veska (chaotic) angers Aurelia (warm) — relationship drops 10. The player has to manage a web of conflicting personalities, not just farm each god independently.
+  2356→6. Add a "Tribute" mechanic: pay a one-time large tribute (100 divinity) to instantly boost relationship to 60 and unlock alliance. Skips the spam-click step.
+  2357→
+  2358→---
+  2359→
+  2360→## Layer 9 — Infinity / Divine War (Old God Boss Battles)
+  2361→
+  2362→### Core Loop
+  2363→Click "Begin Battle" on one of 3 Old Gods. Toggle-deploy legions and call allies. Click "Attack!" — player deals damage to boss HP, boss attacks back. Repeat until boss HP = 0. Each victory grants 1 Divine Fragment (+5% prod, +3% cap, +2% EP, +3% pop, permanent). Defeating all 3 unlocks Layer 10. Bosses have 600/800/1000 HP, weakness to specific body types, and 3 phases (skirmish/siege/final_stand). Temporal Storms (20% chance per attack) randomly halve or accelerate boss damage; Stabilize Time (1 Divine Fragment) ends the storm.
+  2364→
+  2365→### Fun Assessment
+  2366→🪲 Boring or broken
+  2367→This is the most broken layer of the five. The "battle" is unwinnable to lose: there is no player HP, no fail state, no turn limit, and no resource cost to attack. The boss's "retaliates for X damage" log entry is purely cosmetic — it subtracts nothing from anything. The player can just click "Attack!" forever until the boss dies. The weakness system is also broken (see Issues). The 3 "phases" are cosmetic labels — they don't change mechanics. Temporal Storms are the only RNG but their effect is also cosmetic since player can't lose.
+  2368→
+  2369→### Issues Spotted
+  2370→- `src/game/state/store.ts:4076` — **Critical bug**: `const weakToBodyType = god.weakness === "predator" || god.weakness === "flyer" || god.weakness === "burrower";` — this checks whether the god's static weakness matches one of those three body types. Since all 3 Old Gods have weakness = predator OR flyer OR burrower, this is ALWAYS true. So the +50% damage bonus ALWAYS applies to every legion regardless of body type composition. The intended logic should check whether any deployed creature has bodyType === god.weakness. The weakness system is broken.
+  2371→- `src/game/state/store.ts:4082-4096` — `bossDmg` is computed and logged but never applied to anything. There's no player HP, no legion HP, no creature HP, no resource loss. The boss "attack" is a cosmetic log entry. **The player cannot lose any battle.**
+  2372→- `src/game/data/infinity.ts:90-100` — `BattleState` has no `playerHp` field. The interface is designed as if battles were a damage race with no fail state.
+  2373→- `src/game/data/infinity.ts:179-183` — `phaseForHp` returns "final_stand" only when `hp <= 0` (since phases[2].hpThreshold is always 0). So "final_stand" coincides with victory — the phase label is dead. Phases should change mechanics (e.g. boss uses different attack pattern in Siege vs Skirmish).
+  2374→- `src/game/state/store.ts:4010-4027` — `deployLegionToBattle` toggles a legion in/out freely with no turn cost or commitment. A legion can be deployed for one attack and instantly recalled. No strategic depth.
+  2375→- `src/game/state/store.ts:4029-4048` — `callAllyToBattle` same issue — toggled freely, ally damage applies to all attacks while called. No per-ally cooldown.
+  2376→- `src/game/state/store.ts:4050-4127` — `attackOldGod` has no turn limit, no resource cost, no risk. Pure click-until-dead. The boss never heals, never enrages, never adapts.
+  2377→- `src/game/data/infinity.ts:151-166` — `computePlayerAttack` sums all deployed legion attack values. With max creatures (25 total) at avg ~30 attack each = 750 attack per turn. The weakest boss (Mor'lok, 600 HP) dies in 1 hit. Even Thalos (1000 HP) dies in 2 turns. There's no reason to deploy less than all legions + all allies every time.
+  2378→- `src/game/state/store.ts:4119` — `set({ oldGodBattles: battles, temporalStorms })` — but `temporalStorms[oldGodId] = true` is set inside the function and only set to false on win (line 4107) or via Stabilize Time (line 3743). If the player wins a battle WITHOUT a storm, no issue. If the player abandons a battle mid-storm, the storm persists forever in state (until stabilizeTime is called or the battle is won). Minor leak.
+  2379→- `src/components/game/modals/InfinityModal.tsx:96` — Default `battle` object includes empty `log: []` but the line is wrapped weirdly — it's a one-liner fallback object, hard to read.
+  2380→- `src/components/game/modals/InfinityModal.tsx:304-307` — `void OLD_GOD_MAP; void MINOR_GOD_MAP; void CREATURE_BODY_TYPE_MAP; void isInfinityComplete;` — unused import hacks. Should clean up imports.
+  2381→- `src/game/data/infinity.ts:42, 56, 71` — Each Old God has a different weakness (predator/flyer/burrower) — this is intended to reward building diverse legions. But the bug at store.ts:4076 negates this design entirely.
+  2382→
+  2383→### Improvement Ideas (concrete)
+  2384→1. **CRITICAL FIX**: Change `weakToBodyType` to actually check the deployed legions' body types: `const weakToBodyType = deployedPowers.some(lp => lp.bodyType === god.weakness);` — requires passing bodyType into `deployedPowers` mapping. Without this fix, the entire creature-design layer (L7) has no payoff in L9.
+  2385→2. **Add player HP / fail state**: Give each battle a `playerHp` (e.g. 200) and subtract boss damage. If `playerHp <= 0`, battle is "lost" — boss HP resets, no fragment granted, must restart. This single change makes the layer actually a game.
+  2386→3. **Make phases mechanical**: Phase 1 (Skirmish) — boss deals normal damage. Phase 2 (Siege) — boss gains +50% attack. Phase 3 (Final Stand) — boss gains +100% attack but takes +50% damage. Force the player to manage the phase transitions.
+  2387→4. **Make attacks cost resources**: Each "Attack!" costs 10 Divinity (or 1 creature sacrifice, or 1 faith per ally called). Without resource friction, the player has no reason NOT to attack every tick.
+  2388→5. **Add boss abilities**: Each Old God should have a unique special attack (Mor'lok: "Devour" — removes a creature from a deployed legion permanently; Zephira: "Scream" — stuns all legions for 2 turns; Thalos: "Rootbind" — halves player damage for 1 turn). Currently bosses are identical except HP/attack values.
+  2389→6. **Cap simultaneous deployments**: Max 2 legions + 2 allies per battle. Forces the player to choose the right composition for each boss weakness instead of "send everything".
+  2390→
+  2391→---
+  2392→
+  2393→## Layer 10 — Eternity / Ascension (Universe Creation)
+  2394→
+  2395→### Core Loop
+  2396→The player defines 8 universe rules (Physics, Biology, Magic, Time, Space, Consciousness, Death, Rebirth), each with 2-3 options granting bonuses. Forbidden Words (3 options across slots) give massive bonuses but add +1 Paradox; reaching paradox threshold (3, or 5 with paradox_insight upgrade) resets all rules. Player can also toggle which allied gods to keep in the new pantheon. Choosing "Preserve Universe" enters gallery mode (continue indefinitely). Choosing "Reset Universe" requires all 8 slots filled and triggers a fresh run with +1 Cosmic Boon stack (+10% production permanent).
+  2397→
+  2398→### Fun Assessment
+  2399→😐 OK but flat
+  2400→The 8-slot rule picker is a nice idea — feels like defining a custom game world — but the choices are mostly "+X% production / +Y% cap / +Z% EP" with no narrative consequence. The Forbidden Word system is the only interesting decision (do I risk +1 Paradox for +80% production?), but with paradox_insight maxed (threshold 5), the player can pick 4 forbidden words safely — net gain is huge. The "Reset Universe" ending is a soft prestige that grants +10% production per stack, which is much weaker than the per-run bonuses from earlier layers, so there's little reason to ever reset vs preserve.
+  2401→
+  2402→### Issues Spotted
+  2403→- `src/game/data/eternity.ts:59, 81, 93` — Forbidden Words give +80% / +100% / +90% production respectively. With paradox threshold 5 (paradox_insight maxed), a player can take all 3 forbidden words (+270% production) plus 2 more from other forbidden options, no downside. Massive exploit relative to non-forbidden options which cap at +35-40%.
+  2404→- `src/game/state/store.ts:4187-4193` — Paradox overload resets `universeRules` to all null but does NOT reset `universeParadox` to 0... wait, it does: line 4190 sets `universeParadox: 0`. OK that's correct. But there's no penalty beyond losing progress — no EP loss, no fragment loss, no prestige penalty. The player can re-fill all 8 slots in 30 seconds.
+  2405→- `src/game/state/store.ts:4145-4166` — `chooseEnding("reset")` triggers `triggerPrestige()` which resets the run. But Cosmic Boon is +10% production per stack — extremely weak compared to Layer 9's Divine Fragments (+5% each, you get 3 = +15% from a single Layer 9 run). Why would a player ever Reset when Layer 9 gives more permanent bonus per run?
+  2406→- `src/game/data/eternity.ts:233-235` — `cosmicBoonBonus(stacks)` returns `stacks * 0.10` — only production, not cap/EP/pop. The UI calls this "production" boon but it's narrower than other layer bonuses.
+  2407→- `src/game/state/store.ts:4199-4218` — `toggleKeptGod` is free, no cap on kept gods. The player can keep all 6 allied gods for +30% production / +18% cap / +24% EP / +30% pop. With no downside (the description says "absorbed" gods bring peace, but there's no mechanical effect of absorbing).
+  2408→- `src/game/data/eternity.ts:165` — "Reset Universe" requires all 8 slots filled. With 8 slots and the player wanting to maximize bonuses, they'll fill all 8 anyway. The "Preserve" option is a worse choice (no Cosmic Boon stack) unless the player wants to keep stacking universe rules infinitely. But there's no UI for stacking additional rules after Preserve.
+  2409→- `src/game/data/eternity.ts:142-146` — `EndingChoice` descriptions: "Preserve" says "watch your universe flourish indefinitely". But after Preserve, what does the player DO? There's no end-game content. The layer is essentially "click button to end the run".
+  2410→- `src/components/game/modals/EternityModal.tsx:208-209` — The disabled logic for the Reset button: `disabled = !!chosenEnding || (e.id === "reset" && !canReset)` — but once an ending is chosen, the entire layer is "complete" and there's no way to undo. A mis-click means a permanent choice with no confirmation dialog.
+  2411→- `src/game/state/store.ts:4168-4197` — `setUniverseRule` doesn't check whether a Forbidden option would push paradox to threshold BEFORE applying — it applies, then checks, then resets. So a player who clicks a Forbidden option that pushes paradox to threshold sees the rule apply momentarily, then everything wipes. Should check first and refuse the click.
+  2412→
+  2413→### Improvement Ideas (concrete)
+  2414→1. Scale Forbidden Words down to ~+50% (not +80-100%) so they're tempting but not dominant. With current values, a player who skips Forbidden Words is mathematically inferior — defeats the "choice" framing.
+  2415→2. Add a confirmation modal for `chooseEnding` — currently a single click permanently ends the layer. Add a "Are you sure? This cannot be undone." dialog.
+  2416→3. Make "absorbed" gods do something: each absorbed (not kept) god grants a one-time bonus to the new universe (e.g. +1 starting pop per absorbed god, +10 starting resources per absorbed god). Gives the player a reason to consider absorbing instead of keeping all.
+  2417→4. Add post-Preserve content: a "Gallery Mode" with end-game challenges, cosmetic unlocks, or an endless wave of "post-ascension events". Currently Preserve is a dead-end button.
+  2418→5. Make Cosmic Boon more impactful: +5% to ALL FOUR (production, cap, EP, pop) per stack, not just production. This makes Reset competitive with simply grinding Layer 9 fragments again.
+  2419→6. Add a "Universe Seed" feature: the chosen rules generate a unique seed code (e.g. "PHYS-FAST+MAG-HIGH+TIME-LOOP...") that the player can share or use to start a new run with those rules as base bonuses. Adds replayability and shareability.
+  2420→7. Add a "Paradox Storm" visual effect when paradox ≥ 2: reality visually glitches, screen flickers, rules randomly toggle. Currently the only feedback is a small badge. Make the stakes feel real.
+  2421→
+  2422→---
+  2423→
+  2424→## Cross-Layer Bugs & Systemic Issues
+  2425→
+  2426→- **`store.ts:1330-1337`** — Instability collapse (L7) calls `triggerPrestige()` but creatures persist across the reset (line 2614). So the "fail state" is purely cosmetic — you keep your designed creatures and just lose progress to the next layer. Make it actually cost something (e.g. 1 random creature dies, or 50% of creatures go rogue and are removed).
+  2427→- **`store.ts:4655-4656`** — Migration code initializes instability/peakInstability but doesn't reset them on save migration from older versions. If an old save had these fields as null/undefined, they correctly default to 0. OK.
+  2428→- **Singularity dimension engine** (L6) — has zero reward integration with the rest of the game. The `singularityCores` currency is granted on prestige based on stage reached, not on dimension engine progress. The Dimension Engine is a self-contained mini-game that doesn't affect anything else.
+  2429→- **Weakness system in L9** is broken (see L9 issues #1). This is the most impactful cross-layer bug because it invalidates the entire creature-design system in L7.
+  2430→- **`InfinityModal.tsx:96`** — Default battle fallback object is created inline on each render of each god card. This is fine for performance but makes the modal logic brittle — if the BattleState interface changes, all 3 inline defaults need updating.
+  2431→- **No save migration for L7-10 fields if they're missing entirely** — `store.ts:4651+` handles v5 migration but I don't see guards for `oldGodBattles`, `universeRules`, `temporalStorms`, `amplifiers`, `universeParadox`. If an old save loads without these, they should default to empty objects/arrays. Worth verifying.
+  2432→- **Cosmetic dead code**: multiple modals have `void SOME_IMPORT;` lines (DivinityModal:251-253, InfinityModal:304-307, EternityModal:254-256) — these are linter hacks. The imports should either be removed or actually used.
+  2433→
+  2434→## Overall Recommendation
+  2435→
+  2436→**Priority 1 (must-fix bugs):**
+  2437→1. L9 weakness system broken (`store.ts:4076`) — fixes the L7→L9 payoff chain.
+  2438→2. L9 has no fail state — boss damage is cosmetic. Without this, L9 is not a game.
+  2439→3. L6 Dimension Engine completion has no reward — entire L6 mini-game is decorative.
+  2440→
+  2441→**Priority 2 (high-impact improvements):**
+  2442→4. L7 creature creation needs a resource cost (currently free infinite creatures = exploit).
+  2443→5. L8 Negotiate needs a cooldown or cost (currently free spam).
+  2444→6. L10 Forbidden Words need rebalancing (currently strictly dominant with paradox_insight maxed).
+  2445→7. L7 specials (regen/berserk/etc.) need to do something in L9 battles.
+  2446→
+  2447→**Priority 3 (polish):**
+  2448→8. Remove `void SOME_IMPORT;` linter hacks across modals.
+  2449→9. Add confirmation dialog for L10 `chooseEnding` (irreversible).
+  2450→10. Add a L7 skirmish arena so the creature designer has immediate feedback (currently waits until L9).
+  2451→
+  2452→The Layers 6-10 arc has good thematic bones (dimension hopping → bio-engineering → diplomacy → divine war → universe creation) but the implementation is heavy on UI surfaces and light on mechanics with real tradeoffs. The biggest risk is that L9 (the climax of the entire 10-layer game) is currently unloseable, which undermines the entire L6-L9 progression chain.
+  2453→
+  2454→---
+  2455→Task ID: REVIEW-BASE
+  2456→Agent: general-purpose (code review subagent)
+  2457→Task: Review the BASE GAME (7 stages Cell → Galactic + prestige shop + systems/tech economy) and assess fun, clarity, balance, bugs. Read-only review — no code changes.
+  2458→
+  2459→Work Log:
+  2460→Read stages.ts, resources.ts, actions.ts, systems.ts, techs.ts, upgrades.ts, activeAbilities.ts, achievements.ts, archetypes.ts, events.ts; UI: StagePanel.tsx, EvolveModal.tsx, StageTransition.tsx, SystemsTab.tsx, TechTab.tsx, ActionsTab.tsx, ProductionTab.tsx, ShopModal.tsx, AchievementsTab.tsx, PrestigeTab.tsx (preview); store.ts tick block (lines 486-1000+), techMultiplier (4787-4815), evolveStage (2291-2409), triggerPrestige (2411-2570), buySystem (2101-2197), buyTech (2216-2270), isSystemCapped/isActionCapped (4906-4933), initialRunState (260-281). Verified counts: 39 systems, 30 techs, 35 story entries.
+  2461→
+  2462→## Base Game Loop (Cell → Galactic)
+  2463→
+  2464→### Core Loop Summary
+  2465→The base game is a 7-stage linear progression where each stage follows the same 3-requirement gate: reach `minPopulation`, build `minSystems`, research `minTech`, then click Evolve. Inside each stage, the player clicks manual actions to bootstrap resources, buys systems for passive production, researches techs for additive +% bonuses, and waits for population to grow on a continuous curve. There are no branching paths inside a stage — every system/tech can be bought independently and the optimal order is always "cheapest first." The only meaningful fork is the archetype drift system, which locks at Creature→Tribal.
+  2466→
+  2467→### Fun Assessment
+  2468→😐 **OK but flat** — The first playthrough has narrative momentum (great story blurbs per stage, nice visual transitions, archetype drift adds identity), but the actual moment-to-moment gameplay is "buy cheapest thing, wait, repeat." Stage 1-2 have a satisfying bootstrap arc. By stage 3-4 the loop is mechanical. Stages 5-7 are a long idle grind with no new decision points. The dev tacitly admits this: after first Galactic win, all three auto-buyers (systems, techs, evolve) become **FREE**, the game prints "Auto-running — base game progresses on its own," and prestige speed multiplier compounds (`1 + totalRuns * 0.5`). Translation: the base game is explicitly designed to be skipped on replays, which is the design tell that the loop itself isn't intrinsically fun.
+  2469→
+  2470→### Stage-by-Stage Feel
+  2471→- **Cell** 🪲 **Boring/broken**: Starting pop is 8, evolveRequires.minPopulation is also 8 — the pop requirement is decorative. Cell is essentially "buy 4 systems + 2 techs." ATP gets a free 0.5/s drip making all ATP costs trivial. Manual actions have 0.1-0.4s cooldowns so the player spams clicks for ~2 min then evolves. Story is nice, gameplay is thin.
+  2472→- **Creature** 😐 **OK**: First time the player encounters the archetype drift system and real population growth. Pop 30 means ~6-8 min of waiting at base rate. The "obscure in game time" arc + 2-3 manual actions + 5-6 systems is the peak of the base loop.
+  2473→- **Tribal** 😐 **OK but repetitive**: Same loop as Creature with different resources (wood/lumber/stone/clay). 10 systems + 4 techs requirement. The lineage locks at end of stage — by far the most important decision in the entire base game happens HERE.
+  2474→- **Civilization** 😐 **Flat**: Identical loop with production/gold/science. The happiness mechanic becomes permanent +30% pop growth (no decay) once you build a temple or two — at that point happiness is solved forever.
+  2475→- **Empire** 🪲 **Boring**: Only 4 systems + 3 techs (smallest stage by content), but minPopulation 600 means long idle. Influence gating is artificial (need 5 influence to buy provincial_capital, which produces influence — chicken/egg broken only by manual `decree` action). Bureaucracy → cloning_vats is the only "deep" tech chain.
+  2476→- **Solar** 🪲 **Boring/balance-odd**: minSystems DROPS from 14 (Empire) to 12 (Solar). Colony_ship has maxOwned:12 (why 12?) but produces 3 different resources. Orbital_habitats cost 200 energy + 150 alloys for +0.3 pop/s — same scale as brood_chamber at 40 organic + 20 proteins for +0.08 pop/s. Cost scaling is wildly inconsistent across stages.
+  2477→- **Galactic** 🪲 **Auto-piloted away**: The ascension_gate and genetic_synthesizer are interesting, but the auto-evolver (free after first prestige) forces `triggerPrestige()` the moment pop 2000 + 12 systems + 10 techs are met. There's no breathing room to explore galactic content (data_sanctum, ascension_theory) before being kicked into prestige.
+  2478→
+  2479→### Issues Spotted
+  2480→- **`stages.ts:13`** — Cell `minPopulation: 8` equals starting pop (8). Population gate is a no-op for the first stage. Should be 10 or 12.
+  2481→- **`stages.ts:98`** — Solar `minSystems: 12` is LOWER than Empire's 14. Either an oversight or an unstated "fewer but bigger" intention. Either way it feels regressive.
+  2482→- **`store.ts:696-698`** — Cell-only `+0.5 ATP/s` drip is a hardcoded band-aid for cell balance. Means the nucleus (5 ATP cost) is effectively free (10s regen). Should be replaced with proper ATP production from a cheap starter system.
+  2483→- **`store.ts:703-704`** — Happiness formula: `popGrowthRate *= (1 + (happiness - 40) / 200)`. Happiness starts at 75 and never decays. Once happiness hits 100 (buy 1 temple = +0.5/s, capped in 50s), the player has permanent +30% pop growth. No interesting happiness management.
+  2484→- **`store.ts:769, 826, 882-883`** — After `galacticWins >= 1`, all three auto-buyers (`auto_system_buyer`, `auto_tech_buyer`, `auto_evolver`) become FREE without needing the shop upgrade. EP spent on these upgrades pre-first-prestige is permanently wasted. **The shop UI does NOT warn the player.**
+  2485→- **`store.ts:884-905`** — Auto-evolver at galactic uses `threshold = 1.0` and fires `setTimeout(() => get().evolveStage(), 0)`, which calls `triggerPrestige()`. The player CANNOT extend a galactic run to explore content (genetic_synthesizer, ascension_gate, ascension_theory) before being auto-prestiged. Should require manual confirmation, or at least allow "delay prestige" toggle.
+  2486→- **`store.ts:494`** — Prestige speed multiplier is `1 + totalRuns * 0.5` — at 10 runs that's 6× speed. Combined with `temporal_acceleration` (max 6×) and `universal_speed` (max 2×) and `temporal_reserves` offline bank, late game runs complete in seconds. The StagePanel badge claims "Auto-running — base game progresses on its own" but the base game only auto-buys systems/techs/evolve; layer currencies, events, and trials still require manual play. Badge is misleading.
+  2487→- **`systems.ts`** — Pop-growth systems (mitochondrial_bloom, brood_chamber, hearth_circle, sanitation_grid, fertility_program, orbital_habitats, genetic_synthesizer) all have `maxOwned: 25` with `costGrowth: 1.5-1.8`. The 25th purchase costs 1.5^24 ≈ 16,834× base. Effectively unreachable past 10-15. The maxOwned:25 is decorative.
+  2488→- **`techs.ts:121, 180, 238, 274, 310, 357`** — Pop-growth techs (mating_seasons, midwifery, public_health, cloning_vats, generation_ships, cosmic_nursery) cost 150-1500 of a SINGLE resource. Compared to typical per-stage resource production of ~5-50/s, this is 30s-5min of dedicated hoarding PER TECH. Brutal mid-stage wall. Cost should be split across 2-3 resources.
+  2489→- **`StagePanel.tsx:34`** — `score = computeScore(...)` is calculated but **never displayed**. Dead code.
+  2490→- **`StagePanel.tsx:47`** — `const archInsight = true;` hardcoded with comment "always visible — players should see their drift building." Looks like an unfinished gating feature.
+  2491→- **`EvolveModal.tsx:38`** — `score = computeScore(...)` again computed and never used. Dead code (also a duplicate of the StagePanel version).
+  2492→- **`StageTransition.tsx:18-27`** — Two `setTimeout(..., 0)` calls followed by `clearTimeout` in cleanup, with the same 0ms delay — redundant and racy. Could be simplified to a single state set + `requestAnimationFrame`.
+  2493→- **`actions.ts:13`** — `absorb_glucose` has `cooldown: 0.1` — that's 10 clicks/sec. Most actions have 0.1-1.0s cooldowns. The Actions tab is a click-spam minigame that becomes obsolete after buying 3-4 systems (~5 min). Then the tab is dead weight until L3+ layer-separation hides it entirely.
+  2494→- **`resources.ts:75`** — `happiness` cap is 100 but it's described as a "0-100 mood meter, not a stockpile." Then it's stored as a primary resource with capacity 100, produced by systems (totem +0.2/s, temple +0.5/s) like any other resource. The dual identity (resource vs. meter) is muddled.
+  2495→- **`store.ts:2316-2323`** — `stageStartBonus` is hardcoded per stage (creature gets 15 food + 10 water + 5 materials, etc.). This is invisible to the player. Should be surfaced in the EvolveModal as "starting resources on evolve."
+  2496→- **`achievements.ts:185-186`** — `discover_all_systems` checks `>= 32` and desc says "Build all 32 systems." Actual system count is **39**. Achievement fires at 82% completion. **Bug.**
+  2497→- **`achievements.ts:200-201`** — `research_all_techs` checks `>= 23` and desc says "Research all 23 technologies." Actual tech count is **30**. Achievement fires at 77% completion. **Bug.**
+  2498→- **`upgrades.ts:42-49`** — `auto_system_buyer` (8 EP) becomes free after galacticWins≥1. No refund, no warning. Same for `auto_tech_buyer` (10 EP) and `auto_evolver` (15 EP). Combined 33 EP wasted if bought before first prestige.
+  2499→- **`techs.ts`** — Tech branches ("Survival", "Industry", "Mind", "Conflict", "Civic", "Cosmic", "Transcendent", "Astro", "Society", "Behavior", "Lineage", "Economy", "Administration", "Energy", "Data") are flavor labels with no mutual exclusivity. Player can (and should) research everything. The "branch" concept promises choice that doesn't exist.
+  2500→- **`store.ts:691`** — Cap clamp is `if (resources[r] > cap) resources[r] = cap`. Means overflow is silently discarded. ProductionTab.tsx:87 shows "cap in Xm" but the player has no in-game tool to raise caps mid-stage except building more storage systems. Could be more interactive.
+  2501→
+  2502→### Improvement Ideas (concrete)
+  2503→1. **Make Cell require pop 12-15** (not 8) — fix stages.ts:13. Forces the player to actually engage with the pop-growth loop in stage 1. — Impact: makes Cell ~5-8 min instead of 1-3 min, gives new players time to learn the loop.
+  2504→2. **Add a "production tree" specialization choice at each stage** (e.g., Cell: "Photosynthetic" vs "Heterotrophic" vs "Chemoautotrophic" — mutually exclusive, changes which resources each system produces). Right now all 7 systems in a stage are buyable. Pick 1 of 3 specializations, lock the other 2 (or make them cost 3×). — Impact: gives the player a real fork every stage, multiplies replay value.
+  2505→3. **Replace happiness with a "morale" event system** — happiness should oscillate based on events (plague, famine, victory) and require active response, not be a one-time-solved +30% buff. Add a "resolve unrest" action or "festival" cooldown. — Impact: makes happiness a living mechanic instead of solved-forever.
+  2506→4. **Refund or convert auto-buyer upgrades after first prestige** — when player first prestiges, convert `auto_system_buyer`/`auto_tech_buyer`/`auto_evolver` levels into an equivalent EP value (e.g., 50% refund) since they're free at galacticWins≥1. Show a warning in the shop: "⚠ This upgrade is auto-granted after your first Galactic Ascension." — Impact: prevents the most common "wasted EP" trap for new players.
+  2507→5. **Add a "delayed prestige" toggle for Galactic stage** — auto-evolver should NOT fire at galactic; instead show a "Ready to Ascend" prompt that the player must click. Lets them explore galactic content (ascension_gate, genetic_synthesizer, ascension_theory). — Impact: turns Galactic from "auto-kicked" into a deliberate end-game stage.
+  2508→6. **Rebalance pop-growth tech costs** — split each 150-1500 single-resource cost into 2-3 resources at 1/2 to 1/3 the amount each. e.g., `mating_seasons: { knowledge: 75, food: 50, organic_matter: 25 }` instead of `{ knowledge: 150 }`. — Impact: removes the 30s-5min "hoard one resource" walls; makes tech purchases feel like an economy decision, not a wait.
+  2509→7. **Make tech branches actually exclusive at branch tier-2** — pick one of {Survival, Lineage, Conflict} to research into tier 2; lock the others. Or: researching one branch increases the cost of the others (soft exclusivity). — Impact: makes tech tree into a real choice instead of "research everything."
+  2510→8. **Add stage-specific goals/mini-games** — e.g., Creature stage has a "predator evasion" mini-event every 90s where you choose to fight/flee/hide for real cost/benefit. Solar stage has a "stellar anomaly" decision. Right now all stages feel like the same loop with different resources. — Impact: gives each stage a unique identity and moment of decision.
+  2511→9. **Surface the starting-resources bonus in EvolveModal** — show "On evolve you'll receive: +15 food, +10 water, +5 materials" so the player understands the transition isn't a hard reset. — Impact: removes confusion about why evolve is "safe."
+  2512→10. **Fix the achievement count bugs** (32→39 systems, 23→30 techs). Trivial. — Impact: players currently get "complete all" achievements at 77-82% completion.
+  2513→11. **Remove or repurpose dead `score` computation** in StagePanel.tsx and EvolveModal.tsx — either display it (e.g., "Run score: 1,234") or delete it. — Impact: code clarity.
+  2514→12. **Add a "production chain" for at least one resource per stage** — e.g., Tribal: wood → lumber → furniture (a 3-step chain where each step needs the previous). Currently every resource is produced independently. Chains add a planning dimension. — Impact: adds spatial/economic reasoning to the build order.
+  2515→
+  2516→## Shop & Upgrades
+  2517→
+  2518→### Core Loop Summary
+  2519→The shop has ~30 upgrades across 6 categories (Automation, Economy, Acceleration, Prestige, Universal, Layer). Most are pure +X% multipliers (inherited_efficiency +15%/lvl, frugality -4%/lvl, expansive_vaults +20%/lvl, deep_memory +5%/lvl, cosmic_understanding +25%/lvl, universal_boost +5%/lvl, universal_speed +10%/lvl, etc.). The Automation category has 6 upgrades but 3 of them become free after first prestige. The Layer category has 18 new layer-specific upgrades (good — these have real mechanical hooks). Universal is purchased with Prestige Points (PP), the rest with Evolution Points (EP).
+  2520→
+  2521→### Fun Assessment
+  2522→😐 **OK but flat** — Most upgrades are the textbook "boring +X% multiplier" pattern that incremental-game design has moved past. There's no upgrade that fundamentally changes how you play (e.g., "your mitochondria now consume lipids instead of glucose" or "techs now cost population instead of resources"). The 18 layer-specific upgrades ARE better — they hook into real layer mechanics (rift_redirect, prophet_inspiration, paradox_insight). But for the base game's 12 non-layer upgrades, picking "Frugality lvl 5 vs Inherited Efficiency lvl 5" is a math problem, not a playstyle decision.
+  2523→
+  2524→### Stage-by-Stage Feel
+  2525→(N/A — shop is per-run, not per-stage. Assessing by category instead.)
+  2526→- **Automation** 🪲 — 3 of 6 upgrades become free post-first-prestige. The remaining 3 (auto_balancer, temporal_reserves, inherited_efficiency) are mostly fine but auto_balancer's behavior is invisible — it's described as "idles systems at capacity" but the player can't tell if it's working.
+  2527→- **Economy** 😐 — Pure multipliers. Warm Start and Ancestral Bounty are "skip the boring early game" purchases. Frugality and Expansive Vaults are math upgrades with no flavor.
+  2528→- **Acceleration** 🪲 — Single upgrade (temporal_acceleration). A category with one item is a placeholder. Should be merged into Prestige or expanded with more time-manipulation options.
+  2529→- **Prestige** 😐 — Evolutionary Momentum (-5%/lvl evolve reqs) is the most impactful base-game upgrade. Stage Compression is good design (lets players skip mastered stages). Deep Memory and Cosmic Understanding are meta-grind multipliers. Archetype Insight is a content unlock (rare archetypes).
+  2530→- **Universal** 😐 — Two +X% upgrades bought with PP. Functional but bland.
+  2531→- **Layer** 🔥 — 18 upgrades with real mechanical hooks (foresight_discount actually changes node costs; rift_redirect actually changes rift behavior; prophet_inspiration actually expands conversion radius). **This is the only category with interesting upgrades.** The pattern: take a layer mechanic and offer a tiered modifier to it. Should be the model for the rest of the shop.
+  2532→
+  2533→### Issues Spotted
+  2534→- **`upgrades.ts:8-70` (Automation)** — 3 upgrades (`auto_system_buyer`, `auto_tech_buyer`, `auto_evolver`) become free at `galacticWins >= 1`. Shop UI doesn't warn. Wasted EP trap.
+  2535→- **`upgrades.ts:128-137` (Acceleration)** — Single upgrade in its own category. Either expand to 3-4 or merge into Prestige.
+  2536→- **`upgrades.ts:73-124` (Economy)** — All 5 are +X% or +N flat. No "changes how you play" upgrades. Worst offender: `expansive_vaults` is +20% cap/level — pure math, no decision.
+  2537→- **`upgrades.ts:140-203` (Prestige)** — Mostly fine, but `archetype_insight`'s effect type is `auto_mult` with value 0.0 (line 158) — it's a content unlock masquerading as a multiplier. Effect type system is leaking.
+  2538→- **`ShopModal.tsx:54-60`** — `isVisible` filter hides upgrades with `requiresWins > galacticWins + 3`. Means a player with 0 wins sees requiresWins:2 upgrades but not requiresWins:4+. Good. But it doesn't hide upgrades whose effects are obsolete (e.g., auto-buyers after first prestige). Should add an `isVisible` rule: hide `auto_system_buyer`/`auto_tech_buyer`/`auto_evolver` when `galacticWins >= 1`.
+  2539→- **`ShopModal.tsx:88`** — Categories list has "Layer-Specific" with subtitle "tied to a specific prestige layer" but no equivalent subtitle explaining Automation/Economy/etc. Inconsistent.
+  2540→- **`upgrades.ts:21-22`** — `auto_balancer` description: "Systems auto-pause when their output is at capacity, and auto-resume when headroom returns." But the tick code (store.ts:658-667) already idles capped systems WITHOUT requiring this upgrade — `outputsCapped` check happens unconditionally. So auto_balancer does nothing that the base game doesn't already do. **Bug or misleading description.**
+  2541→- **`upgrades.ts:153-159`** — `archetype_insight`'s effect type is `auto_mult` with value 0.0 — it's a content gate, not a multiplier. Effect type system needs a "content_unlock" type.
+  2542→- **`upgrades.ts:43, 54, 64`** — `auto_system_buyer`, `auto_tech_buyer`, `auto_evolver` all have `category: "automation"` and `effect.type` matching their id. Good. But `auto_balancer` uses `effect.type: "auto_mult"` (line 27) — wrong type for an automation toggle. Type system is inconsistent.
+  2543→
+  2544→### Improvement Ideas (concrete)
+  2545→1. **Add 5-10 "playstyle-changing" upgrades** — e.g., "Photosynthetic Shift: mitochondria produce glucose instead of ATP" or "Carnivore Lineage: hunting actions yield 2× but cost happiness." These change how you play, not just how fast. — Impact: makes the shop into a build-craft system instead of a +X% checklist.
+  2546→2. **Add a "warning: obsolete" badge** for auto-buyer upgrades when `galacticWins >= 1` — or convert them. — Impact: prevents the most common EP-waste trap.
+  2547→3. **Merge Acceleration category into Prestige** or expand it with: "Temporal Storage (offline cap +X hours)" + "Time Dilation (slower decay on temp buffs)" + "Echo Chamber (active abilities recharge 20% faster)". — Impact: makes the category meaningful.
+  2548→4. **Audit effect types** — `auto_balancer` should have effect type `auto_balancer`, not `auto_mult`. `archetype_insight` should have effect type `content_unlock`. — Impact: code clarity; makes the effect system self-documenting.
+  2549→5. **Add per-stage shop items** (not just per-layer) — e.g., "Cell: Membrane Specialization — pick one of 3 cell specializations at run start." Tied to stage, not layer. — Impact: gives the shop early-game relevance (currently the shop is irrelevant until first prestige).
+  2550→6. **Display "what this upgrade does in the tick"** — e.g., for `frugality`, show "Applied as -X% to system costs at line 641 of tick." For technical players this is gold; for casuals, hide behind a "Show mechanics" toggle. — Impact: transparency for power users.
+  2551→
+  2552→## Active Abilities + Achievements + Archetypes + Events
+  2553→
+  2554→### Core Loop Summary
+  2555→Active abilities: 6 (one per layer L1-L6), all instant/temp-buff on cooldowns. Achievements: 26, mostly "do X N times" with passive +0.5-3% production bonuses. Archetypes: 13 (9 basic + 4 rare), drifting via systems/techs/events, locked at Creature→Tribal. Events: 12 binary-choice events firing on 90s cooldowns. Together these add texture to the base loop but don't fundamentally change it.
+  2556→
+  2557→### Fun Assessment
+  2558→😐 **OK but underused** — Active abilities are good in principle (Inspire is great for early pop, Surge is great for mid-game pushes) but L7-L10 have NO abilities (4 missing). Achievements are pure checklist — no "this run, try X" active goals. Archetypes are mostly aesthetic — they don't change how you play, just which +X% bonuses you get. Events are too binary and too rare to matter; the "right choice" is usually obvious from the resource numbers alone.
+  2559→
+  2560→### Issues Spotted
+  2561→- **`activeAbilities.ts`** — Only 6 abilities (L1-L6). L7 (omnipotence), L8 (divinity), L9 (infinity), L10 (eternity) have NO active ability. Gap.
+  2562→- **`activeAbilities.ts:33-40`** — L1 "Inspire" gives +5 pop on 60s cd. Good early, useless at pop 1000+ in galactic. Should scale with stage or current pop (e.g., +1% current pop).
+  2563→- **`activeAbilities.ts:69-76`** — L5 "Smite Heretics" (-25 heresy, 45s cd) is only useful during apotheosis layer. If the player isn't actively in apotheosis, the ability button is dead weight. No contextual disabling.
+  2564→- **`activeAbilities.ts:60-67`** — L4 "Seed Bloom" (+1 Genesis Seed, 120s cd) is only useful during genesis layer. Same issue.
+  2565→- **`achievements.ts:185-186`** — `discover_all_systems` checks `>= 32` (actual: 39). **Bug** — achievement fires at 82%.
+  2566→- **`achievements.ts:200-201`** — `research_all_techs` checks `>= 23` (actual: 30). **Bug** — achievement fires at 77%.
+  2567→- **`achievements.ts:230-232`** — `all_scriptures` checks `>= 14` but story.ts has 35 entries. May be intentional (only 14 are "scripture" category) but the desc says "every story entry" — misleading.
+
+[showing lines 2268-2567 of 2877; use offset=2568 with limit to continue reading]

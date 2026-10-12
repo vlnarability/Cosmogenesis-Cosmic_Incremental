@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   UNIVERSE_SLOTS,
@@ -11,6 +12,16 @@ import {
 } from "@/game/data/eternity";
 import { MINOR_GODS, MINOR_GOD_MAP } from "@/game/data/divinity_layer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -34,6 +45,9 @@ export function EternityModal() {
   const universeParadox = useGameStore((s) => s.universeParadox || 0);
   const divinity = useGameStore((s) => s.divinity || 0);
   const resolveParadox = useGameStore((s) => s.resolveParadox);
+  // L10 FIX — paradox threshold display (base 2 + paradox_insight level, max 1 level = +1)
+  const paradoxInsightLvl = useGameStore((s) => (s.upgrades?.paradox_insight as number) || 0);
+  const paradoxThreshold = 2 + paradoxInsightLvl;
 
   const isUnlocked = !!unlockedLayers.eternity;
   const universeB = universeSlotBonus(universeRules);
@@ -41,6 +55,15 @@ export function EternityModal() {
   const boon = cosmicBoonBonus(cosmicBoonStacks);
   const alliedGods = MINOR_GODS.filter((g) => alliances[g.id]);
   const canReset = universeB.filledCount >= UNIVERSE_SLOTS.length;
+
+  // L10 FIX Bug 2 — confirmation dialog for ending choice
+  const [pendingEnding, setPendingEnding] = useState<"preserve" | "reset" | null>(null);
+  const confirmEnding = () => {
+    if (pendingEnding) {
+      chooseEnding(pendingEnding);
+      setPendingEnding(null);
+    }
+  };
 
   return (
     <Dialog open={show} onOpenChange={setShow}>
@@ -90,8 +113,8 @@ export function EternityModal() {
                 </span>
                 {/* FEATURE 10 — Paradox counter + Resolve button */}
                 <div className="flex items-center gap-1">
-                  <Badge variant="outline" className={`text-[0.6rem] ${universeParadox >= 2 ? "text-rose-400 border-rose-400/60 animate-pulse" : universeParadox > 0 ? "text-rose-300 border-rose-400/40" : "text-muted-foreground"}`}>
-                    <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> Paradox: {universeParadox}/3
+                  <Badge variant="outline" className={`text-[0.6rem] ${universeParadox >= paradoxThreshold ? "text-rose-500 border-rose-500/80 animate-pulse" : universeParadox >= paradoxThreshold - 1 ? "text-rose-400 border-rose-400/60 animate-pulse" : universeParadox > 0 ? "text-rose-300 border-rose-400/40" : "text-muted-foreground"}`}>
+                    <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> Paradox: {universeParadox}/{paradoxThreshold}
                   </Badge>
                   <Button
                     size="sm"
@@ -105,11 +128,15 @@ export function EternityModal() {
                   </Button>
                 </div>
               </div>
-              {/* FEATURE 10 — Paradox warning */}
-              {universeParadox >= 2 && (
-                <div className="rounded-md border border-rose-400/60 bg-rose-500/15 p-1.5 text-[0.65rem] text-rose-200 mb-2 flex items-center gap-1">
+              {/* L10 FIX — Red warning whenever paradox ≥ 1 (not just at threshold) */}
+              {universeParadox >= 1 && (
+                <div className={`rounded-md border p-1.5 text-[0.65rem] mb-2 flex items-center gap-1 ${universeParadox >= paradoxThreshold ? "border-rose-500/80 bg-rose-600/25 text-rose-100" : "border-rose-400/60 bg-rose-500/15 text-rose-200"}`}>
                   <AlertTriangle className="w-3 h-3 shrink-0" />
-                  <span className="flex-1">⚠ PARADOX OVERLOAD imminent — at 3, the universe creation fails and all rules reset. Resolve a paradox or avoid Forbidden options.</span>
+                  <span className="flex-1">
+                    {universeParadox >= paradoxThreshold
+                      ? `⚠ PARADOX OVERLOAD! Reality rejects your creation — universe rules reset. Resolve paradoxes before they pile up.`
+                      : `⚠ Paradox risk active (${universeParadox}/${paradoxThreshold}) — one more Forbidden Word will reset your universe. Resolve a paradox or pick non-forbidden options.`}
+                  </span>
                 </div>
               )}
               <div className="space-y-2">
@@ -200,7 +227,7 @@ export function EternityModal() {
             {/* Ending Choices */}
             <section>
               <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
-                <Star className="w-3 h-3" /> Ending Choice (completes Layer 10)
+                <Star className="w-3 h-3" /> Ending Choice (completes Layer 10 — confirmation required)
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {ENDING_CHOICES.map((e) => {
@@ -209,7 +236,11 @@ export function EternityModal() {
                   return (
                     <button
                       key={e.id}
-                      onClick={() => !disabled && !chosen && chooseEnding(e.id)}
+                      // L10 FIX Bug 2 — open confirmation dialog instead of calling chooseEnding directly.
+                      onClick={() => {
+                        if (disabled || chosen) return;
+                        setPendingEnding(e.id);
+                      }}
                       disabled={disabled}
                       className={`stat-card text-left p-2 ${chosen ? "border-amber-400/60 bg-amber-500/10" : disabled ? "opacity-50" : "hover:border-amber-400/40"}`}
                     >
@@ -222,6 +253,11 @@ export function EternityModal() {
                       {e.id === "reset" && !canReset && !chosen && (
                         <div className="text-[0.55rem] text-rose-300/80 mt-1">
                           Requires all 8 universe slots filled ({universeB.filledCount}/8).
+                        </div>
+                      )}
+                      {!chosen && !disabled && (
+                        <div className="text-[0.55rem] text-amber-300/80 mt-1">
+                          Click to confirm — this cannot be undone.
                         </div>
                       )}
                     </button>
@@ -247,6 +283,33 @@ export function EternityModal() {
           <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
         </div>
       </DialogContent>
+
+      {/* L10 FIX Bug 2 — AlertDialog confirmation before committing an ending choice */}
+      <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingEnding === "preserve"
+                ? "Preserve Universe?"
+                : "Reset Universe?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingEnding === "preserve"
+                ? "Are you sure? This will lock in your universe rules and end the layer. Your rules will persist as permanent bonuses. This cannot be undone."
+                : "Are you sure? This will reset your universe rules and grant a Cosmic Boon stack (+10% all production permanently). The layer will restart from scratch. This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmEnding}
+              className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
+            >
+              {pendingEnding === "preserve" ? "Preserve Universe" : "Reset Universe"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

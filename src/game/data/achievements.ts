@@ -179,10 +179,10 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "discover_all_systems",
     name: "Master Architect",
-    desc: "Build all 32 systems across all stages.",
+    desc: "Build all 39 systems across all stages.",
     category: "resource",
     icon: "🏰",
-    check: (c) => c.systemsDiscoveredCount >= 32,
+    check: (c) => c.systemsDiscoveredCount >= 39,
     bonus: { type: "capacity", value: 0.05 },
   },
   {
@@ -197,10 +197,10 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "research_all_techs",
     name: "Polymath",
-    desc: "Research all 23 technologies across all stages.",
+    desc: "Research all 30 technologies across all stages.",
     category: "resource",
     icon: "🎓",
-    check: (c) => c.techResearchedCount >= 23,
+    check: (c) => c.techResearchedCount >= 30,
     bonus: { type: "production", value: 0.03 },
   },
 

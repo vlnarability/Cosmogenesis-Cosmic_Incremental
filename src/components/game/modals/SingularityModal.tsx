@@ -105,6 +105,11 @@ export function SingularityModal() {
               <div className="text-[0.65rem] text-muted-foreground mb-3">
                 Each dimension accrues resources & population at its own speed. Stage up costs 100 resources. Sync copies stage & 50% of population (costs 50 Divinity). Rift events transfer resources between dimensions every 60s.
                 <span className="text-violet-300"> Collapse</span> two dimensions of the same stage into one — combined speed & resources (costs 50 Divinity).
+                <span className="block mt-1 text-emerald-300/90">
+                  <Zap className="inline w-3 h-3 mr-0.5" />
+                  Reward: <span className="font-semibold">+1 Singularity Core</span> per dimension reaching Galactic,
+                  and a one-time <span className="font-semibold">+5 bonus</span> when all 3 reach Galactic.
+                </span>
               </div>
 
               {/* FEATURE 6 — Collapse hint banner */}
@@ -236,7 +241,7 @@ export function SingularityModal() {
 
               {allGalactic && (
                 <div className="rounded-md border border-emerald-400/60 bg-emerald-500/20 p-2 mt-2 text-[0.7rem] text-emerald-200 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> All 3 dimensions have reached Galactic! Singularity engine complete.
+                  <CheckCircle2 className="w-3 h-3" /> All 3 dimensions have reached Galactic! Singularity engine complete (+5 Singularity Core bonus awarded).
                 </div>
               )}
             </section>

@@ -32,6 +32,17 @@ import {
   FORESIGHT_NODES_REQUIRED_FOR_LAYER_3,
 } from "../data/foresight";
 import {
+  CONSTELLATIONS,
+  CONSTELLATION_MAP,
+  constellationBonus,
+  countCompletedConstellations,
+  countLitStars,
+  canAdvanceToTranscendence,
+  starCost,
+  CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+  type ConstellationState,
+} from "../data/constellations";
+import {
   OFFERINGS,
   OFFERING_MAP,
   RITUALS,
@@ -309,11 +320,18 @@ function initialMetaState(): Partial<GameState> {
     // Auto-action timers (game-time markers for periodic automation)
     autoTimers: { system: 0, tech: 0, evolve: 0, challenge: 0 },
 
-    // Layer 2 — Enlightenment (Foresight)
+    // Layer 2 — Enlightenment (Foresight / Constellation Map)
     divinity: 0,
-    foresightNodes: {},
+    foresightNodes: {}, // LEGACY compat — kept empty
     activeForesightRoute: null,
     showEnlightenment: false,
+    // Constellation Map (new L2 loop — see src/game/data/constellations.ts)
+    constellationStars: {},
+    constellationProgress: {},
+    constellationsStarted: {},
+    constellationsCompleted: {},
+    constellationNodes: {}, // LEGACY compat — kept empty
+    constellationRevealed: {},
 
     // Layer 3 — Transcendence
     transcendenceOfferingsUsed: {},
@@ -346,6 +364,8 @@ function initialMetaState(): Partial<GameState> {
     activeLogicCores: {},
     logicCoreTimers: {},
     showSingularity: false,
+    // L6 FIX — Dimension Engine bonus tracker (resets each run)
+    dimensionEngineBonusClaimed: false,
 
     // Layer 7 — Omnipotence (Bio-engineering)
     equippedHybrids: {},
@@ -437,9 +457,9 @@ function initialMetaState(): Partial<GameState> {
     trialRealmState: {},
     trialRealmsCompleted: {},
     trialRealmBestTimes: {}, // FEATURE 1 — local leaderboard (no login)
-    // Layer 2 — Constellation Map
-    constellationNodes: {},
-    constellationRevealed: {},
+    // Layer 2 — Constellation Map: state fields declared above alongside
+    // the other L2 fields. (constellationNodes / constellationRevealed
+    // are kept as empty legacy compat records.)
     // Layer 3 — Divine Market
     marketPrices: { food: 10, water: 8, materials: 15, science: 20, gold: 25, energy: 30 },
     priceHistory: { food: [10], water: [8], materials: [15], science: [20], gold: [25], energy: [30] },
@@ -518,6 +538,15 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- Layers 2-6: aggregate additive bonuses (production, cap, pop, ep, cost) ----
+        // Layer 2 — Constellation Map (new design): per-star + per-completed-constellation bonus.
+        const constellationState: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const constB = constellationBonus(constellationState);
+        // Legacy foresight field returns all-zeros on new saves; kept for legacy callers.
         const foresight = foresightBonus(s.foresightNodes || {});
         const route = routeBonus(s.activeForesightRoute);
         const ritualProd = activeRitualProductionBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
@@ -569,6 +598,7 @@ export const useGameStore = create<GameStore>()(
           (s.trialRealmsCompleted?.realm_late_bloom && s.population < 50) ? 0.25 : 0;
 
         const layerProdBonus =
+          constB.productionMult +
           foresight.productionMult + route.productionMult + ritualProd +
           wProd + dLaw.productionMult + wMode.productionMult + hResp +
           relics.productionMult + cores.productionMult +
@@ -579,6 +609,7 @@ export const useGameStore = create<GameStore>()(
           weaveB.productionMult + universeB.productionMult + keptB.productionMult + cosmicBoon +
           trialReward.prodMult;
         const layerCapBonus =
+          constB.capMult +
           foresight.capMult + route.capMult + ritualCap + wCap +
           dLaw.capMult + relics.capMult + cores.capMult +
           hybrids.capMult + chanBonus.capMult + maskBonus.capMult +
@@ -588,6 +619,7 @@ export const useGameStore = create<GameStore>()(
           weaveB.capMult + universeB.capMult + keptB.capMult +
           trialReward.capMult;
         const layerPopBonus =
+          constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult + ritualPop + wPop +
           dLaw.popGrowthMult + relics.popGrowthMult +
           hybrids.popGrowthMult + chanBonus.popGrowthMult + maskBonus.popGrowthMult +
@@ -636,8 +668,9 @@ export const useGameStore = create<GameStore>()(
         let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
 
         // Cost reduction (frugality) — also used by auto-buyer
-        // Layers 2-6: foresight cost reduction (additive, negative = cheaper)
-        const layerCostReduction = foresight.costMult;
+        // Layers 2-6: foresight cost reduction (additive, negative = cheaper).
+        // New L2: completed constellations can also grant costMult reduction.
+        const layerCostReduction = foresight.costMult + constB.costMult;
         const costReduction = (s.upgrades["frugality"] || 0) * 0.04 + Math.max(0, -layerCostReduction);
         // Challenge cost multiplier (debuff)
         const challengeCostMult = challengeDebuff.costMult ?? 1;
@@ -764,10 +797,10 @@ export const useGameStore = create<GameStore>()(
         let technologies = s.technologies;
         let totalTechResearched = s.totalTechResearched || 0;
 
-        // ---- Auto-Builder: every 8s (5s after first prestige — Part 2a), buy cheapest affordable system ----
-        // After first Galactic win (galacticWins >= 1), the auto-buyer is FREE (no shop upgrade needed).
-        const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0 || (s.galacticWins || 0) >= 1;
-        const systemBuyerInterval = (s.galacticWins || 0) >= 1 ? 5 : 8;
+        // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
+        // Player MUST purchase the auto_system_buyer shop upgrade (8 EP) to enable.
+        const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0;
+        const systemBuyerInterval = 8;
         if (hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
@@ -821,10 +854,10 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // ---- Auto-Researcher: every 12s (8s after first prestige — Part 2a), research cheapest affordable tech ----
-        // After first Galactic win, auto-researcher is FREE (no shop upgrade needed).
-        const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0 || (s.galacticWins || 0) >= 1;
-        const techBuyerInterval = (s.galacticWins || 0) >= 1 ? 8 : 12;
+        // ---- Auto-Researcher: every 12s, research cheapest affordable tech ----
+        // Player MUST purchase the auto_tech_buyer shop upgrade (10 EP) to enable.
+        const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0;
+        const techBuyerInterval = 12;
         if (hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const disableTech = !!challengeDebuff.disableTech;
@@ -878,17 +911,18 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- Auto-Evolver: check every 2s, trigger evolve if threshold met ----
-        // After first Galactic win, auto-evolver is FREE (no shop upgrade needed) and uses threshold = 1.0.
+        // Player MUST purchase the auto_evolver shop upgrade (15 EP) to enable.
+        // Threshold scales with level: 1.2, 1.4, 1.6, 1.8, 2.0, 2.2 (auto-evolves EARLIER as level rises).
         const autoEvolveLvl = s.upgrades["auto_evolver"] || 0;
-        const hasAutoEvolver = autoEvolveLvl > 0 || (s.galacticWins || 0) >= 1;
+        const hasAutoEvolver = autoEvolveLvl > 0;
         if (hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
           autoTimers.evolve = newTime;
           const stage = STAGES[s.stageIndex];
           const next = nextStage(stage.id);
           if (next) {
-            // After first prestige (galacticWins >= 1), use threshold = 1.0 (meet base requirements).
-            // Otherwise: 1.0, 1.2, 1.4, 1.6, 1.8 per auto-evolver level.
-            const threshold = (s.galacticWins || 0) >= 1 ? 1.0 : (1 + autoEvolveLvl * 0.2);
+            // Threshold: 1.0 + autoEvolveLvl * 0.2 (level 1 = 1.2× reqs, level 5 = 2.0× reqs).
+            // Higher level = auto-evolves EARLIER (when player has exceeded base reqs by 20% per level).
+            const threshold = 1 + autoEvolveLvl * 0.2;
             const reqs = stage.evolveRequires;
             const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
             const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
@@ -1347,11 +1381,13 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- Layer unlock chain (Layers 3-6) ----
-        // Layer 3 (Transcendence): 10+ foresight nodes purchased
+        // Layer 3 (Transcendence): 10+ constellations COMPLETED (new L2 design).
         if (unlockedLayers.enlightenment && !unlockedLayers.transcendence) {
-          if (countForesightNodes(s.foresightNodes || {}) >= FORESIGHT_NODES_REQUIRED_FOR_LAYER_3) {
+          if (canAdvanceToTranscendence(constellationState)) {
             unlockedLayers = { ...unlockedLayers, transcendence: true };
-            setTimeout(() => get().addToLog("10 Foresight nodes reached. Transcendence layer unlocked."), 0);
+            setTimeout(() => get().addToLog(
+              `${CONSTELLATIONS_REQUIRED_FOR_LAYER_3} constellations fully illuminated. Transcendence layer unlocked.`
+            ), 0);
           }
         }
         // Layer 4 (Genesis): all 4 blood pacts used at least once
@@ -1916,6 +1952,10 @@ export const useGameStore = create<GameStore>()(
         // LAYER UPGRADE — rift_redirect: rifts always transfer from richest → poorest
         const rrLvl = (s.upgrades?.rift_redirect as number) || 0;
         const riftRedirected = rrLvl > 0;
+        // L6 FIX — Track Galactic transitions & singularity core rewards
+        let singularityCores = s.singularityCores || 0;
+        let dimensionEngineBonusClaimed = !!(s.dimensionEngineBonusClaimed);
+        const galacticLog: string[] = [];
         for (const d of dimensions) {
           if (d.reachedGalactic) continue;
           // Each dimension accrues resources & population at its own speed (boosted)
@@ -1929,7 +1969,20 @@ export const useGameStore = create<GameStore>()(
           }
           if (d.stageIndex >= STAGES.length - 1) {
             d.reachedGalactic = true;
+            // L6 FIX — +1 Singularity Core per dimension reaching Galactic
+            singularityCores += 1;
+            galacticLog.push(`Dimension ${d.name} reached Galactic! +1 Singularity Core.`);
           }
+        }
+        // L6 FIX — +5 Singularity Core bonus when ALL 3 dimensions reach Galactic (one-time per run)
+        if (
+          !dimensionEngineBonusClaimed &&
+          dimensions.length === 3 &&
+          dimensions.every((d) => d.reachedGalactic)
+        ) {
+          singularityCores += 5;
+          dimensionEngineBonusClaimed = true;
+          galacticLog.push("All dimensions synchronized! +5 Singularity Core bonus.");
         }
         if (dimensionRiftTimer <= 0) {
           // Rift event — transfer resources between two dimensions
@@ -2043,7 +2096,14 @@ export const useGameStore = create<GameStore>()(
           prophetConvertTimer,
           dimensions,
           dimensionRiftTimer,
+          // L6 FIX — Dimension Engine rewards
+          singularityCores,
+          dimensionEngineBonusClaimed,
         });
+        // L6 FIX — log Galactic transition messages (deferred to avoid setState-in-loop)
+        for (const msg of galacticLog) {
+          setTimeout(() => get().addToLog(msg), 0);
+        }
       },
 
       // ============ ACTIONS ============
@@ -2129,7 +2189,13 @@ export const useGameStore = create<GameStore>()(
         }
 
         const costReduction = (s.upgrades["frugality"] || 0) * 0.04
-          + Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult));
+          + Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult))
+          + Math.max(0, -(constellationBonus({
+              constellationStars: s.constellationStars || {},
+              constellationProgress: s.constellationProgress || {},
+              constellationsStarted: s.constellationsStarted || {},
+              constellationsCompleted: s.constellationsCompleted || {},
+            }).costMult));
         let owned = s.ownedSystems[systemId] || 0;
         if (sys.maxOwned && owned >= sys.maxOwned) return;
 
@@ -2245,7 +2311,13 @@ export const useGameStore = create<GameStore>()(
         }
 
         const res = { ...s.resources };
-        const layerTechCostMult = 1 - Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult));
+        const layerTechCostMult = (1 - Math.max(0, -(foresightBonus(s.foresightNodes || {}).costMult)))
+          * (1 - Math.max(0, -(constellationBonus({
+              constellationStars: s.constellationStars || {},
+              constellationProgress: s.constellationProgress || {},
+              constellationsStarted: s.constellationsStarted || {},
+              constellationsCompleted: s.constellationsCompleted || {},
+            }).costMult)));
         for (const [r, v] of Object.entries(tech.cost)) {
           const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
           if ((res[r] || 0) < scaled) return;
@@ -2420,6 +2492,14 @@ export const useGameStore = create<GameStore>()(
         epEarned = Math.max(1, Math.floor(epEarned * (1 + cosmicLvl * 0.25)));
 
         // ---- Layers 2-6: aggregate EP multiplier (foresight, route, ritual, world, law, relic, core) ----
+        // New L2: constellation completion grants additive EP bonus; constellationDivinityMult boosts Divinity gain.
+        const constStateForPrestige: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const constBp = constellationBonus(constStateForPrestige);
         const fs = foresightBonus(s.foresightNodes || {});
         const rb = routeBonus(s.activeForesightRoute);
         const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
@@ -2443,7 +2523,7 @@ export const useGameStore = create<GameStore>()(
         const universeEp = universeSlotBonus(s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null)).epMult;
         const keptEp = keptGodsBonus(s.keptGods || []).epMult;
         const layerEpMult = 1 +
-          fs.epMult + rb.epMult + ritualEp + wEp + dl.epMult + relicEp + coreEp +
+          fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult + relicEp + coreEp +
           hybridEp + chanEp + maskEp + polEp + allianceEp + echoEp + forkEp + debtEp +
           fragmentEp + testEp + canonEp + weaveEp + universeEp + keptEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
@@ -2451,7 +2531,7 @@ export const useGameStore = create<GameStore>()(
         // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
         let divinityGain = 0;
         if (s.unlockedLayers?.enlightenment) {
-          divinityGain = Math.max(1, Math.floor(Math.sqrt(score / 200) * stageMult * (1 + fs.divinityMult)));
+          divinityGain = Math.max(1, Math.floor(Math.sqrt(score / 200) * stageMult * (1 + fs.divinityMult + constBp.divinityMult)));
         }
         // ---- Layer 4 (Genesis): grant Genesis Seeds based on stage ----
         let genesisSeedGain = 0;
@@ -2568,9 +2648,16 @@ export const useGameStore = create<GameStore>()(
 
           // Layer 2 — Enlightenment (persist meta state, currency accrues)
           divinity: (s.divinity || 0) + divinityGain,
-          foresightNodes: s.foresightNodes || {},
+          foresightNodes: s.foresightNodes || {}, // LEGACY — always {}
           activeForesightRoute: s.activeForesightRoute,
           showEnlightenment: false,
+          // Constellation Map — persist all progress across prestige
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+          constellationNodes: s.constellationNodes || {}, // LEGACY — always {}
+          constellationRevealed: s.constellationRevealed || {},
 
           // Layer 3 — Transcendence (persist purchases + scripts; reset per-run timers)
           transcendenceOfferingsUsed: s.transcendenceOfferingsUsed || {},
@@ -2603,6 +2690,8 @@ export const useGameStore = create<GameStore>()(
           activeLogicCores: s.activeLogicCores || {},
           logicCoreTimers: {}, // reset per-run
           showSingularity: false,
+          // L6 FIX — Dimension Engine bonus is one-time per run; reset on prestige.
+          dimensionEngineBonusClaimed: false,
 
           // Layer 7 — Omnipotence (Bio-engineering) — persist creatures, legions, stance; reset instability
           equippedHybrids: s.equippedHybrids || {},
@@ -2770,28 +2859,13 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`Trial begun: ${ch.name} (repeat ${completed + 1}/${maxRepeats}).`);
       },
 
-      // ============ LAYER 2 — ENLIGHTENMENT (FORESIGHT) ============
-      purchaseForesightNode: (nodeId) => {
-        const s = get();
-        if (!s.unlockedLayers?.enlightenment) return;
-        const node = FORESIGHT_NODE_MAP[nodeId];
-        if (!node) return;
-        if (s.foresightNodes?.[nodeId]) return;
-        if (node.requires && !s.foresightNodes?.[node.requires]) return;
-        // LAYER UPGRADE — foresight_discount: multiplicative -20% per level (max 5)
-        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
-        const adjCost = Math.ceil(node.cost * Math.pow(0.80, fdLvl));
-        if ((s.divinity || 0) < adjCost) return;
-        // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
-        const cbLvl = (s.upgrades?.constellation_boost as number) || 0;
-        const ppGain = 1 + 0.25 * cbLvl;
-        set({
-          divinity: (s.divinity || 0) - adjCost,
-          foresightNodes: { ...(s.foresightNodes || {}), [nodeId]: true },
-          // QUICK WIN 5 — +1 Prestige Point for purchasing a foresight node (boosted by constellation_boost)
-          prestigePoints: (s.prestigePoints || 0) + ppGain,
-        });
-        get().addToLog(`Foresight: purchased ${node.name} (-${adjCost} Divinity). (+${ppGain.toFixed(1)} PP)`);
+      // ============ LAYER 2 — ENLIGHTENMENT (CONSTELLATION MAP) ============
+      /**
+       * LEGACY no-op stub. Old saves / external callers may invoke
+       * `purchaseForesightNode(nodeId)`. New design uses `illuminateStar`.
+       */
+      purchaseForesightNode: (_nodeId) => {
+        // No-op — use `illuminateStar(constellationId, starId)` instead.
       },
 
       setForesightRoute: (routeId) => {
@@ -3366,73 +3440,120 @@ export const useGameStore = create<GameStore>()(
         set({ trialRealmState: rs });
       },
 
-      // ---- Layer 2 — Constellation Map ----
-      illuminateConstellationNode: (nodeId) => {
+      // ---- Layer 2 — Constellation Map (new design) ----
+      /**
+       * Illuminate a single star within a constellation. Computes cost via
+       * `starCost()`, deducts Divinity, sets `constellationStars[starId] = true`,
+       * increments `constellationProgress[constellationId]`, marks the constellation
+       * as started, and — if all stars lit — marks it completed. Awards +1 PP
+       * per star (boosted by the `constellation_boost` shop upgrade).
+       */
+      illuminateStar: (constellationId, starId) => {
         const s = get();
         if (!s.unlockedLayers?.enlightenment) return;
-        const node = FORESIGHT_NODE_MAP[nodeId];
-        if (!node) return;
-        if (s.foresightNodes?.[nodeId]) return;
-        if (node.requires && !s.foresightNodes?.[node.requires]) return;
+        const cdef = CONSTELLATION_MAP[constellationId];
+        if (!cdef) return;
+        const star = cdef.stars.find((st) => st.id === starId);
+        if (!star) return;
+        if (s.constellationStars?.[starId]) return; // already lit
+        const cs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
         // LAYER UPGRADE — foresight_discount: multiplicative -20% per level (max 5)
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
-        const adjCost = Math.ceil(node.cost * Math.pow(0.80, fdLvl));
-        if ((s.divinity || 0) < adjCost) return;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        const cost = starCost(constellationId, cs, starId, { foresightDiscountMult });
+        if ((s.divinity || 0) < cost) return;
         // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
         const cbLvl = (s.upgrades?.constellation_boost as number) || 0;
         const ppGain = 1 + 0.25 * cbLvl;
+        const newStars = { ...(s.constellationStars || {}), [starId]: true };
+        const newStarted = { ...(s.constellationsStarted || {}), [constellationId]: true };
+        const newProgress = {
+          ...(s.constellationProgress || {}),
+          [constellationId]: (s.constellationProgress?.[constellationId] || 0) + 1,
+        };
+        const newCompleted = { ...(s.constellationsCompleted || {}) };
+        let completedThisPurchase = false;
+        if (newProgress[constellationId] >= cdef.stars.length && !newCompleted[constellationId]) {
+          newCompleted[constellationId] = true;
+          completedThisPurchase = true;
+        }
         set({
-          divinity: (s.divinity || 0) - adjCost,
-          foresightNodes: { ...(s.foresightNodes || {}), [nodeId]: true },
-          constellationNodes: { ...(s.constellationNodes || {}), [nodeId]: true },
+          divinity: (s.divinity || 0) - cost,
+          constellationStars: newStars,
+          constellationProgress: newProgress,
+          constellationsStarted: newStarted,
+          constellationsCompleted: newCompleted,
           prestigePoints: (s.prestigePoints || 0) + ppGain,
         });
-        get().addToLog(`✦ Illuminated: ${node.name} (-${adjCost} Divinity). (+${ppGain.toFixed(1)} PP)`);
+        const logMsg = completedThisPurchase
+          ? `✦ ${cdef.name} illuminated: ${starId} (-${cost} Divinity). ${cdef.name} constellation COMPLETE! (+${ppGain.toFixed(1)} PP)`
+          : `✦ ${cdef.name}: star ${starId} lit (-${cost} Divinity). (+${ppGain.toFixed(1)} PP)`;
+        get().addToLog(logMsg);
+      },
+
+      /**
+       * LEGACY no-op stub. Old UI / saves called `illuminateConstellationNode(nodeId)`.
+       * New design uses `illuminateStar(constellationId, starId)`. Old node ids
+       * don't map to new star ids, so this is a graceful no-op.
+       */
+      illuminateConstellationNode: (_nodeId) => {
+        // No-op — use `illuminateStar(constellationId, starId)` instead.
       },
 
       stargazeReveal: () => {
         const s = get();
         if (!s.unlockedLayers?.enlightenment) return;
-        // Costs 25 Divinity — reveals connections (visual only)
+        // Costs 25 Divinity — reveals ALL constellation connection lines (visual only).
         if ((s.divinity || 0) < 25) return;
-        const revealed = { ...(s.constellationRevealed || {}) };
-        for (const n of FORESIGHT_NODES) revealed[n.id] = true;
+        const revealed: Record<string, boolean> = {};
+        for (const c of CONSTELLATIONS) revealed[c.id] = true;
         set({ divinity: (s.divinity || 0) - 25, constellationRevealed: revealed });
-        get().addToLog("✦ Stargaze: hidden connections revealed (-25 Divinity).");
+        get().addToLog("✦ Stargaze: all constellation connections revealed (-25 Divinity).");
       },
 
-      supernovaIlluminate: (nodeId) => {
+      /**
+       * Supernova active ability: lights `starId` AND every star directly
+       * connected to it via the constellation's connection list, for FREE
+       * (no per-star cost — just the 50 Divinity Supernova fee). Affects
+       * only stars within the SAME constellation.
+       */
+      supernovaIlluminate: (constellationId, starId) => {
         const s = get();
         if (!s.unlockedLayers?.enlightenment) return;
-        // Costs 50 Divinity — illuminates the target node (if affordable) AND auto-illuminates any adjacent already-revealed nodes
-        const target = FORESIGHT_NODE_MAP[nodeId];
-        if (!target) return;
+        const cdef = CONSTELLATION_MAP[constellationId];
+        if (!cdef) return;
+        const targetStar = cdef.stars.find((st) => st.id === starId);
+        if (!targetStar) return;
         if ((s.divinity || 0) < 50) return;
-        // Find grid index of the target node and its neighbors (5×4 grid, 20 nodes total)
-        const idx = FORESIGHT_NODES.findIndex((n) => n.id === nodeId);
-        if (idx < 0) return;
-        const row = Math.floor(idx / 5);
-        const col = idx % 5;
-        const neighborIdx: number[] = [];
-        if (col > 0) neighborIdx.push(idx - 1);
-        if (col < 4) neighborIdx.push(idx + 1);
-        if (row > 0) neighborIdx.push(idx - 5);
-        if (row < 3) neighborIdx.push(idx + 5);
-        const foresightNodes = { ...(s.foresightNodes || {}) };
-        const constellationNodes = { ...(s.constellationNodes || {}) };
+        // Build the set of stars to light: target + every direct connection partner.
+        const toLight = new Set<string>([starId]);
+        for (const [a, b] of cdef.connections) {
+          if (a === starId) toLight.add(b);
+          else if (b === starId) toLight.add(a);
+        }
+        const newStars = { ...(s.constellationStars || {}) };
+        const newStarted = { ...(s.constellationsStarted || {}) };
+        const newProgress = { ...(s.constellationProgress || {}) };
+        const newCompleted = { ...(s.constellationsCompleted || {}) };
         let ignited = 0;
-        if (!foresightNodes[nodeId] && (!target.requires || foresightNodes[target.requires])) {
-          foresightNodes[nodeId] = true;
-          constellationNodes[nodeId] = true;
+        let completedThisPurchase = false;
+        for (const sid of toLight) {
+          if (newStars[sid]) continue;
+          newStars[sid] = true;
+          newProgress[constellationId] = (newProgress[constellationId] || 0) + 1;
           ignited++;
         }
-        for (const ni of neighborIdx) {
-          const nNode = FORESIGHT_NODES[ni];
-          if (!nNode || foresightNodes[nNode.id]) continue;
-          if (nNode.requires && !foresightNodes[nNode.requires]) continue;
-          foresightNodes[nNode.id] = true;
-          constellationNodes[nNode.id] = true;
-          ignited++;
+        if (ignited > 0) {
+          newStarted[constellationId] = true;
+          if (newProgress[constellationId] >= cdef.stars.length && !newCompleted[constellationId]) {
+            newCompleted[constellationId] = true;
+            completedThisPurchase = true;
+          }
         }
         // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
         const cbLvl = (s.upgrades?.constellation_boost as number) || 0;
@@ -3440,29 +3561,75 @@ export const useGameStore = create<GameStore>()(
         const ppGain = ppPerNode * ignited;
         set({
           divinity: (s.divinity || 0) - 50,
-          foresightNodes,
-          constellationNodes,
+          constellationStars: newStars,
+          constellationProgress: newProgress,
+          constellationsStarted: newStarted,
+          constellationsCompleted: newCompleted,
           prestigePoints: (s.prestigePoints || 0) + ppGain,
         });
-        get().addToLog(`✦ Supernova: ${ignited} node(s) illuminated (-50 Divinity). (+${ppGain.toFixed(1)} PP)`);
+        const logMsg = completedThisPurchase
+          ? `✦ Supernova on ${cdef.name}: ${ignited} star(s) ignited (-50 Divinity). ${cdef.name} constellation COMPLETE! (+${ppGain.toFixed(1)} PP)`
+          : `✦ Supernova on ${cdef.name}: ${ignited} star(s) ignited (-50 Divinity). (+${ppGain.toFixed(1)} PP)`;
+        get().addToLog(logMsg);
       },
 
-      blackHoleReset: () => {
+      /**
+       * Black Hole active ability: refund 50% of the BASE cost spent on every
+       * lit star in the given constellation, then clear its stars and progress.
+       * Lets the player reallocate Divinity.
+       */
+      blackHoleReset: (constellationId) => {
         const s = get();
         if (!s.unlockedLayers?.enlightenment) return;
-        // Refund 50% of spent Divinity (cost basis) and clear all constellation nodes
+        const cdef = CONSTELLATION_MAP[constellationId];
+        if (!cdef) return;
+        // Re-compute the BASE cost paid for each lit star in this constellation
+        // (in purchase order). The state we feed to starCost is the running
+        // constellation state as it would have been right before each star.
         let refund = 0;
-        for (const n of FORESIGHT_NODES) {
-          if (s.foresightNodes?.[n.id]) refund += Math.floor(n.cost * 0.5);
+        const litStarIds = cdef.stars
+          .filter((st) => s.constellationStars?.[st.id])
+          .map((st) => st.id);
+        if (litStarIds.length === 0) {
+          get().addToLog(`✦ Black Hole: ${cdef.name} has no lit stars to refund.`);
+          return;
         }
+        // LAYER UPGRADE — foresight_discount applies to the original cost too.
+        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // Build the state "as if" only this constellation's stars had been lit
+        // in purchase order — conservative approximation. We ignore the player's
+        // other constellations' state because the model depends on started count
+        // which would otherwise be inflated.
+        const simState: ConstellationState = {
+          constellationStars: {},
+          constellationProgress: { [constellationId]: 0 },
+          constellationsStarted: { [constellationId]: true },
+          constellationsCompleted: {},
+        };
+        for (const sid of litStarIds) {
+          const c = starCost(constellationId, simState, sid, { foresightDiscountMult });
+          refund += Math.floor(c * 0.5);
+          simState.constellationStars[sid] = true;
+          simState.constellationProgress[constellationId] = (simState.constellationProgress[constellationId] || 0) + 1;
+        }
+        // Remove all lit stars in this constellation from the live state.
+        const newStars = { ...(s.constellationStars || {}) };
+        const newProgress = { ...(s.constellationProgress || {}) };
+        const newStarted = { ...(s.constellationsStarted || {}) };
+        const newCompleted = { ...(s.constellationsCompleted || {}) };
+        for (const sid of litStarIds) delete newStars[sid];
+        delete newProgress[constellationId];
+        delete newStarted[constellationId];
+        delete newCompleted[constellationId];
         set({
           divinity: (s.divinity || 0) + refund,
-          foresightNodes: {},
-          constellationNodes: {},
-          constellationRevealed: {},
-          activeForesightRoute: null,
+          constellationStars: newStars,
+          constellationProgress: newProgress,
+          constellationsStarted: newStarted,
+          constellationsCompleted: newCompleted,
         });
-        get().addToLog(`✦ Black Hole: refunded ${refund} Divinity. Constellation reset.`);
+        get().addToLog(`✦ Black Hole on ${cdef.name}: refunded ${refund} Divinity, ${litStarIds.length} star(s) collapsed.`);
       },
 
       // ---- Layer 3 — Divine Market ----
@@ -3784,6 +3951,21 @@ export const useGameStore = create<GameStore>()(
         const draft = s.creatureDesignDraft;
         if (!draft) return;
         if (!draft.bodyType || !draft.diet || !draft.special) return;
+        // L7 FIX Bug 1 — Cost: 5 Divinity + 5 Faith per creature (prevents infinite-spam exploit)
+        const divinityCost = 5;
+        const faithCost = 5;
+        if ((s.divinity || 0) < divinityCost || (s.faith || 0) < faithCost) {
+          get().addToLog(`Creature lab requires ${divinityCost} Divinity + ${faithCost} Faith to author a creature.`);
+          return;
+        }
+        // L7 FIX Bug 1 — Cap: base 5 + 1 per L10 universe slot filled (so L10 choices expand the cap).
+        const filledSlots = (s.universeRules || []).filter(Boolean).length;
+        const maxCreatures = 5 + filledSlots;
+        const currentCount = (s.creatures || []).length;
+        if (currentCount >= maxCreatures) {
+          get().addToLog(`Creature lab at capacity (${currentCount}/${maxCreatures}). Author more universe rules or release a creature.`);
+          return;
+        }
         const bodyType = draft.bodyType as CreatureBodyTypeId;
         const diet = draft.diet as CreatureDietId;
         const special = draft.special as CreatureSpecialId;
@@ -3796,14 +3978,14 @@ export const useGameStore = create<GameStore>()(
         const mmLvl = (s.upgrades?.mutation_master as number) || 0;
         const mutationChance = 0.10 + 0.10 * mmLvl;
         const mutated = Math.random() < mutationChance;
-        const mutatedStats: "attack" | "defense" | "speed" = (["attack", "defense", "speed"] as const)[Math.floor(Math.random() * 3)];
+        // L7 FIX Bug 2 — Pick the mutated stat (attack/defense/speed); apply ×1.5 only to it.
+        const mutatedStat: "attack" | "defense" | "speed" = (["attack", "defense", "speed"] as const)[Math.floor(Math.random() * 3)];
         let finalStats = { ...stats };
         if (mutated) {
-          // Mutated creatures are 50% more powerful (all stats × 1.5)
           finalStats = {
-            attack: Math.round(stats.attack * 1.5),
-            defense: Math.round(stats.defense * 1.5),
-            speed: Math.round(stats.speed * 1.5),
+            attack: mutatedStat === "attack" ? Math.round(stats.attack * 1.5) : stats.attack,
+            defense: mutatedStat === "defense" ? Math.round(stats.defense * 1.5) : stats.defense,
+            speed: mutatedStat === "speed" ? Math.round(stats.speed * 1.5) : stats.speed,
           };
         }
         const creature: Creature = {
@@ -3815,13 +3997,17 @@ export const useGameStore = create<GameStore>()(
           ...finalStats,
           createdAt: s.time || 0,
           mutated,
-          mutatedStat: mutated ? mutatedStats : undefined,
+          mutatedStat: mutated ? mutatedStat : undefined,
         };
-        set({ creatures: [...(s.creatures || []), creature] });
+        set({
+          creatures: [...(s.creatures || []), creature],
+          divinity: (s.divinity || 0) - divinityCost,
+          faith: (s.faith || 0) - faithCost,
+        });
         if (mutated) {
-          get().addToLog(`🧬 Mutation! ${creature.name} (${body.name}) — ATK ${creature.attack} / DEF ${creature.defense} / SPD ${creature.speed}. (+50% power, +20% instability)`);
+          get().addToLog(`🧬 Mutation! ${creature.name} (${body.name}) — ATK ${creature.attack} / DEF ${creature.defense} / SPD ${creature.speed}. (+50% to ${mutatedStat}, +20% instability). -${divinityCost} Div, -${faithCost} Faith.`);
         } else {
-          get().addToLog(`Creature created: ${creature.name} (${body.name}) — ATK ${creature.attack} / DEF ${creature.defense} / SPD ${creature.speed}.`);
+          get().addToLog(`Creature created: ${creature.name} (${body.name}) — ATK ${creature.attack} / DEF ${creature.defense} / SPD ${creature.speed}. (-${divinityCost} Div, -${faithCost} Faith.)`);
         }
       },
 
@@ -4068,6 +4254,29 @@ export const useGameStore = create<GameStore>()(
           if (!legion) return { attack: 0, defense: 0, speed: 0, count: 0 };
           return legionPower(legion, s.creatures || []);
         });
+        // L7 FIX Bug 3 — Wire creature specials into the damage calculation.
+        // Iterate deployed creatures and count specials. Apply: berserk → +20% player damage
+        // per berserk creature; shield → -20% boss damage per shield creature.
+        // TODO(regen): heal playerHp by 1 per regen creature per turn — requires BattleState.playerHp,
+        // which Subagent F is adding in parallel. When present, wire regen here.
+        const deployedCreatureIds = new Set<string>();
+        for (const lid of battle.deployedLegionIds) {
+          const legion = (s.legions || []).find((l) => l.id === lid);
+          if (!legion) continue;
+          for (const cid of legion.creatureIds) deployedCreatureIds.add(cid);
+        }
+        let berserkCount = 0;
+        let shieldCount = 0;
+        let regenCount = 0;
+        for (const c of (s.creatures || [])) {
+          if (!deployedCreatureIds.has(c.id)) continue;
+          if (c.special === "berserk") berserkCount += 1;
+          else if (c.special === "shield") shieldCount += 1;
+          else if (c.special === "regen") regenCount += 1;
+        }
+        const berserkBonusMult = 1 + 0.20 * berserkCount; // +20% player dmg per berserk creature
+        const shieldReductionMult = Math.max(0, 1 - 0.20 * shieldCount); // -20% boss dmg per shield creature
+        void regenCount; // reserved for regen-on-playerHp wiring (Subagent F)
         const calledAllies = battle.calledAllyIds.map((aid) => {
           const ally = MINOR_GOD_MAP[aid];
           if (!ally) return { powerLevel: 0 };
@@ -4077,10 +4286,12 @@ export const useGameStore = create<GameStore>()(
         // LAYER UPGRADE — war_preparation: +20% player damage per level (max 5)
         const wpLvl = (s.upgrades?.war_preparation as number) || 0;
         const warMult = 1 + 0.20 * wpLvl;
-        const playerDmg = Math.round(computePlayerAttack(deployedPowers, calledAllies, weakToBodyType) * warMult);
+        const playerDmg = Math.round(computePlayerAttack(deployedPowers, calledAllies, weakToBodyType) * warMult * berserkBonusMult);
         // Compute boss attack back (storm shuffles timeline: 50% delayed, 50% accelerated)
         const totalDefense = deployedPowers.reduce((a, p) => a + p.defense, 0);
         let bossDmg = computeBossAttack(god.attack, totalDefense);
+        // L7 FIX Bug 3 — shield special reduces incoming boss damage
+        bossDmg = Math.max(1, Math.round(bossDmg * shieldReductionMult));
         let stormNote = "";
         if (stormActive) {
           // LAYER UPGRADE — temporal_shield: accelerated storm effect halved per level (max 2)
@@ -4180,9 +4391,11 @@ export const useGameStore = create<GameStore>()(
         if (prevOpt?.forbidden && !opt.forbidden) universeParadox = Math.max(0, universeParadox - 1);
         if (!prevOpt?.forbidden && opt.forbidden) universeParadox = universeParadox + 1;
         rules[slotIndex] = optionId;
-        // LAYER UPGRADE — paradox_insight: paradox threshold +1 per level (max 2 — threshold 5 instead of 3)
+        // LAYER UPGRADE — paradox_insight: paradox threshold +1 per level (max 1 — base 2 → 3)
+        // L10 FIX — Base threshold lowered from 3 to 2 so picking 2 Forbidden Words triggers reset.
+        // Player must invest in paradox_insight to safely pick even one Forbidden Word.
         const piLvl = (s.upgrades?.paradox_insight as number) || 0;
-        const paradoxThreshold = 3 + piLvl;
+        const paradoxThreshold = 2 + piLvl;
         // If paradox reaches the threshold, universe creation fails and resets
         if (universeParadox >= paradoxThreshold) {
           set({
@@ -4640,6 +4853,8 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.activeLogicCores) persisted.activeLogicCores = {};
         if (!persisted.logicCoreTimers) persisted.logicCoreTimers = {};
         if (persisted.showSingularity === undefined) persisted.showSingularity = false;
+        // L6 FIX — Dimension Engine bonus tracker (defaults false on old saves)
+        if (persisted.dimensionEngineBonusClaimed === undefined) persisted.dimensionEngineBonusClaimed = false;
         // unlockedLayers should always exist (v3+); ensure all 10 layer flags exist
         if (!persisted.unlockedLayers) persisted.unlockedLayers = { evolution: true };
         if (persisted.unlockedLayers.enlightenment === undefined) persisted.unlockedLayers.enlightenment = false;
@@ -4711,8 +4926,20 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.trialRealmsCompleted) persisted.trialRealmsCompleted = {};
         // FEATURE 1 — local leaderboard migration
         if (!persisted.trialRealmBestTimes) persisted.trialRealmBestTimes = {};
+        // v9 migration: L2 constellation redesign — old `constellationNodes`
+        // entries don't map to new star ids, so clear them. Initialize the
+        // new state fields with empty records. The legacy fields remain as
+        // empty records for backward compatibility with any code that still
+        // references them.
+        if (!persisted.constellationStars) persisted.constellationStars = {};
+        if (!persisted.constellationProgress) persisted.constellationProgress = {};
+        if (!persisted.constellationsStarted) persisted.constellationsStarted = {};
+        if (!persisted.constellationsCompleted) persisted.constellationsCompleted = {};
         if (!persisted.constellationNodes) persisted.constellationNodes = {};
         if (!persisted.constellationRevealed) persisted.constellationRevealed = {};
+        // Legacy `foresightNodes` always starts empty in new saves (no nodes
+        // are migrated; the constellation map is the new L2 source of truth).
+        if (!persisted.foresightNodes) persisted.foresightNodes = {};
         if (!persisted.marketPrices) persisted.marketPrices = { food: 10, water: 8, materials: 15, science: 20, gold: 25, energy: 30 };
         if (!persisted.priceHistory) persisted.priceHistory = { food: [10], water: [8], materials: [15], science: [20], gold: [25], energy: [30] };
         if (!persisted.marketOwnedResources) persisted.marketOwnedResources = {};
