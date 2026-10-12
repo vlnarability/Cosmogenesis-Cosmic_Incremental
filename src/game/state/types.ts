@@ -252,6 +252,15 @@ export interface GameState {
   constellationNodes: Record<string, boolean>;
   /** Connections revealed by Stargaze (constellationId → true). */
   constellationRevealed: Record<string, boolean>;
+  /**
+   * Active Cosmic Bridge link (null when not active). When active, illuminating
+   * a star in either endpoint constellation ALSO illuminates the cheapest
+   * unlit star in the other endpoint for free. Decays in the tick.
+   */
+  cosmicBridgeLink: { from: string; to: string; remaining: number } | null;
+  /** Recommended-next glow: when true (Stargaze has been used), the modal
+   *  highlights the cheapest affordable next star across all constellations. */
+  stargazeRecommendedActive: boolean;
 
   // Layer 3 — Transcendence
   transcendenceOfferingsUsed: Record<string, number>; // offeringId -> repeat count
@@ -437,6 +446,23 @@ export interface GameState {
   temporalStorms: Record<string, boolean>;     // oldGodId → storm active
   // FEATURE 10 — Forbidden Words: paradox counter; ≥3 resets universe creation
   universeParadox: number;
+
+  // ===== BACKGROUND-SIMULATION =====
+  // The base game (Cell → Galactic) becomes abstracted and simulated in the
+  // background once the player has prestiged at least once. The player no
+  // longer needs to interact with the stage progression UI — it ticks on
+  // its own (auto-evolver) and generates Divinity passively based on the
+  // best production rate the player ever achieved.
+  // peakProductionRate: best per-second total resource production ever
+  //   achieved across all runs (META — persists across prestiges).
+  // backgroundSimulations: how many parallel background simulations are
+  //   running. Each generates Divinity = peakProductionRate × 1% per second.
+  //   +1 per Galactic prestige; also purchasable via spawnBackgroundSimulation.
+  // divinityFromBackground: lifetime Divinity earned from background sims
+  //   (META — for display only; persists across prestiges).
+  peakProductionRate: number;
+  backgroundSimulations: number;
+  divinityFromBackground: number;
 }
 
 export interface GameStore extends GameState {
@@ -581,20 +607,35 @@ export interface GameStore extends GameState {
   // Layer 2 — Constellation Map
   /** LEGACY stub — old action signature, kept for compatibility. No-op. */
   illuminateConstellationNode: (nodeId: string) => void;
-  /** Reveal all constellation connection lines visually (active ability). */
+  /**
+   * Stargaze active ability: reveals all constellation connection lines
+   * permanently AND activates the "recommended next star" glow across the
+   * map (highlights the cheapest affordable next star in any constellation).
+   * Costs 25 Divinity, 60s cooldown.
+   */
   stargazeReveal: () => void;
   /**
-   * Supernova active ability: lights `starId` AND every star connected to it
-   * via the constellation's connection list, for free (no Divinity cost per star
-   * — but still costs the 50 Divinity Supernova fee).
+   * Supernova active ability: lights `starId` AND every star directly
+   * connected to it via the constellation's connection list, for free
+   * (no Divinity cost per star — but still costs the 100 Divinity Supernova
+   * fee and triggers a 300s cooldown).
    */
   supernovaIlluminate: (constellationId: string, starId: string) => void;
   /**
-   * Black Hole active ability: refunds 50% of the BASE cost spent on every lit
-   * star in the given constellation, then clears that constellation's stars.
-   * Lets the player reallocate Divinity.
+   * Black Hole active ability: refunds 75% of the BASE cost spent on every
+   * lit star in the given constellation, then clears that constellation's
+   * stars. Costs 50 Divinity, 120s cooldown. Lets the player reallocate
+   * Divinity.
    */
   blackHoleReset: (constellationId: string) => void;
+  /**
+   * Cosmic Bridge active ability: links two constellations for 60 seconds.
+   * During that window, illuminating a star in either constellation ALSO
+   * illuminates the cheapest unlit star in the other (for free). Costs 200
+   * Divinity, 600s cooldown. Requires `from !== to` and both endpoints to be
+   * valid constellation ids.
+   */
+  activateCosmicBridge: (fromConstellationId: string, toConstellationId: string) => void;
 
   // Layer 3 — Divine Market
   marketBuyResource: (resourceId: string, qty: number) => void;
@@ -628,4 +669,12 @@ export interface GameStore extends GameState {
   stabilizeTime: (oldGodId: string) => void;
   // FEATURE 10 — Forbidden Words
   resolveParadox: () => void;
+
+  // ===== BACKGROUND-SIMULATION =====
+  /**
+   * Manually invest in one additional background simulation. Costs
+   * `100 × 1.5^backgroundSimulations` Divinity. Adds +1 to
+   * `backgroundSimulations` (each sim generates Divinity = peak × 1% per sec).
+   */
+  spawnBackgroundSimulation: () => void;
 }

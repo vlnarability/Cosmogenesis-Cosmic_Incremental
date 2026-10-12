@@ -35,9 +35,12 @@ export function ResourceBar() {
   const isL5Plus = isAtLeast("apotheosis");       // L5+ — single summary chip
 
   // === Compute visible stage resources based on active layer ===
+  // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked), ALL stage
+  // resources are hidden. The ResourceBar shows only meta currencies:
+  // Divinity, EP, PP. The base game is abstracted into the Divine Engine.
   const visibleStageResources = useMemo(() => {
     const all = STAGE_RESOURCES[stage.id] || [];
-    if (!isL2Plus) return all;
+    if (isL2Plus) return [] as string[]; // L2+: hide ALL stage resources
     // L2+: hide resources whose `firstStage` is more than 3 stages below current.
     // (e.g. at galactic, hide food/water/culture/science/happiness/military_power which originated in creature/tribal)
     const cutoff = Math.max(0, stageIndex - 3);
@@ -103,29 +106,49 @@ export function ResourceBar() {
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Stage label (de-emphasized at L5+) */}
+          {/* BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked), the base
+              game is fully abstracted; the ResourceBar shows "🌌 Divine Engine"
+              instead of the current stage's icon + name. */}
           <div className="flex items-center gap-1.5 shrink-0 mr-1">
-            <span className="text-base">{stage.icon}</span>
-            <span
-              className={cn(
-                "text-xs font-semibold uppercase tracking-wider hidden sm:inline",
-                isL5Plus ? "text-muted-foreground/70" : "text-muted-foreground"
-              )}
-            >
-              {stage.name}
-            </span>
-            {isL5Plus && (
-              <span
-                className="text-xs font-bold uppercase tracking-wider hidden sm:inline text-amber-300"
-                title={`Active layer: ${activeLayerId}`}
-              >
-                · {activeLayerId}
-              </span>
+            {isL2Plus ? (
+              <>
+                <span className="text-base animate-pulse">🌌</span>
+                <span
+                  className="text-xs font-bold uppercase tracking-wider hidden sm:inline bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-300 bg-clip-text text-transparent"
+                  title="Background simulations are running — base game abstracted away"
+                >
+                  Divine Engine
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-base">{stage.icon}</span>
+                <span
+                  className={cn(
+                    "text-xs font-semibold uppercase tracking-wider hidden sm:inline",
+                    isL5Plus ? "text-muted-foreground/70" : "text-muted-foreground"
+                  )}
+                >
+                  {stage.name}
+                </span>
+                {isL5Plus && (
+                  <span
+                    className="text-xs font-bold uppercase tracking-wider hidden sm:inline text-amber-300"
+                    title={`Active layer: ${activeLayerId}`}
+                  >
+                    · {activeLayerId}
+                  </span>
+                )}
+              </>
             )}
           </div>
 
-          {/* Stage resource chips (or summary chip at L5+) */}
+          {/* Stage resource chips (or summary chip at L5+).
+              BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked), the entire
+              stage-resource row is hidden. ResourceBar shows only meta currencies
+              (Divinity, EP, PP) which render in the right-side meta-chip group. */}
           <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0 overflow-x-auto no-scrollbar">
-            {isL5Plus && !summaryExpanded && (
+            {isL5Plus && !isL2Plus && !summaryExpanded && (
               <button
                 onClick={() => setSummaryExpanded(true)}
                 className="res-chip shrink-0 cursor-pointer hover:bg-muted/40 transition-colors"
@@ -140,7 +163,7 @@ export function ResourceBar() {
                 </span>
               </button>
             )}
-            {isL5Plus && summaryExpanded && (
+            {isL5Plus && !isL2Plus && summaryExpanded && (
               <button
                 onClick={() => setSummaryExpanded(false)}
                 className="res-chip shrink-0 cursor-pointer hover:bg-muted/40 transition-colors"

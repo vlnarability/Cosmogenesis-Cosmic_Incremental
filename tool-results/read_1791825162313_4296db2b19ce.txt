@@ -1,0 +1,936 @@
+     1→// ===========================================================================
+     2→// LAYER 2 — ENLIGHTENMENT (CONSTELLATION MAP)
+     3→// ===========================================================================
+     4→// After 3 trials are mastered, the god opens its eyes. The Enlightenment layer
+     5→// is a star map: the player illuminates individual stars within real IAU
+     6→// constellations. Completing a constellation grants a permanent bonus.
+     7→// Currency = Divinity (earned at prestige while this layer is unlocked).
+     8→// Complete CONSTELLATIONS_REQUIRED_FOR_LAYER_3 constellations to advance to
+     9→// Layer 3 (Transcendence).
+    10→//
+    11→// ===========================================================================
+    12→// ARCHITECTURE NOTE — The full IAU list has 88 constellations. This file ships
+    13→// a curated subset of 28 prominent constellations (all 12 zodiac + 16 of the
+    14→// brightest northern / southern / equatorial patterns). The data shape
+    15→// (`ConstellationDef`) supports all 88 unchanged — to extend, just append more
+    16→// entries to `CONSTELLATIONS`. Cost model, UI, and bonus aggregation are
+    17→// constellation-count-agnostic.
+    18→// ===========================================================================
+    19→
+    20→export type ConstellationCategory =
+    21→  | "zodiac"
+    22→  | "northern"
+    23→  | "southern"
+    24→  | "equatorial";
+    25→
+    26→export interface ConstellationStar {
+    27→  /** Globally-unique star id, e.g. "orion_alpha". */
+    28→  id: string;
+    29→  /** Normalized X coordinate on the star map, 0-100 (left → right). */
+    30→  x: number;
+    31→  /** Normalized Y coordinate on the star map, 0-100 (top → bottom). */
+    32→  y: number;
+    33→}
+    34→
+    35→export interface ConstellationBonus {
+    36→  /** Additive production multiplier (0.05 = +5%). */
+    37→  productionMult?: number;
+    38→  /** Additive capacity multiplier. */
+    39→  capMult?: number;
+    40→  /** Additive EP multiplier (applied at prestige). */
+    41→  epMult?: number;
+    42→  /** Additive population growth multiplier. */
+    43→  popGrowthMult?: number;
+    44→  /** Cost reduction (negative = cheaper systems/techs). */
+    45→  costMult?: number;
+    46→  /** Bonus Divinity earned on prestige. */
+    47→  divinityMult?: number;
+    48→}
+    49→
+    50→export interface ConstellationDef {
+    51→  /** Slug id, e.g. "orion". */
+    52→  id: string;
+    53→  /** Display name, e.g. "Orion". */
+    54→  name: string;
+    55→  /** IAU designation (Latin), e.g. "Orion". */
+    56→  i18nName: string;
+    57→  /** Stars with normalized 0-100 coordinates on the star map. */
+    58→  stars: ConstellationStar[];
+    59→  /** Pairs of star ids that form the constellation's connecting lines. */
+    60→  connections: [string, string][];
+    61→  /** Permanent reward for completing this constellation. */
+    62→  bonus: ConstellationBonus;
+    63→  /** Flavor grouping. */
+    64→  category: ConstellationCategory;
+    65→}
+    66→
+    67→// ---------------------------------------------------------------------------
+    68→// COST MODEL CONSTANTS
+    69→// ---------------------------------------------------------------------------
+    70→// **Critical**: matches the user-supplied spec exactly.
+    71→//   baseCost = 10 Divinity.
+    72→//   withinConstellationGrowth = 1.5 — each subsequent star in the SAME
+    73→//     constellation multiplies the cost by 1.5 (cumulative).
+    74→//   costGrowth = 2.0 — multiplier per OTHER started constellation (i.e. any
+    75→//     constellation the player has already begun illuminating that isn't the
+    76→//     one being illuminated right now).
+    77→//
+    78→// Concretely (baseCost = 10):
+    79→//   A·star1:  10 × 1.5^0 × 2.0^0 = 10       (A is the first started → N=0)
+    80→//   A·star2:  10 × 1.5^1 × 2.0^0 = 15        (A is the only started, N=0 still)
+    81→//   A·star3:  10 × 1.5^2 × 2.0^0 = 22.5
+    82→//   B·star1:  10 × 1.5^0 × 2.0^1 = 20        (A is started, B is new → N=1)
+    83→//   B·star2:  10 × 1.5^1 × 2.0^1 = 30        (A+B started, B excluded → N=1)
+    84→//   Cass·star1: 10 × 1.5^0 × 2.0^2 = 40      (A+B started, Cass is new → N=2)
+    85→//
+    86→// Where N = (# of started constellations) - (1 if THIS constellation is
+    87→// already started, else 0). I.e. N counts OTHER started constellations.
+    88→//
+    89→// The "new constellation penalty" the user describes is the costGrowth^N
+    90→// term: it only kicks in when this is a brand-new constellation (because at
+    91→// that point every other started constellation counts toward N). For
+    92→// already-started constellations, N stays fixed at the count when you began
+    93→// that constellation, which means subsequent stars in a "penalized"
+    94→// constellation inherit the same N multiplier — encouraging the player to
+    95→// finish a constellation before starting a new one.
+    96→// ---------------------------------------------------------------------------
+    97→export const CONSTELLATION_BASE_COST = 10;
+    98→export const WITHIN_CONSTELLATION_GROWTH = 1.5;
+    99→export const COST_GROWTH_PER_STARTED = 2.0;
+   100→export const NEW_CONSTELLATION_PENALTY = 2.0;
+   101→
+   102→// Number of constellations the player must COMPLETE to advance to Layer 3.
+   103→export const CONSTELLATIONS_REQUIRED_FOR_LAYER_3 = 10;
+   104→
+   105→// Per-star production bonus (additive across all lit stars).
+   106→export const PER_STAR_PRODUCTION_BONUS = 0.005; // +0.5% per lit star
+   107→
+   108→// ---------------------------------------------------------------------------
+   109→// THE 28 CURATED CONSTELLATIONS
+   110→// ---------------------------------------------------------------------------
+   111→// Star positions are normalized 0-100 on a stylized sky map (NOT a literal
+   112→// equatorial projection — they're packed for visual variety per category).
+   113→// Star counts per constellation range 4-12; connecting lines follow the
+   114→// canonical IAU stick figures (simplified).
+   115→export const CONSTELLATIONS: ConstellationDef[] = [
+   116→  // ===== ZODIAC (12) =====
+   117→  {
+   118→    id: "aries",
+   119→    name: "Aries",
+   120→    i18nName: "Aries",
+   121→    category: "zodiac",
+   122→    stars: [
+   123→      { id: "aries_alpha", x: 12, y: 30 },
+   124→      { id: "aries_beta", x: 16, y: 28 },
+   125→      { id: "aries_gamma", x: 20, y: 32 },
+   126→      { id: "aries_delta", x: 24, y: 35 },
+   127→    ],
+   128→    connections: [
+   129→      ["aries_alpha", "aries_beta"],
+   130→      ["aries_beta", "aries_gamma"],
+   131→      ["aries_gamma", "aries_delta"],
+   132→    ],
+   133→    bonus: { productionMult: 0.04, popGrowthMult: 0.03 },
+   134→  },
+   135→  {
+   136→    id: "taurus",
+   137→    name: "Taurus",
+   138→    i18nName: "Taurus",
+   139→    category: "zodiac",
+   140→    stars: [
+   141→      { id: "taurus_alpha", x: 30, y: 28 }, // Aldebaran
+   142→      { id: "taurus_beta", x: 28, y: 24 },
+   143→      { id: "taurus_gamma", x: 26, y: 30 },
+   144→      { id: "taurus_delta", x: 34, y: 22 },
+   145→      { id: "taurus_eps", x: 32, y: 18 },
+   146→      { id: "taurus_zeta", x: 36, y: 18 },
+   147→      { id: "taurus_eta", x: 38, y: 22 },
+   148→    ],
+   149→    connections: [
+   150→      ["taurus_alpha", "taurus_beta"],
+   151→      ["taurus_alpha", "taurus_gamma"],
+   152→      ["taurus_beta", "taurus_delta"],
+   153→      ["taurus_delta", "taurus_eps"],
+   154→      ["taurus_eps", "taurus_zeta"],
+   155→      ["taurus_zeta", "taurus_eta"],
+   156→      ["taurus_eta", "taurus_delta"],
+   157→    ],
+   158→    bonus: { productionMult: 0.06, capMult: 0.03 },
+   159→  },
+   160→  {
+   161→    id: "gemini",
+   162→    name: "Gemini",
+   163→    i18nName: "Gemini",
+   164→    category: "zodiac",
+   165→    stars: [
+   166→      { id: "gemini_alpha", x: 44, y: 22 }, // Castor
+   167→      { id: "gemini_beta", x: 46, y: 26 },  // Pollux
+   168→      { id: "gemini_gamma", x: 42, y: 24 },
+   169→      { id: "gemini_delta", x: 40, y: 30 },
+   170→      { id: "gemini_eps", x: 43, y: 34 },
+   171→      { id: "gemini_zeta", x: 47, y: 32 },
+   172→      { id: "gemini_eta", x: 49, y: 28 },
+   173→      { id: "gemini_theta", x: 51, y: 24 },
+   174→    ],
+   175→    connections: [
+   176→      ["gemini_alpha", "gemini_gamma"],
+   177→      ["gemini_gamma", "gemini_delta"],
+   178→      ["gemini_delta", "gemini_eps"],
+   179→      ["gemini_beta", "gemini_zeta"],
+   180→      ["gemini_zeta", "gemini_eta"],
+   181→      ["gemini_eta", "gemini_theta"],
+   182→    ],
+   183→    bonus: { productionMult: 0.05, epMult: 0.04 },
+   184→  },
+   185→  {
+   186→    id: "cancer",
+   187→    name: "Cancer",
+   188→    i18nName: "Cancer",
+   189→    category: "zodiac",
+   190→    stars: [
+   191→      { id: "cancer_alpha", x: 56, y: 22 },
+   192→      { id: "cancer_beta", x: 54, y: 26 },
+   193→      { id: "cancer_gamma", x: 58, y: 28 },
+   194→      { id: "cancer_delta", x: 56, y: 32 },
+   195→      { id: "cancer_eps", x: 60, y: 24 },
+   196→    ],
+   197→    connections: [
+   198→      ["cancer_alpha", "cancer_beta"],
+   199→      ["cancer_alpha", "cancer_gamma"],
+   200→      ["cancer_gamma", "cancer_delta"],
+   201→      ["cancer_alpha", "cancer_eps"],
+   202→    ],
+   203→    bonus: { capMult: 0.05, popGrowthMult: 0.02 },
+   204→  },
+   205→  {
+   206→    id: "leo",
+   207→    name: "Leo",
+   208→    i18nName: "Leo",
+   209→    category: "zodiac",
+   210→    stars: [
+   211→      { id: "leo_alpha", x: 65, y: 28 }, // Regulus
+   212→      { id: "leo_beta", x: 70, y: 22 },  // Denebola
+   213→      { id: "leo_gamma", x: 62, y: 22 },
+   214→      { id: "leo_delta", x: 60, y: 26 },
+   215→      { id: "leo_eps", x: 68, y: 30 },
+   216→      { id: "leo_zeta", x: 72, y: 26 },
+   217→      { id: "leo_eta", x: 74, y: 24 },
+   218→    ],
+   219→    connections: [
+   220→      ["leo_alpha", "leo_delta"],
+   221→      ["leo_delta", "leo_gamma"],
+   222→      ["leo_gamma", "leo_alpha"],
+   223→      ["leo_alpha", "leo_eps"],
+   224→      ["leo_eps", "leo_zeta"],
+   225→      ["leo_zeta", "leo_beta"],
+   226→      ["leo_beta", "leo_eta"],
+   227→    ],
+   228→    bonus: { productionMult: 0.06, epMult: 0.03 },
+   229→  },
+   230→  {
+   231→    id: "virgo",
+   232→    name: "Virgo",
+   233→    i18nName: "Virgo",
+   234→    category: "zodiac",
+   235→    stars: [
+   236→      { id: "virgo_alpha", x: 80, y: 30 }, // Spica
+   237→      { id: "virgo_beta", x: 76, y: 22 },
+   238→      { id: "virgo_gamma", x: 84, y: 22 },
+   239→      { id: "virgo_delta", x: 78, y: 26 },
+   240→      { id: "virgo_eps", x: 82, y: 24 },
+   241→      { id: "virgo_zeta", x: 86, y: 28 },
+   242→      { id: "virgo_eta", x: 88, y: 26 },
+   243→    ],
+   244→    connections: [
+   245→      ["virgo_alpha", "virgo_delta"],
+   246→      ["virgo_delta", "virgo_beta"],
+   247→      ["virgo_delta", "virgo_eps"],
+   248→      ["virgo_eps", "virgo_gamma"],
+   249→      ["virgo_alpha", "virgo_zeta"],
+   250→      ["virgo_zeta", "virgo_eta"],
+   251→    ],
+   252→    bonus: { productionMult: 0.05, capMult: 0.04 },
+   253→  },
+   254→  {
+   255→    id: "libra",
+   256→    name: "Libra",
+   257→    i18nName: "Libra",
+   258→    category: "zodiac",
+   259→    stars: [
+   260→      { id: "libra_alpha", x: 88, y: 40 },
+   261→      { id: "libra_beta", x: 92, y: 38 },
+   262→      { id: "libra_gamma", x: 86, y: 44 },
+   263→      { id: "libra_delta", x: 90, y: 46 },
+   264→    ],
+   265→    connections: [
+   266→      ["libra_alpha", "libra_beta"],
+   267→      ["libra_alpha", "libra_gamma"],
+   268→      ["libra_beta", "libra_delta"],
+   269→      ["libra_gamma", "libra_delta"],
+   270→    ],
+   271→    bonus: { costMult: -0.05 },
+   272→  },
+   273→  {
+   274→    id: "scorpius",
+   275→    name: "Scorpius",
+   276→    i18nName: "Scorpius",
+   277→    category: "zodiac",
+   278→    stars: [
+   279→      { id: "scorpius_alpha", x: 82, y: 50 }, // Antares
+   280→      { id: "scorpius_beta", x: 78, y: 48 },
+   281→      { id: "scorpius_gamma", x: 80, y: 54 },
+   282→      { id: "scorpius_delta", x: 84, y: 56 },
+   283→      { id: "scorpius_eps", x: 86, y: 60 },
+   284→      { id: "scorpius_zeta", x: 88, y: 62 },
+   285→      { id: "scorpius_eta", x: 90, y: 60 },
+   286→      { id: "scorpius_theta", x: 92, y: 56 },
+   287→      { id: "scorpius_iota", x: 86, y: 52 },
+   288→    ],
+   289→    connections: [
+   290→      ["scorpius_beta", "scorpius_alpha"],
+   291→      ["scorpius_alpha", "scorpius_iota"],
+   292→      ["scorpius_alpha", "scorpius_gamma"],
+   293→      ["scorpius_gamma", "scorpius_delta"],
+   294→      ["scorpius_delta", "scorpius_eps"],
+   295→      ["scorpius_eps", "scorpius_zeta"],
+   296→      ["scorpius_zeta", "scorpius_eta"],
+   297→      ["scorpius_eta", "scorpius_theta"],
+   298→    ],
+   299→    bonus: { productionMult: 0.07, popGrowthMult: 0.04 },
+   300→  },
+   301→  {
+   302→    id: "sagittarius",
+   303→    name: "Sagittarius",
+   304→    i18nName: "Sagittarius",
+   305→    category: "zodiac",
+   306→    stars: [
+   307→      { id: "sag_alpha", x: 70, y: 60 },
+   308→      { id: "sag_beta", x: 66, y: 58 },
+   309→      { id: "sag_gamma", x: 74, y: 62 },
+   310→      { id: "sag_delta", x: 72, y: 66 },
+   311→      { id: "sag_eps", x: 68, y: 64 },
+   312→      { id: "sag_zeta", x: 76, y: 68 },
+   313→      { id: "sag_eta", x: 78, y: 64 },
+   314→      { id: "sag_theta", x: 64, y: 62 },
+   315→    ],
+   316→    connections: [
+   317→      ["sag_beta", "sag_alpha"],
+   318→      ["sag_alpha", "sag_gamma"],
+   319→      ["sag_gamma", "sag_zeta"],
+   320→      ["sag_zeta", "sag_eta"],
+   321→      ["sag_alpha", "sag_eps"],
+   322→      ["sag_eps", "sag_delta"],
+   323→      ["sag_eps", "sag_beta"],
+   324→      ["sag_beta", "sag_theta"],
+   325→    ],
+   326→    bonus: { productionMult: 0.05, divinityMult: 0.10 },
+   327→  },
+   328→  {
+   329→    id: "capricornus",
+   330→    name: "Capricornus",
+   331→    i18nName: "Capricornus",
+   332→    category: "zodiac",
+   333→    stars: [
+   334→      { id: "cap_alpha", x: 56, y: 64 },
+   335→      { id: "cap_beta", x: 60, y: 62 },
+   336→      { id: "cap_gamma", x: 52, y: 60 },
+   337→      { id: "cap_delta", x: 64, y: 60 },
+   338→      { id: "cap_eps", x: 50, y: 58 },
+   339→      { id: "cap_zeta", x: 66, y: 56 },
+   340→    ],
+   341→    connections: [
+   342→      ["cap_gamma", "cap_alpha"],
+   343→      ["cap_alpha", "cap_beta"],
+   344→      ["cap_beta", "cap_delta"],
+   345→      ["cap_gamma", "cap_eps"],
+   346→      ["cap_delta", "cap_zeta"],
+   347→    ],
+   348→    bonus: { capMult: 0.06, epMult: 0.03 },
+   349→  },
+   350→  {
+   351→    id: "aquarius",
+   352→    name: "Aquarius",
+   353→    i18nName: "Aquarius",
+   354→    category: "zodiac",
+   355→    stars: [
+   356→      { id: "aqua_alpha", x: 42, y: 58 },
+   357→      { id: "aqua_beta", x: 38, y: 60 },
+   358→      { id: "aqua_gamma", x: 46, y: 56 },
+   359→      { id: "aqua_delta", x: 34, y: 58 },
+   360→      { id: "aqua_eps", x: 30, y: 60 },
+   361→      { id: "aqua_zeta", x: 44, y: 64 },
+   362→      { id: "aqua_eta", x: 40, y: 66 },
+   363→    ],
+   364→    connections: [
+   365→      ["aqua_beta", "aqua_alpha"],
+   366→      ["aqua_alpha", "aqua_gamma"],
+   367→      ["aqua_beta", "aqua_delta"],
+   368→      ["aqua_delta", "aqua_eps"],
+   369→      ["aqua_alpha", "aqua_zeta"],
+   370→      ["aqua_zeta", "aqua_eta"],
+   371→    ],
+   372→    bonus: { productionMult: 0.04, capMult: 0.04 },
+   373→  },
+   374→  {
+   375→    id: "pisces",
+   376→    name: "Pisces",
+   377→    i18nName: "Pisces",
+   378→    category: "zodiac",
+   379→    stars: [
+   380→      { id: "pis_alpha", x: 22, y: 60 },
+   381→      { id: "pis_beta", x: 26, y: 62 },
+   382→      { id: "pis_gamma", x: 18, y: 58 },
+   383→      { id: "pis_delta", x: 14, y: 56 },
+   384→      { id: "pis_eps", x: 28, y: 58 },
+   385→      { id: "pis_zeta", x: 24, y: 56 },
+   386→      { id: "pis_eta", x: 20, y: 54 },
+   387→    ],
+   388→    connections: [
+   389→      ["pis_gamma", "pis_alpha"],
+   390→      ["pis_alpha", "pis_beta"],
+   391→      ["pis_gamma", "pis_delta"],
+   392→      ["pis_alpha", "pis_zeta"],
+   393→      ["pis_zeta", "pis_eps"],
+   394→      ["pis_zeta", "pis_eta"],
+   395→    ],
+   396→    bonus: { productionMult: 0.05, popGrowthMult: 0.03 },
+   397→  },
+   398→
+   399→  // ===== NORTHERN (8) =====
+   400→  {
+   401→    id: "ursa_major",
+   402→    name: "Ursa Major",
+   403→    i18nName: "Ursa Major",
+   404→    category: "northern",
+   405→    stars: [
+   406→      { id: "um_alpha", x: 10, y: 8 },  // Dubhe
+   407→      { id: "um_beta", x: 14, y: 10 },  // Merak
+   408→      { id: "um_gamma", x: 18, y: 8 },  // Phecda
+   409→      { id: "um_delta", x: 22, y: 12 }, // Megrez
+   410→      { id: "um_eps", x: 26, y: 8 },    // Alioth
+   411→      { id: "um_zeta", x: 30, y: 10 },  // Mizar
+   412→      { id: "um_eta", x: 34, y: 14 },   // Alkaid
+   413→    ],
+   414→    connections: [
+   415→      ["um_alpha", "um_beta"],
+   416→      ["um_beta", "um_gamma"],
+   417→      ["um_gamma", "um_delta"],
+   418→      ["um_delta", "um_eps"],
+   419→      ["um_eps", "um_zeta"],
+   420→      ["um_zeta", "um_eta"],
+   421→      ["um_delta", "um_alpha"],
+   422→    ],
+   423→    bonus: { productionMult: 0.06, epMult: 0.05 },
+   424→  },
+   425→  {
+   426→    id: "ursa_minor",
+   427→    name: "Ursa Minor",
+   428→    i18nName: "Ursa Minor",
+   429→    category: "northern",
+   430→    stars: [
+   431→      { id: "umi_alpha", x: 8, y: 4 },   // Polaris
+   432→      { id: "umi_beta", x: 6, y: 8 },
+   433→      { id: "umi_gamma", x: 10, y: 10 },
+   434→      { id: "umi_delta", x: 12, y: 6 },
+   435→      { id: "umi_eps", x: 14, y: 8 },
+   436→      { id: "umi_zeta", x: 4, y: 6 },
+   437→      { id: "umi_eta", x: 2, y: 8 },
+   438→    ],
+   439→    connections: [
+   440→      ["umi_alpha", "umi_delta"],
+   441→      ["umi_delta", "umi_eps"],
+   442→      ["umi_eps", "umi_gamma"],
+   443→      ["umi_gamma", "umi_beta"],
+   444→      ["umi_beta", "umi_zeta"],
+   445→      ["umi_zeta", "umi_eta"],
+   446→    ],
+   447→    bonus: { capMult: 0.05, epMult: 0.04 },
+   448→  },
+   449→  {
+   450→    id: "cassiopeia",
+   451→    name: "Cassiopeia",
+   452→    i18nName: "Cassiopeia",
+   453→    category: "northern",
+   454→    stars: [
+   455→      { id: "cas_alpha", x: 40, y: 6 },
+   456→      { id: "cas_beta", x: 44, y: 10 },
+   457→      { id: "cas_gamma", x: 48, y: 6 },
+   458→      { id: "cas_delta", x: 52, y: 10 },
+   459→      { id: "cas_eps", x: 56, y: 6 },
+   460→    ],
+   461→    connections: [
+   462→      ["cas_alpha", "cas_beta"],
+   463→      ["cas_beta", "cas_gamma"],
+   464→      ["cas_gamma", "cas_delta"],
+   465→      ["cas_delta", "cas_eps"],
+   466→    ],
+   467→    bonus: { productionMult: 0.04, epMult: 0.06 },
+   468→  },
+   469→  {
+   470→    id: "cygnus",
+   471→    name: "Cygnus",
+   472→    i18nName: "Cygnus",
+   473→    category: "northern",
+   474→    stars: [
+   475→      { id: "cyg_alpha", x: 64, y: 8 },  // Deneb
+   476→      { id: "cyg_beta", x: 68, y: 12 },
+   477→      { id: "cyg_gamma", x: 72, y: 8 },
+   478→      { id: "cyg_delta", x: 76, y: 14 },
+   479→      { id: "cyg_eps", x: 60, y: 12 },
+   480→      { id: "cyg_zeta", x: 66, y: 16 },
+   481→    ],
+   482→    connections: [
+   483→      ["cyg_alpha", "cyg_beta"],
+   484→      ["cyg_beta", "cyg_delta"],
+   485→      ["cyg_beta", "cyg_zeta"],
+   486→      ["cyg_zeta", "cyg_eps"],
+   487→      ["cyg_alpha", "cyg_gamma"],
+   488→    ],
+   489→    bonus: { productionMult: 0.05, popGrowthMult: 0.04 },
+   490→  },
+   491→  {
+   492→    id: "lyra",
+   493→    name: "Lyra",
+   494→    i18nName: "Lyra",
+   495→    category: "northern",
+   496→    stars: [
+   497→      { id: "lyr_alpha", x: 80, y: 8 }, // Vega
+   498→      { id: "lyr_beta", x: 82, y: 12 },
+   499→      { id: "lyr_gamma", x: 84, y: 10 },
+   500→      { id: "lyr_delta", x: 78, y: 12 },
+   501→      { id: "lyr_eps", x: 80, y: 14 },
+   502→    ],
+   503→    connections: [
+   504→      ["lyr_alpha", "lyr_beta"],
+   505→      ["lyr_beta", "lyr_gamma"],
+   506→      ["lyr_gamma", "lyr_alpha"],
+   507→      ["lyr_beta", "lyr_eps"],
+   508→      ["lyr_eps", "lyr_delta"],
+   509→      ["lyr_delta", "lyr_alpha"],
+   510→    ],
+   511→    bonus: { productionMult: 0.04, epMult: 0.06, divinityMult: 0.05 },
+   512→  },
+   513→  {
+   514→    id: "draco",
+   515→    name: "Draco",
+   516→    i18nName: "Draco",
+   517→    category: "northern",
+   518→    stars: [
+   519→      { id: "dra_alpha", x: 90, y: 4 },
+   520→      { id: "dra_beta", x: 86, y: 6 },
+   521→      { id: "dra_gamma", x: 82, y: 4 },
+   522→      { id: "dra_delta", x: 78, y: 8 },
+   523→      { id: "dra_eps", x: 74, y: 4 },
+   524→      { id: "dra_zeta", x: 70, y: 6 },
+   525→      { id: "dra_eta", x: 66, y: 4 },
+   526→      { id: "dra_theta", x: 62, y: 8 },
+   527→    ],
+   528→    connections: [
+   529→      ["dra_alpha", "dra_beta"],
+   530→      ["dra_beta", "dra_gamma"],
+   531→      ["dra_gamma", "dra_delta"],
+   532→      ["dra_delta", "dra_eps"],
+   533→      ["dra_eps", "dra_zeta"],
+   534→      ["dra_zeta", "dra_eta"],
+   535→      ["dra_eta", "dra_theta"],
+   536→    ],
+   537→    bonus: { capMult: 0.04, epMult: 0.05, costMult: -0.03 },
+   538→  },
+   539→  {
+   540→    id: "pegasus",
+   541→    name: "Pegasus",
+   542→    i18nName: "Pegasus",
+   543→    category: "northern",
+   544→    stars: [
+   545→      { id: "peg_alpha", x: 38, y: 18 },
+   546→      { id: "peg_beta", x: 42, y: 16 },
+   547→      { id: "peg_gamma", x: 42, y: 22 },
+   548→      { id: "peg_delta", x: 38, y: 24 },
+   549→      { id: "peg_eps", x: 34, y: 18 },
+   550→      { id: "peg_zeta", x: 46, y: 20 },
+   551→    ],
+   552→    connections: [
+   553→      ["peg_alpha", "peg_beta"],
+   554→      ["peg_beta", "peg_gamma"],
+   555→      ["peg_gamma", "peg_delta"],
+   556→      ["peg_delta", "peg_alpha"],
+   557→      ["peg_alpha", "peg_eps"],
+   558→      ["peg_beta", "peg_zeta"],
+   559→    ],
+   560→    bonus: { productionMult: 0.05, capMult: 0.05 },
+   561→  },
+   562→  {
+   563→    id: "andromeda",
+   564→    name: "Andromeda",
+   565→    i18nName: "Andromeda",
+   566→    category: "northern",
+   567→    stars: [
+   568→      { id: "and_alpha", x: 48, y: 18 },
+   569→      { id: "and_beta", x: 52, y: 20 },
+   570→      { id: "and_gamma", x: 56, y: 22 },
+   571→      { id: "and_delta", x: 60, y: 18 },
+   572→      { id: "and_eps", x: 50, y: 24 },
+   573→      { id: "and_zeta", x: 54, y: 26 },
+   574→    ],
+   575→    connections: [
+   576→      ["and_alpha", "and_beta"],
+   577→      ["and_beta", "and_gamma"],
+   578→      ["and_gamma", "and_delta"],
+   579→      ["and_beta", "and_eps"],
+   580→      ["and_eps", "and_zeta"],
+   581→    ],
+   582→    bonus: { productionMult: 0.05, epMult: 0.04, divinityMult: 0.05 },
+   583→  },
+   584→
+   585→  // ===== EQUATORIAL (4) =====
+   586→  {
+   587→    id: "orion",
+   588→    name: "Orion",
+   589→    i18nName: "Orion",
+   590→    category: "equatorial",
+   591→    stars: [
+   592→      { id: "ori_alpha", x: 12, y: 40 }, // Betelgeuse
+   593→      { id: "ori_beta", x: 8, y: 36 },  // Rigel
+   594→      { id: "ori_gamma", x: 16, y: 38 }, // Bellatrix
+   595→      { id: "ori_delta", x: 14, y: 44 }, // Saiph
+   596→      { id: "ori_eps", x: 10, y: 42 },  // belt
+   597→      { id: "ori_zeta", x: 12, y: 42 },
+   598→      { id: "ori_eta", x: 14, y: 42 },
+   599→      { id: "ori_theta", x: 11, y: 40 }, // sword
+   600→      { id: "ori_iota", x: 13, y: 40 },
+   601→    ],
+   602→    connections: [
+   603→      ["ori_alpha", "ori_gamma"],
+   604→      ["ori_alpha", "ori_zeta"],
+   605→      ["ori_gamma", "ori_eta"],
+   606→      ["ori_eta", "ori_zeta"],
+   607→      ["ori_zeta", "ori_eps"],
+   608→      ["ori_beta", "ori_eps"],
+   609→      ["ori_eps", "ori_theta"],
+   610→      ["ori_theta", "ori_iota"],
+   611→      ["ori_iota", "ori_delta"],
+   612→    ],
+   613→    bonus: { productionMult: 0.08, popGrowthMult: 0.05 },
+   614→  },
+   615→  {
+   616→    id: "perseus",
+   617→    name: "Perseus",
+   618→    i18nName: "Perseus",
+   619→    category: "equatorial",
+   620→    stars: [
+   621→      { id: "per_alpha", x: 28, y: 40 },
+   622→      { id: "per_beta", x: 32, y: 42 },
+   623→      { id: "per_gamma", x: 26, y: 44 },
+   624→      { id: "per_delta", x: 30, y: 46 },
+   625→      { id: "per_eps", x: 34, y: 44 },
+   626→      { id: "per_zeta", x: 32, y: 38 },
+   627→    ],
+   628→    connections: [
+   629→      ["per_alpha", "per_beta"],
+   630→      ["per_beta", "per_eps"],
+   631→      ["per_alpha", "per_zeta"],
+   632→      ["per_alpha", "per_gamma"],
+   633→      ["per_gamma", "per_delta"],
+   634→      ["per_delta", "per_beta"],
+   635→    ],
+   636→    bonus: { productionMult: 0.05, epMult: 0.05 },
+   637→  },
+   638→  {
+   639→    id: "hercules",
+   640→    name: "Hercules",
+   641→    i18nName: "Hercules",
+   642→    category: "equatorial",
+   643→    stars: [
+   644→      { id: "her_alpha", x: 60, y: 38 },
+   645→      { id: "her_beta", x: 64, y: 36 },
+   646→      { id: "her_gamma", x: 64, y: 42 },
+   647→      { id: "her_delta", x: 60, y: 44 },
+   648→      { id: "her_eps", x: 56, y: 36 },
+   649→      { id: "her_zeta", x: 68, y: 40 },
+   650→      { id: "her_eta", x: 56, y: 44 },
+   651→      { id: "her_theta", x: 68, y: 44 },
+   652→    ],
+   653→    connections: [
+   654→      ["her_alpha", "her_beta"],
+   655→      ["her_beta", "her_gamma"],
+   656→      ["her_gamma", "her_delta"],
+   657→      ["her_delta", "her_alpha"],
+   658→      ["her_alpha", "her_eps"],
+   659→      ["her_beta", "her_zeta"],
+   660→      ["her_delta", "her_eta"],
+   661→      ["her_gamma", "her_theta"],
+   662→    ],
+   663→    bonus: { productionMult: 0.06, popGrowthMult: 0.05, capMult: 0.03 },
+   664→  },
+   665→  {
+   666→    id: "aquila",
+   667→    name: "Aquila",
+   668→    i18nName: "Aquila",
+   669→    category: "equatorial",
+   670→    stars: [
+   671→      { id: "aql_alpha", x: 76, y: 40 }, // Altair
+   672→      { id: "aql_beta", x: 78, y: 36 },
+   673→      { id: "aql_gamma", x: 74, y: 44 },
+   674→      { id: "aql_delta", x: 80, y: 42 },
+   675→      { id: "aql_eps", x: 72, y: 38 },
+   676→    ],
+   677→    connections: [
+   678→      ["aql_beta", "aql_alpha"],
+   679→      ["aql_alpha", "aql_gamma"],
+   680→      ["aql_alpha", "aql_delta"],
+   681→      ["aql_alpha", "aql_eps"],
+   682→    ],
+   683→    bonus: { productionMult: 0.05, epMult: 0.04 },
+   684→  },
+   685→
+   686→  // ===== SOUTHERN (4) =====
+   687→  {
+   688→    id: "crux",
+   689→    name: "Crux",
+   690→    i18nName: "Crux",
+   691→    category: "southern",
+   692→    stars: [
+   693→      { id: "crux_alpha", x: 50, y: 78 },
+   694→      { id: "crux_beta", x: 48, y: 82 },
+   695→      { id: "crux_gamma", x: 52, y: 82 },
+   696→      { id: "crux_delta", x: 50, y: 86 },
+   697→    ],
+   698→    connections: [
+   699→      ["crux_alpha", "crux_delta"],
+   700→      ["crux_beta", "crux_gamma"],
+   701→    ],
+   702→    bonus: { productionMult: 0.06, divinityMult: 0.08 },
+   703→  },
+   704→  {
+   705→    id: "centaurus",
+   706→    name: "Centaurus",
+   707→    i18nName: "Centaurus",
+   708→    category: "southern",
+   709→    stars: [
+   710→      { id: "cen_alpha", x: 42, y: 80 }, // Rigil Kentaurus
+   711→      { id: "cen_beta", x: 38, y: 84 },  // Hadar
+   712→      { id: "cen_gamma", x: 44, y: 86 },
+   713→      { id: "cen_delta", x: 46, y: 82 },
+   714→      { id: "cen_eps", x: 36, y: 80 },
+   715→      { id: "cen_zeta", x: 40, y: 88 },
+   716→    ],
+   717→    connections: [
+   718→      ["cen_alpha", "cen_beta"],
+   719→      ["cen_alpha", "cen_delta"],
+   720→      ["cen_beta", "cen_eps"],
+   721→      ["cen_beta", "cen_zeta"],
+   722→      ["cen_delta", "cen_gamma"],
+   723→    ],
+   724→    bonus: { productionMult: 0.06, capMult: 0.04 },
+   725→  },
+   726→  {
+   727→    id: "carina",
+   728→    name: "Carina",
+   729→    i18nName: "Carina",
+   730→    category: "southern",
+   731→    stars: [
+   732→      { id: "car_alpha", x: 30, y: 80 }, // Canopus
+   733→      { id: "car_beta", x: 26, y: 84 },
+   734→      { id: "car_gamma", x: 34, y: 84 },
+   735→      { id: "car_delta", x: 28, y: 88 },
+   736→      { id: "car_eps", x: 32, y: 88 },
+   737→    ],
+   738→    connections: [
+   739→      ["car_alpha", "car_beta"],
+   740→      ["car_alpha", "car_gamma"],
+   741→      ["car_beta", "car_delta"],
+   742→      ["car_gamma", "car_eps"],
+   743→    ],
+   744→    bonus: { productionMult: 0.05, capMult: 0.05 },
+   745→  },
+   746→  {
+   747→    id: "bootes",
+   748→    name: "Boötes",
+   749→    i18nName: "Boötes",
+   750→    category: "equatorial",
+   751→    stars: [
+   752→      { id: "boo_alpha", x: 62, y: 64 }, // Arcturus
+   753→      { id: "boo_beta", x: 66, y: 60 },
+   754→      { id: "boo_gamma", x: 64, y: 70 },
+   755→      { id: "boo_delta", x: 68, y: 66 },
+   756→      { id: "boo_eps", x: 60, y: 60 },
+   757→    ],
+   758→    connections: [
+   759→      ["boo_alpha", "boo_beta"],
+   760→      ["boo_alpha", "boo_gamma"],
+   761→      ["boo_beta", "boo_eps"],
+   762→      ["boo_beta", "boo_delta"],
+   763→    ],
+   764→    bonus: { productionMult: 0.05, popGrowthMult: 0.05 },
+   765→  },
+   766→];
+   767→
+   768→export const CONSTELLATION_MAP: Record<string, ConstellationDef> = Object.fromEntries(
+   769→  CONSTELLATIONS.map((c) => [c.id, c])
+   770→);
+   771→
+   772→// Build a star id → constellation id lookup.
+   773→export const STAR_TO_CONSTELLATION: Record<string, string> = (() => {
+   774→  const m: Record<string, string> = {};
+   775→  for (const c of CONSTELLATIONS) {
+   776→    for (const s of c.stars) m[s.id] = c.id;
+   777→  }
+   778→  return m;
+   779→})();
+   780→
+   781→// ---------------------------------------------------------------------------
+   782→// COST MODEL
+   783→// ---------------------------------------------------------------------------
+   784→
+   785→/**
+   786→ * Shape of the constellation-related state used by the cost model and bonus
+   787→ * aggregation. Matches the GameState subset, but parameterized for testing.
+   788→ */
+   789→export interface ConstellationState {
+   790→  constellationStars: Record<string, boolean>;
+   791→  constellationProgress: Record<string, number>;
+   792→  constellationsStarted: Record<string, boolean>;
+   793→  constellationsCompleted: Record<string, boolean>;
+   794→}
+   795→
+   796→/**
+   797→ * Compute the Divinity cost of illuminating the next star in a constellation.
+   798→ *
+   799→ * Formula:
+   800→ *   baseCost × (withinConstellationGrowth ^ litInThisConstellation)
+   801→ *             × (costGrowth ^ N)
+   802→ *
+   803→ * Where:
+   804→ *   `litInThisConstellation` = count of already-lit stars in `constellationId`.
+   805→ *   `N` = number of OTHER started constellations (i.e. startedCount minus 1 if
+   806→ *        this constellation is already started). This is the "new constellation
+   807→ *        penalty" — it kicks in when starting a brand-new constellation
+   808→ *        (because every other started constellation counts toward N) and STICKS
+   809→ *        for every subsequent star within that constellation, encouraging the
+   810→ *        player to finish a constellation before starting a new one.
+   811→ *
+   812→ * Concrete example (baseCost = 10):
+   813→ *   A·star1 (no started):        10 × 1.5^0 × 2.0^0 = 10
+   814→ *   A·star2 (A started):          10 × 1.5^1 × 2.0^0 = 15
+   815→ *   A·star3 (A started):          10 × 1.5^2 × 2.0^0 = 22.5
+   816→ *   B·star1 (A started, B new):   10 × 1.5^0 × 2.0^1 = 20  (new constellation)
+   817→ *   B·star2 (A+B started):         10 × 1.5^1 × 2.0^1 = 30  (penalty sticks!)
+   818→ *   Cass·star1 (A+B started):      10 × 1.5^0 × 2.0^2 = 40  (two others)
+   819→ */
+   820→export function starCost(
+   821→  constellationId: string,
+   822→  state: ConstellationState,
+   823→  starId?: string,
+   824→  opts?: { baseCost?: number; foresightDiscountMult?: number }
+   825→): number {
+   826→  const baseCost = opts?.baseCost ?? CONSTELLATION_BASE_COST;
+   827→  const litInThis = state.constellationProgress?.[constellationId] || 0;
+   828→  // N = number of OTHER started constellations (exclude the current one if
+   829→  // already started). This is the "new constellation penalty" — it sticks
+   830→  // for every star within a started constellation, so switching to B before
+   831→  // finishing A makes EVERY B star cost 2× more, not just the first.
+   832→  const startedCount = Object.keys(state.constellationsStarted || {}).filter(
+   833→    (k) => state.constellationsStarted[k]
+   834→  ).length;
+   835→  const thisStarted = !!state.constellationsStarted?.[constellationId];
+   836→  const N = Math.max(0, startedCount - (thisStarted ? 1 : 0));
+   837→  let cost =
+   838→    baseCost *
+   839→    Math.pow(WITHIN_CONSTELLATION_GROWTH, litInThis) *
+   840→    Math.pow(COST_GROWTH_PER_STARTED, N);
+   841→  // LAYER UPGRADE — foresight_discount: multiplicative -20% per level (max 5).
+   842→  if (opts?.foresightDiscountMult && opts.foresightDiscountMult < 1) {
+   843→    cost *= opts.foresightDiscountMult;
+   844→  }
+   845→  return Math.ceil(cost);
+   846→}
+   847→
+   848→// ---------------------------------------------------------------------------
+   849→// BONUS AGGREGATION
+   850→// ---------------------------------------------------------------------------
+   851→
+   852→export interface ConstellationAggregateBonus {
+   853→  productionMult: number;
+   854→  capMult: number;
+   855→  epMult: number;
+   856→  popGrowthMult: number;
+   857→  costMult: number;
+   858→  divinityMult: number;
+   859→}
+   860→
+   861→/**
+   862→ * Sum of:
+   863→ *   - per-star production bonus (+0.5% per lit star).
+   864→ *   - per-completed-constellation bonus (defined in `bonus` field).
+   865→ *
+   866→ * The first argument is the constellation subset of GameState. Pass the L2
+   867→ * store state directly to compute the live bonus.
+   868→ */
+   869→export function constellationBonus(state: ConstellationState): ConstellationAggregateBonus {
+   870→  const out: ConstellationAggregateBonus = {
+   871→    productionMult: 0,
+   872→    capMult: 0,
+   873→    epMult: 0,
+   874→    popGrowthMult: 0,
+   875→    costMult: 0,
+   876→    divinityMult: 0,
+   877→  };
+   878→  // Per-star production bonus (cumulative across all lit stars).
+   879→  const litStars = Object.values(state.constellationStars || {}).filter(Boolean).length;
+   880→  out.productionMult += litStars * PER_STAR_PRODUCTION_BONUS;
+   881→  // Per-completed-constellation bonus.
+   882→  for (const c of CONSTELLATIONS) {
+   883→    if (!state.constellationsCompleted?.[c.id]) continue;
+   884→    out.productionMult += c.bonus.productionMult || 0;
+   885→    out.capMult += c.bonus.capMult || 0;
+   886→    out.epMult += c.bonus.epMult || 0;
+   887→    out.popGrowthMult += c.bonus.popGrowthMult || 0;
+   888→    out.costMult += c.bonus.costMult || 0;
+   889→    out.divinityMult += c.bonus.divinityMult || 0;
+   890→  }
+   891→  return out;
+   892→}
+   893→
+   894→/** Count how many constellations are fully completed. */
+   895→export function countCompletedConstellations(state: ConstellationState): number {
+   896→  return CONSTELLATIONS.filter((c) => state.constellationsCompleted?.[c.id]).length;
+   897→}
+   898→
+   899→/** Count total lit stars across all constellations. */
+   900→export function countLitStars(state: ConstellationState): number {
+   901→  return Object.values(state.constellationStars || {}).filter(Boolean).length;
+   902→}
+   903→
+   904→/**
+   905→ * Returns true if the player has completed enough constellations to advance
+   906→ * to Layer 3 (Transcendence).
+   907→ */
+   908→export function canAdvanceToTranscendence(state: ConstellationState): boolean {
+   909→  return countCompletedConstellations(state) >= CONSTELLATIONS_REQUIRED_FOR_LAYER_3;
+   910→}
+   911→
+   912→// ---------------------------------------------------------------------------
+   913→// STATIC LOOKUPS (kept for compatibility with old UIs / logs)
+   914→// ---------------------------------------------------------------------------
+   915→
+   916→export const CONSTELLATION_CATEGORIES: ConstellationCategory[] = [
+   917→  "zodiac",
+   918→  "northern",
+   919→  "southern",
+   920→  "equatorial",
+   921→];
+   922→
+   923→export const CATEGORY_LABEL: Record<ConstellationCategory, string> = {
+   924→  zodiac: "Zodiac",
+   925→  northern: "Northern Sky",
+   926→  southern: "Southern Sky",
+   927→  equatorial: "Equatorial",
+   928→};
+   929→
+   930→export const CATEGORY_ACCENT: Record<ConstellationCategory, string> = {
+   931→  zodiac: "#f59e0b",      // amber
+   932→  northern: "#22d3ee",    // cyan
+   933→  southern: "#a855f7",   // purple
+   934→  equatorial: "#10b981",  // emerald
+   935→};
+   936→

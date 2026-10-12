@@ -6,14 +6,23 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 
 // Shows a celebratory animation when the player evolves to a new stage.
-// Triggered by watching stageIndex changes — when it increases, show the modal.
+// ONLY on first playthrough (galacticWins === 0). After first prestige, evolution is silent
+// (just a log entry) since the base game runs in the background.
 export function StageTransition() {
   const stageIndex = useGameStore((s) => s.stageIndex);
+  const galacticWins = useGameStore((s) => s.galacticWins);
   const [showTransition, setShowTransition] = useState(false);
   const [transitionStage, setTransitionStage] = useState<number | null>(null);
   const [prevStage, setPrevStage] = useState(stageIndex);
 
   useEffect(() => {
+    // Only show the full-screen transition on the first playthrough (no prestige yet).
+    // After the player's first Galactic win, stage transitions happen silently in the background.
+    if (galacticWins > 0) {
+      // Keep prevStage synced (deferred to avoid setState-in-effect cascades).
+      const t = setTimeout(() => setPrevStage(stageIndex), 0);
+      return () => clearTimeout(t);
+    }
     if (stageIndex > prevStage) {
       const t1 = setTimeout(() => {
         setTransitionStage(stageIndex);
@@ -29,7 +38,7 @@ export function StageTransition() {
       const t = setTimeout(() => setPrevStage(stageIndex), 0);
       return () => clearTimeout(t);
     }
-  }, [stageIndex, prevStage]);
+  }, [stageIndex, prevStage, galacticWins]);
 
   if (!showTransition || transitionStage === null) return null;
   const stage = STAGES[transitionStage];

@@ -46,18 +46,19 @@ export function TabNav() {
   const { isAtLeast } = useActiveLayer();
 
   // Layer-based tab visibility:
-  // - L3+ (Transcendence+): hide "Actions" (automation has taken over)
-  // - L4+ (Genesis+): hide "Story" (accessible via Prestige tab)
-  // - L5+ (Apotheosis+): hide "Production" (fully automated)
-  // - Always visible: Systems, Tech, Prestige, Achievements, Log, Codex, Archive
-  const hideActions = isAtLeast("transcendence");
-  const hideStory = isAtLeast("genesis");
-  const hideProduction = isAtLeast("apotheosis");
+  // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked) the base game is
+  // fully abstracted into the Divine Engine; ALL 5 base-game tabs are hidden.
+  // Before L2 (first playthrough), all tabs are visible.
+  // (Earlier per-layer gates at L3/L4/L5 are subsumed by this single L2+ gate,
+  // since the player must unlock L2 before L3/L4/L5.)
+  const hideBaseGameTabs = isAtLeast("enlightenment");
 
   const visibleTabs = ALL_TABS.filter((tab) => {
-    if (tab.id === "actions" && hideActions) return false;
-    if (tab.id === "story" && hideStory) return false;
-    if (tab.id === "production" && hideProduction) return false;
+    if (hideBaseGameTabs) {
+      // At L2+, only keep: Codex, Awards, Archive, Prestige, Log.
+      // Hide: Actions, Systems, Tech, Production, Story.
+      return !["actions", "systems", "tech", "production", "story"].includes(tab.id);
+    }
     return true;
   });
 

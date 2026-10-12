@@ -6,6 +6,7 @@ import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
 import { STAGES } from "@/game/data/stages";
 import { Header } from "./Header";
 import { StagePanel } from "./StagePanel";
+import { DivineEnginePanel } from "./DivineEnginePanel";
 import { ResourceBar } from "./ResourceBar";
 import { TabNav } from "./TabNav";
 import { ActionsTab } from "../tabs/ActionsTab";
@@ -46,6 +47,11 @@ export function GameShell() {
   const stageIndex = useGameStore((s) => s.stageIndex);
   const stage = STAGES[stageIndex];
 
+  // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked) the base game is
+  // fully abstracted into the Divine Engine panel; we swap out StagePanel.
+  const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+  const showDivineEngine = !!(unlockedLayers?.enlightenment);
+
   // Theme state — apply CSS classes to the root div.
   // Special overrides everything; otherwise stage + optional layer overlay.
   const activeStageTheme = useGameStore((s) => s.activeStageTheme || "stage-cell");
@@ -75,7 +81,7 @@ export function GameShell() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-4 xl:col-span-3">
             <div className="lg:sticky lg:top-[112px]">
-              <StagePanel />
+              {showDivineEngine ? <DivineEnginePanel /> : <StagePanel />}
             </div>
           </div>
           <div className="lg:col-span-8 xl:col-span-9">

@@ -59,7 +59,11 @@ export function Header() {
   const nextSpeed = speeds[(speedIdx + 1) % speeds.length];
 
   // Layer-separation: at L5+, collapse L1-L3 into "Lower Layers" dropdown.
+  // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked), the base game is
+  // abstracted into the Divine Engine; the Header logo + subtitle switch
+  // from the current stage's icon/name to the Divine Engine cosmic identity.
   const { activeLayerId, activeLayerRank, isAtLeast } = useActiveLayer();
+  const isL2Plus = isAtLeast("enlightenment");
   const isL5Plus = isAtLeast("apotheosis");
   const activeLayerDisplayName = layerName(activeLayerId);
 
@@ -116,16 +120,28 @@ export function Header() {
         <div className="flex items-center gap-2 min-w-0">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0"
-            style={{ background: `${stage.accent}20`, border: `1px solid ${stage.accent}40` }}
+            style={
+              isL2Plus
+                ? { background: `rgba(139,92,246,0.20)`, border: `1px solid rgba(167,139,250,0.40)` }
+                : { background: `${stage.accent}20`, border: `1px solid ${stage.accent}40` }
+            }
           >
-            {stage.icon}
+            {isL2Plus ? "🌌" : stage.icon}
           </div>
           <div className="min-w-0 hidden sm:block">
             <h1 className="text-base font-bold leading-tight truncate">
               Evolution Idle
             </h1>
-            {/* Stage label — at L5+, de-emphasize stage and show layer name as more prominent */}
-            {isL5Plus ? (
+            {/* Stage label — at L2+ (Divine Engine mode), show "Divine Engine"
+                with active layer name. At L5+ also include the layer rank. */}
+            {isL2Plus ? (
+              <p className="text-xs leading-tight truncate">
+                <span className="font-bold bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-300 bg-clip-text text-transparent">
+                  Divine Engine
+                </span>
+                <span className="text-muted-foreground/70"> · {activeLayerDisplayName}{isL5Plus ? ` (L${activeLayerRank})` : ""}</span>
+              </p>
+            ) : isL5Plus ? (
               <p className="text-xs leading-tight truncate">
                 <span className="font-bold text-amber-300">
                   {activeLayerDisplayName} (L{activeLayerRank})

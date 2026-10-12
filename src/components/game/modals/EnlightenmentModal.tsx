@@ -17,6 +17,20 @@ import {
   NEW_CONSTELLATION_PENALTY,
   CATEGORY_LABEL,
   CATEGORY_ACCENT,
+  STARGAZE_COST,
+  STARGAZE_COOLDOWN_SEC,
+  SUPERNOVA_COST,
+  SUPERNOVA_COOLDOWN_SEC,
+  BLACK_HOLE_COST,
+  BLACK_HOLE_COOLDOWN_SEC,
+  BLACK_HOLE_REFUND_FRACTION,
+  COSMIC_BRIDGE_COST,
+  COSMIC_BRIDGE_COOLDOWN_SEC,
+  COSMIC_BRIDGE_DURATION_SEC,
+  STARGAZE_CD_KEY,
+  SUPERNOVA_CD_KEY,
+  BLACK_HOLE_CD_KEY,
+  COSMIC_BRIDGE_CD_KEY,
   type ConstellationState,
   type ConstellationCategory,
 } from "@/game/data/constellations";
@@ -31,7 +45,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, Eye, Sparkles, Star, Sun, Disc3, Crosshair, Zap, Target, Orbit } from "lucide-react";
+import { Lock, Eye, Sparkles, Star, Sun, Disc3, Crosshair, Zap, Target, Orbit, Link as LinkIcon } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
@@ -39,7 +53,15 @@ import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 const MAP_W = 1000;
 const MAP_H = 600;
 
-type AbilityMode = null | "supernova" | "blackhole";
+// L2 ability modes. The first two are target-pick modes for Supernova/Black
+// Hole; the last two implement the two-click Cosmic Bridge flow (pick first
+// constellation, then pick second constellation to link).
+type AbilityMode =
+  | null
+  | "supernova"
+  | "blackhole"
+  | "cosmicbridge_first"
+  | "cosmicbridge_second";
 
 /**
  * Layer 2 — Enlightenment (Constellation Map) — full redesign.
@@ -62,6 +84,9 @@ export function EnlightenmentModal() {
   const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
   const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
   const constellationRevealed = useGameStore((s) => s.constellationRevealed || {});
+  const cosmicBridgeLink = useGameStore((s) => s.cosmicBridgeLink || null);
+  const stargazeRecommendedActive = useGameStore((s) => s.stargazeRecommendedActive || false);
+  const activeAbilityCooldowns = useGameStore((s) => s.activeAbilityCooldowns || {});
   const foresightNodes = useGameStore((s) => s.foresightNodes || {});
   const activeRoute = useGameStore((s) => s.activeForesightRoute);
   // Layer shop upgrades
@@ -72,11 +97,13 @@ export function EnlightenmentModal() {
   const stargazeReveal = useGameStore((s) => s.stargazeReveal);
   const supernovaIlluminate = useGameStore((s) => s.supernovaIlluminate);
   const blackHoleReset = useGameStore((s) => s.blackHoleReset);
+  const activateCosmicBridge = useGameStore((s) => s.activateCosmicBridge);
   const setForesightRoute = useGameStore((s) => s.setForesightRoute);
 
   // Local UI state
   const [focusedConstellationId, setFocusedConstellationId] = useState<string | null>(null);
   const [abilityMode, setAbilityMode] = useState<AbilityMode>(null);
+  const [bridgeFirst, setBridgeFirst] = useState<string | null>(null); // first constellation picked for bridge
   const [flashedStars, setFlashedStars] = useState<Set<string>>(new Set());
   const [collapsingStars, setCollapsingStars] = useState<Set<string>>(new Set());
   const [hoveredStar, setHoveredStar] = useState<string | null>(null);
@@ -205,10 +232,46 @@ export function EnlightenmentModal() {
         setAbilityMode(null);
         return;
       }
+      if (abilityMode === "cosmicbridge_first") {
+        // Pick first endpoint.
+        setBridgeFirst(constellationId);
+        setAbilityMode("cosmicbridge_second");
+        return;
+      }
+      if (abilityMode === "cosmicbridge_second") {
+        if (bridgeFirst && bridgeFirst !== constellationId) {
+          activateCosmicBridge(bridgeFirst, constellationId);
+        }
+        setBridgeFirst(null);
+        setAbilityMode(null);
+        return;
+      }
       illuminateStar(constellationId, starId);
     },
-    [abilityMode, constellationStars, illuminateStar, supernovaIlluminate, blackHoleReset, isUnlocked]
+    [abilityMode, bridgeFirst, constellationStars, illuminateStar, supernovaIlluminate, blackHoleReset, activateCosmicBridge, isUnlocked]
   );
+
+  // Compute the cheapest affordable unlit next star across ALL constellations
+  // (for the Stargaze "recommended next" glow). Returns starId or null.
+  const recommendedNextStarId = useMemo(() => {
+    if (!stargazeRecommendedActive) return null;
+    let best: { id: string; cost: number } | null = null;
+    for (const c of CONSTELLATIONS) {
+      for (const st of c.stars) {
+        if (constellationStars[st.id]) continue;
+        const cost = starCost(c.id, constellationState, st.id, { foresightDiscountMult });
+        if (cost > divinity) continue; // must be affordable
+        if (!best || cost < best.cost) best = { id: st.id, cost };
+      }
+    }
+    return best?.id ?? null;
+  }, [stargazeRecommendedActive, constellationStars, constellationState, foresightDiscountMult, divinity]);
+
+  // Cooldown helpers (ceil to seconds for display).
+  const stargazeCd = Math.ceil(activeAbilityCooldowns[STARGAZE_CD_KEY] || 0);
+  const supernovaCd = Math.ceil(activeAbilityCooldowns[SUPERNOVA_CD_KEY] || 0);
+  const blackHoleCd = Math.ceil(activeAbilityCooldowns[BLACK_HOLE_CD_KEY] || 0);
+  const cosmicBridgeCd = Math.ceil(activeAbilityCooldowns[COSMIC_BRIDGE_CD_KEY] || 0);
 
   return (
     <Dialog open={show} onOpenChange={setShow}>
@@ -322,6 +385,13 @@ export function EnlightenmentModal() {
                     const inAbilityMode = abilityMode !== null;
                     const clickable = !lit && (canAfford || inAbilityMode);
                     const r = lit ? 4.5 : 2.2;
+                    // Stargaze "recommended next" glow — pulsing amber ring around
+                    // the single cheapest affordable unlit star in the sky.
+                    const isRecommended = stargazeRecommendedActive && recommendedNextStarId === star.id;
+                    // Cosmic Bridge: highlight stars in the linked pair.
+                    const bridgeActive = !!cosmicBridgeLink && cosmicBridgeLink.remaining > 0 &&
+                      (cosmicBridgeLink.from === c.id || cosmicBridgeLink.to === c.id);
+                    const isBridgePick1 = (abilityMode === "cosmicbridge_second") && bridgeFirst === c.id;
                     return (
                       <g
                         key={star.id}
@@ -337,6 +407,21 @@ export function EnlightenmentModal() {
                         )}
                         {isHovered && !lit && (
                           <circle r={r * 2.5} fill={accent} opacity={0.12} />
+                        )}
+                        {/* Stargaze recommended-next glow */}
+                        {isRecommended && (
+                          <circle r={r * 3.5} fill="none" stroke="#fbbf24" strokeWidth={0.9} opacity={0.85}>
+                            <animate attributeName="r" values={`${r * 3.5};${r * 5};${r * 3.5}`} dur="1.6s" repeatCount="indefinite" />
+                            <animate attributeName="opacity" values="0.85;0.3;0.85" dur="1.6s" repeatCount="indefinite" />
+                          </circle>
+                        )}
+                        {/* Cosmic Bridge highlight ring around stars of a bridged constellation */}
+                        {bridgeActive && !lit && (
+                          <circle r={r * 2.2} fill="none" stroke="#a78bfa" strokeWidth={0.7} opacity={0.6} />
+                        )}
+                        {/* Highlight first-picked constellation in cosmic bridge mode */}
+                        {isBridgePick1 && (
+                          <circle r={r * 2.8} fill="none" stroke="#a78bfa" strokeWidth={1.1} opacity={0.95} />
                         )}
                         {/* Flash overlay (supernova) */}
                         {isFlashing && (
@@ -417,12 +502,35 @@ export function EnlightenmentModal() {
                   <span className="flex items-center gap-1.5">
                     <Target className="w-3.5 h-3.5" />
                     {abilityMode === "supernova"
-                      ? "Supernova armed — click a star to ignite it + its connected stars (50 Div)."
-                      : "Black Hole armed — click a star to collapse that constellation & refund 50% of its cost."}
+                      ? `Supernova armed — click a star to ignite it + its connected stars (${SUPERNOVA_COST} Div).`
+                      : abilityMode === "blackhole"
+                        ? `Black Hole armed — click a star to collapse that constellation & refund ${(BLACK_HOLE_REFUND_FRACTION * 100).toFixed(0)}% of its cost (${BLACK_HOLE_COST} Div).`
+                        : abilityMode === "cosmicbridge_first"
+                          ? `Cosmic Bridge step 1 — click any star in the FIRST constellation to link. (${COSMIC_BRIDGE_COST} Div)`
+                          : bridgeFirst
+                            ? `Cosmic Bridge step 2 — click a star in a SECOND constellation (different from ${CONSTELLATION_MAP[bridgeFirst]?.name || "?"}).`
+                            : "Cosmic Bridge armed — click a star."}
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => setAbilityMode(null)} className="h-6 px-2 text-[0.65rem]">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setAbilityMode(null);
+                      setBridgeFirst(null);
+                    }}
+                    className="h-6 px-2 text-[0.65rem]"
+                  >
                     Cancel
                   </Button>
+                </div>
+              )}
+              {/* Active Cosmic Bridge indicator */}
+              {cosmicBridgeLink && cosmicBridgeLink.remaining > 0 && (
+                <div className="absolute top-12 left-2 right-2 flex items-center justify-between gap-2 rounded-md border border-violet-400/60 bg-violet-500/15 px-3 py-1.5 text-violet-200 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    Bridge: {CONSTELLATION_MAP[cosmicBridgeLink.from]?.name || "?"} ↔ {CONSTELLATION_MAP[cosmicBridgeLink.to]?.name || "?"} ({Math.ceil(cosmicBridgeLink.remaining)}s)
+                  </span>
                 </div>
               )}
               {/* Map legend */}
@@ -499,24 +607,28 @@ export function EnlightenmentModal() {
                   </div>
 
                   {/* Active abilities */}
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={divinity < 25}
+                            disabled={divinity < STARGAZE_COST || stargazeCd > 0}
                             onClick={stargazeReveal}
                             className="h-auto py-2 flex flex-col items-center gap-0.5"
                           >
                             <Star className="w-4 h-4 text-cyan-300" />
                             <span className="text-[0.65rem]">Stargaze</span>
-                            <span className="text-[0.55rem] text-muted-foreground">25 Div</span>
+                            <span className="text-[0.55rem] text-muted-foreground">
+                              {stargazeCd > 0 ? `${stargazeCd}s` : `${STARGAZE_COST} Div`}
+                            </span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p className="text-[0.65rem]">Reveal all constellation connection lines.</p>
+                          <p className="text-[0.65rem] max-w-[220px]">
+                            Reveal all constellation connection lines permanently AND highlight the cheapest affordable next star across the sky. {STARGAZE_COST} Div, {STARGAZE_COOLDOWN_SEC}s cooldown.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -526,17 +638,21 @@ export function EnlightenmentModal() {
                           <Button
                             size="sm"
                             variant={abilityMode === "supernova" ? "default" : "outline"}
-                            disabled={divinity < 50}
+                            disabled={divinity < SUPERNOVA_COST || supernovaCd > 0}
                             onClick={() => setAbilityMode(abilityMode === "supernova" ? null : "supernova")}
                             className="h-auto py-2 flex flex-col items-center gap-0.5"
                           >
                             <Sun className="w-4 h-4 text-amber-300" />
                             <span className="text-[0.65rem]">Supernova</span>
-                            <span className="text-[0.55rem] text-muted-foreground">50 Div</span>
+                            <span className="text-[0.55rem] text-muted-foreground">
+                              {supernovaCd > 0 ? `${supernovaCd}s` : `${SUPERNOVA_COST} Div`}
+                            </span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p className="text-[0.65rem] max-w-[200px]">Arm Supernova, then click any star to ignite it AND every star connected to it — for free (50 Div total).</p>
+                          <p className="text-[0.65rem] max-w-[220px]">
+                            Arm Supernova, then click any star to ignite it AND every star directly connected to it — for free. {SUPERNOVA_COST} Div, {SUPERNOVA_COOLDOWN_SEC}s cooldown. Strategic: use on a central star to complete a constellation instantly.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -546,16 +662,57 @@ export function EnlightenmentModal() {
                           <Button
                             size="sm"
                             variant={abilityMode === "blackhole" ? "default" : "outline"}
+                            disabled={blackHoleCd > 0}
                             onClick={() => setAbilityMode(abilityMode === "blackhole" ? null : "blackhole")}
                             className="h-auto py-2 flex flex-col items-center gap-0.5"
                           >
                             <Disc3 className="w-4 h-4 text-rose-300" />
                             <span className="text-[0.65rem]">Black Hole</span>
-                            <span className="text-[0.55rem] text-muted-foreground">refund 50%</span>
+                            <span className="text-[0.55rem] text-muted-foreground">
+                              {blackHoleCd > 0 ? `${blackHoleCd}s` : `${BLACK_HOLE_COST} Div`}
+                            </span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                          <p className="text-[0.65rem] max-w-[200px]">Arm Black Hole, then click any star in a constellation to collapse that entire constellation — refunds 50% of the cost spent, lets you reallocate.</p>
+                          <p className="text-[0.65rem] max-w-[220px]">
+                            Arm Black Hole, then click any star in a constellation to collapse that entire constellation — refunds {(BLACK_HOLE_REFUND_FRACTION * 100).toFixed(0)}% of the cost spent, lets you reallocate away from weak bonuses. {BLACK_HOLE_COST} Div, {BLACK_HOLE_COOLDOWN_SEC}s cooldown.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant={abilityMode === "cosmicbridge_first" || abilityMode === "cosmicbridge_second" ? "default" : "outline"}
+                            disabled={divinity < COSMIC_BRIDGE_COST || cosmicBridgeCd > 0 || (!!cosmicBridgeLink && cosmicBridgeLink.remaining > 0)}
+                            onClick={() => {
+                              if (abilityMode === "cosmicbridge_first" || abilityMode === "cosmicbridge_second") {
+                                setAbilityMode(null);
+                                setBridgeFirst(null);
+                              } else {
+                                setAbilityMode("cosmicbridge_first");
+                                setBridgeFirst(null);
+                              }
+                            }}
+                            className="h-auto py-2 flex flex-col items-center gap-0.5"
+                          >
+                            <LinkIcon className="w-4 h-4 text-violet-300" />
+                            <span className="text-[0.65rem]">Cosmic Bridge</span>
+                            <span className="text-[0.55rem] text-muted-foreground">
+                              {cosmicBridgeCd > 0
+                                ? `${cosmicBridgeCd}s`
+                                : cosmicBridgeLink && cosmicBridgeLink.remaining > 0
+                                  ? "active"
+                                  : `${COSMIC_BRIDGE_COST} Div`}
+                            </span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-[0.65rem] max-w-[220px]">
+                            Link two constellations for {COSMIC_BRIDGE_DURATION_SEC}s. Lighting either side ALSO lights the cheapest unlit star in the other for free. Click to enter pick mode, then click a star in each of two constellations. {COSMIC_BRIDGE_COST} Div, {COSMIC_BRIDGE_COOLDOWN_SEC}s cooldown.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
