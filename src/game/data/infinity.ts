@@ -97,6 +97,8 @@ export interface BattleState {
   calledAllyIds: string[];       // minor god allies called for support
   turn: number;                  // current turn number
   log: string[];                 // recent battle events
+  playerHp: number;              // player-side HP (battle lost when 0)
+  playerMaxHp: number;           // max player HP for this battle
 }
 
 /**
@@ -115,6 +117,8 @@ export function makeInitialBattleState(oldGodId: string): BattleState {
     calledAllyIds: [],
     turn: 0,
     log: [],
+    playerHp: 200,
+    playerMaxHp: 200,
   };
 }
 

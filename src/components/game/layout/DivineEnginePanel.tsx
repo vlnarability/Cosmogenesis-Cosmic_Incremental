@@ -3,36 +3,43 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { formatNumber, formatCompact } from "../shared/format";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Atom, TrendingUp, Infinity as InfinityIcon } from "lucide-react";
+import { Sparkles, Atom, TrendingUp, Infinity as InfinityIcon, Star as StarIcon, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // DivineEnginePanel — replaces StagePanel in the left rail once the player
 // has unlocked Enlightenment (L2+). The base game (Cell → Galactic) is now
 // abstracted away and simulated in the background as `backgroundSimulations`
 // parallel runs, each generating Divinity at 1% of `peakProductionRate` per
-// second. This panel surfaces the resulting numbers + lets the player invest
-// in additional parallel sims (scaling Divinity cost).
+// second. Simulations are no longer purchased manually — they are computed
+// each tick as (3 starter + constellation stars lit) × Simulation Amplifier
+// multiplier. To get more sims, light more stars in the Enlightenment
+// (constellation) modal OR buy the Simulation Amplifier shop upgrade.
 export function DivineEnginePanel() {
   const peakProductionRate = useGameStore((s) => s.peakProductionRate || 0);
   const backgroundSimulations = useGameStore((s) => s.backgroundSimulations || 0);
   const divinityFromBackground = useGameStore((s) => s.divinityFromBackground || 0);
-  const divinity = useGameStore((s) => s.divinity || 0);
   const stageIndex = useGameStore((s) => s.stageIndex);
   const population = useGameStore((s) => s.population);
   const ownedSystems = useGameStore((s) => s.ownedSystems);
   const technologies = useGameStore((s) => s.technologies);
   const upgrades = useGameStore((s) => s.upgrades);
   const galacticWins = useGameStore((s) => s.galacticWins);
-  const spawnBackgroundSimulation = useGameStore((s) => s.spawnBackgroundSimulation);
+  // Constellation stars lit — drives the background sim count formula.
+  const constellationStars = useGameStore((s) => s.constellationStars || {});
 
   // Divine generation rate = peak × 1% × backgroundSimulations (Divinity/sec).
   const divPerSec = peakProductionRate * 0.01 * backgroundSimulations;
 
-  // Spawn Simulation cost: 100 × 1.5^currentCount Divinity.
-  const spawnCost = Math.ceil(100 * Math.pow(1.5, backgroundSimulations));
-  const canAffordSpawn = divinity >= spawnCost;
+  // Simulation Amplifier shop upgrade: each level multiplies the sims-per-star
+  // count. Level 0 → ×1, level 1 → ×2, etc.
+  const simAmpLevel = (upgrades?.["simulation_amplifier"] as number) || 0;
+  const simMult = 1 + simAmpLevel;
+  // Stars lit across all 88 constellations — recomputed locally to display the
+  // formula breakdown (the store recomputes this each tick too).
+  const starsLit = Object.values(constellationStars).filter(Boolean).length;
+  // Sanity note: backgroundSimulations from the store equals (3 + starsLit) × simMult.
+  // We don't recompute it here to avoid drift; we just display the breakdown.
 
   // Auto-evolver progress bar — fraction of stage progression toward Galactic.
   // When the player owns auto_evolver, this hints how close the base game is
@@ -238,30 +245,44 @@ export function DivineEnginePanel() {
         </div>
       )}
 
-      {/* Spawn Simulation button — costs 100 × 1.5^currentCount Divinity */}
-      <Button
-        className={cn(
-          "w-full transition-all",
-          canAffordSpawn && "evolve-ready"
-        )}
-        size="lg"
-        disabled={!canAffordSpawn}
-        onClick={() => spawnBackgroundSimulation()}
-        style={canAffordSpawn ? { background: "linear-gradient(90deg, rgb(139,92,246), rgb(217,70,239))", color: "#fff" } : undefined}
-      >
-        Spawn Simulation
-      </Button>
-      <p className="text-xs text-muted-foreground mt-1 text-center">
-        Cost: {formatNumber(spawnCost, 0)} Divinity
-        {backgroundSimulations > 0 && (
-          <span className="text-[0.6rem] ml-1">· 1.5× per sim</span>
-        )}
-      </p>
-      {backgroundSimulations === 0 && (
-        <p className="text-xs text-amber-400 mt-1 text-center font-semibold">
-          ⚠ No background simulations yet — reach your first Galactic Ascension
-        </p>
-      )}
+      {/* Simulation count — informational display.
+          Formula: sims = (3 starters + stars lit) × Simulation Amplifier multiplier.
+          More stars lit → more sims → more Divinity + EP per second. */}
+      <div className="stat-card mb-3 border-violet-400/30 bg-violet-500/5">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1.5 text-violet-200 text-xs uppercase tracking-wide">
+            <StarIcon className="w-3.5 h-3.5" />
+            <span>Simulations</span>
+          </div>
+          <Badge variant="outline" className="text-[0.55rem] text-violet-300 border-violet-400/40 px-1 py-0">
+            3 + stars × {simMult}×
+          </Badge>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold tabular-nums text-violet-200">
+            {formatNumber(backgroundSimulations, 0)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            ({3 + starsLit} base × {simMult}× amp)
+          </span>
+        </div>
+        <div className="mt-1 text-[0.65rem] text-muted-foreground tabular-nums">
+          formula: (3 starter sims + {starsLit} constellation star{starsLit === 1 ? "" : "s"} lit) × {simMult}× amplifier = {formatNumber(backgroundSimulations, 0)} sims
+        </div>
+      </div>
+
+      {/* How to get more sims — explainer hint. */}
+      <div className="stat-card mb-3 flex items-start gap-2 border-amber-400/30 bg-amber-500/5">
+        <Lightbulb className="w-3.5 h-3.5 text-amber-300 mt-0.5 shrink-0" />
+        <div className="text-[0.65rem] text-amber-100/90 leading-snug">
+          <span className="font-semibold">Want more sims?</span>{" "}
+          Light more stars in the{" "}
+          <span className="text-amber-300 font-medium">Enlightenment (constellation) modal</span>{" "}
+          to add a sim per star, or buy the{" "}
+          <span className="text-amber-300 font-medium">Simulation Amplifier</span>{" "}
+          shop upgrade (×{simMult + 1} at level {simAmpLevel + 1}).
+        </div>
+      </div>
 
       <style>{`
         @keyframes divine-engine-orbit {

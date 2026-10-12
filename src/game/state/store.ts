@@ -496,6 +496,8 @@ function initialMetaState(): Partial<GameState> {
     // Layer 5 — Heresy Web (8×4 = 32 follower cells)
     followerGrid: makeInitialFollowerGrid(),
     heresySpreadTimer: 10,
+    heresySeedTimer: 30,            // seed first heretic after 30s if grid is all-faithful
+    heresyThresholdsSeeded: {},     // tracks 25/50/75 threshold seeding (per-run)
     // FEATURE 5 — Prophets (max 2 at a time)
     prophets: [],
     prophetConvertTimer: 10,
@@ -514,8 +516,9 @@ function initialMetaState(): Partial<GameState> {
     // ===== BACKGROUND-SIMULATION =====
     // Base game abstracted into passive Divinity generation after first prestige.
     peakProductionRate: 0,        // best per-second total production ever (META)
-    backgroundSimulations: 0,     // parallel background sims running (META; +1 per Galactic prestige, +1 per Spawn)
+    backgroundSimulations: 0,     // COMPUTED each tick: (3 + starsLit) × simMult (cached for display)
     divinityFromBackground: 0,    // lifetime Divinity from background sims (META, display only)
+    epFromBackground: 0,          // lifetime EP from background sims (META, display only)
   };
 }
 
@@ -1083,6 +1086,7 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Layers 2-6: passive currency generation, timer decay, unlock chain ----
         let divinity = s.divinity || 0;
+        let evolutionPoints = s.evolutionPoints || 0;  // mutable — background sims add EP
         let faith = s.faith || 0;
         let heresy = s.heresy || 0;
         let activeTemporaryRituals = s.activeTemporaryRituals || {};
@@ -1902,6 +1906,46 @@ export const useGameStore = create<GameStore>()(
         // Layer 5 — Heresy Web: spread every 10s (independent of the global heresy meter)
         let followerGrid = s.followerGrid ? s.followerGrid.slice() : makeInitialFollowerGrid();
         let heresySpreadTimer = (s.heresySpreadTimer || 10) - realDt;
+
+        // HERETIC SEEDING — if there are 0 heretics in the grid, seed one every 30s.
+        // Also seed extra heretics when global heresy crosses 25/50/75 thresholds (one-time per run).
+        let heresySeedTimer = Math.max(0, (s.heresySeedTimer || 30) - realDt);
+        let heresyThresholdsSeeded = { ...(s.heresyThresholdsSeeded || {}) };
+        if (unlockedLayers.apotheosis) {
+          // Threshold-based seeding (one-time per run per threshold)
+          const heresyNow = s.heresy || 0;
+          for (const threshold of [25, 50, 75]) {
+            if (heresyNow >= threshold && !heresyThresholdsSeeded[String(threshold)]) {
+              heresyThresholdsSeeded[String(threshold)] = true;
+              const count = threshold === 25 ? 1 : threshold === 50 ? 2 : 3;
+              const faithfulIndices = followerGrid
+                .map((c, i) => (c.state === "faithful" ? i : -1))
+                .filter((i) => i >= 0);
+              for (let k = 0; k < count && faithfulIndices.length > 0; k++) {
+                const pick = Math.floor(Math.random() * faithfulIndices.length);
+                const idx = faithfulIndices.splice(pick, 1)[0];
+                followerGrid[idx] = { ...followerGrid[idx], state: "heretical" };
+              }
+              setTimeout(() => get().addToLog(`😈 Heresy surges past ${threshold}! ${count} heretic(s) seeded in your flock.`), 0);
+            }
+          }
+          // Timer-based seeding (every 30s if grid is all-faithful)
+          if (heresySeedTimer <= 0) {
+            heresySeedTimer = 30;
+            const hereticCount = followerGrid.filter((c) => c.state === "heretical").length;
+            if (hereticCount === 0) {
+              const faithfulIndices = followerGrid
+                .map((c, i) => (c.state === "faithful" ? i : -1))
+                .filter((i) => i >= 0);
+              if (faithfulIndices.length > 0) {
+                const pick = faithfulIndices[Math.floor(Math.random() * faithfulIndices.length)];
+                followerGrid[pick] = { ...followerGrid[pick], state: "heretical" };
+                setTimeout(() => get().addToLog("😈 A whisper of doubt spreads through your flock. A heretic appears."), 0);
+              }
+            }
+          }
+        }
+
         if (unlockedLayers.apotheosis && heresySpreadTimer <= 0) {
           heresySpreadTimer = 10;
           // LAYER UPGRADE — heresy_ward: -30% spread chance per level (max 4 → 0% spread)
@@ -2050,24 +2094,34 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // ===== BACKGROUND-SIMULATION — Divinity generation =====
-        // After the first Galactic prestige, the base game runs in the background
-        // as N parallel "background simulations", each generating Divinity at
-        // 1% of peakProductionRate per second. This is ADDITIVE to whatever
-        // divinity the layers already produce — it doesn't replace anything.
+        // ===== BACKGROUND-SIMULATION — Divinity + EP generation =====
+        // At L2+ (Enlightenment unlocked), the base game runs in the background.
+        // Simulations = (3 starter + starsLit) × simMult (from simulation_amplifier upgrade).
+        // Each sim generates Divinity at 1% of peakProductionRate/sec AND EP at 0.1% of peak/sec.
         let divinityFromBackground = s.divinityFromBackground || 0;
-        const backgroundSimulations = s.backgroundSimulations || 0;
+        let epFromBackground = s.epFromBackground || 0;
+        // Compute current sim count from constellation stars + shop upgrade.
+        const starsLitCount = Object.values(s.constellationStars || {}).filter(Boolean).length;
+        const simMult = 1 + (s.upgrades["simulation_amplifier"] || 0);  // level 0 = ×1, level 1 = ×2, ...
+        const computedBackgroundSims = (s.unlockedLayers?.enlightenment)
+          ? (3 + starsLitCount) * simMult  // 3 starter sims + 1 per star × multiplier
+          : 0;
+        const backgroundSimulations = computedBackgroundSims;
         if (backgroundSimulations > 0 && peakProductionRate > 0) {
           const bgDivPerSec = peakProductionRate * 0.01 * backgroundSimulations;
+          const bgEpPerSec = peakProductionRate * 0.001 * backgroundSimulations;  // EP at 10% of divinity rate
           const bgDivGain = bgDivPerSec * realDt;
+          const bgEpGain = bgEpPerSec * realDt;
           divinity += bgDivGain;
+          evolutionPoints += bgEpGain;
           divinityFromBackground += bgDivGain;
+          epFromBackground += bgEpGain;
           // Log status every 60s of game time (runtime-only marker, not persisted).
           const lastBgLog = (s as any)._lastBgSimLog || 0;
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
             setTimeout(() => get().addToLog(
-              `🌌 Background simulations: ${backgroundSimulations} running, generating ${bgDivPerSec.toFixed(2)} Divinity/sec.`
+              `🌌 Background sims: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
             ), 0);
           }
         }
@@ -2147,6 +2201,8 @@ export const useGameStore = create<GameStore>()(
           lastDisasterAt,
           followerGrid,
           heresySpreadTimer,
+          heresySeedTimer,
+          heresyThresholdsSeeded,
           // FEATURE 5 — Prophets
           prophets,
           prophetConvertTimer,
@@ -2155,9 +2211,12 @@ export const useGameStore = create<GameStore>()(
           // L6 FIX — Dimension Engine rewards
           singularityCores,
           dimensionEngineBonusClaimed,
-          // BACKGROUND-SIMULATION — peak + lifetime divinity tracker
+          // BACKGROUND-SIMULATION — peak + lifetime trackers + computed sim count
           peakProductionRate,
+          backgroundSimulations,
           divinityFromBackground,
+          epFromBackground,
+          evolutionPoints,
         });
         // L6 FIX — log Galactic transition messages (deferred to avoid setState-in-loop)
         for (const msg of galacticLog) {
@@ -2637,16 +2696,10 @@ export const useGameStore = create<GameStore>()(
         const isFirstGalacticWin = s.stageIndex >= 6 && !s.unlockedChallenges;
         const newUnlockedChallenges = s.unlockedChallenges || isFirstGalacticWin;
 
-        // ---- BACKGROUND-SIMULATION — count parallel background runs ----
-        // First Galactic win (galacticWins 0 → 1): start 1 background simulation.
-        // Subsequent Galactic wins: +1 simulation per prestige.
-        // Non-Galactic prestiges (heresy/instability collapse, auto-prestige scripts
-        // firing early) don't add a background sim — only "true" Galactic ascensions do.
-        const isGalacticPrestige = s.stageIndex >= 6;
-        const wasZero = (s.galacticWins || 0) === 0;
-        const newBackgroundSimulations = isGalacticPrestige
-          ? Math.max(s.backgroundSimulations || 0, wasZero ? 1 : (s.backgroundSimulations || 0) + 1)
-          : (s.backgroundSimulations || 0);
+        // ---- BACKGROUND-SIMULATION — no longer incremented on prestige ----
+        // Sims are now COMPUTED from (3 + starsLit) × simMult, not stored as a counter.
+        // The metaState preserves peakProductionRate, divinityFromBackground, epFromBackground
+        // (all META — persist across prestiges). backgroundSimulations is recomputed each tick.
 
         // ---- Fail any in-progress challenge on prestige (challenge not completed) ----
         const failedChallenge = s.activeChallenge;
@@ -2692,12 +2745,14 @@ export const useGameStore = create<GameStore>()(
           evolutionPoints: s.evolutionPoints + epEarned,
           totalRuns: s.totalRuns + 1,
           galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
-          // BACKGROUND-SIMULATION — META fields, persist across prestiges.
-          // peakProductionRate never resets (best production ever). divinityFromBackground
-          // is a lifetime counter (display only). backgroundSimulations is the active count.
+          // BACKGROUND-SIMULATION — META fields persist across prestiges.
+          // peakProductionRate never resets (best production ever).
+          // divinityFromBackground + epFromBackground are lifetime counters.
+          // backgroundSimulations is NOT stored here — it's computed each tick from
+          // (3 + starsLit) × simMult.
           peakProductionRate: s.peakProductionRate || 0,
-          backgroundSimulations: newBackgroundSimulations,
           divinityFromBackground: s.divinityFromBackground || 0,
+          epFromBackground: s.epFromBackground || 0,
           archive,
           archivedArchetypes,
           upgrades: s.upgrades,
@@ -3568,43 +3623,8 @@ export const useGameStore = create<GameStore>()(
           newCompleted[constellationId] = true;
           completedThisPurchase = true;
         }
-        // === COSMIC BRIDGE PROPAGATION ===
-        // If the bridge is active and this constellation is one of the endpoints,
-        // also illuminate the cheapest unlit star in the OTHER endpoint
-        // constellation for free (no Divinity cost, no PP). The bridge stays
-        // active until its timer expires (it does not consume charges per use).
-        let bridgeMsg = "";
-        const bridge = s.cosmicBridgeLink;
-        if (bridge && bridge.remaining > 0 && (bridge.from === constellationId || bridge.to === constellationId)) {
-          const otherId = bridge.from === constellationId ? bridge.to : bridge.from;
-          const otherDef = CONSTELLATION_MAP[otherId];
-          if (otherDef) {
-            // Find the cheapest unlit star in the other constellation (uses
-            // current state + the just-applied changes so cost reflects the
-            // post-illumination started count).
-            const otherCs: ConstellationState = {
-              constellationStars: newStars,
-              constellationProgress: newProgress,
-              constellationsStarted: newStarted,
-              constellationsCompleted: newCompleted,
-            };
-            let bestStar: { id: string; cost: number } | null = null;
-            for (const st of otherDef.stars) {
-              if (newStars[st.id]) continue;
-              const c = starCost(otherId, otherCs, st.id, { foresightDiscountMult });
-              if (!bestStar || c < bestStar.cost) bestStar = { id: st.id, cost: c };
-            }
-            if (bestStar) {
-              newStars[bestStar.id] = true;
-              newStarted[otherId] = true;
-              newProgress[otherId] = (newProgress[otherId] || 0) + 1;
-              if (newProgress[otherId] >= otherDef.stars.length && !newCompleted[otherId]) {
-                newCompleted[otherId] = true;
-              }
-              bridgeMsg = ` Cosmic Bridge → ${otherDef.name} ${bestStar.id} lit for free!`;
-            }
-          }
-        }
+        // NOTE: Cosmic Bridge propagation REMOVED — active abilities were cut from L2.
+        // Stars are lit only by purchasing them with Divinity.
         set({
           divinity: (s.divinity || 0) - cost,
           constellationStars: newStars,
@@ -3614,8 +3634,8 @@ export const useGameStore = create<GameStore>()(
           prestigePoints: (s.prestigePoints || 0) + ppGain,
         });
         const logMsg = completedThisPurchase
-          ? `✦ ${cdef.name} illuminated: ${starId} (-${cost} Divinity). ${cdef.name} constellation COMPLETE! (+${ppGain.toFixed(1)} PP)${bridgeMsg}`
-          : `✦ ${cdef.name}: star ${starId} lit (-${cost} Divinity). (+${ppGain.toFixed(1)} PP)${bridgeMsg}`;
+          ? `✦ ${cdef.name} illuminated: ${starId} (-${cost} Divinity). ${cdef.name} constellation COMPLETE! (+${ppGain.toFixed(1)} PP)`
+          : `✦ ${cdef.name}: star ${starId} lit (-${cost} Divinity). (+${ppGain.toFixed(1)} PP)`;
         get().addToLog(logMsg);
       },
 
@@ -3628,194 +3648,13 @@ export const useGameStore = create<GameStore>()(
         // No-op — use `illuminateStar(constellationId, starId)` instead.
       },
 
-      stargazeReveal: () => {
-        const s = get();
-        if (!s.unlockedLayers?.enlightenment) return;
-        // Costs 25 Divinity, 60s cooldown. Reveals ALL constellation
-        // connection lines (visual only) AND activates the "recommended next
-        // star" glow (cheapest affordable next star highlighted in the modal).
-        if ((s.divinity || 0) < STARGAZE_COST) return;
-        if ((s.activeAbilityCooldowns?.[STARGAZE_CD_KEY] || 0) > 0) return;
-        const revealed: Record<string, boolean> = {};
-        for (const c of CONSTELLATIONS) revealed[c.id] = true;
-        const cooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        cooldowns[STARGAZE_CD_KEY] = STARGAZE_COOLDOWN_SEC;
-        set({
-          divinity: (s.divinity || 0) - STARGAZE_COST,
-          constellationRevealed: revealed,
-          stargazeRecommendedActive: true,
-          activeAbilityCooldowns: cooldowns,
-        });
-        get().addToLog(`✦ Stargaze: all constellation connections revealed (-${STARGAZE_COST} Divinity, ${STARGAZE_COOLDOWN_SEC}s cooldown).`);
-      },
+      // L2 active abilities REMOVED — stars are lit only by purchasing with Divinity.
+      // These are no-op stubs kept for save-compatibility.
+      stargazeReveal: () => {},
+      supernovaIlluminate: () => {},
+      blackHoleReset: () => {},
+      activateCosmicBridge: () => {},
 
-      /**
-       * Supernova active ability: lights `starId` AND every star directly
-       * connected to it via the constellation's connection list, for FREE
-       * (no per-star cost — just the 100 Divinity Supernova fee and a 300s
-       * cooldown). Affects only stars within the SAME constellation.
-       */
-      supernovaIlluminate: (constellationId, starId) => {
-        const s = get();
-        if (!s.unlockedLayers?.enlightenment) return;
-        const cdef = CONSTELLATION_MAP[constellationId];
-        if (!cdef) return;
-        const targetStar = cdef.stars.find((st) => st.id === starId);
-        if (!targetStar) return;
-        if ((s.divinity || 0) < SUPERNOVA_COST) return;
-        if ((s.activeAbilityCooldowns?.[SUPERNOVA_CD_KEY] || 0) > 0) return;
-        // Build the set of stars to light: target + every direct connection partner.
-        const toLight = new Set<string>([starId]);
-        for (const [a, b] of cdef.connections) {
-          if (a === starId) toLight.add(b);
-          else if (b === starId) toLight.add(a);
-        }
-        const newStars = { ...(s.constellationStars || {}) };
-        const newStarted = { ...(s.constellationsStarted || {}) };
-        const newProgress = { ...(s.constellationProgress || {}) };
-        const newCompleted = { ...(s.constellationsCompleted || {}) };
-        let ignited = 0;
-        let completedThisPurchase = false;
-        for (const sid of toLight) {
-          if (newStars[sid]) continue;
-          newStars[sid] = true;
-          newProgress[constellationId] = (newProgress[constellationId] || 0) + 1;
-          ignited++;
-        }
-        if (ignited > 0) {
-          newStarted[constellationId] = true;
-          if (newProgress[constellationId] >= cdef.stars.length && !newCompleted[constellationId]) {
-            newCompleted[constellationId] = true;
-            completedThisPurchase = true;
-          }
-        }
-        // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
-        const cbLvl = (s.upgrades?.constellation_boost as number) || 0;
-        const ppPerNode = 1 + 0.25 * cbLvl;
-        const ppGain = ppPerNode * ignited;
-        const cooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        cooldowns[SUPERNOVA_CD_KEY] = SUPERNOVA_COOLDOWN_SEC;
-        set({
-          divinity: (s.divinity || 0) - SUPERNOVA_COST,
-          constellationStars: newStars,
-          constellationProgress: newProgress,
-          constellationsStarted: newStarted,
-          constellationsCompleted: newCompleted,
-          prestigePoints: (s.prestigePoints || 0) + ppGain,
-          activeAbilityCooldowns: cooldowns,
-        });
-        const logMsg = completedThisPurchase
-          ? `✦ Supernova on ${cdef.name}: ${ignited} star(s) ignited (-${SUPERNOVA_COST} Divinity). ${cdef.name} constellation COMPLETE! (+${ppGain.toFixed(1)} PP)`
-          : `✦ Supernova on ${cdef.name}: ${ignited} star(s) ignited (-${SUPERNOVA_COST} Divinity). (+${ppGain.toFixed(1)} PP)`;
-        get().addToLog(logMsg);
-      },
-
-      /**
-       * Black Hole active ability: refunds 75% of the BASE cost spent on every
-       * lit star in the given constellation, then clears its stars and progress.
-       * Costs 50 Divinity, 120s cooldown. Lets the player reallocate Divinity.
-       */
-      blackHoleReset: (constellationId) => {
-        const s = get();
-        if (!s.unlockedLayers?.enlightenment) return;
-        const cdef = CONSTELLATION_MAP[constellationId];
-        if (!cdef) return;
-        if ((s.activeAbilityCooldowns?.[BLACK_HOLE_CD_KEY] || 0) > 0) return;
-        // Re-compute the BASE cost paid for each lit star in this constellation
-        // (in purchase order). The state we feed to starCost is the running
-        // constellation state as it would have been right before each star.
-        let refund = 0;
-        const litStarIds = cdef.stars
-          .filter((st) => s.constellationStars?.[st.id])
-          .map((st) => st.id);
-        if (litStarIds.length === 0) {
-          get().addToLog(`✦ Black Hole: ${cdef.name} has no lit stars to refund.`);
-          return;
-        }
-        // LAYER UPGRADE — foresight_discount applies to the original cost too.
-        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
-        const foresightDiscountMult = Math.pow(0.80, fdLvl);
-        // Build the state "as if" only this constellation's stars had been lit
-        // in purchase order — conservative approximation. We ignore the player's
-        // other constellations' state because the model depends on started count
-        // which would otherwise be inflated.
-        const simState: ConstellationState = {
-          constellationStars: {},
-          constellationProgress: { [constellationId]: 0 },
-          constellationsStarted: { [constellationId]: true },
-          constellationsCompleted: {},
-        };
-        for (const sid of litStarIds) {
-          const c = starCost(constellationId, simState, sid, { foresightDiscountMult });
-          refund += Math.floor(c * BLACK_HOLE_REFUND_FRACTION);
-          simState.constellationStars[sid] = true;
-          simState.constellationProgress[constellationId] = (simState.constellationProgress[constellationId] || 0) + 1;
-        }
-        // Remove all lit stars in this constellation from the live state.
-        const newStars = { ...(s.constellationStars || {}) };
-        const newProgress = { ...(s.constellationProgress || {}) };
-        const newStarted = { ...(s.constellationsStarted || {}) };
-        const newCompleted = { ...(s.constellationsCompleted || {}) };
-        for (const sid of litStarIds) delete newStars[sid];
-        delete newProgress[constellationId];
-        delete newStarted[constellationId];
-        delete newCompleted[constellationId];
-        const cooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        cooldowns[BLACK_HOLE_CD_KEY] = BLACK_HOLE_COOLDOWN_SEC;
-        set({
-          divinity: (s.divinity || 0) + refund,
-          constellationStars: newStars,
-          constellationProgress: newProgress,
-          constellationsStarted: newStarted,
-          constellationsCompleted: newCompleted,
-          activeAbilityCooldowns: cooldowns,
-        });
-        get().addToLog(`✦ Black Hole on ${cdef.name}: refunded ${refund} Divinity (${(BLACK_HOLE_REFUND_FRACTION * 100).toFixed(0)}% of cost), ${litStarIds.length} star(s) collapsed. (${BLACK_HOLE_COOLDOWN_SEC}s cooldown.)`);
-      },
-
-      /**
-       * Cosmic Bridge active ability: link two constellations for
-       * COSMIC_BRIDGE_DURATION_SEC seconds. While the bridge is active,
-       * illuminating a star in either constellation also illuminates the
-       * cheapest unlit star in the OTHER constellation for free.
-       * Costs COSMIC_BRIDGE_COST (200) Divinity + 600s cooldown.
-       */
-      activateCosmicBridge: (fromConstellationId, toConstellationId) => {
-        const s = get();
-        if (!s.unlockedLayers?.enlightenment) return;
-        if (fromConstellationId === toConstellationId) {
-          get().addToLog("✦ Cosmic Bridge requires two different constellations.");
-          return;
-        }
-        const fromDef = CONSTELLATION_MAP[fromConstellationId];
-        const toDef = CONSTELLATION_MAP[toConstellationId];
-        if (!fromDef || !toDef) return;
-        // Cooldown check
-        const cdRem = (s.activeAbilityCooldowns?.[COSMIC_BRIDGE_CD_KEY] || 0);
-        if (cdRem > 0) {
-          get().addToLog(`✦ Cosmic Bridge on cooldown (${Math.ceil(cdRem)}s).`);
-          return;
-        }
-        // Divinity cost check
-        if ((s.divinity || 0) < COSMIC_BRIDGE_COST) {
-          get().addToLog(`✦ Cosmic Bridge requires ${COSMIC_BRIDGE_COST} Divinity.`);
-          return;
-        }
-        const newCooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        newCooldowns[COSMIC_BRIDGE_CD_KEY] = COSMIC_BRIDGE_COOLDOWN_SEC;
-        set({
-          divinity: (s.divinity || 0) - COSMIC_BRIDGE_COST,
-          cosmicBridgeLink: {
-            from: fromConstellationId,
-            to: toConstellationId,
-            remaining: COSMIC_BRIDGE_DURATION_SEC,
-          },
-          activeAbilityCooldowns: newCooldowns,
-        });
-        get().addToLog(
-          `✦ Cosmic Bridge activated: ${fromDef.name} ↔ ${toDef.name} (-${COSMIC_BRIDGE_COST} Divinity, ${COSMIC_BRIDGE_DURATION_SEC}s).`,
-        );
-      },
 
       // ---- Layer 3 — Divine Market ----
       marketBuyResource: (resourceId, qty) => {
@@ -4111,28 +3950,12 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`✦ Paradox resolved (-1 Paradox, -100 Divinity). Reality steadies.`);
       },
 
-      // ===== BACKGROUND-SIMULATION — Spawn one extra parallel background run =====
-      // Costs 100 × 1.5^backgroundSimulations Divinity (scaling cost).
-      // Adds +1 to backgroundSimulations, which means each tick generates
-      // +peakProductionRate × 0.01 Divinity per second.
+      // ===== BACKGROUND-SIMULATION — spawn action REMOVED =====
+      // Sims are now computed from (3 + starsLit) × simMult, not manually spawned.
+      // The simulation_amplifier shop upgrade increases the multiplier.
+      // (spawnBackgroundSimulation action removed — kept as no-op stub for save-compat.)
       spawnBackgroundSimulation: () => {
-        const s = get();
-        // Only available after first Galactic prestige (i.e. background sims unlocked).
-        if ((s.galacticWins || 0) < 1) {
-          get().addToLog("Background simulations unlock after your first Galactic Ascension.");
-          return;
-        }
-        const current = s.backgroundSimulations || 0;
-        const cost = Math.ceil(100 * Math.pow(1.5, current));
-        if ((s.divinity || 0) < cost) {
-          get().addToLog(`Spawn Simulation requires ${cost} Divinity (you have ${Math.floor(s.divinity || 0)}).`);
-          return;
-        }
-        set({
-          divinity: (s.divinity || 0) - cost,
-          backgroundSimulations: current + 1,
-        });
-        get().addToLog(`🌌 Background simulation spawned (-${cost} Divinity). ${current + 1} simulations now running.`);
+        get().addToLog("Simulations now come from lighting constellation stars. Buy the Simulation Amplifier upgrade to multiply them.");
       },
 
       // ============ LAYER 7 — OMNIPOTENCE (Bio-engineering) ============
@@ -4491,7 +4314,20 @@ export const useGameStore = create<GameStore>()(
           if (!ally) return { powerLevel: 0 };
           return { powerLevel: ally.powerLevel };
         });
-        const weakToBodyType = god.weakness === "predator" || god.weakness === "flyer" || god.weakness === "burrower";
+        const weakToBodyType = (() => {
+          // Check if ANY deployed legion has a creature whose bodyType matches the god's weakness.
+          // This makes L7 creature design matter for L9 combat.
+          const deployedBodyTypes = new Set<string>();
+          for (const legId of battle.deployedLegionIds) {
+            const legion = s.legions.find((l) => l.id === legId);
+            if (!legion) continue;
+            for (const cId of legion.creatureIds) {
+              const c = s.creatures.find((cr) => cr.id === cId);
+              if (c) deployedBodyTypes.add(c.bodyType);
+            }
+          }
+          return deployedBodyTypes.has(god.weakness);
+        })();
         // LAYER UPGRADE — war_preparation: +20% player damage per level (max 5)
         const wpLvl = (s.upgrades?.war_preparation as number) || 0;
         const warMult = 1 + 0.20 * wpLvl;
@@ -4516,8 +4352,14 @@ export const useGameStore = create<GameStore>()(
         }
         // Apply damage
         const bossHp = Math.max(0, battle.bossHp - playerDmg);
+        // Apply boss damage to player HP — battle is LOST when playerHp <= 0
+        let playerHp = Math.max(0, (battle.playerHp || 200) - bossDmg);
+        // regen special: heal player HP by 1 per regen creature per turn
+        if (regenCount > 0) {
+          playerHp = Math.min(battle.playerMaxHp || 200, playerHp + regenCount);
+        }
         const log = [...(battle.log || [])];
-        log.push(`Turn ${battle.turn + 1}: You deal ${playerDmg} damage. ${god.name} retaliates for ${bossDmg}.${stormNote}`);
+        log.push(`Turn ${battle.turn + 1}: You deal ${playerDmg} damage. ${god.name} retaliates for ${bossDmg}.${stormNote} (Your HP: ${playerHp})`);
         if (log.length > 6) log.shift();
         let status: import("../data/infinity").BattleStatus = battle.status;
         let phase = battle.phase;
@@ -4525,12 +4367,18 @@ export const useGameStore = create<GameStore>()(
           status = "won";
           log.push(`${god.name} has fallen! +1 Divine Fragment.`);
           temporalStorms[oldGodId] = false; // clear storm on win
+        } else if (playerHp <= 0) {
+          // Player routed — battle lost, reset for retry
+          status = "lost";
+          log.push(`Your forces have been routed! The Old God repels your assault. Re-engage to try again.`);
+          temporalStorms[oldGodId] = false;
         } else {
           phase = phaseForHp(god, bossHp);
         }
         battles[oldGodId] = {
           ...battle,
           bossHp,
+          playerHp,
           phase,
           status,
           turn: battle.turn + 1,
@@ -4541,8 +4389,21 @@ export const useGameStore = create<GameStore>()(
           const fragments = (s.divineFragments || 0) + 1;
           set({ divineFragments: fragments });
           get().addToLog(`Victory over ${god.name}! Earned a Divine Fragment (total: ${fragments}).`);
+        } else if (status === "lost") {
+          // Reset battle for retry — boss HP and player HP back to full
+          battles[oldGodId] = {
+            ...battles[oldGodId],
+            status: "not_started",
+            bossHp: battle.bossMaxHp,
+            playerHp: battle.playerMaxHp || 200,
+            phase: "skirmish",
+            turn: 0,
+            log: ["Battle reset after defeat. Re-engage when ready."],
+          };
+          set({ oldGodBattles: battles });
+          get().addToLog(`Defeated by ${god.name}. Battle reset. Re-engage to try again.`);
         } else {
-          get().addToLog(`Strike ${god.name} for ${playerDmg} (HP ${bossHp}/${battle.bossMaxHp}). Boss hits back for ${bossDmg}${stormNote}.`);
+          get().addToLog(`Strike ${god.name} for ${playerDmg} (HP ${bossHp}/${battle.bossMaxHp}). Boss hits back for ${bossDmg}${stormNote} (Your HP: ${playerHp}/${battle.playerMaxHp || 200}).`);
         }
       },
 
@@ -4936,10 +4797,9 @@ export const useGameStore = create<GameStore>()(
           divinity: (s.divinity || 0) + 500,
           prayer: (s.prayer || 0) + 200,
           faith: (s.faith || 0) + 200,
-          // BACKGROUND-SIMULATION — seed a background sim + a non-zero peak
-          // so the Divine Engine panel has visible Divinity generation when
-          // debug-unlocked.
-          backgroundSimulations: Math.max(s.backgroundSimulations || 0, 1),
+          // BACKGROUND-SIMULATION — seed a non-zero peak so the Divine Engine
+          // panel has visible Divinity generation when debug-unlocked.
+          // (backgroundSimulations is computed from stars lit, not set here.)
           peakProductionRate: Math.max(s.peakProductionRate || 0, 100),
         });
         get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +500 Divinity, +200 Prayer, +200 Faith granted.");
@@ -5173,6 +5033,8 @@ export const useGameStore = create<GameStore>()(
         if (persisted.lastDisasterAt === undefined) persisted.lastDisasterAt = 0;
         if (!persisted.followerGrid) persisted.followerGrid = Array.from({ length: 32 }, () => ({ state: "faithful", type: "follower" }));
         if (persisted.heresySpreadTimer === undefined) persisted.heresySpreadTimer = 10;
+        if (persisted.heresySeedTimer === undefined) persisted.heresySeedTimer = 30;
+        if (!persisted.heresyThresholdsSeeded) persisted.heresyThresholdsSeeded = {};
         // FEATURE 5 — Prophets migration
         if (!persisted.prophets) persisted.prophets = [];
         if (persisted.prophetConvertTimer === undefined) persisted.prophetConvertTimer = 10;
@@ -5213,6 +5075,16 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.oldGodBattles) {
           persisted.oldGodBattles = Object.fromEntries(OLD_GODS.map((g) => [g.id, makeInitialBattleState(g.id)]));
         }
+        // Backfill playerHp/playerMaxHp on existing battle states (migration for older saves)
+        if (persisted.oldGodBattles) {
+          for (const godId of Object.keys(persisted.oldGodBattles)) {
+            const bs = persisted.oldGodBattles[godId];
+            if (bs && (bs.playerHp === undefined || bs.playerMaxHp === undefined)) {
+              bs.playerHp = 200;
+              bs.playerMaxHp = 200;
+            }
+          }
+        }
         if (persisted.divineFragments === undefined) persisted.divineFragments = 0;
         // Layer 10 — Universe Creation
         if (!persisted.universeRules) {
@@ -5221,16 +5093,13 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.keptGods) persisted.keptGods = [];
 
         // v10 migration: BACKGROUND-SIMULATION — peak production tracker +
-        // parallel background simulation count + lifetime Divinity counter.
-        // Existing prestigers (galacticWins > 0) get credit for past runs:
-        // backgroundSimulations = galacticWins, so each previous Galactic win
-        // effectively "spawns" one background simulation retroactively.
+        // lifetime Divinity + EP counters. backgroundSimulations is now COMPUTED
+        // each tick from (3 + starsLit) × simMult — no longer a stored counter.
         if (persisted.peakProductionRate === undefined) persisted.peakProductionRate = 0;
         if (persisted.divinityFromBackground === undefined) persisted.divinityFromBackground = 0;
-        if (persisted.backgroundSimulations === undefined) {
-          const wins = (persisted.galacticWins || 0) as number;
-          persisted.backgroundSimulations = wins > 0 ? wins : 0;
-        }
+        if (persisted.epFromBackground === undefined) persisted.epFromBackground = 0;
+        // backgroundSimulations field kept for display-cache compat; recomputed each tick.
+        if (persisted.backgroundSimulations === undefined) persisted.backgroundSimulations = 0;
 
         return persisted;
       },

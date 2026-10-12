@@ -3167,3 +3167,360 @@ Work Log:
 Stage Summary:
 - Stage transition modal is now first-playthrough-only. After the first prestige, the player won't see the celebratory animation — they'll be focused on the prestige layers instead.
 - 0 lint errors. SSR HTML renders correctly (verified via curl: "Evolve to Creature", "Absorb Glucose", "First Spark" present, no "Application error").
+
+---
+Task ID: FUN-REVIEW-V2
+Agent: general-purpose (code-review subagent)
+Task: Fresh fun assessment of every stage and layer AFTER all the fixes (L5 heretics, L9 player HP, L9 weakness check, L6 dimension rewards, L7 creature cost, L10 forbidden words, L2 constellation redesign, auto-buyer economics, background simulation redesign). Read-only — no code changes.
+
+Work Log:
+- Read prior reviews REVIEW-L1-L5, REVIEW-L6-L10, REVIEW-BASE (worklog lines ~2268-2876), prior fix sections FIX-L6-L7-L10, L2-CONSTELLATION-REDESIGN, CONSTELLATIONS-88, AUTOBUYER-TUTORIAL-FIXES, BACKGROUND-SIMULATION, STAGE-TRANSITION-FIRST-PLAY-ONLY (lines ~2879-3169).
+- Read current state of constellations.ts (2242 lines, 88 IAU constellations confirmed), trialRealms.ts (344 lines, header still says "Three are fully playable" — stale), infinity.ts (241 lines, BattleState STILL has no playerHp field), apotheosis.ts (366 lines, worship mode IDs unchanged), eternity.ts (291 lines, Forbidden Words nerfed as claimed), upgrades.ts (466 lines, simulation_amplifier + paradox_insight maxLevel 1 confirmed).
+- Grep-verified key store.ts claims:
+  * `attackOldGod` (store.ts:4224-4326) — STILL has `weakToBodyType = god.weakness === "predator" || god.weakness === "flyer" || god.weakness === "burrower"` at line 4273. STILL always true. STILL does not check deployed legion body types. The fix the user described is NOT present in the code.
+  * `attackOldGod` STILL does not subtract player HP. The TODO comment at line 4248 ("requires BattleState.playerHp, which Subagent F is adding in parallel") and `void regenCount;` reservation at line 4267 are still there. `BattleState` interface in infinity.ts (lines 90-100) STILL has no `playerHp` field. Battles are STILL unloseable.
+  * Heresy web spread tick (store.ts:1904-1930) — STILL only converts faithful→heretical IF an existing heretical cell is adjacent. Grep for any other place that sets `state: "heretical"` returned only the spread tick and the placeProphet handler (which converts heretical→faithful). NO seeding logic anywhere. The `heresy_surge` layer event (store.ts:1192-1199) adds to the GLOBAL heresy meter (0-100), NOT to the followerGrid cells. So the Heresy Web is STILL permanently all-faithful.
+  * ApotheosisModal `spreadPattern` (lines 70-78) STILL references the nonexistent worship mode IDs `wm_zeal`, `wm_mystic`, `wm_austere`, `wm_ecstatic`. Actual IDs in apotheosis.ts are `wm_silent`/`wm_chanting`/`wm_proselytizing`/`wm_crusade`/`wm_ecstasy`/`wm_void`. UI hint STILL always returns "Default" and is misleading.
+  * `performMiracle` for `mir_blessing` (0 Faith cost, +50 Faith magnitude) STILL has no cooldown. Infinite Faith exploit STILL open.
+  * L8 `negotiateWithGod` (store.ts:4067-4090) STILL free with no cooldown. Spam-click to ally.
+  * L3 `TranscendenceModal` (line 225, 228) STILL displays Sell/Offer gain WITHOUT `profitMult`. Under-promises by 150% with market_savvy maxed.
+  * L4 Sacred Grid `gridProductionBonus` is computed in GenesisModal.tsx:126 for display but NOT applied to actual production anywhere in store.ts. Display-only bonus — same lie as the original L2 combo bonus was.
+  * L4 `dormant seeds` STILL visual-only (placeGridTile at store.ts:3681-3692 reveals them; no harvest action exists).
+  * `trialRealms.ts:5-7` header comment STILL claims "Three are fully playable (Growth, Discontent, Swiftness); the remaining seven ship as 'Coming Soon' placeholders" — but all 10 are `status: "available"`. Stale dev-facing lie.
+  * REALM_IGNORANCE_NODE_COSTS = [5,7,9,10,10,11,11,12,12,13] STILL sums to exactly 100 (the budget) — no decision.
+  * Dead duplicate files `rituals.ts` and `scripts.ts` STILL exist alongside canonical `transcendence.ts`.
+- Confirmed fixes that ARE in the code:
+  * L6 Dimension Engine rewards: store.ts:1991-2022 — +1 Singularity Core per dim reaching Galactic, +5 bonus for all 3 (one-time per run via `dimensionEngineBonusClaimed`). ✓
+  * L7 creature cost (5 Div + 5 Faith) + cap (5 + filledSlots) + mutatedStat now applies ×1.5 only to rolled stat. store.ts:3936-3989. ✓
+  * L7 specials wired into attackOldGod: berserk +20% dmg/creature, shield -20% boss dmg/creature. store.ts:4256-4266. (regen still TODO, not wired.) ✓ partial
+  * L10 Forbidden Words nerfed: phys 80→30 prod, magic 100→35, time 90→25. eternity.ts:59, 81, 93. paradox threshold base 3→2, paradox_insight maxLevel 2→1. ✓
+  * L10 chooseEnding AlertDialog confirmation present. ✓
+  * L2 redesigned: 88 IAU constellations, cost = base × 1.5^within × 2.0^N, L3 gate at 20 completed. ✓
+  * L2 four active abilities with costs + cooldowns: Stargaze (25/60s), Supernova (100/300s), Black Hole (50/120s/75% refund), Cosmic Bridge (200/600s/60s duration). ✓
+  * Auto-buyers no longer free after first prestige (AUTOBUYER-TUTORIAL-FIXES). ✓
+  * Background sims computed from (3 + starsLit) × simMult where simMult = 1 + simulation_amplifier level. store.ts:2055-2085. ✓
+  * Sims generate EP at 10% of Divinity rate. ✓
+- "Honest verdict" — the user's task spec asserts L5 / L9 / L9-weakness are "NOW FIXED", but the actual code does NOT contain those fixes. The L5/L9 sections of this review therefore call out that the claimed fixes are absent. Other claimed fixes (L6, L7, L10, L2 redesign, auto-buyer, background sims) ARE genuinely present and working.
+
+---
+
+# FUN-REVIEW-V2 — Layer-by-Layer Post-Fix Assessment
+
+## Base Game (Cell → Galactic + Shop)
+
+### Core Loop (post-fix)
+Cell → Creature → Civilized → Industrial → Atomic → Galactic prestige over 7 stages. 39 systems + 30 techs + ~35 manual actions across the stages; click systems to build, techs to research, manual actions to push resources, evolve when population/systems/techs are met. After first Galactic prestige, the auto-buyer upgrades (Auto-Builder / Auto-Researcher / Auto-Evolver) are no longer free — they must be purchased with EP (8/10/15 respectively) and the tutorial now hints "buy Auto-Builder first." Auto-Evolver description corrected to make clear higher levels trigger evolve EARLIER. Achievement counts fixed (39 systems / 30 techs).
+
+### Fun Assessment (post-fix)
+🔥 Highly fun (first 30 minutes) → 😐 OK but flat (after first prestige)
+The first playthrough is the best part of the game — clicking through the systems/techs, watching resources tick up, evolving through Cell → Creature → Civilized → Industrial → Atomic → Galactic over ~30 minutes is genuinely engaging. The "Auto-Builder recommended first" tutorial hint is a real improvement over the prior "free after first prestige" trap. The removal of free auto-buyers means there's now a real decision: do I sink EP into Auto-Builder (8), Auto-Researcher (10), or Auto-Evolver (15) first? That's an actual build-order choice, the first one in the base game. But once Auto-Builder + Auto-Researcher + Auto-Evolver are all owned, the base game literally plays itself — you stare at the auto-evolver progress bar.
+
+### What's Still Missing
+1. No "active prestige" hook once auto-buyers are running — the base game becomes a wait timer. Needs an active ability (e.g. "Catalyze: 2× production for 30s, 5m cooldown") to keep the player's hands busy.
+2. `peakProductionRate` is now tracked (for background sims), but the player never sees it. Should be surfaced as "Highest production rate ever: X/sec" — gives the player a tangible record to beat across prestiges.
+3. The shop still has 30+ upgrades but no "you should buy X next" guidance beyond the 2 tutorial hints. New prestigers face a wall of options.
+
+---
+
+## Layer 1 — Evolution (Trial Realms)
+
+### Core Loop (post-fix)
+Player opens ChallengeModal, picks from 10 Trial Realms (each a mini-game), completes 5 to unlock Layer 2. Realms: Growth (passive bar + break button), Famine (3-resource A→B→C→A balance), Discontent (oscillating happiness + gold), Ignorance (10-node tech tree with budget = total cost), Stagnation (4-stage chain), Weakness (10-wave tower defense), Late Bloom (passive geometric pop), Purity (10 systems from 500 pool), Ascetic (7 systems in cost order), Swiftness (300s countdown with 5× production).
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**No fixes applied to L1 in this round.** The file header in `trialRealms.ts:5-7` STILL says "Three are fully playable (Growth, Discontent, Swiftness); the remaining seven ship as 'Coming Soon' placeholders" — a stale dev-facing lie since all 10 are marked `available`. The Ignorance budget still sums to exactly the total cost of all 10 nodes (no decision). Late Bloom is still a "watch the bar" realm with no actions. Purity is still spam-click-10-times-to-win because the drain only fires after the first build (and 10 builds finish in <1 second). Only Famine, Discontent, and Weakness are real mini-games, and the player can skip them entirely because only 5 of 10 are required.
+
+### What's Still Missing
+1. Update `trialRealms.ts` header comment to match reality (all 10 are available).
+2. REALM_IGNORANCE budget cut from 100 to ~75 — actually force a choice.
+3. Late Bloom needs an action (split mechanic was the prior suggestion — still good).
+4. Purity needs the survival-window fix (require 30s survival after 10th build, or minimum 100 pool balance at completion).
+5. Raise `TRIAL_REALMS_REQUIRED_FOR_LAYER_2` from 5 to 7 — forces the player to engage with the harder realms.
+
+---
+
+## Layer 2 — Enlightenment (88 IAU Constellation Star Map)
+
+### Core Loop (post-fix)
+Star-map SVG (1000×600 viewBox) plots all 88 IAU constellations with 497 unique stars. Click any star to illuminate it for Divinity. Cost = `baseCost(10) × 1.5^(stars already lit in this constellation) × 2.0^(number of OTHER started constellations)`. Finishing a constellation grants a permanent bonus (production/cap/EP/pop/costMult/divinityMult). Four active abilities: Stargaze (25 Div, 60s cd, reveals all connection lines + pulsing "recommended next" glow on the single cheapest affordable star across all 88), Supernova (100 Div, 300s cd, lights target + connected stars for free), Black Hole (50 Div, 120s cd, 75% refund + clears a constellation), Cosmic Bridge (200 Div, 600s cd, 60s duration — illuminating a star in one endpoint also illuminates the cheapest star in the other endpoint for free). L3 unlock requires 20 constellations COMPLETED.
+
+### Fun Assessment (post-fix)
+🔥 Highly fun (for the first ~10 constellations) → 😐 OK but flat (after that)
+**This is the most ambitious redesign in the project, and it mostly works.** The SVG star map is gorgeous — zodiac constellations in their canonical stick figures, 4 accent colors for the categories, lit stars glow brightly with their category accent, connection lines fade in as you complete each constellation. The cost model is genuinely clever: the 2.0^N penalty for starting a new constellation while others are unfinished creates a real "finish before you switch" pressure that the original 5×4 grid never had. Cosmic Bridge is the standout ability — using it to pair Orion + Cassiopeia and watch free stars cascade is the most satisfying mechanic in the entire game.
+
+But: completing 20 constellations out of 88 is a LOT of clicking. Once you finish your first 5-10 constellations, the next ones get expensive enough that you're waiting for Divinity to accumulate, and the strategic novelty wears off. The player will discover the optimal play pattern (finish one constellation at a time, save up for Cosmic Bridge on expensive pairs) within ~30 minutes and then just execute it for the remaining 10. There's no "branching" — every constellation is independent and grants a small fixed bonus. No combos across constellations, no constellation-tier system, no "rare" constellations. Just "buy all the stars left to right, occasionally use Cosmic Bridge."
+
+### What's Still Missing
+1. **Strategic depth beyond "buy all stars"**: introduce constellation synergies (e.g. completing all 12 zodiac grants a unique special ability; completing northern + equatorial + southern in the same category grants a set bonus). Currently each constellation is independent.
+2. **Cosmic Bridge is fun but rare** (200 Div, 600s cd). Either lower the cost or add a second "link" ability with different mechanics (e.g. "Constellation Mirror" — duplicate a completed constellation's bonus to one that hasn't been started).
+3. **The star map is huge** — panning/zooming helps but on mobile it's cramped. Consider a "category filter" toggle (show only zodiac / only northern / etc.).
+4. **L3 gate at 20 completed feels right for the redesign** — but if you're going to ship all 88, the late game becomes "grind the remaining 68 constellations for marginal bonus." Consider whether completing beyond 20 should unlock something (cosmetic starfield customization, achievement, leaderboard).
+
+---
+
+## Layer 3 — Transcendence (Divine Market)
+
+### Core Loop (post-fix)
+6 market resources with prices random-walking ±30% every 10s. Buy with Divinity, sell for Divinity, or "Offer" 10 units for 1.5× current price. Every 120s there's a 20% chance of a Market Crash (all prices → 30% of base for 30s). Owning 100+ of any resource grants +1 Divinity/sec dividend. Below the market: 6 Offerings (sacrifice game resources for Divinity), 7 Rituals (with a "Divine Combo" 3-different-in-60s reward), 5 Scripts (toggleable automation), 4 Blood Pacts (one per run, all 4 unlocks L4). L4 unlock requires all 4 Blood Pacts.
+
+### Fun Assessment (post-fix)
+🔥 Highly fun
+**No fixes were needed — L3 was the best layer in the original review and it remains the best layer post-fix.** The market timing minigame is genuinely engaging: watch prices drift, snap up cheap resources, offer them when price spikes. The Blood Pact tier system has real cost (population sacrifice scales 4× per tier). The ritual combo system rewards variety. The only reason this isn't a perfect 10/10 is the dead duplicate `rituals.ts` + `scripts.ts` files (still present, still confusing for future devs) and the Sell/Offer button display bug that under-promises by 150% with maxed market_savvy upgrade.
+
+### What's Still Missing
+1. **Sell/Offer display bug** (TranscendenceModal.tsx:225, 228) — show actual gain including `profitMult` so the player sees the true value of market_savvy.
+2. **Delete dead `rituals.ts` + `scripts.ts`** — `transcendence.ts` is canonical, the older versions are cruft.
+3. **Randomize market crash severity** — currently always drops to 30% of base, predictable. Vary to 20-50%.
+4. **Offerings are still 1:250 ratio** (500 glucose → 2 Divinity) — never worth using. Either boost to 1:25 or remove.
+
+---
+
+## Layer 4 — Genesis (Sacred Grid + Author World)
+
+### Core Loop (post-fix)
+5×4 Sacred Grid (20 cells), 5 tile types. Place tiles for adjacency bonuses (each tile +1% prod, each adjacency +0.5%, each 3+ combo +5%). Disasters every 90s (15% chance to destroy a random non-mountain tile). Below the grid: pick 5 components (cradle/prime/geography/dormant seed/difficulty tier), spend 1 Genesis Seed to author a world. Each authored world grants +28% to +135% production. Author 1 world to unlock L5.
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**No fixes applied to L4 in this round.** The Sacred Grid bonus is STILL computed in GenesisModal.tsx:126 for display only — `gridProductionBonus = filledTiles * 0.01 + combos.length * 0.05 + adjacencyCount * 0.005` — but it is NOT applied to actual production anywhere in `store.ts` (grep for `gridProductionBonus`, `sacredGridBonus`, `combos.*prod` returns no store.ts matches). The "+52% production" badge the player sees is a lie. Meanwhile Author World (right next to it) grants +28-135% PER world × up to 32 worlds per prestige. The grid is both mathematically irrelevant AND display-only. Dormant seeds still reveal visually but have no harvest action. Disasters still ignorable (15% × every 90s = expected 1 tile per 10 min). Reset Grid button still has no confirmation dialog. The improvement ideas from REVIEW-L1-L5 are all still open.
+
+### What's Still Missing
+1. **Wire Sacred Grid bonus to production** — currently display-only. Either apply `gridProductionBonus` in store.ts:624 (additive to `layerProdBonus`), or remove the badge (don't lie to the player).
+2. **Cap authored worlds per prestige** (e.g. max 3) — eliminate the +40%/prestige permanent stacking that trivializes earlier layers.
+3. **Wire dormant seeds** — let the player click a seed to harvest it for +5 Divinity or +1 Genesis Seed. Currently dead visual feature.
+4. **Add "Reset Grid" confirmation dialog** — 19 placed tiles vanish with one mis-click.
+5. **Apply `wbMult` to `wEp`** at store.ts:2580 — currently the world_boon upgrade affects 3 of 4 world effect types (inconsistency).
+
+---
+
+## Layer 5 — Apotheosis (Heresy Web)
+
+### Core Loop (post-fix)
+8×4 Heresy Web (32 cells, all "faithful" at start). Spread tick every 10s: each heretical cell spreads to one random adjacent faithful cell. Convert heretic (5 Div), Purge cell (free, -2 Faith), Place Prophet (50 Div, converts adjacent heretics every 10s). 8 Divine Laws, 6 Worship Modes, 5 Miracles, 4 Heresy Responses. Enact 3+ laws to unlock L6.
+
+### Fun Assessment (post-fix)
+🪲 Still broken
+**The user's task spec claims "L5 was broken (heretics never spawned) — NOW FIXED (heretics seed every 30s + on heresy thresholds)." This is FALSE.** I grep-verified the entire `store.ts` for any code that sets `state: "heretical"` and found exactly 4 hits: the spread tick reading heretics (line 1915), the spread tick writing a new heretic from an existing one (line 1927), the Prophet conversion (line 1969, heretic→faithful), and the placeProphet handler (line 3821, heretic→faithful). **There is NO seeding logic anywhere.** The `heresy_surge` layer event (store.ts:1192-1199) adds +10 to the GLOBAL `heresy` meter (0-100, which ends the run at 100), but it does NOT touch `followerGrid`. The web starts all-faithful and stays all-faithful forever. Convert/Purge/Prophet are useless. Prophets sit there costing 50 Divinity each and converting nothing.
+
+**Also still broken**: ApotheosisModal.tsx:70-78 `spreadPattern` references nonexistent worship mode IDs (`wm_zeal`, `wm_mystic`, `wm_austere`, `wm_ecstatic`) — actual IDs are `wm_silent`/`wm_chanting`/etc. The UI hint always says "Default". And `performMiracle` for `mir_blessing` (0 Faith cost, +50 Faith magnitude) STILL has no cooldown — infinite Faith exploit still open. None of the REVIEW-L1-L5 Priority 1 bugs for L5 have been touched.
+
+### What's Still Missing
+1. **ACTUALLY seed the first heretic** — every 30s or when global heresy crosses 25/50/75, convert 1-3 random faithful cells to heretical. Without this, the entire layer is dead code.
+2. **Fix the worship mode ID mismatch** in ApotheosisModal `spreadPattern`.
+3. **Add cooldown to `mir_blessing`** (60s) or change cost from 0 to 50 Faith — closes the infinite-Faith exploit.
+4. **Add cooldown to `setWorshipMode`** (30s) — prevents free +100% production bursts via wm_void swapping.
+5. **Link the Heresy Web to the Global Heresy meter** — web heresy ≥ 50% → +0.5/sec to global; web = 100% → run ends.
+6. **Raise `hasEnactedThreeLaws` from 3 to 5** — currently 3 of 8 laws unlocks L6 in ~130 seconds of Ecstasy mode.
+
+---
+
+## Layer 6 — Singularity (Dimension Engine)
+
+### Core Loop (post-fix)
+3 parallel dimensions (Alpha/Beta/Gamma) at speeds 1×/0.5×/0.25× accrue resources + population + stage up. Every 60s, a Rift transfers 25 resources between two random dims (or richest→poorest with rift_redirect upgrade). Sync (50 Div, copy stage + 50% pop) or Collapse (merge two same-stage dims). Now: each dimension reaching Galactic grants +1 Singularity Core; all 3 reaching Galactic grants a one-time +5 Singularity Core bonus (per run, via `dimensionEngineBonusClaimed` flag). Below: 8 Relics (loadout), 6 Logic Cores (toggles). 3+ active Logic Cores unlocks L7.
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**The L6 Dimension Engine reward fix is genuine and material** — the engine now actually pays out (verified at store.ts:1991-2022: +1 core per dim reaching Galactic, +5 bonus for all 3 with `dimensionEngineBonusClaimed` flag). That moves the engine from "decorative" to "actually grants a currency." But the underlying gameplay is STILL passive: set 3 speeds, wait ~30 min for Gamma to crawl to Galactic, get cores. Sync/Collapse decisions still have no urgency because the reward is per-Galactic-arrival, not per-Sync-or-Collapse-action. Logic Cores are STILL free toggles with no downside — toggle 3, unlock L7, never touch them again. The Omega Shard relic is STILL a noob trap.
+
+### What's Still Missing
+1. **Active "Convergence" mechanic** — when two dimensions reach the same stage within 10s of each other, trigger a free Sync (no Div cost). Rewards active play instead of passive watching.
+2. **Make Logic Cores consume something** — e.g. each active core costs 1 Singularity Core/min, or each active core increases instability/rift rate.
+3. **Make Rift events impactful** — currently fixed at `Math.min(dimensions[fromIdx].resources, 25)` — by mid-game resources are in the hundreds, so 25 is invisible. Increase to 10% of sender's resources.
+4. **Rework Omega Shard** — "+50% to all four, but disables ALL other relic bonuses AND halves production from systems" (true solo relic tradeoff).
+5. **Sync/Collapse should grant immediate reward** — not just speed up the eventual Galactic arrival.
+
+---
+
+## Layer 7 — Omnipotence (Creature Lab)
+
+### Core Loop (post-fix)
+Pick body type (6) × diet (4) × special ability (6) = 144 combinations. Compute stats. 10% mutation chance (mutation_master upgrade boosts). Mutation now applies ×1.5 only to ONE rolled stat (not all three). Creatures grouped into Legions (max 5 each). Each active creature adds production/cap/EP/pop bonuses but accrues genetic instability. Peak instability ≥ 80 unlocks L8; instability = 100 collapses run. **Creature creation now costs 5 Div + 5 Faith and is capped at 5 + (filled L10 universe slots).** Specials `berserk` and `shield` are now wired into L9 battle math (berserk +20% player dmg per creature, shield -20% boss dmg per creature); `regen` is reserved but not wired.
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**The fixes did real work here.** Creature cost (5 Div + 5 Faith) plus the cap (5 + L10 slots) means the player can't spam-create infinite creatures for free anymore — actual resource friction now exists. The mutatedStat fix is meaningful — now you might roll a high-attack predator + high-speed flyer instead of a uniformly-mutated blob, and that matters for L9 boss weaknesses (if those were actually checked, which they're not — see L9). The berserk/shield specials wiring into L9 attack math is real progress.
+
+BUT: this layer STILL has no immediate feedback loop. You design creatures → they sit in a list → their only purpose is to be deployed in L9. There's no battle in this layer to test designs, no training, no breeding. The stance system (contained/balanced/embraced) is still trivially dominated by "embraced" (2× bonus for 1.5× instability is strictly upside since instability resets on prestige). And the L9 weakness check is STILL broken (always returns true), so the body-type diversity the player is incentivized to build has no mechanical payoff in battle.
+
+### What's Still Missing
+1. **Add a "Skirmish Arena" sub-section** in this layer — deploy a legion vs. a procedurally-generated wild beast to test designs and earn minor resources. Gives the designer an immediate feedback loop.
+2. **Wire the L9 weakness check properly** (see L9 below) — otherwise body-type diversity has no payoff.
+3. **Wire `regen` special** — currently `void regenCount;` placeholder. Needs `playerHp` field on BattleState (which is also missing — see L9).
+4. **Make stance a real tradeoff** — "embraced" should be 2× instability for 1.5× bonus (not 1.5× / 2× strictly upside).
+5. **Add breeding/fusion** — combine two creatures to produce an offspring that inherits one body/diet/special from each parent.
+
+---
+
+## Layer 8 — Divinity (Diplomacy Network)
+
+### Core Loop (post-fix)
+6 minor gods with starting relationships 5-30. Negotiate (+5 relationship, free) or Trade (pay god's demand, receive reward, +3 relationship). At 60+, click Ally. Each god has personality (warm/cunning/mystic/warlike/patient/chaotic — flavor only). Amplifiers (max 3, 30 Div each) double Negotiate gain. 2+ alliances unlocks L9.
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**No fixes applied to L8 in this round.** `negotiateWithGod` is STILL free with no cooldown (store.ts:4067-4090) — optimal play is still spam-click Negotiate on every god. With Amplifier (30 Div once) + diplomatic_gift maxed (×4) + amplifier_overcharge maxed (×3.5 ampMult), each Negotiate gives 5 × 3.5 × 4 = 70 relationship — a single click maxes a god from 0 → 70. The layer can be cleared in <1 minute of clicking. Personalities are still 100% flavor text with no mechanical effect. The divinity↔faith↔prayer trade loop is still exploitable. `placeAmplifier` is still permanent — once placed, the amplifier doubles Negotiate forever; removeAmplifier is dead UI.
+
+### What's Still Missing
+1. **Negotiate cooldown (30s real time per god)** OR a small faith/prayer cost — forces the player to choose which gods to invest in.
+2. **Make personalities mechanical** — cunning gods occasionally reject Negotiate; warlike gods require an armed envoy (deployed legion); chaotic gods give ±5 random per Negotiate.
+3. **Make Amplifiers consumable** — 5 uses, then breaks. Forces the player to choose which god to boost.
+4. **Break the divinity↔faith↔prayer trade loop** — each god should have a unique trade that doesn't loop back.
+5. **Add god-to-god dynamics** — allying with Veska angers Aurelia. Manage a web of conflicting personalities.
+
+---
+
+## Layer 9 — Infinity / Divine War (Old God Boss Battles)
+
+### Core Loop (post-fix)
+Click "Begin Battle" on one of 3 Old Gods (Mor'lok 600 HP, Zephira 800 HP, Thalos 1000 HP). Toggle-deploy legions + call allies. Click "Attack!" — player deals damage to boss HP, boss attacks back. Each victory grants 1 Divine Fragment (+5% prod, +3% cap, +2% EP, +3% pop). Defeating all 3 unlocks L10. 20% chance per turn of Temporal Storm (storm shuffles timeline: 50% delayed half damage, 50% accelerated ×1.5 damage — reduced by temporal_shield upgrade).
+
+### Fun Assessment (post-fix)
+🪲 Still broken
+**The user's task spec claims two L9 fixes: "L9 was unloseable (no player HP) — NOW FIXED (playerHp = 200, battles can be lost)" and "L9 weakness check was always true — NOW FIXED (checks deployed body types)." NEITHER FIX IS PRESENT IN THE CODE.**
+
+I read `infinity.ts` (lines 90-100) — the `BattleState` interface STILL has no `playerHp` field. The interface still has `bossHp`, `bossMaxHp`, `phase`, `deployedLegionIds`, `calledAllyIds`, `turn`, `log` — and that's it. I read `attackOldGod` (store.ts:4224-4326) — it computes `bossDmg` from `computeBossAttack` (line 4280) and then logs it (line 4299) and **NEVER subtracts it from anything**. There is no `playerHp -= bossDmg`. There is no `if (playerHp <= 0) status = "lost"` check. The TODO comment at line 4248 ("requires BattleState.playerHp, which Subagent F is adding in parallel") is still there, indicating Subagent F's work was reverted by a `git reset` (as documented in FIX-L6-L7-L10 worklog) and never re-applied.
+
+I read line 4273: `const weakToBodyType = god.weakness === "predator" || god.weakness === "flyer" || god.weakness === "burrower";` — this STILL checks the god's static weakness type, not the deployed legions' body types. Since all 3 Old Gods have weakness in {predator, flyer, burrower}, this STILL always returns true. The +50% damage bonus ALWAYS applies to every legion regardless of body-type composition. The L7 creature designer's body-type diversity has NO payoff in L9.
+
+**This is the most damaging finding in this review.** The user is operating under the assumption that L9 is now a real battle layer with risk and strategic depth. It is not. The battle is still "click Attack 10 times until boss HP hits 0, with no possible way to lose." The Temporal Storm adds mild variance (boss damage might be halved or accelerated by 1.5×), but since player takes no damage, it doesn't matter. The "phase" system (skirmish/siege/final_stand) is STILL cosmetic — phases change based on boss HP threshold but no mechanics differ per phase.
+
+### What's Still Missing
+1. **ACTUALLY add `playerHp` and `playerMaxHp` to `BattleState`** (infinity.ts:90-100). Initialize `playerHp = 200` in `makeInitialBattleState`. In `attackOldGod`, subtract `bossDmg` from `playerHp`. If `playerHp <= 0`, set `status = "lost"`, reset boss HP, no fragment granted. Without this, L9 is not a game.
+2. **ACTUALLY fix the weakness check** (store.ts:4273): change to `deployedPowers.some(lp => lp.bodyType === god.weakness)` — requires passing `bodyType` into the `legionPower` mapping.
+3. **Make phases mechanical** — Skirmish: normal dmg; Siege: boss +50% attack; Final Stand: boss +100% attack but takes +50% damage.
+4. **Make attacks cost resources** — each "Attack!" costs 10 Divinity. Without friction, the player has no reason NOT to attack every tick.
+5. **Add boss special abilities** — Mor'lok: "Devour" removes a creature from a deployed legion; Zephira: "Scream" stuns legions for 2 turns; Thalos: "Rootbind" halves player damage for 1 turn.
+6. **Wire `regen` special** — heal `playerHp` by 1 per regen creature per turn. Currently `void regenCount;` placeholder.
+
+---
+
+## Layer 10 — Eternity (Universe Creation)
+
+### Core Loop (post-fix)
+8 universe slots (Physics/Biology/Magic/Time/Space/Consciousness/Death/Rebirth), each with 2-3 options. Forbidden Words now nerfed: phys_paradox +30% prod (was +80%), magic_paradox +35% prod (was +100%), time_paradox +25% prod (was +90%). Each Forbidden Word adds +1 Paradox. Base paradox threshold lowered from 3 to 2; `paradox_insight` maxLevel lowered from 2 to 1 (so max threshold is 3 with upgrade, allowing exactly one Forbidden Word safely). Reaching threshold resets all rules. Choosing "Reset Universe" (requires all 8 slots filled) triggers prestige with +1 Cosmic Boon stack (+10% production). "Preserve Universe" enters gallery mode. AlertDialog confirmation now gates both endings.
+
+### Fun Assessment (post-fix)
+😐 OK but flat
+**The Forbidden Words nerf is real and material.** Pre-nerf: a player with paradox_insight maxed could pick 4-5 Forbidden Words for +270% production safely. Post-nerf: max threshold 3 means at most one Forbidden Word safely, and that word is worth only +30-35% production (down from +80-100%). The risk/reward curve is now actually balanced — taking one Forbidden Word is a meaningful decision, taking two requires committing to the gamble.
+
+The AlertDialog confirmation for `chooseEnding` is a quality-of-life win — previously a mis-click ended the layer permanently.
+
+But the layer is still fundamentally an 8-slot picker with mostly "+X% production / +Y% cap / +Z% EP" options. The 8 slots × 2-3 options = ~20 total picks, and after 2-3 playthroughs the player will have a memorized "best" loadout. Cosmic Boon (+10% production per Reset stack) is still much weaker than the per-run bonuses from earlier layers (e.g. a single L9 Divine Fragment is +5% — and you get 3 per L9 run). The "Preserve Universe" ending is still a dead-end button with no post-Preserve content. `toggleKeptGod` is still free with no cap.
+
+### What's Still Missing
+1. **Make "absorbed" gods do something** — each absorbed (not kept) god grants a one-time bonus to the new universe (e.g. +1 starting pop, +10 starting resources per absorbed god).
+2. **Add post-Preserve content** — Gallery Mode with end-game challenges, cosmetic unlocks, or an endless wave of post-ascension events.
+3. **Make Cosmic Boon more impactful** — +5% to ALL FOUR (prod/cap/EP/pop) per stack, not just production. Makes Reset competitive with grinding L9 fragments.
+4. **Add a "Universe Seed" feature** — chosen rules generate a shareable seed code.
+5. **Add a "Paradox Storm" visual** — when paradox ≥ 2, reality visually glitches (screen flickers, rules randomly toggle). Make stakes feel real.
+
+---
+
+# Overall Game Feel
+
+### What's Working Well Now
+- **L2 Constellation redesign is the standout success of this round** — 88 IAU constellations on a beautiful SVG star map with a clever cost model (1.5^within × 2.0^N), 4 active abilities with real cooldowns (Stargaze/Supernova/Black Hole/Cosmic Bridge), and Cosmic Bridge is genuinely the most satisfying mechanic in the game.
+- **L6 Dimension Engine finally grants rewards** — +1 Singularity Core per Galactic dimension + +5 bonus for all 3. The engine is no longer decorative.
+- **L7 creature economy has real friction** — 5 Div + 5 Faith per creature + cap of 5 + filledSlots. No more infinite-spam exploit. mutatedStat now applies only to the rolled stat (creates variety).
+- **L10 Forbidden Words are no longer strictly dominant** — base threshold lowered to 2, paradox_insight capped at 1 level, individual word values halved. Real risk/reward decision now.
+- **L10 chooseEnding has confirmation dialog** — no more accidental layer-end.
+- **Auto-buyer economy fixed** — must purchase with EP (8/10/15). Tutorial now hints "buy Auto-Builder first." Real build-order decision.
+- **Background sims redesigned** — sims computed from (3 + starsLit) × simMult where simMult = 1 + simulation_amplifier level. Ties sim count to L2 progress (a clever cross-layer link). Sims now generate EP at 10% of the Divinity rate, giving the player a reason to care about peak production.
+- **L3 (Transcendence/Divine Market) remains the gold standard** — market timing + ritual combos + Blood Pact tiers, untouched but still the most fun layer.
+
+### Top 5 Remaining Issues (by priority)
+
+1. **🚨 CRITICAL — L9 battles are STILL unloseable AND the weakness check is STILL always true.** The user's task spec asserts both are fixed; the actual code contains neither fix. `BattleState` interface (infinity.ts:90-100) has no `playerHp` field. `attackOldGod` (store.ts:4224-4326) computes `bossDmg` and logs it but never subtracts it. `weakToBodyType` (store.ts:4273) still checks `god.weakness === "predator" || "flyer" || "burrower"` — always true. Without these two fixes, L9 is still "click Attack 10 times to win" and the L7 creature designer's body-type diversity has zero payoff. **Fix: add `playerHp: number` + `playerMaxHp: number` to `BattleState`; initialize to 200 in `makeInitialBattleState`; subtract `bossDmg` in `attackOldGod`; set `status = "lost"` if `playerHp <= 0`. Change `weakToBodyType` to `deployedPowers.some(lp => lp.bodyType === god.weakness)` and pass `bodyType` into the `legionPower` mapping.**
+
+2. **🚨 CRITICAL — L5 Heresy Web is STILL non-functional.** The user's task spec asserts "heretics seed every 30s + on heresy thresholds." The actual code has NO seeding logic anywhere. `followerGrid` starts all-faithful and stays that way forever. Convert/Purge/Prophet are useless. The `heresy_surge` event adds to the GLOBAL heresy meter but does NOT touch the follower grid. The ApotheosisModal `spreadPattern` STILL references nonexistent worship mode IDs (`wm_zeal`/`wm_mystic`/etc. — actual IDs are `wm_silent`/`wm_chanting`/etc.). `mir_blessing` STILL has 0 cost + no cooldown = infinite Faith exploit. **Fix: add a 30s `heresySeedTimer` that converts 1-3 random faithful cells to heretical; on global heresy crossing 25/50/75, also seed 1 cell. Fix `spreadPattern` IDs. Add 60s cooldown to `mir_blessing`.**
+
+3. **🔴 HIGH — L4 Sacred Grid production bonus is STILL display-only.** `gridProductionBonus` is computed in GenesisModal.tsx:126 for the "+X% prod" badge but is NOT applied to actual production in `store.ts` (grep returns no store.ts matches). The displayed bonus is a lie. Meanwhile Author World (right next to it) grants +28-135% PER world × up to 32 worlds/prestige. **Fix: either wire `gridProductionBonus` into `layerProdBonus` at store.ts:624, or remove the badge. Also cap authored worlds per prestige to 3 to prevent the +40%/prestige permanent stacking that trivializes earlier layers.**
+
+4. **🟡 MEDIUM — L8 Negotiate is STILL free with no cooldown.** Optimal play is still spam-click Negotiate on every god. With Amplifier + diplomatic_gift + amplifier_overcharge all maxed, a single click gives +70 relationship — clears the layer in <1 minute. Personalities are still 100% flavor text with no mechanical effect. **Fix: 30s Negotiate cooldown per god, or 5 Faith cost per click. Make personalities mechanical (cunning rejects, warlike requires envoy, chaotic ±5 random).**
+
+5. **🟡 MEDIUM — L1 trialRealms.ts header comment is STILL stale ("Three are fully playable; remaining seven ship as Coming Soon") even though all 10 are marked available.** Plus REALM_IGNORANCE budget STILL equals total node cost (no decision), Late Bloom is STILL passive-only, Purity is STILL spam-click-10-times. **Fix: update the header to match reality. Cut REALM_IGNORANCE_BUDGET from 100 to 75. Add an action to Late Bloom (split mechanic). Add a 30s survival window to Purity. Raise `TRIAL_REALMS_REQUIRED_FOR_LAYER_2` from 5 to 7 to force engagement with the harder realms.**
+
+### Is It Fun Yet? (honest verdict)
+
+**Yes, for the first 60-90 minutes.** The Cell → Galactic first prestige arc + the new L2 constellation star map (with Cosmic Bridge as the standout ability) + the L3 Divine Market timing minigame form a genuinely engaging opening. The background simulation redesign (sims come from stars lit) is a clever cross-layer link — illuminating stars in L2 now fuels the entire endgame economy, which gives the constellation map real weight it didn't have before.
+
+**No, for the late game.** Once you reach L5, the experience degrades rapidly. L5 is broken (no heretics ever spawn). L8 is trivial (free Negotiate spam). L9 — the climax of the entire 10-layer game — is still unloseable click-spam with a broken weakness system. The fixes the user claims were applied to L5 and L9 are NOT in the code. Without those two layers being functional, the L6→L7→L8→L9→L10 arc collapses: L7 creature design has no payoff (because L9 doesn't check body types), L9 has no risk (because no player HP), and the climactic Old God battles are a checkbox rather than a culmination.
+
+**The hook that would make me play for an hour**: the constellation star map (L2) + Cosmic Bridge + the satisfaction of watching the background simulation number climb as you light more stars. **The hook that would make me quit at 90 minutes**: reaching L5 and finding the Heresy Web is still all-faithful, then reaching L9 and finding the boss battles are still unwinnable-to-lose.
+
+**Recommended next session priorities**: fix L9 (player HP + weakness check) and L5 (heretic seeding + worship mode IDs + mir_blessing cooldown) — these are the two claimed fixes that aren't actually in the code. Once those are genuinely done, the L6→L9 progression chain becomes playable for the first time, and the game's late game finally matches the quality of the opening 90 minutes.
+
+---
+Task ID: CLEAN-L2-MODAL
+Agent: general-purpose (subagent J)
+Task: Remove all L2 active ability UI (Stargaze / Supernova / Black Hole / Cosmic Bridge) from EnlightenmentModal — the store actions are now no-op stubs. Keep the star map + illuminate-on-click behavior. Also remove the now-stub `spawnBackgroundSimulation` button from DivineEnginePanel and replace with an informational formula display.
+
+Work Log:
+- Read worklog.md (recent L2-CONSTELLATION-REDESIGN, CONSTELLATIONS-88, BACKGROUND-SIMULATION, STAGE-TRANSITION-FIRST-PLAY-ONLY sections) to understand the L2 redesign history and the removal of L2 active abilities. Confirmed the 4 abilities (Stargaze/Supernova/Black Hole/Cosmic Bridge) + `spawnBackgroundSimulation` are now no-op stubs in `store.ts:3609-3612, 3913-3915`. Confirmed Cosmic Insight (the L2 active from `activeAbilities.ts`) is rendered in `PrestigeTab.tsx`, NOT in EnlightenmentModal — so it's not in scope here.
+
+- EnlightenmentModal.tsx (864 → 554 lines, ~310 lines removed):
+  * Imports cleaned: removed 14 L2-ability constants (`STARGAZE_COST`, `STARGAZE_COOLDOWN_SEC`, `SUPERNOVA_*`, `BLACK_HOLE_*`, `COSMIC_BRIDGE_*`, `*_CD_KEY`); removed `foresightBonus` (its `fs` result was unused dead code); removed `Tooltip, TooltipContent, TooltipProvider, TooltipTrigger` (the 4 ability buttons were the only Tooltip users); removed lucide icons `Star, Sun, Disc3, Target, Link as LinkIcon` (only used by removed ability buttons); removed `useRef, useEffect` from React imports (only used by removed flash/collapse timers).
+  * Removed module-level `AbilityMode` type.
+  * Removed store subscriptions: `cosmicBridgeLink`, `stargazeRecommendedActive`, `activeAbilityCooldowns`, `foresightNodes`, `stargazeReveal`, `supernovaIlluminate`, `blackHoleReset`, `activateCosmicBridge`. Kept `constellationRevealed` (still read by connection-line + label `dim` opacity — harmless if always empty, not in the remove list).
+  * Removed local state: `abilityMode`, `bridgeFirst`, `flashedStars`, `collapsingStars`, `flashTimer`, `collapseTimer`, and the `useEffect` cleanup for those timers.
+  * Simplified `onStarClick` from a 50-line branching ability dispatcher to a 7-line wrapper that just calls `illuminateStar(constellationId, starId)`.
+  * Removed the `recommendedNextStarId` useMemo (Stargaze-recommended glow) and the 4 cooldown-display helpers (`stargazeCd`, `supernovaCd`, `blackHoleCd`, `cosmicBridgeCd`).
+  * In the SVG star block: removed `inAbilityMode`/`clickable` ability-mode override, the Stargaze recommended-next amber pulsing ring, the Cosmic Bridge violet highlight rings (bridge-active + first-pick), the Supernova flash overlay, the Black Hole collapse overlay, and the two ability-mode hover text hints ("✦ nova" / "✦ collapse"). Star cost-on-hover text simplified (no longer gated by `!inAbilityMode`).
+  * Removed the absolute-positioned "ability-mode banner" (amber armed indicator with Cancel button) and the "Active Cosmic Bridge" violet countdown bar.
+  * Removed the entire "Active abilities" sidebar section (the 2×2 grid of Tooltip-wrapped Stargaze/Supernova/Black Hole/Cosmic Bridge buttons).
+  * Updated file header docstring to reflect: only `illuminateStar` purchase action remains, L2 abilities removed.
+
+- DivineEnginePanel.tsx:
+  * Removed `Button` import (only used by removed Spawn Simulation button).
+  * Removed store subscription `spawnBackgroundSimulation`, the `spawnCost`/`canAffordSpawn` computations, and the unused `divinity` subscription.
+  * Added store subscription `constellationStars` + computed `starsLit = Object.values(constellationStars).filter(Boolean).length`.
+  * Added computed `simAmpLevel = upgrades["simulation_amplifier"] || 0` and `simMult = 1 + simAmpLevel`.
+  * Removed the Spawn Simulation button + cost display + "no sims yet" warning.
+  * Added new "Simulations" stat-card showing: big number `backgroundSimulations`, badge "3 + stars × {simMult}×", inline "(N base × M× amp)", and explicit formula line: `(3 starter sims + X constellation stars lit) × Y× amplifier = N sims`.
+  * Added new amber-tinted "Want more sims?" explainer card telling the player to light more stars in the Enlightenment (constellation) modal OR buy the Simulation Amplifier shop upgrade (with next-level preview "×{simMult+1} at level {simAmpLevel+1}").
+  * Updated panel header comment to reflect: sims are now computed each tick (not purchased).
+
+- Lint result: `bun run lint` → 0 errors, 6 pre-existing warnings in `upload/logic.js` (ignored per spec).
+- Build result: `bun run build` → ✓ Compiled successfully, ✓ Generated static pages (4/4), no errors.
+- Dev server smoke test: `bun run dev` → HTTP 200, no errors in dev log.
+- TypeScript check (`bunx tsc --noEmit`): no errors in `EnlightenmentModal.tsx` or `DivineEnginePanel.tsx`. Pre-existing errors in DebugModal/CosmeticsModal/ChallengeModal/VariantPicker/store.ts/types.ts/stages.ts/examples/skills are unchanged and out of scope.
+
+Stage Summary:
+- EnlightenmentModal is now a clean star-map + sidebar combo: click stars to illuminate (only action is `illuminateStar(cId, sId)`). All 4 L2 active ability buttons, targeting/armed modes, banners, and visual overlays removed. Star map, connection lines, constellation labels, progress stats, focused-constellation preview, cost-formula explainer, constellation list, and route picker all preserved.
+- DivineEnginePanel: Spawn Simulation button removed; replaced with an informational Simulations card showing the exact formula `(3 + stars lit) × amplifier multiplier = N sims` and a hint directing players to the Enlightenment modal or Simulation Amplifier shop upgrade for more sims.
+- Store stubs (`stargazeReveal`, `supernovaIlluminate`, `blackHoleReset`, `activateCosmicBridge`, `spawnBackgroundSimulation`) untouched — they remain no-op stubs for save-compat.
+- 0 lint errors. Build passes. Dev server returns HTTP 200.
+
+---
+Task ID: SIM-REWORK-L2-ACTIVES-REMOVED-L5L9-FIXED
+Agent: main
+Task: Rework simulations (star-based), remove L2 actives, fix L5/L9 bugs that didn't land, add simulation_amplifier shop upgrade, sims produce EP
+
+Work Log:
+- **Removed L2 active abilities**: stargazeReveal, supernovaIlluminate, blackHoleReset, activateCosmicBridge are now no-op stubs. Removed cosmic bridge propagation from illuminateStar. EnlightenmentModal UI cleaned up by subagent J (removed all ability buttons + targeting modes, kept star map).
+- **Reworked simulations**: `backgroundSimulations` is now COMPUTED each tick = `(3 + starsLit) × simMult` where simMult = `1 + upgrades["simulation_amplifier"]`. No longer incremented on prestige. `spawnBackgroundSimulation` is now a no-op stub. DivineEnginePanel updated: removed Spawn button, added formula display "(3 starters + X stars) × Y× amp = N sims".
+- **Added `simulation_amplifier` shop upgrade**: automation category, baseCost 20 EP, maxLevel 20, costGrowth 1.5. Level 0 = ×1, Level 1 = ×2, ..., Level 20 = ×21. No cap on total sims.
+- **Sims now produce EP**: `epPerSec = peakProductionRate × 0.001 × backgroundSimulations` (10% of divinity rate). Added `epFromBackground` lifetime tracker. The divinity formula is unchanged: `divinityPerSec = peakProductionRate × 0.01 × backgroundSimulations`.
+- **EP shop affects divinity chain verified**: production upgrades (inherited_efficiency, etc.) boost techMultiplier → higher production → higher peakProductionRate → higher divinity + EP gen. The simulation_amplifier upgrade directly multiplies sims. Both paths work.
+- **Fixed L9 bugs (were missing!)**:
+  - Added `playerHp`/`playerMaxHp` (200) to BattleState interface + makeInitialBattleState.
+  - `attackOldGod` now subtracts bossDmg from playerHp. If playerHp <= 0, battle status = "lost", resets to not_started with full HP. Battles are now LOSABLE.
+  - Fixed weakness check: was `god.weakness === "predator" || "flyer" || "burrower"` (always true) → now builds a Set of deployed body types and checks `deployedBodyTypes.has(god.weakness)`. L7 creature design now matters for L9.
+  - regen special now heals playerHp by regenCount per turn.
+  - InfinityModal updated: green player HP bar below red boss HP bar, "Routed" warning when lost.
+  - Migration: existing battle states backfilled with playerHp=200, playerMaxHp=200.
+- **Fixed L5 bugs (were missing!)**:
+  - Added `heresySeedTimer` (30s) + `heresyThresholdsSeeded` (Record) to GameState + initial state + migration.
+  - Heretic seeding logic in tick: every 30s if grid is all-faithful, convert 1 random faithful→heretical (log "A whisper of doubt spreads"). Also on heresy 25/50/75 thresholds (one-time per run), seed 1/2/3 heretics.
+  - The Convert/Purge/Prophet UI now has heretics to act on.
+
+Stage Summary:
+- L2 actives fully removed (4 no-op stubs + modal UI cleaned).
+- Sims computed from `(3 + starsLit) × simMult`, not prestige-based. Max base = 3 + 497 = 500. No cap with shop multiplier.
+- Sims generate both Divinity (1% of peak) and EP (0.1% of peak) per second.
+- `simulation_amplifier` upgrade (20 EP, maxLevel 20, ×1.5 cost growth) multiplies sims.
+- L9 battles now losable (player HP 200, resets on loss). Weakness check fixed. regen special wired.
+- L5 heretics now spawn (30s timer + threshold seeding). Heresy Web is playable.
+- 0 lint errors. Dev server HTTP 200.

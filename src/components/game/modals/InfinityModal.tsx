@@ -93,10 +93,12 @@ export function InfinityModal() {
               </div>
               <div className="space-y-2">
                 {OLD_GODS.map((god) => {
-                  const battle = oldGodBattles[god.id] || { status: "not_started", bossHp: god.hp, bossMaxHp: god.hp, phase: "skirmish", deployedLegionIds: [], calledAllyIds: [], turn: 0, log: [] };
+                  const battle = oldGodBattles[god.id] || { status: "not_started", bossHp: god.hp, bossMaxHp: god.hp, phase: "skirmish", deployedLegionIds: [], calledAllyIds: [], turn: 0, log: [], playerHp: 200, playerMaxHp: 200 };
                   const isWon = battle.status === "won";
+                  const isLost = battle.status === "lost";
                   const isActive = battle.status === "in_progress";
                   const hpPct = (battle.bossHp / battle.bossMaxHp) * 100;
+                  const playerHpPct = ((battle.playerHp || 200) / (battle.playerMaxHp || 200)) * 100;
                   // FEATURE 9 — Temporal Storm active for this battle
                   const stormActive = !!temporalStorms[god.id];
                   return (
@@ -151,19 +153,39 @@ export function InfinityModal() {
                             </div>
                           )}
 
-                          {/* HP bar */}
-                          {(isActive || isWon) && (
-                            <div className="mt-1.5">
-                              <div className="flex items-center justify-between text-[0.55rem] text-muted-foreground mb-0.5">
-                                <span>Boss HP</span>
-                                <span>{Math.ceil(battle.bossHp)}/{battle.bossMaxHp}</span>
+                          {/* HP bar — boss (red) and player (green) */}
+                          {(isActive || isWon || isLost) && (
+                            <div className="mt-1.5 space-y-1">
+                              <div>
+                                <div className="flex items-center justify-between text-[0.55rem] text-muted-foreground mb-0.5">
+                                  <span>Boss HP</span>
+                                  <span>{Math.ceil(battle.bossHp)}/{battle.bossMaxHp}</span>
+                                </div>
+                                <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${isWon ? "bg-emerald-400" : hpPct < 33 ? "bg-rose-500" : "bg-rose-400/70"}`}
+                                    style={{ width: `${Math.max(0, hpPct)}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full transition-all ${isWon ? "bg-emerald-400" : hpPct < 33 ? "bg-rose-500" : "bg-rose-400/70"}`}
-                                  style={{ width: `${Math.max(0, hpPct)}%` }}
-                                />
+                              {/* Player HP bar (green) — battle lost when 0 */}
+                              <div>
+                                <div className="flex items-center justify-between text-[0.55rem] text-muted-foreground mb-0.5">
+                                  <span>Your HP</span>
+                                  <span>{Math.ceil(battle.playerHp || 200)}/{battle.playerMaxHp || 200}</span>
+                                </div>
+                                <div className="h-2 bg-emerald-950/50 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${playerHpPct < 33 ? "bg-red-500 animate-pulse" : "bg-emerald-400"}`}
+                                    style={{ width: `${Math.max(0, playerHpPct)}%` }}
+                                  />
+                                </div>
                               </div>
+                              {isLost && (
+                                <div className="text-[0.6rem] text-red-400 font-semibold mt-1">
+                                  ⚠ Routed — battle reset. Re-engage to try again.
+                                </div>
+                              )}
                             </div>
                           )}
 

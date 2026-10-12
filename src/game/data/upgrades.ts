@@ -67,6 +67,18 @@ export const UPGRADES: UpgradeDef[] = [
     category: "automation",
     effect: { type: "auto_evolver", value: 0.2 },
   },
+  {
+    id: "simulation_amplifier",
+    name: "Simulation Amplifier",
+    desc: (l) => l === 0
+      ? "Background simulations: ×1 (base). Purchase to multiply sims per star."
+      : `Background simulations: ×${l + 1} (each star gives ${(l + 1).toFixed(0)} sims instead of 1). No cap — keep leveling for infinite scaling.`,
+    baseCost: 20,
+    maxLevel: 20,
+    costGrowth: 1.5,
+    category: "automation",
+    effect: { type: "auto_mult", value: 0.0 },  // effect applied via upgrades lookup in tick
+  },
 
   // ===== ECONOMY =====
   {
