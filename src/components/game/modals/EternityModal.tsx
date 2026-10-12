@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Sparkles, CheckCircle2, Star, RefreshCw, AlertTriangle } from "lucide-react";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 export function EternityModal() {
   const show = useGameStore((s) => s.showEternity);
@@ -45,9 +46,10 @@ export function EternityModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Star className="w-5 h-5" />
             Layer 10 — Eternity (Ascension)
+            <BackgroundLayerBadge layerId="eternity" />
           </DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>

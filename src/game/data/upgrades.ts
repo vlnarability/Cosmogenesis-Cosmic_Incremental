@@ -223,6 +223,227 @@ export const UPGRADES: UpgradeDef[] = [
     category: "universal",
     effect: { type: "universal_speed", value: 0.10 },
   },
+
+  // ===== LAYER-SPECIFIC (L2–L10) =====
+  // Each upgrade only appears in the shop once its `requiresLayer` is unlocked.
+  // Effects are wired into the matching layer's tick / bonus / action logic in store.ts.
+  // Costs scale with layer depth (L2 baseCost 8 → L10 baseCost 40).
+
+  // ---- L2 — Enlightenment (Constellation Map) ----
+  {
+    id: "foresight_discount",
+    name: "Foresight Discount",
+    desc: (l) => `Foresight node costs -${(l * 20)}% (multiplicative, max 5 levels).`,
+    baseCost: 8,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "enlightenment",
+    category: "layer",
+    effect: { type: "foresight_discount", value: 0.20 },
+  },
+  {
+    id: "constellation_boost",
+    name: "Constellation Boost",
+    desc: (l) => `Constellation illumination grants +${l * 25}% Prestige Points per node (max 4).`,
+    baseCost: 8,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "enlightenment",
+    category: "layer",
+    effect: { type: "constellation_boost", value: 0.25 },
+  },
+
+  // ---- L3 — Transcendence (Divine Market + Rituals) ----
+  {
+    id: "ritual_extension",
+    name: "Ritual Extension",
+    desc: (l) => `Temporary ritual duration +${l * 20}% per level (max 5).`,
+    baseCost: 12,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "transcendence",
+    category: "layer",
+    effect: { type: "ritual_extension", value: 0.20 },
+  },
+  {
+    id: "market_savvy",
+    name: "Market Savvy",
+    desc: (l) => `Divine Market sell profits +${l * 30}% per level (max 5).`,
+    baseCost: 12,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "transcendence",
+    category: "layer",
+    effect: { type: "market_savvy", value: 0.30 },
+  },
+
+  // ---- L4 — Genesis (Sacred Grid + Authored Worlds) ----
+  {
+    id: "world_blueprint",
+    name: "World Blueprint",
+    desc: (l) => `Authored world bonuses (production/cap/pop) +${l * 50}% per level (max 4).`,
+    baseCost: 15,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "genesis",
+    category: "layer",
+    effect: { type: "world_blueprint", value: 0.50 },
+  },
+  {
+    id: "disaster_shield",
+    name: "Disaster Shield",
+    desc: (l) => `Sacred Grid disaster chance -${l * 25}% per level (max 4 → 0% chance).`,
+    baseCost: 15,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "genesis",
+    category: "layer",
+    effect: { type: "disaster_shield", value: 0.25 },
+  },
+
+  // ---- L5 — Apotheosis (Heresy Web + Prophets) ----
+  {
+    id: "prophet_inspiration",
+    name: "Prophet Inspiration",
+    desc: (l) => `Prophet conversion radius +${l} cell layer(s) per level (max 2 — adds diagonals at L1, 2-step reach at L2).`,
+    baseCost: 18,
+    maxLevel: 2,
+    costGrowth: 1.7,
+    requiresLayer: "apotheosis",
+    category: "layer",
+    effect: { type: "prophet_inspiration", value: 1 },
+  },
+  {
+    id: "heresy_ward",
+    name: "Heresy Ward",
+    desc: (l) => `Heresy spread rate -${l * 30}% per level (max 4 → heresy cannot spread).`,
+    baseCost: 18,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "apotheosis",
+    category: "layer",
+    effect: { type: "heresy_ward", value: 0.30 },
+  },
+
+  // ---- L6 — Singularity (Dimension Engine) ----
+  {
+    id: "rift_redirect",
+    name: "Rift Redirect",
+    desc: (l) => l ? "Dimension rifts always transfer from the richest to the poorest dimension (always beneficial)." : "Toggle: rifts no longer drain your rich dimensions",
+    baseCost: 22,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "singularity",
+    category: "layer",
+    effect: { type: "rift_redirect", value: 1 },
+  },
+  {
+    id: "dimension_boost",
+    name: "Dimension Boost",
+    desc: (l) => `Dimension accrual speed +${l * 20}% per level (max 5).`,
+    baseCost: 22,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "singularity",
+    category: "layer",
+    effect: { type: "dimension_boost", value: 0.20 },
+  },
+
+  // ---- L7 — Omnipotence (Bio-Engineering / Creature Lab) ----
+  {
+    id: "mutation_master",
+    name: "Mutation Master",
+    desc: (l) => `Creature mutation chance +${l * 10}% per level (max 5, baseline 10%).`,
+    baseCost: 25,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "omnipotence",
+    category: "layer",
+    effect: { type: "mutation_master", value: 0.10 },
+  },
+  {
+    id: "genetic_stabilizer",
+    name: "Genetic Stabilizer",
+    desc: (l) => `Genetic instability gain -${l * 25}% per level (max 4 → no instability gain).`,
+    baseCost: 25,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "omnipotence",
+    category: "layer",
+    effect: { type: "genetic_stabilizer", value: 0.25 },
+  },
+
+  // ---- L8 — Divinity / Divine Alliance (Minor Gods + Amplifiers) ----
+  {
+    id: "diplomatic_gift",
+    name: "Diplomatic Gift",
+    desc: (l) => `Relationship gain from Negotiate & Trade ×${1 + l} per level (max 3 → ×4).`,
+    baseCost: 28,
+    maxLevel: 3,
+    costGrowth: 1.7,
+    requiresLayer: "divinity",
+    category: "layer",
+    effect: { type: "diplomatic_gift", value: 1 },
+  },
+  {
+    id: "amplifier_overcharge",
+    name: "Amplifier Overcharge",
+    desc: (l) => `Amplifier negotiate bonus +${l * 50}% per level (max 3 → ×3.5 amplifier).`,
+    baseCost: 28,
+    maxLevel: 3,
+    costGrowth: 1.7,
+    requiresLayer: "divinity",
+    category: "layer",
+    effect: { type: "amplifier_overcharge", value: 0.50 },
+  },
+
+  // ---- L9 — Infinity / Divine War (Old God Battles) ----
+  {
+    id: "war_preparation",
+    name: "War Preparation",
+    desc: (l) => `Legion attack damage +${l * 20}% per level (max 5).`,
+    baseCost: 33,
+    maxLevel: 5,
+    costGrowth: 1.7,
+    requiresLayer: "infinity",
+    category: "layer",
+    effect: { type: "war_preparation", value: 0.20 },
+  },
+  {
+    id: "temporal_shield",
+    name: "Temporal Shield",
+    desc: (l) => `Temporal storm acceleration effect halved per level (max 2 — storms mostly delayed/blocked).`,
+    baseCost: 33,
+    maxLevel: 2,
+    costGrowth: 1.7,
+    requiresLayer: "infinity",
+    category: "layer",
+    effect: { type: "temporal_shield", value: 0.50 },
+  },
+
+  // ---- L10 — Eternity / Ascension (Universe Creation) ----
+  {
+    id: "paradox_insight",
+    name: "Paradox Insight",
+    desc: (l) => `Forbidden Word paradox threshold +${l} per level (max 2 — threshold becomes 5).`,
+    baseCost: 40,
+    maxLevel: 2,
+    costGrowth: 1.7,
+    requiresLayer: "eternity",
+    category: "layer",
+    effect: { type: "paradox_insight", value: 1 },
+  },
+  {
+    id: "universe_foundation",
+    name: "Universe Foundation",
+    desc: (l) => `Universe slot bonuses +${l * 25}% per level (max 4).`,
+    baseCost: 40,
+    maxLevel: 4,
+    costGrowth: 1.7,
+    requiresLayer: "eternity",
+    category: "layer",
+    effect: { type: "universe_foundation", value: 0.25 },
+  },
 ];
 
 export const UPGRADE_MAP: Record<string, UpgradeDef> = Object.fromEntries(

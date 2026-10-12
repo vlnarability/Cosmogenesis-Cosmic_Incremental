@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Swords, CheckCircle2, Crosshair, Users, Clock, Sparkles } from "lucide-react";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const PHASE_LABELS: Record<string, string> = {
   skirmish: "Skirmish",
@@ -49,9 +50,10 @@ export function InfinityModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Swords className="w-5 h-5" />
             Layer 9 — Infinity (Divine War)
+            <BackgroundLayerBadge layerId="infinity" />
           </DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>

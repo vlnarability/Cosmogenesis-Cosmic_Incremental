@@ -10,14 +10,39 @@ import {
   REALM_DISCONTENT_SURVIVE_SECONDS,
   REALM_DISCONTENT_GOLD_GOAL,
   REALM_SWIFTNESS_TIME_LIMIT,
+  // TRIALS-7 — newly playable realm constants
+  REALM_FAMINE_SURVIVE_SECONDS,
+  REALM_FAMINE_THRESHOLD,
+  REALM_FAMINE_PUMP_FROM,
+  REALM_FAMINE_PUMP_TO,
+  REALM_IGNORANCE_NODE_COUNT,
+  REALM_IGNORANCE_BUDGET,
+  REALM_IGNORANCE_NODE_COSTS,
+  REALM_STAGNATION_GOODS_GOAL,
+  REALM_STAGNATION_UPGRADE_BASE_COST,
+  REALM_STAGNATION_RATE_DIVISOR,
+  REALM_WEAKNESS_WAVE_COUNT,
+  REALM_WEAKNESS_WAVE_DURATION,
+  REALM_WEAKNESS_TOWER_COST,
+  REALM_WEAKNESS_LEAK_DAMAGE,
+  REALM_LATE_BLOOM_POP_GOAL,
+  REALM_LATE_BLOOM_PROD_COEFF,
+  REALM_LATE_BLOOM_COST_PER_POP,
+  REALM_PURITY_POOL_CAP,
+  REALM_PURITY_SYSTEMS_GOAL,
+  REALM_PURITY_BUILD_COST,
+  REALM_PURITY_DRAIN_PER_SYSTEM,
+  REALM_ASCETIC_STAGES,
+  REALM_ASCETIC_SYSTEM_COSTS,
 } from "@/game/data/trialRealms";
 import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Lock, Trophy, Skull, Sparkles, Clock, Hourglass } from "lucide-react";
+import { CheckCircle2, Lock, Trophy, Skull, Sparkles, Clock, Hourglass, Swords, Heart, Hammer, Beaker, Gem, Brain, Flame } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 // Static color class lookup so Tailwind keeps the classes at build time.
 const REALM_COLOR_CLASSES: Record<string, { text: string; border: string }> = {
@@ -56,6 +81,13 @@ export function ChallengeModal() {
   const setActiveTrialRealm = useGameStore((s) => s.setActiveTrialRealm);
   const realmBreakthrough = useGameStore((s) => s.realmBreakthrough);
   const realmDiscontentAction = useGameStore((s) => s.realmDiscontentAction);
+  // TRIALS-7 — newly playable realm actions
+  const realmFaminePump = useGameStore((s) => s.realmFaminePump);
+  const realmIgnoranceBuyNode = useGameStore((s) => s.realmIgnoranceBuyNode);
+  const realmStagnationUpgrade = useGameStore((s) => s.realmStagnationUpgrade);
+  const realmWeaknessPlaceTower = useGameStore((s) => s.realmWeaknessPlaceTower);
+  const realmPurityBuildSystem = useGameStore((s) => s.realmPurityBuildSystem);
+  const realmAsceticBuildSystem = useGameStore((s) => s.realmAsceticBuildSystem);
 
   const hasMastery = (upgrades["challenge_mastery"] || 0) > 0;
   const maxRepeats = getMaxRepeats(hasMastery);
@@ -78,11 +110,13 @@ export function ChallengeModal() {
     <Dialog open={showChallenges} onOpenChange={setShowChallenges}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Skull className="w-5 h-5" />
             Layer 1 — Trials & Realms
+            <BackgroundLayerBadge layerId="evolution" />
           </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between">
             <span>
               Two paths of mastery: <span className="text-cyan-300">Trials</span> (debuff runs) and <span className="text-amber-300">Realms</span> (mini-games).
             </span>
@@ -96,6 +130,8 @@ export function ChallengeModal() {
               <Badge variant="outline" className="text-violet-400 border-violet-400/40">
                 {totalRepeats} repeats
               </Badge>
+            </div>
+          
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -113,6 +149,12 @@ export function ChallengeModal() {
             onClose={() => setActiveTrialRealm(null)}
             onBreakthrough={realmBreakthrough}
             onDiscontentAction={realmDiscontentAction}
+            onFaminePump={realmFaminePump}
+            onIgnoranceBuyNode={realmIgnoranceBuyNode}
+            onStagnationUpgrade={realmStagnationUpgrade}
+            onWeaknessPlaceTower={realmWeaknessPlaceTower}
+            onPurityBuildSystem={realmPurityBuildSystem}
+            onAsceticBuildSystem={realmAsceticBuildSystem}
             stageIndex={stageIndex}
             liveElapsed={liveElapsed}
           />
@@ -283,6 +325,12 @@ function ActiveRealmView({
   onClose,
   onBreakthrough,
   onDiscontentAction,
+  onFaminePump,
+  onIgnoranceBuyNode,
+  onStagnationUpgrade,
+  onWeaknessPlaceTower,
+  onPurityBuildSystem,
+  onAsceticBuildSystem,
   stageIndex,
   liveElapsed = 0,
 }: {
@@ -291,6 +339,12 @@ function ActiveRealmView({
   onClose: () => void;
   onBreakthrough: () => void;
   onDiscontentAction: (action: "celebrate" | "tax" | "ignore") => void;
+  onFaminePump: (resourceId: "a" | "b" | "c") => void;
+  onIgnoranceBuyNode: (nodeId: number) => void;
+  onStagnationUpgrade: (stage: number) => void;
+  onWeaknessPlaceTower: () => void;
+  onPurityBuildSystem: () => void;
+  onAsceticBuildSystem: (systemId: number) => void;
   stageIndex: number;
   liveElapsed?: number; // FEATURE 1 — live timer
 }) {
@@ -317,11 +371,29 @@ function ActiveRealmView({
       {realmId === "realm_growth" && (
         <RealmGrowthGame state={state} onBreakthrough={onBreakthrough} />
       )}
+      {realmId === "realm_famine" && (
+        <RealmFamineGame state={state} onPump={onFaminePump} />
+      )}
       {realmId === "realm_discontent" && (
-        <RealmDiscontentGame
-          state={state}
-          onAction={onDiscontentAction}
-        />
+        <RealmDiscontentGame state={state} onAction={onDiscontentAction} />
+      )}
+      {realmId === "realm_ignorance" && (
+        <RealmIgnoranceGame state={state} onBuyNode={onIgnoranceBuyNode} />
+      )}
+      {realmId === "realm_stagnation" && (
+        <RealmStagnationGame state={state} onUpgrade={onStagnationUpgrade} />
+      )}
+      {realmId === "realm_weakness" && (
+        <RealmWeaknessGame state={state} onPlaceTower={onWeaknessPlaceTower} />
+      )}
+      {realmId === "realm_late_bloom" && (
+        <RealmLateBloomGame state={state} />
+      )}
+      {realmId === "realm_purity" && (
+        <RealmPurityGame state={state} onBuildSystem={onPurityBuildSystem} />
+      )}
+      {realmId === "realm_ascetic" && (
+        <RealmAsceticGame state={state} onBuildSystem={onAsceticBuildSystem} />
       )}
       {realmId === "realm_swiftness" && (
         <RealmSwiftnessGame state={state} stageIndex={stageIndex} />
@@ -512,6 +584,522 @@ function RealmSwiftnessGame({ state, stageIndex }: { state: Record<string, any>;
 
       <div className="text-[0.65rem] text-muted-foreground">
         Production is 5× normal. Use your normal actions and systems to evolve quickly. The realm closes when you reach Galactic or time runs out.
+      </div>
+    </div>
+  );
+}
+
+// ===== TRIALS-7 — 7 newly playable realm UI components =====
+
+// ===== Realm of Famine — balance three resources A/B/C with pump buttons =====
+function RealmFamineGame({
+  state,
+  onPump,
+}: {
+  state: Record<string, any>;
+  onPump: (resourceId: "a" | "b" | "c") => void;
+}) {
+  const a = state.a ?? 70;
+  const b = state.b ?? 70;
+  const c = state.c ?? 70;
+  const survivedTime = state.survivedTime ?? 0;
+  const completed = !!state.completed;
+  const failed = !!state.failed;
+  const survivalProgress = Math.min(REALM_FAMINE_SURVIVE_SECONDS, survivedTime);
+  const allAbove = a >= REALM_FAMINE_THRESHOLD && b >= REALM_FAMINE_THRESHOLD && c >= REALM_FAMINE_THRESHOLD;
+
+  const bars: Array<{ id: "a" | "b" | "c"; label: string; value: number; next: string }> = [
+    { id: "a", label: "A", value: a, next: "B" },
+    { id: "b", label: "B", value: b, next: "C" },
+    { id: "c", label: "C", value: c, next: "A" },
+  ];
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        All three resources decay over time. Click a <span className="text-amber-300">Pump</span> button to convert (A→B, B→C, C→A): source loses <span className="text-rose-300">{REALM_FAMINE_PUMP_FROM}</span>, target gains <span className="text-emerald-300">{REALM_FAMINE_PUMP_TO}</span>. Keep all three at <span className="text-amber-300">{REALM_FAMINE_THRESHOLD}%+</span> for {REALM_FAMINE_SURVIVE_SECONDS}s.
+      </div>
+
+      <div className="space-y-2">
+        {bars.map((bar) => {
+          const danger = bar.value < REALM_FAMINE_THRESHOLD + 5;
+          return (
+            <div key={bar.id} className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className={danger ? "text-rose-300" : "text-amber-300/80"}>Resource {bar.label}</span>
+                <span className="font-mono">{bar.value.toFixed(1)} / 100</span>
+              </div>
+              <div className="h-4 rounded-md bg-amber-950/40 border border-amber-500/30 overflow-hidden relative">
+                <div className="absolute top-0 bottom-0 w-px bg-rose-400/50 z-10" style={{ left: `${REALM_FAMINE_THRESHOLD}%` }} />
+                <div
+                  className={`h-full transition-all ${danger ? "bg-rose-500/80" : "bg-gradient-to-r from-amber-600/60 to-amber-400/80"}`}
+                  style={{ width: `${Math.min(100, bar.value)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5">
+        {bars.map((bar) => {
+          const canPump = bar.value >= REALM_FAMINE_PUMP_FROM && !completed && !failed;
+          return (
+            <Button
+              key={bar.id}
+              size="sm"
+              variant="default"
+              disabled={!canPump}
+              onClick={() => onPump(bar.id)}
+            >
+              <Flame className="w-3 h-3 mr-1" /> {bar.label}→{bar.next}
+              <div className="text-[0.55rem] opacity-80">-{REALM_FAMINE_PUMP_FROM} / +{REALM_FAMINE_PUMP_TO}</div>
+            </Button>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-md bg-cyan-500/10 border border-cyan-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-cyan-300/80">Survived (all ≥ {REALM_FAMINE_THRESHOLD}%)</div>
+          <div className="text-lg font-mono">{survivalProgress.toFixed(0)} / {REALM_FAMINE_SURVIVE_SECONDS}s</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Status</div>
+          <div className="text-sm">
+            {completed ? (
+              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40"><Trophy className="w-3 h-3 mr-1" /> Conquered</Badge>
+            ) : failed ? (
+              <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40"><Skull className="w-3 h-3 mr-1" /> Failed</Badge>
+            ) : allAbove ? (
+              <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">Holding</Badge>
+            ) : (
+              <Badge variant="outline" className="text-rose-400 border-rose-400/40">Below threshold</Badge>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Realm of Ignorance — 10-node tech tree =====
+function RealmIgnoranceGame({
+  state,
+  onBuyNode,
+}: {
+  state: Record<string, any>;
+  onBuyNode: (nodeId: number) => void;
+}) {
+  const science = state.science ?? REALM_IGNORANCE_BUDGET;
+  const unlocked: boolean[] = state.unlocked || Array(REALM_IGNORANCE_NODE_COUNT).fill(false);
+  const completed = !!state.completed;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        Spend science to unlock 10 tech nodes in chain order. Reach the final node within your budget of <span className="text-violet-300">{REALM_IGNORANCE_BUDGET}</span> science.
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain className="w-4 h-4 text-violet-300" />
+          <span className="text-lg font-mono text-violet-300">{Math.floor(science)} / {REALM_IGNORANCE_BUDGET}</span>
+          <span className="text-[0.6rem] text-muted-foreground">science</span>
+        </div>
+        {completed && (
+          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+            <Trophy className="w-3 h-3 mr-1" /> Conquered
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {Array.from({ length: REALM_IGNORANCE_NODE_COUNT }, (_, i) => {
+          const isUnlocked = !!unlocked[i];
+          const isNext = !completed && !isUnlocked && (i === 0 || unlocked[i - 1]);
+          const cost = REALM_IGNORANCE_NODE_COSTS[i];
+          const canBuy = isNext && science >= cost;
+          return (
+            <div key={i} className="flex items-center">
+              <button
+                disabled={!canBuy}
+                onClick={() => canBuy && onBuyNode(i)}
+                className={`relative w-12 h-12 rounded-md border text-[0.6rem] flex items-center justify-center transition-all ${
+                  isUnlocked
+                    ? "bg-violet-500/30 border-violet-400/60 text-violet-100"
+                    : isNext
+                    ? science >= cost
+                      ? "bg-violet-500/10 border-violet-400/40 text-violet-300 hover:bg-violet-500/20 cursor-pointer animate-pulse"
+                      : "bg-muted/40 border-muted-foreground/30 text-muted-foreground"
+                    : "bg-muted/20 border-muted-foreground/20 text-muted-foreground/50"
+                }`}
+                title={`Node ${i + 1} — cost ${cost} science`}
+              >
+                {isUnlocked ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+                {isNext && !isUnlocked && (
+                  <span className="absolute -bottom-4 text-[0.55rem] text-violet-300/80">{cost} sci</span>
+                )}
+              </button>
+              {i < REALM_IGNORANCE_NODE_COUNT - 1 && (
+                <div className={`w-3 h-px ${unlocked[i] ? "bg-violet-400/60" : "bg-muted-foreground/20"}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="text-[0.65rem] text-muted-foreground">
+        {completed
+          ? "All 10 nodes unlocked — realm conquered!"
+          : `Nodes unlocked: ${unlocked.filter(Boolean).length} / ${REALM_IGNORANCE_NODE_COUNT}`}
+      </div>
+    </div>
+  );
+}
+
+// ===== Realm of Stagnation — upgrade 4 stages to produce 100 final goods =====
+function RealmStagnationGame({
+  state,
+  onUpgrade,
+}: {
+  state: Record<string, any>;
+  onUpgrade: (stage: number) => void;
+}) {
+  const levels: number[] = state.levels || [1, 1, 1, 1];
+  const goods = state.goods ?? 0;
+  const produced = state.produced ?? 0;
+  const completed = !!state.completed;
+  const rate = (levels[0] * levels[1] * levels[2] * levels[3]) / REALM_STAGNATION_RATE_DIVISOR;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        Production rate = (L1 × L2 × L3 × L4) ÷ {REALM_STAGNATION_RATE_DIVISOR} per sec. Spend goods to upgrade each stage (cost = 10 × level). Produce <span className="text-cyan-300">{REALM_STAGNATION_GOODS_GOAL}</span> total goods to conquer.
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-md bg-cyan-500/10 border border-cyan-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-cyan-300/80">Goods (spendable)</div>
+          <div className="text-lg font-mono">{Math.floor(goods)}</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Produced (total)</div>
+          <div className="text-lg font-mono">{Math.floor(produced)} / {REALM_STAGNATION_GOODS_GOAL}</div>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-cyan-300/80">Production rate</span>
+          <span className="font-mono">{rate.toFixed(3)} /s</span>
+        </div>
+        <div className="h-2 rounded-md bg-cyan-950/40 border border-cyan-500/30 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-cyan-600/60 to-cyan-400/80 transition-all" style={{ width: `${Math.min(100, (produced / REALM_STAGNATION_GOODS_GOAL) * 100)}%` }} />
+        </div>
+      </div>
+
+      {completed ? (
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+          <Trophy className="w-3 h-3 mr-1" /> Conquered — 100 goods produced
+        </Badge>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {levels.map((lvl, i) => {
+            const cost = REALM_STAGNATION_UPGRADE_BASE_COST * lvl;
+            const canUpgrade = goods >= cost;
+            return (
+              <Button
+                key={i}
+                size="sm"
+                variant="outline"
+                disabled={!canUpgrade}
+                onClick={() => onUpgrade(i)}
+                className="flex flex-col items-center h-auto py-1.5"
+              >
+                <span className="text-[0.7rem] font-semibold">Stage {i + 1}</span>
+                <span className="text-[0.6rem] opacity-80">Lvl {lvl}</span>
+                <span className="text-[0.55rem] opacity-70">-{cost} goods</span>
+              </Button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== Realm of Weakness — tower defense vs 10 waves =====
+function RealmWeaknessGame({
+  state,
+  onPlaceTower,
+}: {
+  state: Record<string, any>;
+  onPlaceTower: () => void;
+}) {
+  const wave = state.wave ?? 0;
+  const enemies = state.enemies ?? 0;
+  const waveTimer = state.waveTimer ?? 0;
+  const military = state.military ?? 30;
+  const towers = state.towers ?? 0;
+  const baseHp = state.baseHp ?? 100;
+  const completed = !!state.completed;
+  const failed = !!state.failed;
+  const canPlace = military >= REALM_WEAKNESS_TOWER_COST && !completed && !failed;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        Each wave lasts {REALM_WEAKNESS_WAVE_DURATION}s. Towers kill {`0.6`} enemies/sec each. Leftover enemies at wave end deal <span className="text-rose-300">{REALM_WEAKNESS_LEAK_DAMAGE}</span> damage each to your base (100 HP). Survive all <span className="text-amber-300">{REALM_WEAKNESS_WAVE_COUNT}</span> waves.
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="rounded-md bg-red-500/10 border border-red-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-red-300/80 flex items-center gap-1"><Swords className="w-2.5 h-2.5" /> Wave</div>
+          <div className="text-lg font-mono">{Math.min(wave, REALM_WEAKNESS_WAVE_COUNT)} / {REALM_WEAKNESS_WAVE_COUNT}</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1"><Hammer className="w-2.5 h-2.5" /> Towers</div>
+          <div className="text-lg font-mono">{towers}</div>
+        </div>
+        <div className="rounded-md bg-rose-500/10 border border-rose-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-rose-300/80 flex items-center gap-1"><Heart className="w-2.5 h-2.5" /> Base HP</div>
+          <div className="text-lg font-mono">{Math.max(0, Math.floor(baseHp))} / 100</div>
+        </div>
+      </div>
+
+      {wave > 0 && !completed && !failed && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="text-red-300/80">Wave {wave} — enemies remaining</span>
+            <span className="font-mono">{Math.ceil(enemies)} (kills/sec: {(towers * 0.6).toFixed(1)})</span>
+          </div>
+          <div className="h-2 rounded-md bg-red-950/40 border border-red-500/30 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-red-600/60 to-amber-400/80 transition-all" style={{ width: `${Math.min(100, (waveTimer / REALM_WEAKNESS_WAVE_DURATION) * 100)}%` }} />
+          </div>
+          <div className="text-[0.6rem] text-muted-foreground text-right">Time left: {waveTimer.toFixed(1)}s</div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="text-xs">
+          <span className="text-muted-foreground">Military: </span>
+          <span className="font-mono text-amber-300">{Math.floor(military)}</span>
+        </div>
+        {completed ? (
+          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+            <Trophy className="w-3 h-3 mr-1" /> Conquered — 10 waves survived
+          </Badge>
+        ) : failed ? (
+          <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40">
+            <Skull className="w-3 h-3 mr-1" /> Base destroyed — exit & retry
+          </Badge>
+        ) : (
+          <Button size="sm" disabled={!canPlace} onClick={onPlaceTower}>
+            <Hammer className="w-3 h-3 mr-1" /> Build Tower ({REALM_WEAKNESS_TOWER_COST} mil)
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== Realm of Late Bloom — passive geometric growth (no actions) =====
+function RealmLateBloomGame({ state }: { state: Record<string, any> }) {
+  const pop = state.pop ?? 1;
+  const food = state.food ?? 0;
+  const completed = !!state.completed;
+  const popProgress = REALM_LATE_BLOOM_POP_GOAL > 0 ? Math.min(100, (pop / REALM_LATE_BLOOM_POP_GOAL) * 100) : 0;
+  const foodRate = pop * pop * REALM_LATE_BLOOM_PROD_COEFF;
+  const foodNeeded = pop * REALM_LATE_BLOOM_COST_PER_POP;
+  const foodPct = foodNeeded > 0 ? Math.min(100, (food / foodNeeded) * 100) : 0;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        Passive growth — production is 10× but costs 5×. Food rate = pop² × {REALM_LATE_BLOOM_PROD_COEFF}/s; next pop costs <span className="text-pink-300">pop × {REALM_LATE_BLOOM_COST_PER_POP}</span> food. Watch the geometric acceleration.
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-md bg-pink-500/10 border border-pink-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-pink-300/80">Population</div>
+          <div className="text-lg font-mono">{Math.floor(pop)} / {REALM_LATE_BLOOM_POP_GOAL}</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Food</div>
+          <div className="text-lg font-mono">{Math.floor(food)}</div>
+          <div className="text-[0.55rem] text-muted-foreground">+{foodRate.toFixed(2)}/s · need {foodNeeded.toFixed(0)}</div>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-pink-300/80">Population progress</span>
+          <span className="font-mono">{popProgress.toFixed(1)}%</span>
+        </div>
+        <div className="h-3 rounded-md bg-pink-950/40 border border-pink-500/30 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-pink-600/60 to-pink-400/80 transition-all" style={{ width: `${popProgress}%` }} />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-amber-300/80">Food toward next pop</span>
+          <span className="font-mono">{foodPct.toFixed(0)}%</span>
+        </div>
+        <div className="h-1.5 rounded-md bg-amber-950/40 border border-amber-500/20 overflow-hidden">
+          <div className="h-full bg-amber-400/60 transition-all" style={{ width: `${foodPct}%` }} />
+        </div>
+      </div>
+
+      {completed && (
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+          <Trophy className="w-3 h-3 mr-1" /> Conquered — 100 population reached
+        </Badge>
+      )}
+      {!completed && (
+        <div className="text-[0.65rem] text-muted-foreground italic">
+          No actions needed — just watch it grow. (10× production · 5× costs)
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== Realm of Purity — single 500-cap pool, build 10 systems =====
+function RealmPurityGame({
+  state,
+  onBuildSystem,
+}: {
+  state: Record<string, any>;
+  onBuildSystem: () => void;
+}) {
+  const pool = state.pool ?? REALM_PURITY_POOL_CAP;
+  const systemsBuilt = state.systemsBuilt ?? 0;
+  const completed = !!state.completed;
+  const failed = !!state.failed;
+  const canBuild = pool >= REALM_PURITY_BUILD_COST && !completed && !failed;
+  const drainPerSec = systemsBuilt * REALM_PURITY_DRAIN_PER_SYSTEM;
+  const poolPct = (pool / REALM_PURITY_POOL_CAP) * 100;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        All systems draw from a single shared pool of <span className="text-sky-300">{REALM_PURITY_POOL_CAP}</span>. Each system costs <span className="text-amber-300">{REALM_PURITY_BUILD_COST}</span> and drains <span className="text-rose-300">{REALM_PURITY_DRAIN_PER_SYSTEM}/s</span>. Build <span className="text-amber-300">{REALM_PURITY_SYSTEMS_GOAL}</span> systems before the pool runs dry.
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className={pool < 100 ? "text-rose-300" : "text-sky-300/80"}>Shared pool</span>
+          <span className="font-mono">{Math.floor(pool)} / {REALM_PURITY_POOL_CAP}</span>
+        </div>
+        <div className="h-5 rounded-md bg-sky-950/40 border border-sky-500/30 overflow-hidden">
+          <div
+            className={`h-full transition-all ${pool < 100 ? "bg-rose-500/80" : "bg-gradient-to-r from-sky-600/60 to-sky-400/80"}`}
+            style={{ width: `${Math.min(100, poolPct)}%` }}
+          />
+        </div>
+        {systemsBuilt > 0 && (
+          <div className="text-[0.6rem] text-muted-foreground text-right">Drain: -{drainPerSec.toFixed(1)}/s</div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-md bg-sky-500/10 border border-sky-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-sky-300/80 flex items-center gap-1"><Gem className="w-2.5 h-2.5" /> Systems built</div>
+          <div className="text-lg font-mono">{systemsBuilt} / {REALM_PURITY_SYSTEMS_GOAL}</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Build cost</div>
+          <div className="text-lg font-mono">{REALM_PURITY_BUILD_COST}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        {completed ? (
+          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+            <Trophy className="w-3 h-3 mr-1" /> Conquered — 10 systems built
+          </Badge>
+        ) : failed ? (
+          <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40">
+            <Skull className="w-3 h-3 mr-1" /> Pool exhausted — exit & retry
+          </Badge>
+        ) : null}
+        {!completed && !failed && (
+          <Button size="sm" disabled={!canBuild} onClick={onBuildSystem} className="ml-auto">
+            <Beaker className="w-3 h-3 mr-1" /> Build System (-{REALM_PURITY_BUILD_COST})
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== Realm of the Ascetic — 7 unique systems, evolve through 7 stages =====
+function RealmAsceticGame({
+  state,
+  onBuildSystem,
+}: {
+  state: Record<string, any>;
+  onBuildSystem: (systemId: number) => void;
+}) {
+  const essence = state.essence ?? 0;
+  const stage = state.stage ?? 0;
+  const systems: boolean[] = state.systems || Array(REALM_ASCETIC_STAGES).fill(false);
+  const completed = !!state.completed;
+  const essenceRate = 1 + stage;
+
+  return (
+    <div className="stat-card space-y-3">
+      <div className="text-[0.7rem] text-muted-foreground">
+        Only one of each system may be built. Essence accrues at <span className="text-indigo-300">1 + stage</span> per sec. Buy all 7 systems to evolve through all 7 stages.
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-md bg-indigo-500/10 border border-indigo-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-indigo-300/80">Essence</div>
+          <div className="text-lg font-mono">{Math.floor(essence)}</div>
+          <div className="text-[0.55rem] text-muted-foreground">+{essenceRate.toFixed(0)}/s</div>
+        </div>
+        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Stage</div>
+          <div className="text-lg font-mono">{stage} / {REALM_ASCETIC_STAGES}</div>
+        </div>
+      </div>
+
+      {completed ? (
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+          <Trophy className="w-3 h-3 mr-1" /> Conquered — 7 stages evolved
+        </Badge>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {Array.from({ length: REALM_ASCETIC_STAGES }, (_, i) => {
+            const isBuilt = !!systems[i];
+            const cost = REALM_ASCETIC_SYSTEM_COSTS[i];
+            const canBuild = !isBuilt && essence >= cost;
+            return (
+              <Button
+                key={i}
+                size="sm"
+                variant={isBuilt ? "default" : "outline"}
+                disabled={isBuilt || !canBuild}
+                onClick={() => onBuildSystem(i)}
+                className="flex flex-col items-center h-auto py-1.5"
+              >
+                <span className="text-[0.7rem] font-semibold">System {i + 1}</span>
+                {isBuilt ? (
+                  <CheckCircle2 className="w-3 h-3 mt-0.5" />
+                ) : (
+                  <span className="text-[0.55rem] opacity-70">-{cost} essence</span>
+                )}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="text-[0.65rem] text-muted-foreground">
+        Each system purchased advances your stage by 1 and boosts essence generation. Cheaper systems first = faster completion.
       </div>
     </div>
   );

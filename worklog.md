@@ -1997,3 +1997,269 @@ Added 7 subtle (300–500ms) animation classes for layer-specific visual effects
 2. **Tune timing**: Market crash (120s/30s), disaster (90s), prophet conversion (10s) — all arbitrarily chosen. May need adjustment based on playtest feedback.
 3. **Temporal Storm visual**: The `temporal-storm-overlay` is a radial gradient on an absolutely-positioned div. May need z-index tweaking if it interferes with the battle log scroll.
 4. **FEATURE 1 leaderboard UI** could be expanded with a sorted top-3 list per realm in the future, but the spec only asked for "Best: Xm Ys" next to each realm, which is what's implemented.
+
+---
+Task ID: LAYER-GATE-FOUNDATION
+Agent: main
+Task: Add layer progression metric tracking system + theme mode toggle (auto vs custom)
+
+Work Log:
+- Added `themeMode: "auto" | "custom"` to GameState (types.ts) + `setThemeMode` action.
+- Added `themeMode: "auto"` to initial state in store.ts.
+- Added migration: `if (persisted.themeMode === undefined) persisted.themeMode = "auto";`
+- Added `highestUnlockedLayerThemeId(unlockedLayers)` helper in store.ts (returns the layer overlay theme id for the highest unlocked layer).
+- Added AUTO theme update inside the tick: when `themeMode === "auto"`, the active stage theme + layer theme + special theme are re-derived from current stage/layer state every tick. Special theme is forced to null in auto mode.
+- Patched the final `set({...})` call in tick to include `activeStageTheme`, `activeLayerTheme`, `activeSpecialTheme`.
+- Added `TRIAL_REALMS_REQUIRED_FOR_LAYER_2 = 5` constant — new L1→L2 gate.
+- Modified L1→L2 unlock chain in TWO places (challenge completion path + trial realm completion path) to check `trialRealmsCompleted >= 5` OR `challengesCompleted >= 3` (either works).
+- Added Theme Mode toggle UI in SettingsModal: "Auto" / "Custom" segmented control. When in Auto mode, shows an amber italic note that manual picks are overridden.
+- Verified `bun run lint` returns 0 errors.
+
+Stage Summary:
+- Theme mode toggle is fully wired up: Auto mode = themes follow stage/layer automatically; Custom mode = player's manual selection is locked in.
+- L1→L2 unlock now supports both old (3 challenges) and new (5 trial realms) gating — backward-compatible.
+- Foundation laid for parallel subagent work on the 7 remaining trials, layer-specific shop items, pop-growth systems/techs, and content-hiding.
+
+---
+Task ID: POP-GROWTH-SYSTEMS
+Agent: general-purpose (subagent C)
+Task: Add pop-growth systems and techs across all 7 stages — make population growth a more visible and tunable game loop.
+
+Work Log:
+- Read /home/z/my-project/worklog.md LAYER-GATE-FOUNDATION section for context.
+- Audited current systems.ts (no popGrowth field), techs.ts (only "production"/"manual"/"capacity" multiplier targets), store.ts tick (popGrowthRate computed around line 699), and SystemsTab/TechTab UI patterns.
+- Added optional `popGrowth?: number` field to SystemDef in types.ts (flat per-second contribution to `populationProgress`, independent of resource production cap logic).
+- Added `"population"` to the `TechDef.multiplier.target` union type in types.ts.
+- Added 7 new pop-growth systems (one per stage) to systems.ts: mitochondrial_bloom (cell, ⚡, 0.05/s), brood_chamber (creature, 🥚, 0.08/s), hearth_circle (tribal, 🔥, 0.1/s + small happiness), sanitation_grid (civilization, 🚿, 0.15/s), fertility_program (empire, 👶, 0.2/s), orbital_habitats (solar, 🛰️, 0.3/s), genetic_synthesizer (galactic, 🧬, 0.5/s). All have maxOwned:25, costGrowth 1.5–1.8 per spec.
+- Added 7 new population-growth techs (one per stage) to techs.ts, each with `multiplier: { target: "population", value: X }`:
+  - cellular_division (cell, Metabolism, +20%, requires enzymatic_pathways)
+  - mating_seasons (creature, Behavior, +25%, requires pack_instinct)
+  - midwifery (tribal, Society, +30%, requires agriculture)
+  - public_health (civilization, Civic, +35%, requires scientific_method)
+  - cloning_vats (empire, Industry, +50%, requires bureaucracy)
+  - generation_ships (solar, Astro, +60%, requires fusion_power)
+  - cosmic_nursery (galactic, Cosmic, +100%, requires quantum_computing)
+- Cross-branch prereqs added where the new tech opens a new branch (midwifery/public_health/cloning_vats/generation_ships/cosmic_nursery all gate on an existing tier-1 tech in a sibling branch so the player has a real research path).
+- Spec deviation: cellular_division cost in the task said "100 science" — science is unobtainable in cell stage (no cell systems/actions produce science), so the literal cost would make the tech unreachable. Deviated to `{ glucose: 50, atp: 25, proteins: 15 }` — same tier/scale as the existing organelle_specialization tier-3 cell tech.
+- Extended `techMultiplier()` helper in store.ts (around line 4761) to support `"population"` target. The population target is intentionally isolated: it does NOT carry over production-tech bonuses (those scale resource output, not pop growth) and does NOT receive achievement / challenge-mastery production bonuses. Existing "production"/"manual"/"capacity" target behavior is unchanged.
+- Wired pop-growth into the tick (store.ts lines ~699-746):
+  1. Compute `systemPopGrowth` = Σ (sys.popGrowth × owned × stageMult) over all owned systems — skips manually-disabled systems unless Auto-Balancer is active. Independent of the resource-production cap-aware idle logic (a brood chamber keeps hatching even when secondary outputs are at cap).
+  2. Add `systemPopGrowth` to the existing `popGrowthRate` (so it flows through the same happiness/archetype/layer multipliers AND the food/water + challenge debuffs).
+  3. Apply `popTechMult = techMultiplier(s, "population")` as the final multiplier on the combined rate, after all debuffs. Tech multiplier always provides a positive boost even when food/water debuffs are active.
+- Added a `Pop growth:` row to SystemsTab.tsx SystemCard (between Produces and Capacity rows) showing `+{formatNumber(popGrowth × owned, 2)}/s 👥` in emerald (#10b981).
+- Added a `👶 Pop Growth` badge to TechTab.tsx next to the "Tier · Branch" badge — only shown for techs with `multiplier.target === "population"`. Emerald border + text for visibility.
+- Verified data integrity via Bun runtime script: 7 pop-growth systems (one per stage), 7 population techs (one per stage), all tech prereqs resolve to existing tech IDs, no duplicate IDs.
+- Ran `bun run lint`: **0 errors, 6 pre-existing warnings in upload/logic.js** (per task instructions, ignored).
+
+Stage Summary:
+- Population growth is now a first-class, tunable loop across all 7 stages with dedicated systems + techs.
+- New formula: `populationProgress += (popGrowthRate + systemPopGrowth) × popTechMult × dt` where:
+  - `popGrowthRate` = base 0.045/s × (1 + (happiness−40)/200) × (1 + archPopMult) × (1 + layerPopBonus)
+  - `systemPopGrowth` = Σ owned systems' `popGrowth` × count × stageMult (1.0 current stage, 0.5 past stages)
+  - Combined rate is then multiplied by food/water debuff (×0.3 if <10% in creature/tribal/civ/empire), then challenge debuff, then `popTechMult` (from population-target techs only — additive, isolated from production/manual/capacity targets).
+- All 7 pop-growth systems use the standard SystemDef shape with a new optional `popGrowth` field, so the existing buy/toggle/cost logic, cap-aware idling, and Auto-Balancer behavior all work unchanged.
+- All 7 pop-growth techs use the existing TechDef shape with the new `"population"` multiplier target, so the existing research/prereq/cost logic works unchanged.
+- UI: SystemsTab shows a `Pop growth:` row on relevant systems; TechTab shows a 👶 Pop Growth badge on relevant techs.
+- Lint passes with 0 errors. No existing systems or techs were modified.
+
+---
+Task ID: SHOP-LAYER-ITEMS
+Agent: general-purpose (subagent B)
+Task: Add layer-specific shop items (2 per layer for L2-L10) + improve shop filtering with `requiresLayer` field, a new "layer" category, and a small lock badge with the required layer name on locked-but-visible layer upgrades. Wire each new upgrade's effect into the corresponding layer's tick / action / bonus logic.
+
+Work Log:
+- Added `requiresLayer?: string` field to `UpgradeDef` (types.ts) and added `"layer"` to the `category` union. Added 18 new `UpgradeEffectType` values (`foresight_discount`, `constellation_boost`, `ritual_extension`, `market_savvy`, `world_blueprint`, `disaster_shield`, `prophet_inspiration`, `heresy_ward`, `rift_redirect`, `dimension_boost`, `mutation_master`, `genetic_stabilizer`, `diplomatic_gift`, `amplifier_overcharge`, `war_preparation`, `temporal_shield`, `paradox_insight`, `universe_foundation`).
+- Added 18 new layer-specific upgrades to `src/game/data/upgrades.ts` (2 per layer L2-L10, all `category: "layer"`, `costGrowth: 1.7` default, costs scaling by layer L2=8 → L10=40). All purchased with EP via the existing `buyUpgrade` path.
+- Updated `buyUpgrade` action in store.ts to refuse purchase if `up.requiresLayer` is set and that layer isn't unlocked yet (defense-in-depth alongside the ShopModal filter).
+- Wired effects in store.ts:
+  - **foresight_discount** → applied multiplicative -20%/level (max 5, 0.80^level) to node cost in `purchaseForesightNode`, `illuminateConstellationNode`, and `supernovaIlluminate`.
+  - **constellation_boost** → applied +25%/level (max 4) to Prestige Point gain per illuminated node in the same 3 actions.
+  - **ritual_extension** → applied +20%/level (max 5) multiplier to temporary ritual duration in `performRitual` (non-permanent branch).
+  - **market_savvy** → applied +30%/level (max 5) profit multiplier to `marketSellResource` and `marketOffering`.
+  - **world_blueprint** → applied +50%/level (max 4) multiplier to `wProd`, `wCap`, `wPop` in tick bonus aggregation.
+  - **universe_foundation** → applied +25%/level (max 4) multiplier to all 4 `universeB` fields (production, cap, pop, ep) in tick bonus aggregation.
+  - **disaster_shield** → applied additive -25%/level (max 4 → 0% chance) to disaster roll in tick.
+  - **heresy_ward** → applied additive -30%/level (max 4 → 0% spread) per-cell spread chance in tick.
+  - **prophet_inspiration** → expanded prophet conversion radius in tick: L0=4 orthogonal; L1=+4 diagonals (8 total); L2=+4 two-step orthogonal (12 total).
+  - **rift_redirect** → in tick rift event, picks the richest dimension as source and poorest as destination (always beneficial) instead of random.
+  - **dimension_boost** → applied +20%/level (max 5) speed multiplier to dimension resource/pop accrual in tick.
+  - **genetic_stabilizer** → applied -25%/level (max 4 → no gain) multiplier to effective instability rate in tick.
+  - **mutation_master** → applied +10%/level (max 5) added to baseline 10% mutation chance in `createCreature`.
+  - **diplomatic_gift** → applied ×(1 + level) multiplier (max 3 → ×4) to relationship gain in both `negotiateWithGod` and `tradeWithGod`.
+  - **amplifier_overcharge** → applied +50%/level (max 3 → ×3.5) amplifier bonus multiplier in `negotiateWithGod` (replaces the hard-coded ×2 amplifier bonus).
+  - **war_preparation** → applied +20%/level (max 5) multiplier to player damage in `attackOldGod`.
+  - **temporal_shield** → halved the accelerated-storm damage multiplier per level (max 2): `1 + 0.5 * 0.5^level` (so level 0 = ×1.5, level 1 = ×1.25, level 2 = ×1.125). The "delayed" branch (×0.5, beneficial) is unchanged.
+  - **paradox_insight** → raised paradox threshold from fixed 3 to `3 + level` (max 2 → threshold 5) in `setUniverseRule`.
+- Updated `ShopModal.tsx`:
+  - Added `"layer"` to the categories list (with `Layers` lucide icon + "· tied to a specific prestige layer" italic subtitle).
+  - Subscribed to `unlockedLayers` from the store.
+  - Added `isVisible(up)` helper that hides (a) upgrades whose `requiresLayer` is not unlocked, and (b) upgrades whose `requiresWins > galacticWins + 3` (far-future locked). Near-future `requiresWins` upgrades remain visible for planning.
+  - Each visible layer-specific upgrade now displays a small "🔒 <LayerName>" badge (cyan outline) identifying the layer it belongs to, using a `LAYER_DISPLAY_NAMES` lookup matching the store's `unlockedLayers` keys (enlightenment→"Enlightenment", omnipotence→"Bio-Engineering", divinity→"Divine Alliance", infinity→"Divine War", eternity→"Ascension", etc.).
+  - All 18 new upgrades use the existing EP currency path (so the existing "canAfford" + disabled-button logic works unchanged).
+- Migration: `requiresLayer` is optional on `UpgradeDef` — only the 18 new layer-specific upgrades set it. The `upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0]))` initial-state pattern already auto-includes the new IDs from the source-of-truth `UPGRADES` array — no manual migration needed for new IDs. Persisted saves will pick up the new IDs with default level 0 on next load.
+- Lint: `bun run lint` returns **0 errors, 6 warnings** (all 6 pre-existing in `upload/logic.js` vanilla JS reference file, untouched by this task).
+- TypeScript: `bunx tsc --noEmit` shows only pre-existing errors (ChallengeModal ChallengeEffects→Record at lines 269/274, stages.ts Record<StageId> at line 125, store.ts Partial+GameStore mismatch at line 481, CosmeticsModal/DebugModal/VariantPicker/ResourceBar referencing non-existent store properties, plus unrelated errors in `examples/websocket/*` and `skills/*` outside this task's scope). No new errors introduced.
+- Dev server: `curl http://localhost:3000/` returns HTTP 200 — page compiles cleanly.
+
+Stage Summary:
+- 18 new layer-specific upgrades added (2 per layer for L2-L10), all wired into their corresponding layer's tick/action/bonus logic.
+- New `requiresLayer?: string` field on `UpgradeDef` (set on the 18 new upgrades only — existing upgrades unaffected).
+- New `"layer"` category + new layer-specific effect types added to the `UpgradeEffectType` union (18 new types).
+- ShopModal filtering now hides layer-locked upgrades and far-future requiresWins-locked upgrades; visible layer upgrades get a small "🔒 <LayerName>" cyan badge.
+- All effects fully wired — no "TODO: wire actual effect" placeholders needed.
+- `buyUpgrade` action now also blocks purchase of layer-specific upgrades whose layer isn't unlocked (defense-in-depth).
+
+---
+Task ID: TRIALS-7
+Agent: general-purpose (subagent A)
+Task: Implement the 7 remaining trial realms (Famine, Ignorance, Stagnation, Weakness, Late Bloom, Purity, Ascetic) as fully-playable mini-games, plus a unified trialRealmRewardBonus helper wired into the production tick.
+
+Work Log:
+- Read worklog.md (LAYER-GATE-FOUNDATION section), trialRealms.ts (3 playable + 7 placeholders), ChallengeModal.tsx (ActiveRealmView + 3 realm components), store.ts (Layer 1 tick block + realmBreakthrough/realmDiscontentAction action templates), types.ts (GameState/GameStore interface).
+- trialRealms.ts changes:
+  - Flipped all 7 placeholder realms from `status: "comingSoon"` → `status: "available"`.
+  - Extended `PLAYABLE_REALM_IDS` from 3 → 10 entries.
+  - Added 7 case blocks to `makeDefaultRealmState` for realm_famine, realm_ignorance, realm_stagnation, realm_weakness, realm_late_bloom, realm_purity, realm_ascetic — each with numeric/string/boolean runtime fields mirroring the style of the existing Growth/Discontent/Swiftness defaults.
+  - Added 35+ goal-threshold constants (REALM_FAMINE_*, REALM_IGNORANCE_*, REALM_STAGNATION_*, REALM_WEAKNESS_*, REALM_LATE_BLOOM_*, REALM_PURITY_*, REALM_ASCETIC_*).
+  - Exported `trialRealmRewardBonus(completed)` helper that returns `{ prodMult, capMult, popMult }` summing the permanent reward from each completed realm. Late Bloom's +25% pop bonus is applied conditionally (pop < 50) inside the tick.
+- types.ts changes:
+  - Added 6 new method signatures on GameStore interface: `realmFaminePump(resourceId)`, `realmIgnoranceBuyNode(nodeId)`, `realmStagnationUpgrade(stage)`, `realmWeaknessPlaceTower()`, `realmPurityBuildSystem()`, `realmAsceticBuildSystem(systemId)`. Late Bloom is passive (no action).
+- store.ts changes:
+  - Extended the trialRealms import list with all 7 realms' constants + the `trialRealmRewardBonus` helper.
+  - Inside the Layer 1 tick section (the switch on `activeTrialRealm`), added 7 new `case` blocks (realm_famine, realm_ignorance, realm_stagnation, realm_weakness, realm_late_bloom, realm_purity, realm_ascetic). Each progresses the realm's state using `realDt`, marks `st.completed = true` + `trialRealmsCompleted[tickRealmId] = true` + records best time + checks L2 unlock when the goal is reached.
+  - Failure paths: famine (passive — player can't fail, only stall), weakness (base HP ≤ 0 → failed, auto-close), purity (pool exhausted → failed, auto-close). Late Bloom, Ignorance, Stagnation, Ascetic have no failure path.
+  - In the production-calc block (~line 553), added `trialReward = trialRealmRewardBonus(s.trialRealmsCompleted)` + `lateBloomPopBonus` (conditional on pop < 50). Added `trialReward.prodMult` to `layerProdBonus`, `trialReward.capMult` to `layerCapBonus`, and `trialReward.popMult + lateBloomPopBonus` to `layerPopBonus`.
+  - Added 6 new action implementations (mirroring the realmBreakthrough/realmDiscontentAction template): realmFaminePump, realmIgnoranceBuyNode, realmStagnationUpgrade, realmWeaknessPlaceTower, realmPurityBuildSystem, realmAsceticBuildSystem. Each validates `activeTrialRealm`, mutates the realm's runtime state, and for buy-action realms (Ignorance, Purity, Ascetic) short-circuits completion inline (records best time, fires L2 unlock check, closes realm).
+- ChallengeModal.tsx changes:
+  - Extended the trialRealms import with all new constants.
+  - Added Lucide icon imports: Swords, Heart, Hammer, Beaker, Gem, Brain, Flame.
+  - Subscribed to 6 new store actions in the ChallengeModal component.
+  - Extended `ActiveRealmView` props to accept the 6 new action callbacks; added 7 new realm-specific render branches in the `realmId === "..."` chain.
+  - Implemented 7 new realm UI components (RealmFamineGame, RealmIgnoranceGame, RealmStagnationGame, RealmWeaknessGame, RealmLateBloomGame, RealmPurityGame, RealmAsceticGame), each visually consistent with the existing Growth/Discontent/Swiftness realm components (stat-card container, color-themed progress bars, grid layouts that collapse to 1 column on mobile, shadcn Button/Badge, Lucide icons).
+- Tuned REALM_STAGNATION_RATE_DIVISOR from 16 → 1 to make the realm solvable in the 30-120s target window (without this, starting rate of 0.0625/s made the first upgrade take 160s).
+- Verified `bun run lint` returns 0 errors (6 pre-existing warnings in upload/logic.js only — per task instructions, ignored).
+- Verified `bun run build` succeeds (Next.js 16 + Turbopack, compiled in ~12s, generated 4 static pages).
+- Verified no NEW TypeScript errors were introduced (`npx tsc --noEmit` shows the same pre-existing errors that existed before my changes — the ChallengeEffects formatEffects calls and the create<GameStore>() stageIndex union issue).
+
+Stage Summary:
+- All 10 trial realms are now fully playable (3 pre-existing + 7 newly implemented). PLAYABLE_REALM_IDS has 10 entries; no realm is in "comingSoon" status anymore.
+- Each realm's reward is applied as a permanent bonus via the new `trialRealmRewardBonus` helper, summed into layerProdBonus / layerCapBonus / layerPopBonus inside the tick. Reward totals when all 10 are completed: +102% production, +10% pop growth (or +35% when pop < 50 due to Late Bloom).
+- The existing 3 playable realms (Growth, Discontent, Swiftness) are untouched — only the ActiveRealmView switch statement grew.
+- The L1→L2 unlock chain (5+ trial realm completions OR 3+ classic challenges) fires correctly when any new realm is conquered.
+- Each realm is solvable in roughly: Famine ~120s, Ignorance ~instant (10 clicks), Stagnation ~25-100s, Weakness ~80-100s, Late Bloom ~50s (passive), Purity ~10-30s, Ascetic ~50s.
+
+---
+Task ID: LAYER-SEPARATION
+Agent: general-purpose (subagent D)
+Task: Implement "layer separation" — when the player advances to a higher prestige layer, lower-stage mechanics and currencies become less relevant and should be hidden or de-emphasized across ResourceBar, TabNav, SystemsTab, TechTab, Header, PrestigeTab, and layer modals.
+
+Work Log:
+- Created `/home/z/my-project/src/game/state/layerHelpers.ts` with:
+  - `LAYER_PRIORITY` (10 → 1, highest first), `LAYER_RANK` (1-10), `LAYER_NAMES` lookups.
+  - `highestUnlockedLayerId(unlockedLayers)` returns the highest layer id from the priority list.
+  - `layerRank(id)`, `isLayerAtLeast(target, unlockedLayers)`, `previousLayerId(id)`, `nextLayerId(id)`, `layerName(id)` helpers.
+  - `useActiveLayer()` hook returning `{ activeLayerId, activeLayerRank, activeLayerName, isAtLeast }`.
+  - `useIsBackgroundLayer(layerId)` hook for layer modals (returns true if active layer > modal layer).
+
+- ResourceBar.tsx — Part 2 currency cleanup:
+  - L2+ (Enlightenment): hide stage resources whose `firstStage` is more than 3 stages below current (e.g., at galactic, hide `food`, `water`, `culture`, `science`, `happiness`, `military_power` that originated in creature/tribal).
+  - L3+ (Transcendence): collapse to top-3 most-valuable resources + "+N more" / "Collapse" toggle buttons.
+  - L5+ (Apotheosis): hide ALL stage resource chips, replace with single compact "📚 N resources, X% avg" summary chip that expands on click.
+  - Stage label de-emphasized at L5+ (lower opacity); layer name shown alongside.
+  - Always shows meta/prestige currencies when unlocked: PP, Divinity (covers L2 + L3), Genesis Seeds, Faith, Singularity Cores, Divine Fragments, Cosmic Boons, plus existing EP.
+
+- TabNav.tsx — Part 3 tab cleanup:
+  - L3+ (Transcendence): "Actions" tab hidden (automation has taken over).
+  - L4+ (Genesis): "Story" tab hidden (accessible via Prestige tab).
+  - L5+ (Apotheosis): "Production" tab hidden (fully automated).
+  - Always visible: Systems, Tech, Prestige, Awards, Log, Codex, Archive.
+  - Added "Back to Prestige" fallback button if the active tab got hidden by advancing layers.
+  - Mobile bottom nav dynamically shows top 4 visible tabs.
+
+- SystemsTab.tsx + TechTab.tsx — Part 4 accordion behavior:
+  - Replaced single-stage display with: current stage inline + "Legacy" accordion (closed by default) containing all stages below the current one.
+  - L2+ (Enlightenment): legacy cutoff = stages 1-2 (cell, creature).
+  - L5+ (Apotheosis): legacy cutoff = stages 1-5 (cell..empire).
+  - Below L2: any stages below current collapse into accordion (open by default for "middle" stages).
+  - Added "Current only" toggle button (Filter icon) that hides all legacy/middle accordions entirely.
+  - Refactored shared `SystemsGrid` / `BranchList` / `TechCard` components so they reuse the existing SystemCard / TechCard UI.
+
+- Header.tsx — Part 5 layer-button collapse:
+  - At L5+ (Apotheosis), L1 (Trials), L2 (Foresight), L3 (Sacrifice) buttons collapse into a single "Lower Layers" dropdown (using shadcn DropdownMenu). Works on both desktop and mobile.
+  - Standalone layer buttons now show L4+ (Genesis, Divine, System, Hybrid, Masks, Echoes, Eternity) — only when their layer is unlocked.
+  - Header subtitle de-emphasizes stage name at L5+ and prominently shows active layer (e.g., "Apotheosis (L5) · Galactic").
+  - All layer-button definitions centralized into a `layerButtons` array for cleaner desktop+mobile rendering.
+
+- PrestigeTab.tsx — Part 6 layer-progress bars:
+  - Added new `LayerNextProgress` component for each LayerCard showing progress toward the NEXT layer.
+  - Unlock metrics wired per spec:
+    - L1→L2: trial realms / 5 (or 3 challenges — uses Math.max to pick the better of the two paths).
+    - L2→L3: foresight nodes / 10 (FORESIGHT_NODES_REQUIRED_FOR_LAYER_3).
+    - L3→L4: blood pacts / 4 (BLOOD_PACTS.length).
+    - L4→L5: authored worlds / 1.
+    - L5→L6: divine laws enacted / 3.
+    - L6→L7: logic cores active / 3.
+    - L7→L8: peak instability / 80.
+    - L8→L9: alliances formed / 2 (of MINOR_GODS.length possible).
+    - L9→L10: old gods defeated / OLD_GODS.length.
+  - "✓ {nextLayerName} Unlocked" badge shown when next layer is already unlocked.
+  - "Requires {currentLayerName} to be unlocked first" shown when current layer isn't unlocked (i.e., the prerequisite for progressing hasn't been met).
+  - L10 (Eternity) shows a "Max layer reached — end-game ascension content" badge since there's no next layer.
+
+- Part 7 — BackgroundLayerBadge component + modal integration:
+  - Created `/home/z/my-project/src/components/game/shared/BackgroundLayerBadge.tsx` — uses `useIsBackgroundLayer(layerId)`.
+  - Renders a small "🔄 Running in background" badge with a slow-spinning refresh icon, with tooltip explaining that lower-layer mechanics continue to tick automatically.
+  - Integrated into all 10 layer modals: ChallengeModal (evolution), EnlightenmentModal (enlightenment), TranscendenceModal (transcendence), GenesisModal (genesis), ApotheosisModal (apotheosis), SingularityModal (singularity), OmnipotenceModal (omnipotence), DivinityLayerModal (divinity), InfinityModal (infinity), EternityModal (eternity).
+  - The badge only renders when the player's active layer is HIGHER than the modal's own layer — so opening L2 Enlightenment at L5+ shows the badge, but opening it at L2 doesn't.
+  - No tick logic was changed (per spec — just communicates visually that background mechanics continue).
+
+- Lint result: `bun run lint` → 0 errors, 6 pre-existing warnings in `upload/logic.js` (ignored per spec).
+- TypeScript: verified via `bunx tsc --noEmit` that no NEW TS errors were introduced (34 errors before vs. 34 after — all in pre-existing broken files: CosmeticsModal, DebugModal, VariantPicker, stages.ts Record typing, store.ts stageIndex partial-set typing, ChallengeModal formatEffects typing).
+
+Stage Summary:
+- New `useActiveLayer()` hook (in `src/game/state/layerHelpers.ts`) is the single source of truth for "what layer am I on?" — used by ResourceBar, TabNav, Header, SystemsTab, TechTab, PrestigeTab, BackgroundLayerBadge, and all layer modals (via `useIsBackgroundLayer`).
+- ResourceBar now progressively declutters at L2/L3/L5, hiding primitive/early-stage resources and showing prestige currencies.
+- TabNav hides Actions (L3+), Story (L4+), Production (L5+), keeping the always-relevant Systems/Tech/Prestige/Awards/Log/Codex/Archive visible.
+- SystemsTab and TechTab show all stages up to current, with older stages collapsed into "Legacy" accordions (closed by default). A "Current only" toggle hides legacy entirely.
+- Header collapses L1-L3 layer buttons into a "Lower Layers" dropdown at L5+, and de-emphasizes the stage label in favor of the active layer name.
+- PrestigeTab shows per-card progress bars toward the next layer, with "✓ Unlocked" and "Requires X" states.
+- All 10 layer modals display a "🔄 Running in background" badge when the player has advanced beyond that layer's mechanics.
+- All existing UI remains accessible — nothing was permanently removed, only collapsed/hidden behind accordions, dropdowns, and toggle buttons.
+
+---
+Task ID: VERIFY-FINAL
+Agent: main
+Task: Browser-verify all subagent work + fix sticky footer + fix hydration warnings
+
+Work Log:
+- Loaded the game via agent-browser, used the version-label 5-click debug unlock to enable all 10 prestige layers + meta currencies.
+- Verified all 4 parallel subagents' work end-to-end:
+  1. **TRIALS-7**: All 10 trial realms visible in the Challenge modal with "Begin Trial" buttons (Famine, Ignorance, Stagnation, Weakness, Late Bloom, Purity, Ascetic — plus the original Growth, Discontent, Swiftness). Started Famine trial; "Abandon Trial" button appeared confirming state transition.
+  2. **SHOP-LAYER-ITEMS**: Shop modal now shows new "LAYER-SPECIFIC · tied to a specific prestige layer" category with 18 upgrade buttons (2 per layer for L2-L10). Existing categories (Automation, Economy, Acceleration, Prestige, Universal) preserved.
+  3. **POP-GROWTH-SYSTEMS**: New systems visible in SystemsTab — confirmed "Hearth Circle" (tribal stage) renders with new "Pop growth:" label. New tech "Midwifery" visible in TechTab with "👶 Pop Growth" badge.
+  4. **LAYER-SEPARATION**: Confirmed all UI cleanup:
+     - Header has "Lower Layers (3)" dropdown (collapses L1-L3 buttons into a menu) when L4+ unlocked; standalone buttons shown for Genesis through Eternity.
+     - ResourceBar collapses to "📚 5 resources 46% avg" + "+N more" expandable chip when L5+ (apotheosis) unlocked.
+     - TabNav hides Actions/Production/Story tabs when L3+/L4+/L5+ respectively. Visible tabs: Systems, Tech, Codex, Awards, Archive, Prestige, Log.
+     - SystemsTab/TechTab have "Legacy" accordion for past stages + "Current only / All / None" filter toggles.
+     - PrestigeTab shows "✓ Unlocked" badges for all 10 layers + "Max layer reached — end-game ascension content" message on L10.
+     - Layer modals show "Running in background" badge when player's active layer > modal's layer.
+     - Theme mode toggle (Auto / Custom) wired up in SettingsModal — Auto mode re-derives stage+layer themes every tick.
+- Fixed sticky footer: changed `.sticky-footer` CSS from `position: sticky; bottom: 0` to `position: fixed; left: 0; right: 0; bottom: 0` — the original sticky didn't work because the nav's grid-column parent constrained its height. Verified on mobile viewport (375×812): nav now sticks to viewport bottom (top: 749, bottom: 812).
+- Fixed hydration warnings: 6 modals had `<DialogDescription>` (which renders as `<p>` by default in Radix UI) containing `<div>` children. Applied `asChild` prop + wrapped content in a `<div>` for: ShopModal, TranscendenceModal, OmnipotenceModal, SingularityModal, ApotheosisModal, ChallengeModal. Verified console is clean after reload (no hydration errors).
+
+Stage Summary:
+- All 4 subagents' work verified end-to-end via agent-browser.
+- 0 lint errors, dev server HTTP 200, no hydration errors, sticky footer working on mobile.
+- 10 of 10 trials playable (was 3 of 10).
+- 18 new layer-specific shop upgrades (was 0).
+- 7 new pop-growth systems + 7 new pop-growth techs added.
+- Layer-separation UI cleanup fully functional.
+- Theme mode toggle (Auto vs Custom) fully functional.
+- L1→L2 unlock gate now supports both old (3 challenges) and new (5 trial realms) criteria.
+- Auto theme mode re-derives stage/layer themes every tick.
+
+Next actions / risks:
+- The 7 new trials each have unique mini-game mechanics but only Famine was smoke-tested. Full playtest of each new trial is a follow-up.
+- Layer-progression bars are present in PrestigeTab but only "✓ Unlocked" was verified (debug-unlock sets all true). A fresh playthrough would be needed to verify the progress bars actually fill as the player advances.
+- Temporal storm / dimension rift / market crash event timers fire on long real-time intervals (90-120s) — not verified in this short smoke test.

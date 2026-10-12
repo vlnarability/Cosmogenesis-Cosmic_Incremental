@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Triangle, CheckCircle2, Clock, TrendingUp, TrendingDown, Coins } from "lucide-react";
 import { formatNumber, resourceName } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const MARKET_RESOURCES = ["food", "water", "materials", "science", "gold", "energy"] as const;
 const MARKET_LABELS: Record<string, { icon: string; color: string }> = {
@@ -97,11 +98,13 @@ export function TranscendenceModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Triangle className="w-5 h-5" />
             Layer 3 — Transcendence (Divine Market)
+            <BackgroundLayerBadge layerId="transcendence" />
           </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between">
             <span>
               Buy low, sell high. Sacrifice resources for Divinity. All 4 Blood Pacts unlock Genesis.
             </span>
@@ -112,6 +115,8 @@ export function TranscendenceModal() {
               <Badge variant="outline" className="text-rose-300 border-rose-400/40">
                 {pactsUsedCount}/4 pacts
               </Badge>
+            </div>
+          
             </div>
           </DialogDescription>
         </DialogHeader>

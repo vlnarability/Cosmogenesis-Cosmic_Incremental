@@ -1,17 +1,30 @@
 "use client";
 
 import { useGameStore, isSystemCapped } from "@/game/state/store";
-import { systemsForStage, systemCost, SYSTEM_MAP } from "@/game/data/systems";
+import { systemsForStage, systemCost, SYSTEMS } from "@/game/data/systems";
 import { STAGES } from "@/game/data/stages";
 import { TECH_MAP } from "@/game/data/techs";
+import { useActiveLayer } from "@/game/state/layerHelpers";
 import { formatNumber, resourceColor, resourceIcon, resourceName } from "../shared/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ARCHETYPE_MAP } from "@/game/data/archetypes";
-import { useState } from "react";
-import { Lock, Power, PowerOff, AlertCircle } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Lock, Power, PowerOff, AlertCircle, History, Layers, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { SystemDef } from "@/game/state/types";
+
+// Determine which stage indices are "legacy" (collapsed by default into the Legacy accordion)
+// based on the player's current prestige layer.
+function legacyStageRange(stageIndex: number, isL2Plus: boolean, isL5Plus: boolean): { start: number; end: number } {
+  // Legacy = stages [0, end) — exclusive end.
+  if (isL5Plus) return { start: 0, end: Math.min(5, stageIndex) }; // Stages 1-5 (cell..empire)
+  if (isL2Plus) return { start: 0, end: Math.min(2, stageIndex) }; // Stages 1-2 (cell..creature)
+  // Below L2: any past stages below current are shown as collapsible accordions (open by default).
+  return { start: 0, end: 0 };
+}
 
 export function SystemsTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
@@ -25,18 +38,57 @@ export function SystemsTab() {
   const toggleSystem = useGameStore((s) => s.toggleSystem);
   const enableAllSystems = useGameStore((s) => s.enableAllSystems);
 
+  const { isAtLeast } = useActiveLayer();
+  const isL2Plus = isAtLeast("enlightenment");
+  const isL5Plus = isAtLeast("apotheosis");
+
   const stage = STAGES[stageIndex];
-  const systems = systemsForStage(stage.id);
+  const currentSystems = systemsForStage(stage.id);
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
   const hasAutoBalancer = (upgrades["auto_balancer"] || 0) > 0;
 
-  const ownedCount = systems.filter((s) => (ownedSystems[s.id] || 0) > 0).length;
+  const ownedCount = currentSystems.filter((s) => (ownedSystems[s.id] || 0) > 0).length;
+
+  // Legacy cutoff based on player's layer
+  const legacyRange = useMemo(
+    () => legacyStageRange(stageIndex, isL2Plus, isL5Plus),
+    [stageIndex, isL2Plus, isL5Plus]
+  );
+  // Stages strictly below current that are NOT in the explicit legacy range (e.g. between legacy and current)
+  const middleStages = useMemo(() => {
+    const list: typeof STAGES = [];
+    for (let i = legacyRange.end; i < stageIndex; i++) {
+      list.push(STAGES[i]);
+    }
+    return list;
+  }, [legacyRange.end, stageIndex]);
+  const legacyStages = useMemo(() => STAGES.slice(legacyRange.start, legacyRange.end), [legacyRange]);
+
+  // "Show only current stage" toggle — hides all legacy/middle accordions
+  const [onlyCurrent, setOnlyCurrent] = useState(false);
+  // Track which legacy/middle accordions are open. Default: legacy accordion is closed (per spec);
+  // middle stage accordions (between legacy and current) are open by default so the player can see them.
+  const [legacyOpen, setLegacyOpen] = useState(false);
+
+  // Compute total counts for legacy summary
+  const legacySystemsTotal = useMemo(() => {
+    return legacyStages.reduce((sum, st) => sum + systemsForStage(st.id).length, 0);
+  }, [legacyStages]);
+  const legacySystemsOwned = useMemo(() => {
+    return legacyStages.reduce((sum, st) => {
+      const sys = systemsForStage(st.id);
+      return sum + sys.filter((s) => (ownedSystems[s.id] || 0) > 0).length;
+    }, 0);
+  }, [legacyStages, ownedSystems]);
+
+  const hasLegacy = legacyStages.length > 0;
+  const hasMiddle = middleStages.length > 0;
 
   return (
     <div className="space-y-4">
       <Card className="glass-panel">
         <CardHeader className="pb-2">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="text-xl">{stage.icon}</span>
@@ -47,21 +99,37 @@ export function SystemsTab() {
                 {hasAutoBalancer && " Auto-Balancer active — capped systems idle automatically."}
               </CardDescription>
             </div>
-            {ownedCount > 0 && (
-              <div className="flex gap-1 shrink-0">
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => enableAllSystems(true)}>
-                  <Power className="w-3 h-3 mr-1" /> All
+            <div className="flex gap-1 shrink-0 items-center flex-wrap">
+              {/* "Show only current stage" toggle */}
+              {(hasLegacy || hasMiddle) && (
+                <Button
+                  size="sm"
+                  variant={onlyCurrent ? "default" : "outline"}
+                  className="h-7 text-xs"
+                  onClick={() => setOnlyCurrent((v) => !v)}
+                  title="Hide all legacy/past-stage systems"
+                >
+                  <Filter className="w-3 h-3 mr-1" />
+                  Current only
                 </Button>
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => enableAllSystems(false)}>
-                  <PowerOff className="w-3 h-3 mr-1" /> None
-                </Button>
-              </div>
-            )}
+              )}
+              {ownedCount > 0 && (
+                <>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => enableAllSystems(true)}>
+                    <Power className="w-3 h-3 mr-1" /> All
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => enableAllSystems(false)}>
+                    <PowerOff className="w-3 h-3 mr-1" /> None
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </CardHeader>
       </Card>
 
-      {systems.length === 0 ? (
+      {/* Current stage systems — always shown */}
+      {currentSystems.length === 0 ? (
         <Card className="glass-panel">
           <CardContent className="py-8 text-center text-muted-foreground">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -70,7 +138,7 @@ export function SystemsTab() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {systems.map((sys) => {
+          {currentSystems.map((sys) => {
             const owned = ownedSystems[sys.id] || 0;
             const cost = systemCost(sys, owned, costReduction);
             const canAfford = Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
@@ -78,7 +146,6 @@ export function SystemsTab() {
             const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
             const enabled = systemEnabled[sys.id] !== false;
             const capped = owned > 0 && isSystemCapped(sys.id, resources, capacities);
-
             return (
               <SystemCard
                 key={sys.id}
@@ -98,12 +165,132 @@ export function SystemsTab() {
           })}
         </div>
       )}
+
+      {/* Middle stages (between legacy cutoff and current) — open by default */}
+      {hasMiddle && !onlyCurrent && (
+        <Accordion type="multiple" defaultValue={middleStages.map((s) => `mid-${s.id}`)}>
+          {middleStages.map((st) => {
+            const sys = systemsForStage(st.id);
+            return (
+              <AccordionItem key={`mid-${st.id}`} value={`mid-${st.id}`} className="glass-panel rounded-lg px-3 mb-2 border-border/40">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-cyan-400" />
+                    <span className="text-sm font-semibold">{st.name} Systems</span>
+                    <Badge variant="outline" className="text-[0.6rem]">
+                      {sys.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{sys.length} owned
+                    </Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <SystemsGrid systems={sys} />
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
+      )}
+
+      {/* Legacy accordion — closed by default */}
+      {hasLegacy && !onlyCurrent && (
+        <Card className="glass-panel">
+          <CardHeader className="pb-2">
+            <Accordion type="single" collapsible value={legacyOpen ? "legacy" : ""} onValueChange={(v) => setLegacyOpen(v === "legacy")}>
+              <AccordionItem value="legacy" className="border-b-0">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-amber-400/80" />
+                    <span className="text-sm font-semibold">
+                      Legacy Systems
+                    </span>
+                    <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
+                      {legacyStages.length} stages · {legacySystemsOwned}/{legacySystemsTotal} owned
+                    </Badge>
+                    {isL5Plus && (
+                      <span className="text-[0.6rem] text-muted-foreground">
+                        (Stages 1-{Math.min(5, stageIndex)} — collapsed for higher-layer play)
+                      </span>
+                    )}
+                    {isL2Plus && !isL5Plus && (
+                      <span className="text-[0.6rem] text-muted-foreground">
+                        (Stages 1-{Math.min(2, stageIndex)} — collapsed at Enlightenment+)
+                      </span>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3 pt-2">
+                    {legacyStages.map((st) => {
+                      const sys = systemsForStage(st.id);
+                      return (
+                        <div key={st.id} className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wide">
+                            <span>{st.icon}</span>
+                            {st.name} ({sys.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{sys.length})
+                          </div>
+                          <SystemsGrid systems={sys} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </CardHeader>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// Helper grid sub-component (renders SystemCards for a list of systems)
+function SystemsGrid({ systems }: { systems: SystemDef[] }) {
+  const resources = useGameStore((s) => s.resources);
+  const capacities = useGameStore((s) => s.capacities);
+  const ownedSystems = useGameStore((s) => s.ownedSystems);
+  const systemEnabled = useGameStore((s) => s.systemEnabled);
+  const technologies = useGameStore((s) => s.technologies);
+  const upgrades = useGameStore((s) => s.upgrades);
+  const buySystem = useGameStore((s) => s.buySystem);
+  const toggleSystem = useGameStore((s) => s.toggleSystem);
+  const costReduction = (upgrades["frugality"] || 0) * 0.04;
+
+  if (systems.length === 0) {
+    return <div className="text-xs text-muted-foreground py-2">No systems for this stage.</div>;
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {systems.map((sys) => {
+        const owned = ownedSystems[sys.id] || 0;
+        const cost = systemCost(sys, owned, costReduction);
+        const canAfford = Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+        const atMax = sys.maxOwned ? owned >= sys.maxOwned : false;
+        const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
+        const enabled = systemEnabled[sys.id] !== false;
+        const capped = owned > 0 && isSystemCapped(sys.id, resources, capacities);
+        return (
+          <SystemCard
+            key={sys.id}
+            sys={sys}
+            owned={owned}
+            cost={cost}
+            canAfford={canAfford}
+            atMax={atMax}
+            techLocked={!!techLocked}
+            requiredTechName={techLocked ? TECH_MAP[sys.requiredTech!]?.name : undefined}
+            enabled={enabled}
+            capped={capped}
+            onBuy={(qty) => buySystem(sys.id, qty)}
+            onToggle={() => toggleSystem(sys.id)}
+          />
+        );
+      })}
     </div>
   );
 }
 
 interface SystemCardProps {
-  sys: typeof import("@/game/data/systems").SYSTEMS[number];
+  sys: typeof SYSTEMS[number];
   owned: number;
   cost: Partial<Record<string, number>>;
   canAfford: boolean;
@@ -205,6 +392,15 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
                 +{formatNumber((v as number) * owned, 2)}/s {resourceIcon(r)}
               </span>
             ))}
+          </div>
+        )}
+        {/* Population growth (pop-growth systems) */}
+        {sys.popGrowth && (
+          <div className="flex flex-wrap gap-1 text-xs">
+            <span className="text-muted-foreground">Pop growth:</span>
+            <span className="font-semibold" style={{ color: "#10b981" }}>
+              +{formatNumber(sys.popGrowth * owned, 2)}/s 👥
+            </span>
           </div>
         )}
         {sys.capacityBoost && Object.keys(sys.capacityBoost).length > 0 && owned > 0 && (

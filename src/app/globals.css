@@ -570,7 +570,9 @@
    ============================================================ */
 
 .sticky-footer {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 30;
   backdrop-filter: blur(8px);

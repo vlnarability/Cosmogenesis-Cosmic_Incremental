@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Eye, Sparkles, Star, Sun, Disc3 } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 // 5×4 grid layout — node index = row*5 + col
 const GRID_COLS = 5;
@@ -139,9 +140,10 @@ export function EnlightenmentModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Eye className="w-5 h-5" />
             Layer 2 — Enlightenment (Constellation Map)
+            <BackgroundLayerBadge layerId="enlightenment" />
           </DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>

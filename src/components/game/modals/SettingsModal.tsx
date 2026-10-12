@@ -32,9 +32,11 @@ export function SettingsModal() {
   const activeLayerTheme = useGameStore((s) => s.activeLayerTheme);
   const activeSpecialTheme = useGameStore((s) => s.activeSpecialTheme);
   const unlockedThemes = useGameStore((s) => s.unlockedThemes || { "stage-cell": true });
+  const themeMode = useGameStore((s) => s.themeMode || "auto");
   const setStageTheme = useGameStore((s) => s.setStageTheme);
   const setLayerTheme = useGameStore((s) => s.setLayerTheme);
   const setSpecialTheme = useGameStore((s) => s.setSpecialTheme);
+  const setThemeMode = useGameStore((s) => s.setThemeMode);
 
   // Game stats
   const time = useGameStore((s) => s.time);
@@ -313,6 +315,51 @@ export function SettingsModal() {
             Stage themes set the base palette. Divine overlays (Layer 1-10) tint the primary/accent colors.
             Special themes override everything when active. Locked themes show "???". Themes auto-unlock as you progress.
           </p>
+
+          {/* Theme mode toggle: Auto vs Custom */}
+          <div className="stat-card !p-2.5 flex items-center gap-3 mt-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold flex items-center gap-1.5">
+                <span>Theme Mode</span>
+                <span className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">
+                  {themeMode === "auto" ? "Auto · follows stage/layer" : "Custom · locked in"}
+                </span>
+              </div>
+              <p className="text-[0.65rem] text-muted-foreground mt-0.5 leading-snug">
+                {themeMode === "auto"
+                  ? "Themes will switch automatically as you advance through stages and unlock layers. Switch to Custom to lock in your favorite look."
+                  : "Your selected theme stays locked even as you progress. Switch back to Auto to follow the stage/layer."}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setThemeMode("auto")}
+                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                  themeMode === "auto"
+                    ? "bg-primary/15 border-primary/50 text-primary"
+                    : "border-border/50 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Auto
+              </button>
+              <button
+                onClick={() => setThemeMode("custom")}
+                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                  themeMode === "custom"
+                    ? "bg-primary/15 border-primary/50 text-primary"
+                    : "border-border/50 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Custom
+              </button>
+            </div>
+          </div>
+
+          {themeMode === "auto" && (
+            <div className="text-[0.65rem] text-amber-300/80 italic px-1">
+              ⚙ Auto mode is active — manual theme picks below are overridden until you switch to Custom.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
             {/* Stage themes */}

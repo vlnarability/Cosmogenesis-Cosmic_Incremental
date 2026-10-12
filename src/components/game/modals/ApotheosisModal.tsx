@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Crown, CheckCircle2, Flame, AlertTriangle, RotateCcw, Sparkles } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const GRID_COLS = 8;
 const GRID_ROWS = 4;
@@ -80,11 +81,13 @@ export function ApotheosisModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Crown className="w-5 h-5" />
             Layer 5 — Apotheosis (Heresy Web)
+            <BackgroundLayerBadge layerId="apotheosis" />
           </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between">
             <span>
               Contain the heresy. Click a follower to Convert (5 Div) or Purge (free, removes).
               50% heresy ends the run.
@@ -96,6 +99,8 @@ export function ApotheosisModal() {
               <Badge variant="outline" className={heresy >= 75 ? "text-rose-400 border-rose-400/60" : "text-rose-300 border-rose-400/40"}>
                 {heresy.toFixed(1)} / 100 Heresy
               </Badge>
+            </div>
+          
             </div>
           </DialogDescription>
         </DialogHeader>

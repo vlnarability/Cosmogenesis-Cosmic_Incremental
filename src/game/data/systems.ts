@@ -73,6 +73,19 @@ export const SYSTEMS: SystemDef[] = [
     maxOwned: 1,
     grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
+  {
+    id: "mitochondrial_bloom",
+    name: "Mitochondrial Bloom",
+    desc: "A burst of mitochondrial energy that accelerates cell division.",
+    stage: "cell",
+    icon: "⚡",
+    category: "Growth",
+    baseCost: { glucose: 30, atp: 15 },
+    costGrowth: 1.5,
+    produces: {},
+    popGrowth: 0.05,
+    maxOwned: 25,
+  },
 
   // ===== CREATURE =====
   {
@@ -131,6 +144,19 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { materials: 15, knowledge: 8 },
     costGrowth: 1.28,
     produces: { knowledge: 0.5, culture: 0.2 },
+  },
+  {
+    id: "brood_chamber",
+    name: "Brood Chamber",
+    desc: "A warm, protected chamber where eggs hatch in safety.",
+    stage: "creature",
+    icon: "🥚",
+    category: "Growth",
+    baseCost: { organic_matter: 40, proteins: 20 },
+    costGrowth: 1.5,
+    produces: {},
+    popGrowth: 0.08,
+    maxOwned: 25,
   },
 
   // ===== TRIBAL =====
@@ -203,6 +229,19 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { culture: 0.5, happiness: 0.2, science: 0.1 },
   },
+  {
+    id: "hearth_circle",
+    name: "Hearth Circle",
+    desc: "A ring of fires where families gather, and the tribe grows.",
+    stage: "tribal",
+    icon: "🔥",
+    category: "Growth",
+    baseCost: { wood: 50, food: 30 },
+    costGrowth: 1.5,
+    produces: { happiness: 0.05 },
+    popGrowth: 0.1,
+    maxOwned: 25,
+  },
 
   // ===== CIVILIZATION =====
   {
@@ -274,6 +313,19 @@ export const SYSTEMS: SystemDef[] = [
     produces: { culture: 0.8, happiness: 0.5 },
     grantsAffinity: { archetype: "necroid", amount: 2 },
   },
+  {
+    id: "sanitation_grid",
+    name: "Sanitation Grid",
+    desc: "Clean water and waste removal cut disease; population soars.",
+    stage: "civilization",
+    icon: "🚿",
+    category: "Growth",
+    baseCost: { materials: 80, gold: 60 },
+    costGrowth: 1.6,
+    produces: {},
+    popGrowth: 0.15,
+    maxOwned: 25,
+  },
 
   // ===== EMPIRE =====
   {
@@ -309,6 +361,19 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { military_power: 3.0, influence: 0.5 },
     upkeep: { gold: 0.2 },
+  },
+  {
+    id: "fertility_program",
+    name: "Fertility Program",
+    desc: "State-sponsored growth incentives. Babies become policy.",
+    stage: "empire",
+    icon: "👶",
+    category: "Growth",
+    baseCost: { production: 120, influence: 80 },
+    costGrowth: 1.6,
+    produces: {},
+    popGrowth: 0.2,
+    maxOwned: 25,
   },
 
   // ===== SOLAR =====
@@ -348,6 +413,19 @@ export const SYSTEMS: SystemDef[] = [
     produces: { food: 3.0, water: 2.0, production: 2.0 },
     maxOwned: 12,
   },
+  {
+    id: "orbital_habitats",
+    name: "Orbital Habitats",
+    desc: "Vast rotating stations house billions beyond any planet's surface.",
+    stage: "solar",
+    icon: "🛰️",
+    category: "Growth",
+    baseCost: { energy: 200, alloys: 150 },
+    costGrowth: 1.7,
+    produces: {},
+    popGrowth: 0.3,
+    maxOwned: 25,
+  },
 
   // ===== GALACTIC =====
   {
@@ -383,6 +461,19 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.40,
     produces: { divinity: 0.3, influence: 1.0 },
     maxOwned: 5,
+  },
+  {
+    id: "genetic_synthesizer",
+    name: "Genetic Synthesizer",
+    desc: "Designs viable populations from raw genetic data. Life, on demand.",
+    stage: "galactic",
+    icon: "🧬",
+    category: "Growth",
+    baseCost: { data: 500, alloys: 300 },
+    costGrowth: 1.8,
+    produces: {},
+    popGrowth: 0.5,
+    maxOwned: 25,
   },
 ];
 

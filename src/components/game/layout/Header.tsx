@@ -4,9 +4,11 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { RITUALS, RITUAL_MAP } from "@/game/data/transcendence";
 import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
+import { useActiveLayer, layerName, layerRank } from "@/game/state/layerHelpers";
 import { formatNumber, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
-import { Pause, Play, FastForward, Save, Settings, Store, Clock, Check, Skull, Crown, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Pause, Play, FastForward, Save, Settings, Store, Clock, Check, Skull, Crown, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
 
@@ -56,6 +58,33 @@ export function Header() {
   const speedIdx = speeds.indexOf(speed);
   const nextSpeed = speeds[(speedIdx + 1) % speeds.length];
 
+  // Layer-separation: at L5+, collapse L1-L3 into "Lower Layers" dropdown.
+  const { activeLayerId, activeLayerRank, isAtLeast } = useActiveLayer();
+  const isL5Plus = isAtLeast("apotheosis");
+  const activeLayerDisplayName = layerName(activeLayerId);
+
+  // Layer button definitions — used to render either standalone buttons or items in the Lower Layers dropdown.
+  const layerButtons = [
+    { id: "L1", label: "Trials", icon: <Skull className="w-3 h-3 mr-1" />, onClick: () => setShowChallenges(true), unlocked: !!unlockedChallenges, layerId: "evolution", pulse: !!activeChallenge, extra: activeChallenge ? <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> : null, title: "Layer 1 — Trials" },
+    { id: "L2", label: "Foresight", icon: <Eye className="w-3 h-3 mr-1" />, onClick: () => setShowEnlightenment(true), unlocked: !!unlockedLayers?.enlightenment, layerId: "enlightenment", title: "Layer 2 — Foresight" },
+    { id: "L3", label: "Sacrifice", icon: <Triangle className="w-3 h-3 mr-1" />, onClick: () => setShowTranscendence(true), unlocked: !!unlockedLayers?.transcendence, layerId: "transcendence", title: "Layer 3 — Sacrifice" },
+    { id: "L4", label: "Genesis", icon: <Egg className="w-3 h-3 mr-1" />, onClick: () => setShowGenesis(true), unlocked: !!unlockedLayers?.genesis, layerId: "genesis", title: "Layer 4 — Genesis" },
+    { id: "L5", label: "Divine", icon: <Sparkles className="w-3 h-3 mr-1" />, onClick: () => setShowApotheosis(true), unlocked: !!unlockedLayers?.apotheosis, layerId: "apotheosis", pulse: heresy >= 75, extra: heresy >= 75 ? <span className="ml-1 w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> : null, title: "Layer 5 — Divine" },
+    { id: "L6", label: "System", icon: <Circle className="w-3 h-3 mr-1" />, onClick: () => setShowSingularity(true), unlocked: !!unlockedLayers?.singularity, layerId: "singularity", title: "Layer 6 — System" },
+    { id: "L7", label: "Hybrid", icon: <Atom className="w-3 h-3 mr-1" />, onClick: () => setShowOmnipotence(true), unlocked: !!unlockedLayers?.omnipotence, layerId: "omnipotence", pulse: instability >= 75, extra: instability >= 75 ? <span className="ml-1 w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> : null, title: "Layer 7 — Hybrid" },
+    { id: "L8", label: "Masks", icon: <Church className="w-3 h-3 mr-1" />, onClick: () => setShowDivinityLayer(true), unlocked: !!unlockedLayers?.divinity, layerId: "divinity", title: "Layer 8 — Masks" },
+    { id: "L9", label: "Echoes", icon: <InfinityIcon className="w-3 h-3 mr-1" />, onClick: () => setShowInfinity(true), unlocked: !!unlockedLayers?.infinity, layerId: "infinity", title: "Layer 9 — Echoes" },
+    { id: "L10", label: "Eternity", icon: <Star className="w-3 h-3 mr-1" />, onClick: () => setShowEternity(true), unlocked: !!unlockedLayers?.eternity, layerId: "eternity", title: "Layer 10 — Eternity" },
+  ];
+  // At L5+, L1-L3 collapse into "Lower Layers" dropdown. L4+ remain standalone (if unlocked).
+  const collapseLowerLayers = isL5Plus;
+  const lowerLayerButtons = collapseLowerLayers
+    ? layerButtons.filter((b) => ["L1", "L2", "L3"].includes(b.id) && b.unlocked)
+    : [];
+  const standaloneLayerButtons = collapseLowerLayers
+    ? layerButtons.filter((b) => !["L1", "L2", "L3"].includes(b.id))
+    : layerButtons;
+
   // Effective speed = base speed × temporal_acceleration multiplier
   const temporalLvl = upgrades["temporal_acceleration"] || 0;
   const temporalMult = 1 + temporalLvl * 0.5;
@@ -95,9 +124,19 @@ export function Header() {
             <h1 className="text-base font-bold leading-tight truncate">
               Evolution Idle
             </h1>
-            <p className="text-xs text-muted-foreground leading-tight truncate">
-              {stage.name} · {stage.tagline}
-            </p>
+            {/* Stage label — at L5+, de-emphasize stage and show layer name as more prominent */}
+            {isL5Plus ? (
+              <p className="text-xs leading-tight truncate">
+                <span className="font-bold text-amber-300">
+                  {activeLayerDisplayName} (L{activeLayerRank})
+                </span>
+                <span className="text-muted-foreground/70"> · {stage.name}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground leading-tight truncate">
+                {stage.name} · {stage.tagline}
+              </p>
+            )}
           </div>
         </div>
 
@@ -162,81 +201,47 @@ export function Header() {
 
         {/* Actions */}
         <div className="flex items-center gap-1">
-          {unlockedChallenges && (
+          {/* Lower Layers dropdown (L5+ only — replaces L1-L3 standalone buttons) */}
+          {collapseLowerLayers && lowerLayerButtons.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 hidden sm:flex"
+                  title="Lower prestige layers (L1-L3)"
+                >
+                  <Layers className="w-3 h-3 mr-1" />
+                  Lower Layers
+                  <span className="ml-1 text-[0.6rem] text-muted-foreground">({lowerLayerButtons.length})</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {lowerLayerButtons.map((b) => (
+                  <DropdownMenuItem key={b.id} onClick={b.onClick} className="cursor-pointer">
+                    {b.icon}
+                    <span className="flex-1">{b.label}</span>
+                    {b.extra}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {/* Standalone layer buttons — either all layers (below L5) or L4+ (at L5+) */}
+          {standaloneLayerButtons.filter((b) => b.unlocked).map((b) => (
             <Button
+              key={b.id}
               variant="outline"
               size="sm"
               className="h-8 hidden sm:flex"
-              onClick={() => setShowChallenges(true)}
-              title="Layer 1 Trials"
+              onClick={b.onClick}
+              title={b.title}
             >
-              <Skull className="w-3 h-3 mr-1" />
-              Trials
-              {activeChallenge && (
-                <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              )}
+              {b.icon}
+              {b.label}
+              {b.extra}
             </Button>
-          )}
-          {unlockedLayers?.enlightenment && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowEnlightenment(true)} title="Layer 2 — Foresight">
-              <Eye className="w-3 h-3 mr-1" />
-              Foresight
-            </Button>
-          )}
-          {unlockedLayers?.transcendence && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowTranscendence(true)} title="Layer 3 — Sacrifice">
-              <Triangle className="w-3 h-3 mr-1" />
-              Sacrifice
-            </Button>
-          )}
-          {unlockedLayers?.genesis && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowGenesis(true)} title="Layer 4 — Genesis">
-              <Egg className="w-3 h-3 mr-1" />
-              Genesis
-            </Button>
-          )}
-          {unlockedLayers?.apotheosis && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowApotheosis(true)} title="Layer 5 — Divine">
-              <Sparkles className="w-3 h-3 mr-1" />
-              Divine
-              {heresy >= 75 && (
-                <span className="ml-1 w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              )}
-            </Button>
-          )}
-          {unlockedLayers?.singularity && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowSingularity(true)} title="Layer 6 — System">
-              <Circle className="w-3 h-3 mr-1" />
-              System
-            </Button>
-          )}
-          {unlockedLayers?.omnipotence && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowOmnipotence(true)} title="Layer 7 — Hybrid">
-              <Atom className="w-3 h-3 mr-1" />
-              Hybrid
-              {instability >= 75 && (
-                <span className="ml-1 w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              )}
-            </Button>
-          )}
-          {unlockedLayers?.divinity && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowDivinityLayer(true)} title="Layer 8 — Masks">
-              <Church className="w-3 h-3 mr-1" />
-              Masks
-            </Button>
-          )}
-          {unlockedLayers?.infinity && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowInfinity(true)} title="Layer 9 — Echoes">
-              <InfinityIcon className="w-3 h-3 mr-1" />
-              Echoes
-            </Button>
-          )}
-          {unlockedLayers?.eternity && (
-            <Button variant="outline" size="sm" className="h-8 hidden sm:flex" onClick={() => setShowEternity(true)} title="Layer 10 — Eternity">
-              <Star className="w-3 h-3 mr-1" />
-              Eternity
-            </Button>
-          )}
+          ))}
           <Button
             variant="outline"
             size="sm"
@@ -301,20 +306,40 @@ export function Header() {
           <FastForward className="w-3 h-3 mr-1" />
           {effectiveSpeed.toFixed(1)}×
         </Button>
-        {unlockedChallenges && (
+        {/* L1-L3 standalone buttons — shown only when NOT collapsed (below L5+) */}
+        {!collapseLowerLayers && unlockedChallenges && (
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowChallenges(true)}>
             <Skull className="w-3 h-3 mr-1" />Trials
           </Button>
         )}
-        {unlockedLayers?.enlightenment && (
+        {!collapseLowerLayers && unlockedLayers?.enlightenment && (
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowEnlightenment(true)}>
             <Eye className="w-3 h-3 mr-1" />Foresight
           </Button>
         )}
-        {unlockedLayers?.transcendence && (
+        {!collapseLowerLayers && unlockedLayers?.transcendence && (
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowTranscendence(true)}>
             <Triangle className="w-3 h-3 mr-1" />Sacrifice
           </Button>
+        )}
+        {/* At L5+, hide L1-L3 standalone on mobile too — collapse into a single dropdown button */}
+        {collapseLowerLayers && lowerLayerButtons.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 px-2 text-xs" title="Lower prestige layers (L1-L3)">
+                <Layers className="w-3 h-3 mr-1" />
+                Lower ({lowerLayerButtons.length})
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-44">
+              {lowerLayerButtons.map((b) => (
+                <DropdownMenuItem key={b.id} onClick={b.onClick} className="cursor-pointer">
+                  {b.icon}
+                  <span className="flex-1">{b.label}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {unlockedLayers?.genesis && (
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowGenesis(true)}>

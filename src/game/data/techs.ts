@@ -51,6 +51,18 @@ export const TECHS: TechDef[] = [
     multiplier: { target: "production", value: 0.15 },
     grantsAffinity: { archetype: "plantoid", amount: 3 },
   },
+  {
+    id: "cellular_division",
+    name: "Cellular Division",
+    desc: "Refine the cycle of mitosis. The cell divides faster and more often. +20% population growth.",
+    stage: "cell",
+    cost: { glucose: 50, atp: 25, proteins: 15 },
+    branch: "Metabolism",
+    tier: 2,
+    requires: ["enzymatic_pathways"],
+    effects: "+20% population growth",
+    multiplier: { target: "population", value: 0.20 },
+  },
 
   // ===== CREATURE =====
   {
@@ -101,6 +113,18 @@ export const TECHS: TechDef[] = [
     multiplier: { target: "production", value: 0.20 },
     grantsAffinity: { archetype: "mammalian", amount: 3 },
   },
+  {
+    id: "mating_seasons",
+    name: "Mating Seasons",
+    desc: "Synchronized cycles of courtship and birth swell the pack. +25% population growth.",
+    stage: "creature",
+    cost: { knowledge: 150 },
+    branch: "Behavior",
+    tier: 2,
+    requires: ["pack_instinct"],
+    effects: "+25% population growth",
+    multiplier: { target: "population", value: 0.25 },
+  },
 
   // ===== TRIBAL =====
   {
@@ -148,6 +172,18 @@ export const TECHS: TechDef[] = [
     multiplier: { target: "production", value: 0.60 },
     grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
+  {
+    id: "midwifery",
+    name: "Midwifery",
+    desc: "Trained hands guide every birth. Fewer lost, more to grow the tribe. +30% population growth.",
+    stage: "tribal",
+    cost: { culture: 200 },
+    branch: "Society",
+    tier: 2,
+    requires: ["agriculture"],
+    effects: "+30% population growth",
+    multiplier: { target: "population", value: 0.30 },
+  },
 
   // ===== CIVILIZATION =====
   {
@@ -194,6 +230,18 @@ export const TECHS: TechDef[] = [
     effects: "+50% military power",
     multiplier: { target: "production", value: 0.50 },
   },
+  {
+    id: "public_health",
+    name: "Public Health",
+    desc: "Sanitation, vaccination, and clean water at city scale. Plagues recede; cities swell. +35% population growth.",
+    stage: "civilization",
+    cost: { science: 300 },
+    branch: "Civic",
+    tier: 2,
+    requires: ["scientific_method"],
+    effects: "+35% population growth",
+    multiplier: { target: "population", value: 0.35 },
+  },
 
   // ===== EMPIRE =====
   {
@@ -218,6 +266,18 @@ export const TECHS: TechDef[] = [
     effects: "+30% gold & production",
     multiplier: { target: "production", value: 0.30 },
   },
+  {
+    id: "cloning_vats",
+    name: "Cloning Vats",
+    desc: "Why leave population to chance? Grow citizens to order. +50% population growth.",
+    stage: "empire",
+    cost: { production: 500 },
+    branch: "Industry",
+    tier: 2,
+    requires: ["bureaucracy"],
+    effects: "+50% population growth",
+    multiplier: { target: "population", value: 0.50 },
+  },
 
   // ===== SOLAR =====
   {
@@ -241,6 +301,18 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+50% alloys & production",
     multiplier: { target: "production", value: 0.50 },
+  },
+  {
+    id: "generation_ships",
+    name: "Generation Ships",
+    desc: "Self-sustaining arks carry entire civilizations across the dark. +60% population growth.",
+    stage: "solar",
+    cost: { energy: 800 },
+    branch: "Astro",
+    tier: 2,
+    requires: ["fusion_power"],
+    effects: "+60% population growth",
+    multiplier: { target: "population", value: 0.60 },
   },
 
   // ===== GALACTIC =====
@@ -276,6 +348,18 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+100% divinity, unlocks ascension paths",
     multiplier: { target: "production", value: 1.0 },
+  },
+  {
+    id: "cosmic_nursery",
+    name: "Cosmic Nursery",
+    desc: "Engineer nebulae into cradles of new life. Stars themselves give birth. +100% population growth.",
+    stage: "galactic",
+    cost: { data: 1500 },
+    branch: "Cosmic",
+    tier: 2,
+    requires: ["quantum_computing"],
+    effects: "+100% population growth",
+    multiplier: { target: "population", value: 1.0 },
   },
 ];
 

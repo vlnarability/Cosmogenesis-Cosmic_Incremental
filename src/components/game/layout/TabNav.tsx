@@ -1,6 +1,7 @@
 "use client";
 
 import { useGameStore } from "@/game/state/store";
+import { useActiveLayer } from "@/game/state/layerHelpers";
 import type { TabId } from "@/game/state/types";
 import { cn } from "@/lib/utils";
 import {
@@ -17,7 +18,14 @@ import {
   Crown,
 } from "lucide-react";
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode; mobile?: boolean }[] = [
+interface TabDef {
+  id: TabId;
+  label: string;
+  icon: React.ReactNode;
+  mobile?: boolean;
+}
+
+const ALL_TABS: TabDef[] = [
   { id: "actions", label: "Actions", icon: <Hand className="w-4 h-4" /> },
   { id: "systems", label: "Systems", icon: <Building2 className="w-4 h-4" /> },
   { id: "production", label: "Production", icon: <Factory className="w-4 h-4" /> },
@@ -35,13 +43,34 @@ export function TabNav() {
   const setTab = useGameStore((s) => s.setTab);
   const setShowShop = useGameStore((s) => s.setShowShop);
   const evolutionPoints = useGameStore((s) => s.evolutionPoints);
+  const { isAtLeast } = useActiveLayer();
+
+  // Layer-based tab visibility:
+  // - L3+ (Transcendence+): hide "Actions" (automation has taken over)
+  // - L4+ (Genesis+): hide "Story" (accessible via Prestige tab)
+  // - L5+ (Apotheosis+): hide "Production" (fully automated)
+  // - Always visible: Systems, Tech, Prestige, Achievements, Log, Codex, Archive
+  const hideActions = isAtLeast("transcendence");
+  const hideStory = isAtLeast("genesis");
+  const hideProduction = isAtLeast("apotheosis");
+
+  const visibleTabs = ALL_TABS.filter((tab) => {
+    if (tab.id === "actions" && hideActions) return false;
+    if (tab.id === "story" && hideStory) return false;
+    if (tab.id === "production" && hideProduction) return false;
+    return true;
+  });
+
+  // If current tab was hidden (e.g. player advanced to L3 while on Actions tab),
+  // show a fallback "More" style indicator pointing to Prestige tab so they don't get stuck.
+  const currentTabVisible = visibleTabs.some((t) => t.id === currentTab);
 
   return (
     <>
       {/* Desktop tab bar */}
       <div className="desktop-only sticky top-[95px] z-20 glass-strong border-b border-border">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 flex items-center gap-1 overflow-x-auto no-scrollbar py-1.5">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setTab(tab.id)}
@@ -51,6 +80,17 @@ export function TabNav() {
               <span>{tab.label}</span>
             </button>
           ))}
+          {/* If the current tab is hidden, show a fallback button to go to Prestige */}
+          {!currentTabVisible && (
+            <button
+              onClick={() => setTab("prestige")}
+              className="tab-btn"
+              title="Your previous tab was hidden at a higher layer — redirecting to Prestige"
+            >
+              <Crown className="w-4 h-4" />
+              <span>Back to Prestige</span>
+            </button>
+          )}
           <div className="flex-1" />
           {evolutionPoints > 0 && (
             <button
@@ -65,10 +105,10 @@ export function TabNav() {
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — show top 4 visible + "More" */}
       <nav className="mobile-only sticky-footer glass-strong border-t border-border" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="flex items-center justify-around py-1.5 px-1">
-          {TABS.slice(0, 4).map((tab) => (
+          {visibleTabs.slice(0, 4).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setTab(tab.id)}
@@ -84,14 +124,14 @@ export function TabNav() {
             </button>
           ))}
           <button
-            onClick={() => setTab("story")}
+            onClick={() => setTab("prestige")}
             className={cn(
               "flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-md text-[0.6rem] font-medium transition-colors min-w-[44px] min-h-[44px] justify-center",
-              currentTab === "story" ? "text-foreground bg-muted/40" : "text-muted-foreground"
+              currentTab === "prestige" ? "text-foreground bg-muted/40" : "text-muted-foreground"
             )}
           >
             <span className="w-5 h-5 flex items-center justify-center">
-              <BookOpen className="w-4 h-4" />
+              <Crown className="w-4 h-4" />
             </span>
             More
           </button>

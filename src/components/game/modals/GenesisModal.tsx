@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Egg, CheckCircle2, RotateCcw } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const GRID_COLS = 5;
 const GRID_ROWS = 4;
@@ -131,9 +132,10 @@ export function GenesisModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Egg className="w-5 h-5" />
             Layer 4 — Genesis (Sacred Grid)
+            <BackgroundLayerBadge layerId="genesis" />
           </DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>

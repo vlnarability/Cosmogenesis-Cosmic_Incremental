@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles } from "lucide-react";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 export function OmnipotenceModal() {
   const show = useGameStore((s) => s.showOmnipotence);
@@ -61,11 +62,13 @@ export function OmnipotenceModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Dna className="w-5 h-5" />
             Layer 7 — Omnipotence (Bio-engineering)
+            <BackgroundLayerBadge layerId="omnipotence" />
           </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between">
             <span>
               Design creatures, combine them into Legions. Each active creature adds instability — at 100, they go rogue.
             </span>
@@ -79,6 +82,8 @@ export function OmnipotenceModal() {
               <Badge variant="outline" className={instability >= 75 ? "text-rose-400 border-rose-400/60" : "text-rose-300 border-rose-400/40"}>
                 {instability.toFixed(1)} / 100
               </Badge>
+            </div>
+          
             </div>
           </DialogDescription>
         </DialogHeader>

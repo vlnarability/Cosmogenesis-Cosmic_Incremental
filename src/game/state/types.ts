@@ -53,6 +53,9 @@ export interface SystemDef {
   maxOwned?: number;
   requiredTech?: string;
   grantsAffinity?: { archetype: string; amount: number };
+  // Population-growth systems: flat per-second contribution to
+  // `populationProgress` (independent of resource production).
+  popGrowth?: number;
 }
 
 export interface TechDef {
@@ -65,7 +68,7 @@ export interface TechDef {
   tier: number;
   requires?: string[];
   effects: string;
-  multiplier?: { target: "production" | "manual" | "capacity"; value: number };
+  multiplier?: { target: "production" | "manual" | "capacity" | "population"; value: number };
   grantsAffinity?: { archetype: string; amount: number };
 }
 
@@ -90,6 +93,9 @@ export interface StageDef {
 // Upgrade effect types. "manual_mult" and the "manual" category were removed
 // (no manual actions scale that way anymore). "acceleration" was added for
 // time-warping upgrades, plus several new automation / prestige effects.
+// "layer" category + 18 layer-specific effect types were added for the
+// SHOP-LAYER-ITEMS task — these only appear in the shop once their layer is
+// unlocked (see UpgradeDef.requiresLayer).
 export type UpgradeEffectType =
   | "auto_mult"
   | "cost_reduction"
@@ -107,7 +113,26 @@ export type UpgradeEffectType =
   | "deep_memory"
   | "cosmic_understanding"
   | "universal_boost"
-  | "universal_speed";
+  | "universal_speed"
+  // Layer-specific (require their layer unlocked to appear in shop):
+  | "foresight_discount"
+  | "constellation_boost"
+  | "ritual_extension"
+  | "market_savvy"
+  | "world_blueprint"
+  | "disaster_shield"
+  | "prophet_inspiration"
+  | "heresy_ward"
+  | "rift_redirect"
+  | "dimension_boost"
+  | "mutation_master"
+  | "genetic_stabilizer"
+  | "diplomatic_gift"
+  | "amplifier_overcharge"
+  | "war_preparation"
+  | "temporal_shield"
+  | "paradox_insight"
+  | "universe_foundation";
 
 export interface UpgradeDef {
   id: string;
@@ -116,8 +141,13 @@ export interface UpgradeDef {
   baseCost: number;
   maxLevel: number;
   costGrowth: number;
-  category: "automation" | "economy" | "acceleration" | "prestige" | "universal";
+  category: "automation" | "economy" | "acceleration" | "prestige" | "universal" | "layer";
   requiresWins?: number;
+  // Layer id matching a key in `GameState.unlockedLayers`
+  // (e.g. "enlightenment", "transcendence", "genesis", "apotheosis",
+  // "singularity", "omnipotence", "divinity", "infinity", "eternity").
+  // When set, the upgrade is hidden from the shop until that layer is unlocked.
+  requiresLayer?: string;
   effect: { type: UpgradeEffectType; value: number };
 }
 
@@ -310,6 +340,8 @@ export interface GameState {
   activeLayerTheme: string | null;   // null = no overlay
   activeSpecialTheme: string | null; // null = none (overrides stage+layer when set)
   unlockedThemes: Record<string, boolean>; // which themes are unlocked
+  // Theme mode: "auto" = themes follow stage/layer automatically; "custom" = lock player's manual pick
+  themeMode: "auto" | "custom";
 
   // ===== QUICK WINS =====
   // WIN 2 — Active ability cooldowns (runtime; persisted across refresh for fairness)
@@ -497,6 +529,7 @@ export interface GameStore extends GameState {
   setStageTheme: (id: string) => void;
   setLayerTheme: (id: string | null) => void;
   setSpecialTheme: (id: string | null) => void;
+  setThemeMode: (mode: "auto" | "custom") => void;
 
   // ===== QUICK WINS =====
   // WIN 2 — Active abilities (one per prestige layer)
@@ -509,6 +542,13 @@ export interface GameStore extends GameState {
   setActiveTrialRealm: (realmId: string | null) => void;
   realmBreakthrough: () => void;             // Realm of Growth click
   realmDiscontentAction: (action: "celebrate" | "tax" | "ignore") => void;
+  // TRIALS-7 — 7 newly playable realms
+  realmFaminePump: (resourceId: "a" | "b" | "c") => void;          // Realm of Famine — push converter forward
+  realmIgnoranceBuyNode: (nodeId: number) => void;                 // Realm of Ignorance — unlock a tech node
+  realmStagnationUpgrade: (stage: number) => void;                 // Realm of Stagnation — upgrade a stage
+  realmWeaknessPlaceTower: () => void;                             // Realm of Weakness — buy a tower
+  realmPurityBuildSystem: () => void;                              // Realm of Purity — build a system
+  realmAsceticBuildSystem: (systemId: number) => void;            // Realm of the Ascetic — build one of 7 unique systems
 
   // Layer 2 — Constellation Map
   illuminateConstellationNode: (nodeId: string) => void;

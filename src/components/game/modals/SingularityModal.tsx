@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Circle, Cpu, CheckCircle2, RefreshCw, Zap } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const SPEED_OPTIONS = [
   { value: 1, label: "1×", desc: "Full speed" },
@@ -55,11 +56,13 @@ export function SingularityModal() {
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Circle className="w-5 h-5" />
             Layer 6 — Singularity (Dimension Engine)
+            <BackgroundLayerBadge layerId="singularity" />
           </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
+          <DialogDescription asChild>
+            <div className="flex items-center justify-between">
             <span>
               Three parallel dimensions evolve simultaneously. Sync progress between them — get all 3 to Galactic.
             </span>
@@ -70,6 +73,8 @@ export function SingularityModal() {
               <Badge variant="outline" className={allGalactic ? "text-emerald-300 border-emerald-400/40" : "text-amber-300 border-amber-400/40"}>
                 {galacticCount}/3 Galactic
               </Badge>
+            </div>
+          
             </div>
           </DialogDescription>
         </DialogHeader>
