@@ -150,10 +150,118 @@ export const OMNIPOTENCE_STANCE_MAP: Record<OmnipotenceStanceId, OmnipotenceStan
 
 // ----- Instability -----
 // Genetic instability accrues from equipped creatures. At 100, creatures go
-// rogue and the run collapses. Base rate 0.3/s before creature/stance multipliers.
-// Peak instability ≥ 80 unlocks Layer 8 (Divinity).
+// rogue and raid the player's galaxies (lose a random claimed system + reset
+// instability to 50). Base rate 0.3/s before creature/stance multipliers.
+// L7 → L8 unlock: repel OUTPOST_RAID_COUNT_FOR_L8 outpost raids.
 export const BASE_INSTABILITY_RATE = 0.3;
 export const OMNIPOTENCE_COMPLETE_PEAK = 80;
+export const INSTABILITY_ROGUE_THRESHOLD = 100;
+export const INSTABILITY_AFTER_ROGUE = 50;
+
+// ----- Skirmish Arena (L7 Outpost Raids) -----
+// 5 minor Old-God outposts harass the player's galaxies. Repelling 10 raids
+// completes L7 and unlocks L8 (Divine Alliance). Each victory grants 1 Divine
+// Fragment and 20 XP per deployed creature.
+export const OUTPOST_RAID_COUNT_FOR_L8 = 10;
+export const CREATURE_XP_PER_LEVEL = 100;   // each level needs 100 XP
+export const CREATURE_XP_PER_RAID = 20;     // each raid gives 20 XP per deployed creature
+export const OUTPOST_RAID_SPAWN_INTERVAL_SEC = 120;
+export const MAX_ACTIVE_OUTPOST_RAIDS = 3;
+
+export type OutpostRaidStatus = "active" | "won" | "lost";
+
+export interface OutpostRaidDef {
+  id: string;
+  name: string;
+  icon: string;
+  hp: number;
+  attack: number;
+  defense: number;
+  reward: { fragments: number };
+  desc: string;
+}
+
+export const OUTPOST_RAIDS: OutpostRaidDef[] = [
+  { id: "outpost_voidscout", name: "Void Scout",   icon: "👁️", hp: 80,  attack: 12, defense: 4,  reward: { fragments: 1 }, desc: "A lone eye of the Old Gods probing your frontier systems." },
+  { id: "outpost_huskpack",  name: "Husk Pack",    icon: "🦴", hp: 110, attack: 16, defense: 8,  reward: { fragments: 1 }, desc: "Shambling husks of dead stars, drawn to your worlds." },
+  { id: "outpost_tendril",  name: "Tendril Brood", icon: "🪼", hp: 140, attack: 20, defense: 6,  reward: { fragments: 1 }, desc: "A pseudopod of the Old God, tasting your galaxies." },
+  { id: "outpost_whisper",  name: "Whisper Vanguard", icon: "🜂", hp: 170, attack: 24, defense: 10, reward: { fragments: 1 }, desc: "Ahead of the main host — turns faithful against each other." },
+  { id: "outpost_eclipse",  name: "Eclipse Harbinger", icon: "🌑", hp: 220, attack: 30, defense: 14, reward: { fragments: 1 }, desc: "A herald that snuffs suns; tougher than the others." },
+];
+
+export const OUTPOST_RAID_MAP: Record<string, OutpostRaidDef> = Object.fromEntries(
+  OUTPOST_RAIDS.map((r) => [r.id, r])
+);
+
+/** Runtime state for one outpost raid (active or completed). */
+export interface OutpostRaid {
+  id: string;            // unique raid instance id
+  outpostDef: string;   // id into OUTPOST_RAID_MAP
+  status: OutpostRaidStatus;
+  bossHp: number;
+  bossMaxHp: number;
+  playerHp: number;
+  playerMaxHp: number;
+  turn: number;
+  log: string[];
+  deployedLegionIds: string[];
+}
+
+/**
+ * Returns the level of a creature given the persisted levels map. Level 1 baseline.
+ */
+export function creatureLevel(
+  creatureId: string,
+  levels: Record<string, number> | null | undefined
+): number {
+  if (!levels) return 1;
+  const lvl = levels[creatureId];
+  return lvl && lvl > 0 ? lvl : 1;
+}
+
+/**
+ * Per-level stat multiplier: +10% attack/defense/speed per level above 1.
+ * `creatureLevelBonus(1)` returns 1× on everything.
+ */
+export function creatureLevelBonus(level: number): {
+  attackMult: number;
+  defenseMult: number;
+  speedMult: number;
+} {
+  const m = 1 + Math.max(0, level - 1) * 0.1;
+  return { attackMult: m, defenseMult: m, speedMult: m };
+}
+
+/**
+ * Returns the player's total raid power for an outpost raid (with level bonus).
+ */
+export function raidDeployedPower(
+  raid: OutpostRaid,
+  legions: Array<Legion>,
+  creatures: Array<Creature>,
+  levels: Record<string, number> | null | undefined
+): { attack: number; defense: number; speed: number; count: number } {
+  const deployed = new Set<string>();
+  for (const lid of raid.deployedLegionIds) {
+    const legion = legions.find((l) => l.id === lid);
+    if (!legion) continue;
+    for (const cid of legion.creatureIds) deployed.add(cid);
+  }
+  let attack = 0;
+  let defense = 0;
+  let speed = 0;
+  let count = 0;
+  for (const c of creatures) {
+    if (!deployed.has(c.id)) continue;
+    const lvl = creatureLevel(c.id, levels);
+    const bonus = creatureLevelBonus(lvl);
+    attack += c.attack * bonus.attackMult;
+    defense += c.defense * bonus.defenseMult;
+    speed += c.speed * bonus.speedMult;
+    count += 1;
+  }
+  return { attack, defense, speed, count };
+}
 
 // ----- Helpers -----
 
@@ -270,10 +378,11 @@ export function effectiveInstabilityRate(
 }
 
 /**
- * Layer 8 (Divinity) unlock: peak genetic instability this run ≥ 80.
+ * Layer 8 (Divinity) unlock: repel OUTPOST_RAID_COUNT_FOR_L8 outpost raids
+ * (with 0 losses). Replaces the old peak-instability gate.
  */
-export function isOmnipotenceComplete(peakInstability: number): boolean {
-  return peakInstability >= OMNIPOTENCE_COMPLETE_PEAK;
+export function isOmnipotenceComplete(raidsRepelled: number): boolean {
+  return raidsRepelled >= OUTPOST_RAID_COUNT_FOR_L8;
 }
 
 /**

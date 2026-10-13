@@ -1,18 +1,18 @@
 // ===========================================================================
-// LAYER 10 — ETERNITY (ASCENSION)
+// LAYER 10 — ETERNITY (GENESIS ENGINE) — legacy compatibility shim
 // ===========================================================================
-// After defeating the Old Gods, the player god becomes one. Choose which minor
-// gods to keep as allies (they become your pantheon), and which to absorb
-// (their followers bring peace to the universe). Create new universes — the
-// "Reset" ending. The Testament Forge becomes "Universe Creation" — define the
-// rules of your new universe across 8 creation slots: Physics, Biology, Magic,
-// Time, Space, Consciousness, Death, Rebirth. Choosing any ending completes
-// the layer.
+// The original Layer 10 had: 8 universe-creation slots, pantheon kept-gods,
+// testament clauses, canonizations, permanence weaves, paradox counter.
+//
+// In the L10-GENESIS-ENGINE redesign, ALL of that has been replaced by the
+// Genesis Engine (crucible + divine relics + 100 archetypes) — see
+// `./genesisEngine.ts`. This file remains as a thin compatibility shim so that
+// legacy imports (PrestigeTab, upgrades, store, etc.) don't break the build.
 // ===========================================================================
 
-// ----- Universe Creation Slots (8) -----
-// Each slot defines a rule of the new universe. Filling all 8 unlocks the
-// "Reset" ending option.
+// ----- Legacy: Universe Creation Slots (8) — kept as empty array for any
+// code that references `UNIVERSE_SLOTS.length`. New L10 uses 10 Universe Rules
+// instead (see genesisEngine.ts UNIVERSE_RULES).
 export type UniverseSlotId =
   | "physics"
   | "biology"
@@ -28,120 +28,17 @@ export interface UniverseSlot {
   name: string;
   icon: string;
   desc: string;
-  options: UniverseSlotOption[];
+  options: any[];
 }
 
-export interface UniverseSlotOption {
-  id: string;
-  label: string;
-  desc: string;
-  bonus: {
-    productionMult?: number;
-    capMult?: number;
-    epMult?: number;
-    popGrowthMult?: number;
-    testamentMult?: number;
-  };
-  // FEATURE 10 — Forbidden Words: extremely powerful options that add +1 Paradox when chosen
-  forbidden?: boolean;
-}
+// Empty — the new Genesis Engine does not use these slots.
+export const UNIVERSE_SLOTS: UniverseSlot[] = [];
+export const UNIVERSE_SLOT_MAP: Record<UniverseSlotId, UniverseSlot> = {} as Record<UniverseSlotId, UniverseSlot>;
 
-export const UNIVERSE_SLOTS: UniverseSlot[] = [
-  {
-    id: "physics",
-    name: "Physics",
-    icon: "⚛️",
-    desc: "The laws of matter and energy.",
-    options: [
-      { id: "phys_slow", label: "Slow Constants", desc: "+20% cap — heavy atoms, slow light.", bonus: { capMult: 0.20 } },
-      { id: "phys_fast", label: "Fast Constants", desc: "+25% production — eager reactions.", bonus: { productionMult: 0.25 } },
-      // FEATURE 10 — Forbidden Word
-      { id: "phys_paradox", label: "Paradox Constants", desc: "+30% production & +20% cap — reality bends but reality resists. FORBIDDEN: +1 Paradox.", bonus: { productionMult: 0.30, capMult: 0.20 }, forbidden: true },
-    ],
-  },
-  {
-    id: "biology",
-    name: "Biology",
-    icon: "🧬",
-    desc: "The rules of life.",
-    options: [
-      { id: "bio_fertile", label: "Fertile Genesis", desc: "+30% pop growth — life blooms readily.", bonus: { popGrowthMult: 0.30 } },
-      { id: "bio_complex", label: "Complex Forms", desc: "+30% EP — fewer but mightier species.", bonus: { epMult: 0.30 } },
-    ],
-  },
-  {
-    id: "magic",
-    name: "Magic",
-    icon: "✨",
-    desc: "Whether magic flows in the new world.",
-    options: [
-      { id: "magic_high", label: "High Magic", desc: "+35% production — magic is everywhere.", bonus: { productionMult: 0.35 } },
-      { id: "magic_low", label: "Subtle Magic", desc: "+10% to all four — magic is rare but potent.", bonus: { productionMult: 0.10, capMult: 0.10, epMult: 0.10, popGrowthMult: 0.10 } },
-      // FEATURE 10 — Forbidden Word
-      { id: "magic_paradox", label: "Paradox Magic", desc: "+35% production & +25% EP — magic overwhelms reality. FORBIDDEN: +1 Paradox.", bonus: { productionMult: 0.35, epMult: 0.25 }, forbidden: true },
-    ],
-  },
-  {
-    id: "time",
-    name: "Time",
-    icon: "⏳",
-    desc: "The shape of time.",
-    options: [
-      { id: "time_loop", label: "Cyclical Time", desc: "+30% Testament gain — echoes return.", bonus: { testamentMult: 0.30 } },
-      { id: "time_linear", label: "Linear Time", desc: "+25% production — once-burned, no return.", bonus: { productionMult: 0.25 } },
-      // FEATURE 10 — Forbidden Word
-      { id: "time_paradox", label: "Paradox Time", desc: "+25% production & +30% EP — past & future collapse into now. FORBIDDEN: +1 Paradox.", bonus: { productionMult: 0.25, epMult: 0.30 }, forbidden: true },
-    ],
-  },
-  {
-    id: "space",
-    name: "Space",
-    icon: "🌌",
-    desc: "The size and shape of space.",
-    options: [
-      { id: "space_vast", label: "Vast Cosmos", desc: "+40% cap — endless room.", bonus: { capMult: 0.40 } },
-      { id: "space_dense", label: "Dense Cosmos", desc: "+20% production — worlds close together.", bonus: { productionMult: 0.20 } },
-    ],
-  },
-  {
-    id: "consciousness",
-    name: "Consciousness",
-    icon: "💭",
-    desc: "Whether minds awaken in the new cosmos.",
-    options: [
-      { id: "cons_awake", label: "Awakened Minds", desc: "+30% EP — every soul a star.", bonus: { epMult: 0.30 } },
-      { id: "cons_dream", label: "Dreaming Minds", desc: "+15% production — minds wander.", bonus: { productionMult: 0.15 } },
-    ],
-  },
-  {
-    id: "death",
-    name: "Death",
-    icon: "💀",
-    desc: "The role of death in the new world.",
-    options: [
-      { id: "death_release", label: "Release at Death", desc: "+20% EP — the dead return their gifts.", bonus: { epMult: 0.20 } },
-      { id: "death_persist", label: "Persistence", desc: "+25% cap — nothing is lost.", bonus: { capMult: 0.25 } },
-    ],
-  },
-  {
-    id: "rebirth",
-    name: "Rebirth",
-    icon: "🔄",
-    desc: "Whether souls return.",
-    options: [
-      { id: "rebirth_yes", label: "Cycle of Rebirth", desc: "+30% Testament gain — past lives echo.", bonus: { testamentMult: 0.30 } },
-      { id: "rebirth_no", label: "Single Life", desc: "+30% pop growth — each life is precious.", bonus: { popGrowthMult: 0.30 } },
-    ],
-  },
-];
-
-export const UNIVERSE_SLOT_MAP: Record<UniverseSlotId, UniverseSlot> = Object.fromEntries(
-  UNIVERSE_SLOTS.map((s) => [s.id, s])
-) as Record<UniverseSlotId, UniverseSlot>;
-
-// ----- Ending Choices (2) -----
-// Once chosen, the layer is complete. Preserve = gallery mode (continue
-// indefinitely with bonus). Reset = fresh start with stacking Cosmic Boon.
+// ----- Legacy: Ending Choices (kept for the ending-screen flow) -----
+// In the new design, the ending screen appears after discovering all 100
+// archetypes. The two buttons ("Continue in this realm" / "Explore another
+// Dimension") map to these endings.
 export type EndingChoiceId = "preserve" | "reset";
 
 export interface EndingChoice {
@@ -154,15 +51,15 @@ export interface EndingChoice {
 export const ENDING_CHOICES: EndingChoice[] = [
   {
     id: "preserve",
-    name: "Preserve Universe",
+    name: "Continue in this Realm",
     icon: "🌠",
-    desc: "Enter gallery mode — watch your universe flourish indefinitely with all bonuses intact.",
+    desc: "Remain in your current cosmos. Continue playing with all bonuses intact and chase further goals.",
   },
   {
     id: "reset",
-    name: "Reset Universe",
+    name: "Explore another Dimension",
     icon: "🔄",
-    desc: "Begin a fresh universe from the first cell. Gain a permanent Cosmic Boon (+10% all production) that stacks with each reset. Requires all 8 universe slots filled.",
+    desc: "Reset the universe and begin a fresh cycle. Gain a permanent Cosmic Boon (+10% all production) that stacks with each reset.",
   },
 ];
 
@@ -170,91 +67,10 @@ export const ENDING_CHOICE_MAP: Record<EndingChoiceId, EndingChoice> = Object.fr
   ENDING_CHOICES.map((e) => [e.id, e])
 ) as Record<EndingChoiceId, EndingChoice>;
 
-// ----- Helpers -----
-
-/**
- * Aggregated bonus from all filled universe slots.
- * Each slot grants its chosen option's bonus (or 0 if unfilled).
- */
-export function universeSlotBonus(
-  rules: Array<string | null>
-): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-  testamentMult: number;
-  filledCount: number;
-} {
-  let productionMult = 0;
-  let capMult = 0;
-  let epMult = 0;
-  let popGrowthMult = 0;
-  let testamentMult = 0;
-  let filledCount = 0;
-  for (let i = 0; i < UNIVERSE_SLOTS.length; i++) {
-    const slot = UNIVERSE_SLOTS[i];
-    const chosenId = rules[i];
-    if (!chosenId) continue;
-    const opt = slot.options.find((o) => o.id === chosenId);
-    if (!opt) continue;
-    filledCount += 1;
-    productionMult += opt.bonus.productionMult || 0;
-    capMult += opt.bonus.capMult || 0;
-    epMult += opt.bonus.epMult || 0;
-    popGrowthMult += opt.bonus.popGrowthMult || 0;
-    testamentMult += opt.bonus.testamentMult || 0;
-  }
-  return { productionMult, capMult, epMult, popGrowthMult, testamentMult, filledCount };
-}
-
-/**
- * Bonus from kept gods (they become your pantheon). Each kept god grants
- * a small permanent bonus.
- */
-export function keptGodsBonus(keptGodIds: string[]): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-} {
-  const count = keptGodIds.length;
-  return {
-    productionMult: count * 0.05,
-    capMult: count * 0.03,
-    epMult: count * 0.04,
-    popGrowthMult: count * 0.05,
-  };
-}
-
-/**
- * Cosmic Boon: +10% all production per "Reset Universe" stack.
- */
-export function cosmicBoonBonus(stacks: number): number {
-  return stacks * 0.10;
-}
-
-/**
- * Layer completion: an Ending has been chosen (preserve or reset).
- * Reset requires all 8 universe slots to be filled.
- */
-export function isEternityComplete(
-  chosenEnding: string | null | undefined,
-  universeRules: Array<string | null>
-): boolean {
-  if (chosenEnding === "preserve") return true;
-  if (chosenEnding === "reset") {
-    const { filledCount } = universeSlotBonus(universeRules);
-    return filledCount >= UNIVERSE_SLOTS.length;
-  }
-  return false;
-}
-
-// ----- Legacy compatibility shims -----
+// ----- Legacy compatibility shims (no-op bonuses) -----
 // The original Layer 10 had Testament Clauses, Canonizations, Permanence
 // Weaves. These are preserved as empty arrays / no-op helpers so that any
 // references in older code don't break the build.
-
 export const TESTAMENT_CLAUSES: any[] = [];
 export const TESTAMENT_CLAUSE_MAP: Record<string, any> = {};
 export const CANONIZATIONS: any[] = [];
@@ -288,4 +104,65 @@ export function permanenceWeaveBonus(_active: Record<string, boolean>): {
   popGrowthMult: number;
 } {
   return { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0 };
+}
+
+// ----- Legacy: Universe Slot bonus / Kept Gods bonus (no-op) -----
+// In the new Genesis Engine, universe rules are computed via the crucible,
+// not via 8 picked slots. Kept gods have been removed entirely (the new
+// ending-screen "Explore another Dimension" replaces the pantheon flow).
+export function universeSlotBonus(
+  _rules: Array<string | null>
+): {
+  productionMult: number;
+  capMult: number;
+  epMult: number;
+  popGrowthMult: number;
+  testamentMult: number;
+  filledCount: number;
+} {
+  return {
+    productionMult: 0,
+    capMult: 0,
+    epMult: 0,
+    popGrowthMult: 0,
+    testamentMult: 0,
+    filledCount: 0,
+  };
+}
+
+export function keptGodsBonus(_keptGodIds: string[]): {
+  productionMult: number;
+  capMult: number;
+  epMult: number;
+  popGrowthMult: number;
+} {
+  return { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0 };
+}
+
+// ----- Cosmic Boon (still used by ending-screen "Explore another Dimension") -----
+/**
+ * Cosmic Boon: +10% all production per "Explore another Dimension" reset.
+ */
+export function cosmicBoonBonus(stacks: number): number {
+  return stacks * 0.10;
+}
+
+// ----- Eternity completion check (new: based on discovered archetypes) -----
+/**
+ * Layer 10 is complete when the player has discovered ALL 100 archetypes.
+ * This now imports from genesisEngine to check `discoveredArchetypes`.
+ */
+export function isEternityComplete(
+  chosenEnding: string | null | undefined,
+  _universeRules?: Array<string | null>,
+  discoveredArchetypes?: Record<string, boolean>
+): boolean {
+  // Preserve ending choice is still respected for legacy callers.
+  if (chosenEnding === "preserve") return true;
+  // New criterion: all 100 archetypes discovered.
+  if (discoveredArchetypes) {
+    const count = Object.values(discoveredArchetypes).filter(Boolean).length;
+    if (count >= 100) return true;
+  }
+  return false;
 }

@@ -566,6 +566,43 @@
 }
 
 /* ============================================================
+   LAYER 6 — UNIVERSAL MAP (Singularity Modal)
+   Red pulsing rift overlays + blue glowing anchor rings on the
+   50-galaxy SVG map. Animations run on the SVG <circle> elements.
+   ============================================================ */
+
+/* Red rift pulse — tight, urgent heartbeat on rift-afflicted galaxies */
+@keyframes singularity-rift-pulse {
+  0%, 100% { stroke-opacity: 1; transform: scale(1); }
+  50%      { stroke-opacity: 0.35; transform: scale(1.25); }
+}
+.singularity-rift-pulse {
+  animation: singularity-rift-pulse 1.1s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+/* Outer red halo — slower, more diffuse — radiates corruption */
+@keyframes singularity-rift-pulse-outer {
+  0%, 100% { stroke-opacity: 0.4; transform: scale(1); }
+  50%      { stroke-opacity: 0.05; transform: scale(1.6); }
+}
+.singularity-rift-pulse-outer {
+  animation: singularity-rift-pulse-outer 1.7s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+/* Blue anchor glow — gentle breathing ring around anchored galaxies */
+@keyframes singularity-anchor-glow {
+  0%, 100% { stroke-opacity: 0.5; }
+  50%      { stroke-opacity: 1; }
+}
+.singularity-anchor-glow {
+  animation: singularity-anchor-glow 2.6s ease-in-out infinite;
+}
+
+/* ============================================================
    STICKY FOOTER (mobile)
    ============================================================ */
 

@@ -169,7 +169,9 @@ export function Header() {
             value={formatNumber(population, 0)}
             color="text-emerald-300"
           />
-          {evolutionPoints > 0 && (
+          {/* EP chip — hidden once the EP Auto-Converter upgrade is owned
+              (PP-SHOP-TABS — EP becomes internal-only at that point). */}
+          {evolutionPoints > 0 && (upgrades["ep_auto_converter"] || 0) === 0 && (
             <HeaderStat
               label="EP"
               value={formatCompact(evolutionPoints)}

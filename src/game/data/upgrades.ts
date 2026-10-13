@@ -235,6 +235,156 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "universal_speed", value: 0.10 },
   },
 
+  // ===== UNIVERSAL AUTO-BUYERS (PP-SHOP-TABS) =====
+  // Each auto-buyer is a permanent upgrade purchased with Prestige Points.
+  // The auto-buyer for layer N unlocks in the shop once layer N+1 is unlocked
+  // (per the automation unlock chain spec). All are maxLevel:1 — single
+  // purchase, permanently enabled. Effect value = period in seconds.
+  //
+  // NOTE: The `requiresLayer` field on each is the layer that must be
+  // UNLOCKED before the upgrade appears in the shop (i.e. the next layer).
+  // The tick logic checks both the upgrade ownership AND the layer's
+  // prerequisite before firing.
+
+  // L2→L3 — auto_light_stars: illuminates the cheapest affordable star every 20s.
+  {
+    id: "auto_light_stars",
+    name: "Auto-Light Stars",
+    desc: (l) => l
+      ? "Every 20s, illuminates the cheapest affordable constellation star automatically. Set & forget L2."
+      : "Auto-illuminates the cheapest affordable constellation star every 20s",
+    baseCost: 25,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",  // visible once L3 (Transcendence) is unlocked
+    category: "universal",
+    effect: { type: "auto_light_stars", value: 20 },
+  },
+
+  // L3→L4 — auto_invest_market: invests Divinity in best L3 portfolio every 30s.
+  {
+    id: "auto_invest_market",
+    name: "Auto-Invest Market",
+    desc: (l) => l
+      ? "Every 30s, invests Divinity into the best-priced Divine Market resource automatically."
+      : "Auto-invests Divinity into the best L3 portfolio every 30s",
+    baseCost: 30,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "genesis",  // visible once L4 (Genesis) is unlocked
+    category: "universal",
+    effect: { type: "auto_invest_market", value: 30 },
+  },
+
+  // L4→L5 — auto_claim_systems: auto-claims cheapest star system every 15s.
+  {
+    id: "auto_claim_systems",
+    name: "Auto-Claim Systems",
+    desc: (l) => l
+      ? "Every 15s, claims the cheapest affordable star system across all galaxies automatically."
+      : "Auto-claims cheapest star system across all galaxies every 15s",
+    baseCost: 35,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "apotheosis",  // visible once L5 (Apotheosis) is unlocked
+    category: "universal",
+    effect: { type: "auto_claim_systems", value: 15 },
+  },
+
+  // L6→L7 — auto_manage_heresy: auto-converts heretics every 15s.
+  {
+    id: "auto_manage_heresy",
+    name: "Auto-Manage Heresy",
+    desc: (l) => l
+      ? "Every 15s, converts heretics back to the faithful in all galaxies automatically. Keeps heresy under control."
+      : "Auto-converts heretics in all galaxies every 15s",
+    baseCost: 30,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "omnipotence",  // visible once L7 (Bio-Engineering) is unlocked
+    category: "universal",
+    effect: { type: "auto_manage_heresy", value: 15 },
+  },
+
+  // L6→L7 — auto_place_anchors: places reality anchors every 60s.
+  {
+    id: "auto_place_anchors",
+    name: "Auto-Place Anchors",
+    desc: (l) => l
+      ? "Every 60s, places a Reality Anchor on a random unanchored galaxy automatically. Rift defense on autopilot."
+      : "Auto-places reality anchors on unanchored galaxies every 60s",
+    baseCost: 40,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "omnipotence",  // visible once L7 (Bio-Engineering) is unlocked
+    category: "universal",
+    effect: { type: "auto_place_anchors", value: 60 },
+  },
+
+  // L8→L9 — auto_negotiate: auto-negotiates with available minor gods every 30s.
+  {
+    id: "auto_negotiate",
+    name: "Auto-Negotiate",
+    desc: (l) => l
+      ? "Every 30s, negotiates with an available minor god automatically (cooldown permitting). Diplomacy without the clicks."
+      : "Auto-negotiates with available minor gods every 30s",
+    baseCost: 35,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "infinity",  // visible once L9 (Divine War) is unlocked
+    category: "universal",
+    effect: { type: "auto_negotiate", value: 30 },
+  },
+
+  // L9→L10 — auto_attack_old_gods: auto-attacks active Old God battles every 10s.
+  {
+    id: "auto_attack_old_gods",
+    name: "Auto-Attack Old Gods",
+    desc: (l) => l
+      ? "Every 10s, attacks every active Old God battle automatically. End the divine war on cruise control."
+      : "Auto-attacks active Old God battles every 10s",
+    baseCost: 50,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "eternity",  // visible once L10 (Ascension) is unlocked
+    category: "universal",
+    effect: { type: "auto_attack_old_gods", value: 10 },
+  },
+
+  // L10 finished — auto_author_universes (re-purposed for Genesis Engine):
+  // every 120s, reveals a random unrevealed rule name on a random owned relic
+  // for free (if Divinity is available to cover the cost).
+  {
+    id: "auto_author_universes",
+    name: "Auto-Reveal Relic Rules",
+    desc: (l) => l
+      ? "Every 120s, reveals a random unrevealed rule name on a random owned relic automatically (costs 1000 Divinity). Crucible research on autopilot."
+      : "Auto-reveals a relic rule name every 120s (costs 1000 Divinity)",
+    baseCost: 100,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "eternity",  // visible once L10 is unlocked
+    category: "universal",
+    effect: { type: "auto_author_universes", value: 120 },
+  },
+
+  // L2+ — ep_auto_converter: converts EP to PP at 1:1 every tick.
+  // Once owned, the EP resource is hidden from the UI (Header + ResourceBar).
+  // EP becomes internal-only (still accrued from background sims, but auto-converted).
+  {
+    id: "ep_auto_converter",
+    name: "EP Auto-Converter",
+    desc: (l) => l
+      ? "Every tick, converts ALL Evolution Points to Prestige Points at 1:1. EP becomes internal-only and is hidden from the UI."
+      : "Converts EP to PP at 1:1 every tick. Hides EP from the UI.",
+    baseCost: 50,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "enlightenment",  // visible once L2 is unlocked
+    category: "universal",
+    effect: { type: "ep_auto_converter", value: 1 },
+  },
+
   // ===== LAYER-SPECIFIC (L2–L10) =====
   // Each upgrade only appears in the shop once its `requiresLayer` is unlocked.
   // Effects are wired into the matching layer's tick / bonus / action logic in store.ts.
@@ -432,11 +582,13 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "temporal_shield", value: 0.50 },
   },
 
-  // ---- L10 — Eternity / Ascension (Universe Creation) ----
+  // ---- L10 — Eternity / Genesis Engine ----
+  // paradox_insight (LEGACY): the Genesis Engine redesign removed the paradox
+  // mechanic. The upgrade remains for save-compat; purchasing it does nothing.
   {
     id: "paradox_insight",
-    name: "Paradox Insight",
-    desc: (l) => `Forbidden Word paradox threshold +${l} per level (max 1 — base threshold 2 → 3, allowing exactly one Forbidden Word safely).`,
+    name: "Crucible Insight (Legacy)",
+    desc: (_l) => `Legacy upgrade — the Genesis Engine redesign removed the paradox mechanic. Purchasing this has no effect; kept for save-compat.`,
     baseCost: 40,
     maxLevel: 1,
     costGrowth: 1.7,
@@ -446,8 +598,8 @@ export const UPGRADES: UpgradeDef[] = [
   },
   {
     id: "universe_foundation",
-    name: "Universe Foundation",
-    desc: (l) => `Universe slot bonuses +${l * 25}% per level (max 4).`,
+    name: "Crucible Mastery",
+    desc: (l) => `Archetype production bonus +${l * 25}% per level (max 4). Each discovered archetype grants +1% production; this multiplies that bonus.`,
     baseCost: 40,
     maxLevel: 4,
     costGrowth: 1.7,

@@ -20,7 +20,7 @@ import { DIVINE_LAWS } from "@/game/data/apotheosis";
 import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES } from "@/game/data/omnipotence";
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
 import { OLD_GODS, ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS } from "@/game/data/infinity";
-import { UNIVERSE_SLOTS, ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
+import { ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
 import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
 import { formatNumber } from "../shared/format";
 
@@ -138,8 +138,7 @@ export function PrestigeTab() {
   const oldGodBattles = useGameStore((s) => s.oldGodBattles || {});
   const setShowInfinity = useGameStore((s) => s.setShowInfinity);
 
-  const universeRules = useGameStore((s) => s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null));
-  const keptGods = useGameStore((s) => s.keptGods || []);
+  const discoveredArchetypes = useGameStore((s) => s.discoveredArchetypes || {});
   const chosenEnding = useGameStore((s) => s.chosenEnding);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
   const setShowEternity = useGameStore((s) => s.setShowEternity);
@@ -184,8 +183,7 @@ export function PrestigeTab() {
   const alliedCount = Object.values(alliances).filter(Boolean).length;
   const godsAtThreshold = MINOR_GODS.filter((g) => (godRelationships[g.id] || 0) >= RELATIONSHIP_ALLIANCE_THRESHOLD).length;
   const oldGodsDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
-  const universeSlotsFilled = universeRules.filter((r) => r !== null).length;
-  const keptGodsCount = keptGods.length;
+  const archetypesDiscovered = Object.values(discoveredArchetypes).filter(Boolean).length;
   // Legacy counts (kept for backwards compat — all 0 in new logic)
   const hybridsCount = 0;
   const channelsLeveled = 0;
@@ -616,23 +614,23 @@ export function PrestigeTab() {
             />
           </LayerCard>
 
-          {/* Layer 10 — Eternity (Ascension) */}
+          {/* Layer 10 — Eternity (Genesis Engine) */}
           <LayerCard
             order={10}
             name="Eternity"
-            tagline="Create a new universe"
+            tagline="Forge universes in the Genesis Engine"
             icon="🌠"
             unlocked={!!unlockedLayers.eternity}
             unlockText="All 3 Old Gods defeated"
-            currencyName={`Universe slots: ${universeSlotsFilled}/${UNIVERSE_SLOTS.length} · Boons: ${cosmicBoonStacks}`}
+            currencyName={`Archetypes: ${archetypesDiscovered}/100 · Boons: ${cosmicBoonStacks}`}
             onView={() => setShowEternity(true)}
-            viewLabel="View Ascension"
+            viewLabel="View Genesis Engine"
             viewIcon={<Star className="w-3 h-3 mr-1" />}
           >
-            <ProgressRow label="Universe slots filled" value={universeSlotsFilled} max={UNIVERSE_SLOTS.length} />
-            <ProgressRow label="Gods kept in pantheon" value={keptGodsCount} max={alliedCount} />
+            <ProgressRow label="Archetypes discovered" value={archetypesDiscovered} max={100} />
+            <ProgressRow label="Cosmic Boon stacks" value={cosmicBoonStacks} max={Math.max(10, cosmicBoonStacks)} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              {chosenEnding ? `Ending chosen: ${chosenEnding}` : "Fill all 8 slots and choose Preserve or Reset to ascend."}
+              {chosenEnding ? `Ending chosen: ${chosenEnding}` : "Discover all 100 archetypes to unlock the ending screen."}
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[0.65rem] text-amber-300">
               <Star className="w-3 h-3" />

@@ -1,80 +1,146 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   RELIC_LOADOUTS,
-  LOGIC_CORES,
   relicBonus,
-  logicCoreBonus,
 } from "@/game/data/singularity";
-import { STAGES } from "@/game/data/stages";
+import {
+  UNIVERSAL_GALAXIES,
+  UNIVERSAL_GALAXY_MAP,
+  TOTAL_UNIVERSAL_GALAXIES,
+  TOTAL_NEW_GALAXIES_L6,
+  TOTAL_NEW_SYSTEMS_L6,
+  WORLDS_PER_NEW_SYSTEM_L6,
+  RIFTS_REQUIRED_FOR_L7,
+  ANCHORS_REQUIRED_FOR_L7,
+  ANCHOR_RADIUS,
+  riftCloseCost,
+  anchorPlaceCost,
+  newGalaxyAttackCost,
+  galaxiesInAnchorRadius,
+  isGalaxyAnchored,
+  isUniversalMapComplete,
+  totalNewSystemsClaimed,
+  totalRivalSystemsClaimed,
+  totalUniversalSystemsClaimed,
+  type UniversalGalaxy,
+} from "@/game/data/universalMap";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Circle, Cpu, CheckCircle2, RefreshCw, Zap } from "lucide-react";
-import { formatNumber } from "../shared/format";
+import {
+  Lock, CheckCircle2, Anchor, Shield, Swords, Orbit, Sparkles, Crosshair, Globe2,
+} from "lucide-react";
+import { formatNumber, formatCompact } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
-const SPEED_OPTIONS = [
-  { value: 1, label: "1×", desc: "Full speed" },
-  { value: 0.5, label: "0.5×", desc: "Half speed" },
-  { value: 0.25, label: "0.25×", desc: "Quarter speed" },
-];
+// SVG viewport for the universal map (galaxy pos is in 0-100 units).
+const MAP_SIZE = 100;
 
 export function SingularityModal() {
   const show = useGameStore((s) => s.showSingularity);
   const setShow = useGameStore((s) => s.setShowSingularity);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const singularityCores = useGameStore((s) => s.singularityCores);
-  const divinity = useGameStore((s) => s.divinity);
+  const faith = useGameStore((s) => s.faith);
   const equippedRelics = useGameStore((s) => s.equippedRelics || {});
-  const activeLogicCores = useGameStore((s) => s.activeLogicCores || {});
 
+  // L6 Universal Map runtime state
+  const universalGalaxies = useGameStore((s) => s.universalGalaxies || []);
+  const rifts = useGameStore((s) => s.rifts || []);
+  const realityAnchors = useGameStore((s) => s.realityAnchors || []);
+  const riftsClosed = useGameStore((s) => s.riftsClosed || 0);
+  const anchorsPlaced = useGameStore((s) => s.anchorsPlaced || 0);
+  const riftSpawnTimer = useGameStore((s) => s.riftSpawnTimer || 0);
+
+  // Actions
   const toggleRelicLoadout = useGameStore((s) => s.toggleRelicLoadout);
-  const toggleLogicCore = useGameStore((s) => s.toggleLogicCore);
+  const closeRift = useGameStore((s) => s.closeRift);
+  const placeRealityAnchor = useGameStore((s) => s.placeRealityAnchor);
+  const attackUniversalGalaxy = useGameStore((s) => s.attackUniversalGalaxy);
 
-  // REBUILD L6 — Dimension Engine state
-  const dimensions = useGameStore((s) => s.dimensions || []);
-  const dimensionRiftTimer = useGameStore((s) => s.dimensionRiftTimer || 0);
-  const setDimensionSpeed = useGameStore((s) => s.setDimensionSpeed);
-  const syncDimension = useGameStore((s) => s.syncDimension);
-  const initDimensions = useGameStore((s) => s.initDimensions);
-  // FEATURE 6 — Dimension Collapses
-  const collapseDimensions = useGameStore((s) => s.collapseDimensions);
+  // Selected galaxy (for the detail panel). null = none.
+  const [selectedGalaxyId, setSelectedGalaxyId] = useState<string | null>(null);
 
   const isUnlocked = !!unlockedLayers.singularity;
   const rb = relicBonus(equippedRelics);
-  const cb = logicCoreBonus(activeLogicCores);
   const equippedCount = RELIC_LOADOUTS.filter((r) => equippedRelics[r.id]).length;
-  const coreCount = LOGIC_CORES.filter((c) => activeLogicCores[c.id]).length;
 
-  const allGalactic = dimensions.length === 3 && dimensions.every((d) => d.reachedGalactic);
-  const galacticCount = dimensions.filter((d) => d.reachedGalactic).length;
+  // Build lookup maps for fast access in the SVG layer.
+  const stateById = useMemo(() => {
+    const m: Record<string, (typeof universalGalaxies)[number]> = {};
+    for (const g of universalGalaxies) m[g.id] = g;
+    return m;
+  }, [universalGalaxies]);
+
+  const riftsByGalaxyId = useMemo(() => {
+    const m: Record<string, (typeof rifts)[number][]> = {};
+    for (const r of rifts) {
+      if (!m[r.galaxyId]) m[r.galaxyId] = [];
+      m[r.galaxyId].push(r);
+    }
+    return m;
+  }, [rifts]);
+
+  const anchorGalaxyIds = useMemo(() => realityAnchors.map((a) => a.galaxyId), [realityAnchors]);
+
+  // Aggregate stats for the sidebar.
+  const totalSystemsClaimed = totalUniversalSystemsClaimed(universalGalaxies);
+  const newSystemsClaimed = totalNewSystemsClaimed(universalGalaxies);
+  const rivalSystemsClaimed = totalRivalSystemsClaimed(universalGalaxies);
+  const worldBonusFromL6 = newSystemsClaimed * WORLDS_PER_NEW_SYSTEM_L6;
+
+  const nextAnchorCost = anchorPlaceCost(anchorsPlaced);
+  const l6Complete = isUniversalMapComplete(riftsClosed, anchorsPlaced);
+
+  const selectedGalaxy = selectedGalaxyId ? UNIVERSAL_GALAXY_MAP[selectedGalaxyId] : null;
+  const selectedState = selectedGalaxyId ? stateById[selectedGalaxyId] : null;
+  const selectedRifts = selectedGalaxyId ? (riftsByGalaxyId[selectedGalaxyId] || []) : [];
+  const selectedAnchored = selectedGalaxyId ? isGalaxyAnchored(selectedGalaxyId, anchorGalaxyIds) : false;
+  const selectedIsNewL6 = !!selectedGalaxy?.isNewL6;
+  const selectedAttackCost = selectedIsNewL6
+    ? newGalaxyAttackCost(newSystemsClaimed)
+    : 0;
+
+  // SVG-friendly coordinate helper: galaxy.pos (0-100) → svg viewBox (0-100).
+  const galaxyColor = (g: UniversalGalaxy): string => {
+    const st = stateById[g.id];
+    const owner = st?.ownerId || g.ownerId;
+    if (owner === "player") return "#fbbf24"; // amber-400 — owned by player
+    if (owner.startsWith("rival_")) return "#f472b6"; // pink-400 — rival-owned
+    return "#475569"; // slate-600 — neutral
+  };
 
   return (
     <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto glass-strong">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Circle className="w-5 h-5" />
-            Layer 6 — Singularity (Dimension Engine)
+            <Orbit className="w-5 h-5 text-cyan-300" />
+            Layer 6 — Singularity (Universal Map)
             <BackgroundLayerBadge layerId="singularity" />
           </DialogTitle>
           <DialogDescription asChild>
-            <div className="flex items-center justify-between">
-            <span>
-              Three parallel dimensions evolve simultaneously. Sync progress between them — get all 3 to Galactic.
-            </span>
-            <div className="flex gap-1">
-              <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
-                {formatNumber(singularityCores, 0)} Cores
-              </Badge>
-              <Badge variant="outline" className={allGalactic ? "text-emerald-300 border-emerald-400/40" : "text-amber-300 border-amber-400/40"}>
-                {galacticCount}/3 Galactic
-              </Badge>
-            </div>
-          
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span>
+                Defend the 50-galaxy universe from Old-God rifts. Close rifts (Singularity Cores),
+                place Reality Anchors (Singularity Cores) to immunize galaxies, and conquer
+                neutral galaxies (Faith) for <span className="text-cyan-300">+198 worlds</span> each.
+              </span>
+              <div className="flex gap-1 flex-wrap">
+                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
+                  <Sparkles className="w-3 h-3 mr-0.5" /> {formatNumber(singularityCores, 0)} Cores
+                </Badge>
+                <Badge variant="outline" className={l6Complete ? "text-emerald-300 border-emerald-400/40" : "text-amber-300 border-amber-400/40"}>
+                  <Shield className="w-3 h-3 mr-0.5" /> {riftsClosed}/{RIFTS_REQUIRED_FOR_L7} rifts
+                </Badge>
+                <Badge variant="outline" className={l6Complete ? "text-emerald-300 border-emerald-400/40" : "text-amber-300 border-amber-400/40"}>
+                  <Anchor className="w-3 h-3 mr-0.5" /> {anchorsPlaced}/{ANCHORS_REQUIRED_FOR_L7} anchors
+                </Badge>
+              </div>
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -86,241 +152,402 @@ export function SingularityModal() {
             <p className="text-xs mt-1">Enact 3+ Divine Laws (Layer 5) to unlock Singularity.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Dimension Engine — the new mini-game */}
-            <section className="stat-card">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
+            {/* ===== UNIVERSAL MAP (SVG) ===== */}
+            <section className="stat-card p-2">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[0.7rem] uppercase tracking-wide text-cyan-300/80 flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> Dimension Engine — 3 parallel timelines
+                  <Globe2 className="w-3 h-3" /> Universal Map — {TOTAL_UNIVERSAL_GALAXIES} galaxies ({TOTAL_NEW_GALAXIES_L6} new)
                 </div>
-                <div className="flex gap-1">
-                  <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
-                    🌀 Rift in {Math.ceil(dimensionRiftTimer)}s
-                  </Badge>
-                  <Button size="sm" variant="ghost" onClick={initDimensions} className="h-7 text-[0.65rem]">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Reset Dimensions
-                  </Button>
-                </div>
-              </div>
-              <div className="text-[0.65rem] text-muted-foreground mb-3">
-                Each dimension accrues resources & population at its own speed. Stage up costs 100 resources. Sync copies stage & 50% of population (costs 50 Divinity). Rift events transfer resources between dimensions every 60s.
-                <span className="text-violet-300"> Collapse</span> two dimensions of the same stage into one — combined speed & resources (costs 50 Divinity).
-                <span className="block mt-1 text-emerald-300/90">
-                  <Zap className="inline w-3 h-3 mr-0.5" />
-                  Reward: <span className="font-semibold">+1 Singularity Core</span> per dimension reaching Galactic,
-                  and a one-time <span className="font-semibold">+5 bonus</span> when all 3 reach Galactic.
-                </span>
+                <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
+                  🌀 Next rift in {Math.max(0, Math.ceil(riftSpawnTimer))}s
+                </Badge>
               </div>
 
-              {/* FEATURE 6 — Collapse hint banner */}
-              {dimensions.length >= 2 && (
-                <div className="rounded-md border border-violet-400/30 bg-violet-500/5 p-1.5 text-[0.6rem] text-violet-200 mb-2 flex items-center gap-1">
-                  <span className="text-base">🌌</span>
-                  <span className="flex-1">
-                    Collapse available for same-stage pairs:
-                    {dimensions.map((d) => {
-                      const matches = dimensions.filter((o) => o.id !== d.id && o.stageIndex === d.stageIndex && !o.reachedGalactic && !d.reachedGalactic);
-                      return matches.length > 0 ? (
-                        <span key={d.id} className="ml-1 px-1 rounded bg-violet-500/20 text-violet-200">
-                          {d.name} (stage {d.stageIndex})
-                        </span>
-                      ) : null;
-                    })}
-                    {dimensions.every((d) => !dimensions.some((o) => o.id !== d.id && o.stageIndex === d.stageIndex && !o.reachedGalactic && !d.reachedGalactic)) && (
-                      <span className="ml-1 text-muted-foreground">none yet — sync speeds first.</span>
-                    )}
+              <div className="relative w-full aspect-square rounded-md border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-indigo-950/40 to-slate-950 overflow-hidden">
+                <svg viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`} className="w-full h-full">
+                  {/* Anchor coverage rings — drawn first so galaxies sit on top */}
+                  {realityAnchors.map((a) => {
+                    const g = UNIVERSAL_GALAXY_MAP[a.galaxyId];
+                    if (!g) return null;
+                    return (
+                      <circle
+                        key={`anchor-ring-${a.id}`}
+                        cx={g.pos.x}
+                        cy={g.pos.y}
+                        r={ANCHOR_RADIUS}
+                        fill="rgba(59, 130, 246, 0.08)"
+                        stroke="rgba(96, 165, 250, 0.45)"
+                        strokeWidth={0.4}
+                        strokeDasharray="1 1.5"
+                      />
+                    );
+                  })}
+
+                  {/* Galaxies */}
+                  {UNIVERSAL_GALAXIES.map((g) => {
+                    const st = stateById[g.id];
+                    const riftList = riftsByGalaxyId[g.id] || [];
+                    const anchored = isGalaxyAnchored(g.id, anchorGalaxyIds);
+                    const owned = (st?.ownerId || g.ownerId) === "player";
+                    const radius = owned ? 1.8 : 1.3;
+                    const fill = galaxyColor(g);
+                    const isSelected = selectedGalaxyId === g.id;
+                    return (
+                      <g
+                        key={g.id}
+                        onClick={() => setSelectedGalaxyId(g.id)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {/* Selection highlight */}
+                        {isSelected && (
+                          <circle
+                            cx={g.pos.x}
+                            cy={g.pos.y}
+                            r={radius + 1.5}
+                            fill="none"
+                            stroke="#fcd34d"
+                            strokeWidth={0.5}
+                          />
+                        )}
+                        {/* Anchor indicator ring around the galaxy itself */}
+                        {anchored && (
+                          <circle
+                            cx={g.pos.x}
+                            cy={g.pos.y}
+                            r={radius + 1}
+                            fill="none"
+                            stroke="#60a5fa"
+                            strokeWidth={0.6}
+                            className="singularity-anchor-glow"
+                          />
+                        )}
+                        {/* Galaxy body */}
+                        <circle
+                          cx={g.pos.x}
+                          cy={g.pos.y}
+                          r={radius}
+                          fill={fill}
+                          stroke={owned ? "#fde68a" : "rgba(148, 163, 184, 0.4)"}
+                          strokeWidth={owned ? 0.4 : 0.2}
+                          opacity={owned ? 1 : 0.7}
+                        />
+                        {/* Rift pulse — red overlay drawn on top of the galaxy */}
+                        {riftList.length > 0 && (
+                          <>
+                            <circle
+                              cx={g.pos.x}
+                              cy={g.pos.y}
+                              r={radius + 0.8}
+                              fill="none"
+                              stroke="#ef4444"
+                              strokeWidth={0.5}
+                              className="singularity-rift-pulse"
+                            />
+                            <circle
+                              cx={g.pos.x}
+                              cy={g.pos.y}
+                              r={radius + 1.6}
+                              fill="none"
+                              stroke="rgba(239, 68, 68, 0.4)"
+                              strokeWidth={0.3}
+                              className="singularity-rift-pulse-outer"
+                            />
+                          </>
+                        )}
+                        {/* Heresy tint — opacity scales with heresy level */}
+                        {((st?.heresy || 0) > 0) && (
+                          <circle
+                            cx={g.pos.x}
+                            cy={g.pos.y}
+                            r={radius}
+                            fill="#7c1d1d"
+                            opacity={Math.min(0.7, (st?.heresy || 0) / 100 * 0.7)}
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                {/* Map legend */}
+                <div className="absolute bottom-1 left-1 right-1 flex flex-wrap gap-1.5 text-[0.55rem]">
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-amber-300 flex items-center gap-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" /> Owned
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-slate-300 flex items-center gap-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" /> Neutral
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-pink-300 flex items-center gap-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-pink-400" /> Rival
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-blue-300 flex items-center gap-0.5">
+                    <Anchor className="w-2.5 h-2.5" /> Anchored
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-red-300 flex items-center gap-0.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> Rift
                   </span>
                 </div>
-              )}
-
-              {/* Dimension panels — side by side */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {dimensions.map((d) => {
-                  const stage = STAGES[d.stageIndex];
-                  const stageProgressPct = Math.min(100, (d.resources / 100) * 100);
-                  // FEATURE 6 — Collapse targets: other dimensions at the same stageIndex (and not reached galactic)
-                  const collapseTargets = dimensions.filter((o) => o.id !== d.id && o.stageIndex === d.stageIndex && !o.reachedGalactic && !d.reachedGalactic);
-                  return (
-                    <div
-                      key={d.id}
-                      className={`rounded-md border p-2 ${d.reachedGalactic ? "border-emerald-400/60 bg-emerald-500/10" : "border-cyan-400/30 bg-cyan-950/20"}`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-sm font-semibold">
-                          {d.name}
-                          {d.reachedGalactic && <CheckCircle2 className="inline w-3 h-3 ml-1 text-emerald-400" />}
-                        </div>
-                        <Badge variant="outline" className="text-[0.55rem]">{stage?.icon} {stage?.name}</Badge>
-                      </div>
-
-                      {/* Stats */}
-                      <div className="space-y-1 text-[0.65rem] font-mono">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Pop</span>
-                          <span className="text-amber-300">{Math.floor(d.pop)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Resources</span>
-                          <span className="text-cyan-300">{d.resources.toFixed(1)}/100</span>
-                        </div>
-                      </div>
-
-                      {/* Stage progress bar */}
-                      <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden mt-1.5 mb-2">
-                        <div
-                          className={`h-full transition-all ${d.reachedGalactic ? "bg-emerald-400" : "bg-gradient-to-r from-cyan-500 to-amber-400"}`}
-                          style={{ width: `${d.reachedGalactic ? 100 : stageProgressPct}%` }}
-                        />
-                      </div>
-
-                      {/* Speed controls */}
-                      <div className="text-[0.55rem] uppercase text-muted-foreground mb-0.5">Time Speed</div>
-                      <div className="grid grid-cols-3 gap-0.5 mb-2">
-                        {SPEED_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            onClick={() => setDimensionSpeed(d.id, opt.value)}
-                            disabled={d.reachedGalactic}
-                            title={opt.desc}
-                            className={`text-[0.6rem] py-1 rounded border transition-all
-                              ${d.speed === opt.value
-                                ? "border-amber-400/60 bg-amber-500/20 text-amber-300"
-                                : "border-muted-foreground/20 bg-muted/10 text-muted-foreground hover:border-cyan-400/40"
-                              }
-                              ${d.reachedGalactic ? "opacity-40 cursor-not-allowed" : ""}
-                            `}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Sync buttons */}
-                      {!d.reachedGalactic && (
-                        <div className="text-[0.55rem] uppercase text-muted-foreground mb-0.5">Sync from</div>
-                      )}
-                      {!d.reachedGalactic && (
-                        <div className="grid grid-cols-2 gap-0.5">
-                          {dimensions.filter((other) => other.id !== d.id).map((other) => (
-                            <button
-                              key={other.id}
-                              onClick={() => syncDimension(other.id, d.id)}
-                              disabled={divinity < 50 || other.stageIndex <= d.stageIndex}
-                              title={`Copy progress from ${other.name} to ${d.name} (50 Divinity)`}
-                              className="text-[0.55rem] py-1 rounded border border-violet-400/30 bg-violet-500/5 text-violet-300 hover:bg-violet-500/15 disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                              ← {other.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* FEATURE 6 — Collapse buttons: merge this dimension into another at the same stage */}
-                      {!d.reachedGalactic && collapseTargets.length > 0 && (
-                        <>
-                          <div className="text-[0.55rem] uppercase text-muted-foreground mb-0.5 mt-1.5">Collapse into</div>
-                          <div className="grid grid-cols-2 gap-0.5">
-                            {collapseTargets.map((other) => (
-                              <button
-                                key={other.id}
-                                onClick={() => collapseDimensions(d.id, other.id)}
-                                disabled={divinity < 50}
-                                title={`Collapse ${d.name} into ${other.name} — combined speed & resources (50 Divinity)`}
-                                className="text-[0.55rem] py-1 rounded border border-rose-400/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed"
-                              >
-                                ⤳ {other.name}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
 
-              {allGalactic && (
-                <div className="rounded-md border border-emerald-400/60 bg-emerald-500/20 p-2 mt-2 text-[0.7rem] text-emerald-200 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> All 3 dimensions have reached Galactic! Singularity engine complete (+5 Singularity Core bonus awarded).
+              {/* Selected-galaxy detail / actions */}
+              {selectedGalaxy && selectedState ? (
+                <div className="mt-2 rounded-md border border-cyan-400/30 bg-cyan-950/20 p-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-cyan-200">
+                      {selectedGalaxy.name}
+                      {selectedGalaxy.isNewL6 && (
+                        <Badge variant="outline" className="ml-1 text-[0.55rem] text-violet-300 border-violet-400/40">
+                          NEW L6
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-[0.6rem] text-muted-foreground">
+                      {selectedGalaxy.tagline}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[0.65rem] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Owner</span>
+                      <span className="text-amber-300">{selectedState.ownerId}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Systems</span>
+                      <span className="text-cyan-300">
+                        {selectedState.systemsClaimed}/{selectedGalaxy.systemCount}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Heresy</span>
+                      <span className={selectedState.heresy > 50 ? "text-red-300" : "text-slate-300"}>
+                        {Math.floor(selectedState.heresy)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Anchored</span>
+                      <span className={selectedAnchored ? "text-blue-300" : "text-slate-500"}>
+                        {selectedAnchored ? "YES" : "no"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Active rifts on this galaxy — close buttons */}
+                  {selectedRifts.length > 0 && (
+                    <div className="space-y-1 pt-1 border-t border-cyan-400/20">
+                      <div className="text-[0.6rem] uppercase text-red-300/80 flex items-center gap-1">
+                        <Crosshair className="w-2.5 h-2.5" /> {selectedRifts.length} active rift{selectedRifts.length === 1 ? "" : "s"}
+                      </div>
+                      {selectedRifts.map((r) => {
+                        const cost = riftCloseCost(r.severity);
+                        const afford = singularityCores >= cost;
+                        return (
+                          <div key={r.id} className="flex items-center justify-between gap-2 text-[0.65rem]">
+                            <span className="text-red-300">
+                              Severity {r.severity} — close cost {cost} Core{cost === 1 ? "" : "s"}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-6 text-[0.6rem] px-2"
+                              disabled={!afford}
+                              onClick={() => {
+                                closeRift(r.id);
+                              }}
+                            >
+                              <Shield className="w-2.5 h-2.5 mr-0.5" /> Close
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Anchor placement */}
+                  {!selectedAnchored && (
+                    <div className="pt-1 border-t border-cyan-400/20 flex items-center justify-between gap-2 text-[0.65rem]">
+                      <span className="text-blue-300">
+                        Anchor this galaxy (+ covers {galaxiesInAnchorRadius(selectedGalaxy.id).length} galaxies in {ANCHOR_RADIUS}u radius)
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[0.6rem] px-2 border-blue-400/40 text-blue-300"
+                        disabled={singularityCores < nextAnchorCost}
+                        onClick={() => placeRealityAnchor(selectedGalaxy.id)}
+                        title={`Place Reality Anchor on ${selectedGalaxy.name} — cost ${nextAnchorCost} Singularity Cores`}
+                      >
+                        <Anchor className="w-2.5 h-2.5 mr-0.5" /> {nextAnchorCost}
+                      </Button>
+                    </div>
+                  )}
+                  {selectedAnchored && (
+                    <div className="pt-1 border-t border-cyan-400/20 text-[0.6rem] text-blue-300/80 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5" /> Reality Anchor in place — immune to rift corruption.
+                    </div>
+                  )}
+
+                  {/* Attack — only for new neutral L6 galaxies */}
+                  {selectedIsNewL6 && selectedState.systemsClaimed < selectedGalaxy.systemCount && (
+                    <div className="pt-1 border-t border-cyan-400/20 flex items-center justify-between gap-2 text-[0.65rem]">
+                      <span className="text-amber-300">
+                        Claim system {selectedState.systemsClaimed + 1}/{selectedGalaxy.systemCount} (+198 worlds)
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-6 text-[0.6rem] px-2 bg-amber-600/70 hover:bg-amber-600"
+                        disabled={faith < selectedAttackCost}
+                        onClick={() => attackUniversalGalaxy(selectedGalaxy.id)}
+                        title={`Launch attack on ${selectedGalaxy.name} — cost ${selectedAttackCost} Faith`}
+                      >
+                        <Swords className="w-2.5 h-2.5 mr-0.5" /> {selectedAttackCost} Faith
+                      </Button>
+                    </div>
+                  )}
+                  {selectedIsNewL6 && selectedState.systemsClaimed >= selectedGalaxy.systemCount && (
+                    <div className="pt-1 border-t border-cyan-400/20 text-[0.6rem] text-emerald-300/80 flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5" /> Galaxy fully claimed (+{(selectedGalaxy.systemCount * WORLDS_PER_NEW_SYSTEM_L6).toLocaleString()} worlds total).
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-md border border-cyan-400/10 bg-cyan-950/10 p-2 text-[0.65rem] text-muted-foreground text-center">
+                  Click a galaxy on the map to inspect it, close rifts, place anchors, or launch attacks.
                 </div>
               )}
             </section>
 
-            {/* Aggregated bonuses */}
-            <div className="stat-card">
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
-                Active bonuses: {equippedCount} relic(s), {coreCount} core(s) active
-              </div>
-              <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{((rb.productionMult + cb.productionMult) * 100).toFixed(0)}% prod</Badge>
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{((rb.capMult + cb.capMult) * 100).toFixed(0)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{((rb.epMult + cb.epMult) * 100).toFixed(0)}% EP</Badge>
-                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(rb.popGrowthMult * 100).toFixed(0)}% pop</Badge>
-              </div>
-            </div>
-
-            {/* Relic Loadouts (preserved) */}
-            <section>
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">Relic Loadouts (each has upside + downside)</div>
-              <div className="space-y-1.5">
-                {RELIC_LOADOUTS.map((r) => {
-                  const equipped = !!equippedRelics[r.id];
-                  return (
-                    <div key={r.id} className={`stat-card flex items-center gap-3 py-2 ${equipped ? "border-amber-400/60" : ""}`}>
-                      <span className="text-xl shrink-0">{r.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{r.name}</span>
-                          {equipped && (
-                            <Badge className="text-[0.6rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
-                              <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> Equipped
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-[0.65rem] text-emerald-300/80 leading-snug">▲ {r.upside}</div>
-                        <div className="text-[0.65rem] text-rose-300/80 leading-snug">▼ {r.downside}</div>
-                      </div>
-                      <Button size="sm" variant={equipped ? "outline" : "default"} className="h-7" onClick={() => toggleRelicLoadout(r.id)}>
-                        {equipped ? "Unequip" : "Equip"}
-                      </Button>
+            {/* ===== SIDEBAR ===== */}
+            <aside className="space-y-3">
+              {/* Universal Map progress */}
+              <div className="stat-card">
+                <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  L6 → L7 progress
+                </div>
+                <div className="space-y-1.5">
+                  <div>
+                    <div className="flex justify-between text-[0.65rem] mb-0.5">
+                      <span className="text-red-300/80">Rifts closed</span>
+                      <span className="text-red-200 font-mono">{riftsClosed}/{RIFTS_REQUIRED_FOR_L7}</span>
                     </div>
-                  );
-                })}
+                    <div className="h-1 rounded-full bg-muted/30 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-red-500 to-rose-400 transition-all"
+                        style={{ width: `${Math.min(100, (riftsClosed / RIFTS_REQUIRED_FOR_L7) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[0.65rem] mb-0.5">
+                      <span className="text-blue-300/80">Anchors placed</span>
+                      <span className="text-blue-200 font-mono">{anchorsPlaced}/{ANCHORS_REQUIRED_FOR_L7}</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted/30 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all"
+                        style={{ width: `${Math.min(100, (anchorsPlaced / ANCHORS_REQUIRED_FOR_L7) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {l6Complete && (
+                  <div className="mt-2 rounded-md border border-emerald-400/60 bg-emerald-500/20 p-1.5 text-[0.65rem] text-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Universal Map stabilized — Omnipotence unlocked!
+                  </div>
+                )}
               </div>
-            </section>
 
-            {/* Logic Cores (preserved) */}
-            <section>
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
-                <Cpu className="w-3 h-3" /> Logic Cores (toggleable automation)
+              {/* Aggregate stats */}
+              <div className="stat-card">
+                <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Universe statistics
+                </div>
+                <div className="space-y-1 text-[0.7rem] font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total systems</span>
+                    <span className="text-cyan-300">{formatNumber(totalSystemsClaimed, 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">L5 rival systems</span>
+                    <span className="text-pink-300">{formatNumber(rivalSystemsClaimed, 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">L6 new systems</span>
+                    <span className="text-violet-300">{formatNumber(newSystemsClaimed, 0)} / {TOTAL_NEW_SYSTEMS_L6}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">World bonus</span>
+                    <span className="text-emerald-300">+{formatCompact(worldBonusFromL6)} worlds</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Active rifts</span>
+                    <span className="text-red-300">{rifts.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reality anchors</span>
+                    <span className="text-blue-300">{realityAnchors.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Faith available</span>
+                    <span className="text-amber-300">{formatNumber(faith, 0)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                {LOGIC_CORES.map((c) => {
-                  const active = !!activeLogicCores[c.id];
-                  return (
-                    <button key={c.id} onClick={() => toggleLogicCore(c.id)} className={`stat-card text-left p-2 ${active ? "border-amber-400/60 bg-amber-500/10" : ""}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-base">{c.icon}</span>
-                          <span className="text-xs font-medium">{c.name}</span>
-                        </div>
-                        <Badge variant="outline" className={`text-[0.6rem] ${active ? "text-amber-300 border-amber-400/40" : "text-muted-foreground"}`}>
-                          {active ? "ACTIVE" : "OFF"}
-                        </Badge>
-                      </div>
-                      <div className="text-[0.6rem] text-muted-foreground mt-0.5 leading-snug">{c.desc}</div>
-                    </button>
-                  );
-                })}
+
+              {/* Active relic bonuses */}
+              <div className="stat-card">
+                <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Active bonuses: {equippedCount} relic(s) equipped
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(rb.productionMult * 100).toFixed(0)}% prod</Badge>
+                  <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(rb.capMult * 100).toFixed(0)}% cap</Badge>
+                  <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(rb.epMult * 100).toFixed(0)}% EP</Badge>
+                  <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(rb.popGrowthMult * 100).toFixed(0)}% pop</Badge>
+                </div>
               </div>
-            </section>
+            </aside>
           </div>
+        )}
+
+        {/* Relic Loadouts — kept from the original design */}
+        {isUnlocked && (
+          <section className="mt-2">
+            <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+              Relic Loadouts (each has upside + downside)
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {RELIC_LOADOUTS.map((r) => {
+                const equipped = !!equippedRelics[r.id];
+                return (
+                  <div key={r.id} className={`stat-card flex items-center gap-3 py-2 ${equipped ? "border-amber-400/60" : ""}`}>
+                    <span className="text-xl shrink-0">{r.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">{r.name}</span>
+                        {equipped && (
+                          <Badge className="text-[0.6rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
+                            <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> Equipped
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-[0.65rem] text-emerald-300/80 leading-snug">▲ {r.upside}</div>
+                      <div className="text-[0.65rem] text-rose-300/80 leading-snug">▼ {r.downside}</div>
+                    </div>
+                    <Button size="sm" variant={equipped ? "outline" : "default"} className="h-7" onClick={() => toggleRelicLoadout(r.id)}>
+                      {equipped ? "Unequip" : "Equip"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
-          <span className="text-cyan-300">Dimension Engine</span> runs three timelines in parallel — set each dimension's speed, sync progress (50 Div), and survive rift events to get all three to Galactic.
-          Relics and Logic Cores persist across prestige.
+          <span className="text-cyan-300">Universal Map</span> — defend 50 galaxies from Old-God rifts. Close rifts for Singularity Cores, place Reality Anchors to immunize galaxies in a {ANCHOR_RADIUS}-unit radius, and conquer new neutral galaxies (Faith) for +198 worlds each. Close {RIFTS_REQUIRED_FOR_L7} rifts + place {ANCHORS_REQUIRED_FOR_L7} anchors to unlock Layer 7 (Omnipotence).
+          Relics persist across prestige.
         </div>
         <div className="flex justify-end pt-2">
           <Button variant="outline" onClick={() => setShow(false)}>Close</Button>

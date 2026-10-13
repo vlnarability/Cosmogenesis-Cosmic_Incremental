@@ -16,12 +16,20 @@ import {
   effectiveInstabilityRate,
   legionPower,
   computeCreatureStats,
+  OUTPOST_RAIDS,
+  OUTPOST_RAID_MAP,
+  OUTPOST_RAID_COUNT_FOR_L8,
+  CREATURE_XP_PER_LEVEL,
+  CREATURE_XP_PER_RAID,
+  MAX_ACTIVE_OUTPOST_RAIDS,
+  creatureLevel,
+  creatureLevelBonus,
 } from "@/game/data/omnipotence";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles } from "lucide-react";
+import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles, Swords, Zap, Target } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 export function OmnipotenceModal() {
@@ -34,10 +42,12 @@ export function OmnipotenceModal() {
   const instability = useGameStore((s) => s.instability || 0);
   const peakInstability = useGameStore((s) => s.peakInstability || 0);
   const draft = useGameStore((s) => s.creatureDesignDraft);
-  // L7 FIX Bug 1 — cost & capacity state for Create Creature button
+  // L7 FIX Bug 1 — cost & capacity state for Create Creature button.
+  // L10-GENESIS-ENGINE: capacity now scales with discovered archetypes
+  // (was: universe-rules slots filled).
   const divinity = useGameStore((s) => s.divinity || 0);
   const faith = useGameStore((s) => s.faith || 0);
-  const universeRules = useGameStore((s) => s.universeRules || []);
+  const discoveredArchetypes = useGameStore((s) => s.discoveredArchetypes || {});
 
   const setCreatureDesignDraft = useGameStore((s) => s.setCreatureDesignDraft);
   const createCreature = useGameStore((s) => s.createCreature);
@@ -47,13 +57,25 @@ export function OmnipotenceModal() {
   const deleteLegion = useGameStore((s) => s.deleteLegion);
   const setOmnipotenceStance = useGameStore((s) => s.setOmnipotenceStance);
 
+  // Skirmish Arena — outpost raids + creature XP/levels
+  const outpostRaids = useGameStore((s) => s.outpostRaids || []);
+  const raidsRepelled = useGameStore((s) => s.raidsRepelled || 0);
+  const activeOutpostRaid = useGameStore((s) => s.activeOutpostRaid || null);
+  const creatureXp = useGameStore((s) => s.creatureXp || {});
+  const creatureLevels = useGameStore((s) => s.creatureLevels || {});
+  const divineFragments = useGameStore((s) => s.divineFragments || 0);
+  const spawnOutpostRaid = useGameStore((s) => s.spawnOutpostRaid);
+  const deployLegionToRaid = useGameStore((s) => s.deployLegionToRaid);
+  const attackOutpost = useGameStore((s) => s.attackOutpost);
+  const setActiveOutpostRaid = useGameStore((s) => s.setActiveOutpostRaid);
+
   const isUnlocked = !!unlockedLayers.omnipotence;
   const lb = legionBonus(creatures, legions, activeStance);
   const rate = effectiveInstabilityRate(creatures, legions, activeStance);
   const stanceRateMult = instabilityRateMult(activeStance);
 
-  // L7 FIX Bug 1 — Capacity = 5 base + 1 per L10 universe slot filled.
-  const filledUniverseSlots = universeRules.filter(Boolean).length;
+  // L7 FIX Bug 1 — Capacity = 5 base + 1 per L10 archetype discovered.
+  const filledUniverseSlots = Object.values(discoveredArchetypes).filter(Boolean).length;
   const maxCreatures = 5 + filledUniverseSlots;
   const createCostDiv = 5;
   const createCostFaith = 5;
@@ -209,10 +231,10 @@ export function OmnipotenceModal() {
                     <span className={canAffordCreature ? "text-amber-300" : "text-rose-400"}>{createCostFaith} Faith</span>
                     <span className="block">
                       Capacity: {creatures.length}/{maxCreatures}
-                      {filledUniverseSlots > 0 && <span className="text-violet-300/80"> (+{filledUniverseSlots} from universe slots)</span>}
+                      {filledUniverseSlots > 0 && <span className="text-violet-300/80"> (+{filledUniverseSlots} from L10 archetypes)</span>}
                     </span>
                     {atCapacity && (
-                      <span className="block text-rose-400">At capacity — author more universe rules or release a creature.</span>
+                      <span className="block text-rose-400">At capacity — discover more L10 archetypes or release a creature.</span>
                     )}
                   </div>
                   <Button
@@ -344,13 +366,220 @@ export function OmnipotenceModal() {
                 </div>
               )}
             </section>
+
+            {/* ===== SKIRMISH ARENA — Outpost Raids ===== */}
+            <section className="stat-card">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[0.7rem] uppercase tracking-wide text-rose-300/80 flex items-center gap-1">
+                  <Swords className="w-3 h-3" /> Skirmish Arena — Outpost Raids
+                </div>
+                <Badge variant="outline" className={`text-[0.6rem] ${raidsRepelled >= OUTPOST_RAID_COUNT_FOR_L8 ? "text-emerald-300 border-emerald-400/50" : "text-amber-300 border-amber-400/40"}`}>
+                  Repelled: {raidsRepelled}/{OUTPOST_RAID_COUNT_FOR_L8}
+                </Badge>
+              </div>
+              <div className="text-[0.6rem] text-muted-foreground mb-2 leading-tight">
+                Minor Old-God outposts raid your galaxies every {120}s. Deploy legions → click Attack → repel 10 raids to unlock Layer 8 (Divine Alliance).
+                Each victory: +1 Divine Fragment (total {divineFragments}) + {CREATURE_XP_PER_RAID} XP per deployed creature. Creatures level up every {CREATURE_XP_PER_LEVEL} XP (+10% ATK/DEF/SPD per level).
+              </div>
+
+              <div className="space-y-1.5">
+                {outpostRaids.length === 0 && (
+                  <div className="text-center text-muted-foreground py-3 text-xs">
+                    No active raids. Outposts will spawn automatically — or summon one below.
+                  </div>
+                )}
+                {outpostRaids.map((raid) => {
+                  const def = OUTPOST_RAID_MAP[raid.outpostDef];
+                  if (!def) return null;
+                  const isSelected = activeOutpostRaid === raid.id;
+                  const active = raid.status === "active";
+                  const deployedPowers = raid.deployedLegionIds.map((lid) => {
+                    const legion = legions.find((l) => l.id === lid);
+                    if (!legion) return null;
+                    return legionPower(legion, creatures);
+                  });
+                  const totalAttack = deployedPowers.reduce((a, p) => a + (p?.attack || 0), 0);
+                  const totalDefense = deployedPowers.reduce((a, p) => a + (p?.defense || 0), 0);
+                  const totalSpeed = deployedPowers.reduce((a, p) => a + (p?.speed || 0), 0);
+                  return (
+                    <div
+                      key={raid.id}
+                      className={`stat-card p-2 ${isSelected ? "border-rose-400/60 bg-rose-500/5" : ""} ${!active ? "opacity-60" : ""}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg shrink-0">{def.icon}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-xs font-semibold truncate">{def.name}</span>
+                            <Badge variant="outline" className="text-[0.5rem] text-rose-300 border-rose-400/40">
+                              HP {def.hp} · ATK {def.attack} · DEF {def.defense}
+                            </Badge>
+                            {raid.status === "won" && (
+                              <Badge variant="outline" className="text-[0.5rem] text-emerald-300 border-emerald-400/50">
+                                <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> Repelled
+                              </Badge>
+                            )}
+                            {raid.status === "active" && (
+                              <Badge variant="outline" className="text-[0.5rem] text-amber-300 border-amber-400/50">
+                                Turn {raid.turn}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-[0.55rem] text-muted-foreground leading-tight">{def.desc}</div>
+                        </div>
+                        {active && (
+                          <Button
+                            size="sm"
+                            variant={isSelected ? "default" : "outline"}
+                            className="h-6 text-[0.6rem]"
+                            onClick={() => setActiveOutpostRaid(isSelected ? null : raid.id)}
+                          >
+                            {isSelected ? "Selected" : "Engage"}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* HP bars */}
+                      {active && (
+                        <div className="mt-1.5 space-y-1">
+                          <div>
+                            <div className="flex justify-between text-[0.55rem] text-rose-300/80 mb-0.5">
+                              <span>Boss HP</span>
+                              <span>{Math.ceil(raid.bossHp)}/{raid.bossMaxHp}</span>
+                            </div>
+                            <div className="h-1.5 bg-rose-950/50 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-rose-500 transition-all"
+                                style={{ width: `${(raid.bossHp / raid.bossMaxHp) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[0.55rem] text-cyan-300/80 mb-0.5">
+                              <span>Your HP</span>
+                              <span>{Math.ceil(raid.playerHp)}/{raid.playerMaxHp}</span>
+                            </div>
+                            <div className="h-1.5 bg-cyan-950/50 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-cyan-400 transition-all"
+                                style={{ width: `${(raid.playerHp / raid.playerMaxHp) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Deployed legions + deploy buttons (only for selected active raid) */}
+                      {active && isSelected && (
+                        <div className="mt-2 space-y-1">
+                          <div className="text-[0.55rem] text-muted-foreground">
+                            Deployed: {raid.deployedLegionIds.length} legion(s) — Power ATK {totalAttack} / DEF {totalDefense} / SPD {totalSpeed}
+                          </div>
+                          {legions.length === 0 ? (
+                            <div className="text-[0.55rem] text-rose-400">Form a legion above before deploying.</div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {legions.map((l) => {
+                                const deployed = raid.deployedLegionIds.includes(l.id);
+                                return (
+                                  <Button
+                                    key={l.id}
+                                    size="sm"
+                                    variant={deployed ? "default" : "outline"}
+                                    className="h-6 text-[0.6rem]"
+                                    onClick={() => deployLegionToRaid(raid.id, l.id)}
+                                  >
+                                    {deployed ? "✓" : "+"} {l.name}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <Button
+                            size="sm"
+                            className="h-7 mt-1 w-full"
+                            disabled={raid.deployedLegionIds.length === 0}
+                            onClick={() => attackOutpost(raid.id)}
+                          >
+                            <Zap className="w-3 h-3 mr-1" /> Attack {def.name}
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Battle log (last 3 entries) */}
+                      {raid.log.length > 0 && (
+                        <div className="mt-1.5 text-[0.55rem] text-muted-foreground/80 space-y-0.5 pl-1 border-l border-muted-foreground/20">
+                          {raid.log.slice(-3).map((entry, i) => (
+                            <div key={i}>{entry}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Manual raid spawn (debug + on-demand) */}
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted-foreground/20">
+                <div className="text-[0.55rem] text-muted-foreground">
+                  Active: {outpostRaids.filter((r) => r.status === "active").length}/{MAX_ACTIVE_OUTPOST_RAIDS} (auto-spawns every 120s)
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[0.6rem]"
+                  disabled={outpostRaids.filter((r) => r.status === "active").length >= MAX_ACTIVE_OUTPOST_RAIDS}
+                  onClick={() => spawnOutpostRaid()}
+                >
+                  <Target className="w-3 h-3 mr-1" /> Summon Raid
+                </Button>
+              </div>
+            </section>
+
+            {/* ===== Creature XP / Levels ===== */}
+            {creatures.length > 0 && (
+              <section>
+                <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Creature Progression — XP / Levels (+10% ATK/DEF/SPD per level)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {creatures.map((c) => {
+                    const xp = creatureXp[c.id] || 0;
+                    const lvl = creatureLevel(c.id, creatureLevels);
+                    const bonus = creatureLevelBonus(lvl);
+                    return (
+                      <div key={c.id} className="stat-card p-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[0.65rem] font-semibold truncate">{c.name}</span>
+                          <Badge variant="outline" className="text-[0.5rem] text-amber-300 border-amber-400/40">
+                            Lv {lvl}
+                          </Badge>
+                        </div>
+                        <div className="text-[0.55rem] text-muted-foreground">
+                          ATK {Math.round(c.attack * bonus.attackMult)} · DEF {Math.round(c.defense * bonus.defenseMult)} · SPD {Math.round(c.speed * bonus.speedMult)}
+                        </div>
+                        <div className="h-1 bg-amber-950/50 rounded-full overflow-hidden mt-1">
+                          <div
+                            className="h-full bg-amber-400 transition-all"
+                            style={{ width: `${(xp % CREATURE_XP_PER_LEVEL) / CREATURE_XP_PER_LEVEL * 100}%` }}
+                          />
+                        </div>
+                        <div className="text-[0.5rem] text-muted-foreground/80 mt-0.5">
+                          {xp % CREATURE_XP_PER_LEVEL}/{CREATURE_XP_PER_LEVEL} XP to next level (total {xp})
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <AlertTriangle className="w-3 h-3" />
-          Design creatures → form Legions → deploy in Layer 9. Peak instability ≥ 80 unlocks Layer 8 (Divine Alliance).
+          Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Layer 8 (Divine Alliance). At 100 instability, creatures go rogue and raid YOUR galaxies.
         </div>
         <div className="flex justify-end pt-2">
           <Button variant="outline" onClick={() => setShow(false)}>Close</Button>

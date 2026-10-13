@@ -139,7 +139,19 @@ export type UpgradeEffectType =
   | "war_preparation"
   | "temporal_shield"
   | "paradox_insight"
-  | "universe_foundation";
+  | "universe_foundation"
+  // Universal auto-buyers (PP-SHOP-TABS — purchased with Prestige Points):
+  // Each unlocks a periodic automation chain in the tick. The auto-buyer
+  // for layer N unlocks when layer N+1 unlocks (per the chain spec).
+  | "auto_light_stars"           // L2 → L3 unlock
+  | "auto_invest_market"          // L3 → L4 unlock
+  | "auto_claim_systems"          // L4 → L5 unlock
+  | "auto_manage_heresy"          // L6 → L7 unlock
+  | "auto_place_anchors"          // L6 → L7 unlock (anchor placement)
+  | "auto_negotiate"              // L8 → L9 unlock
+  | "auto_attack_old_gods"        // L9 → L10 unlock
+  | "auto_author_universes"       // L10 finished
+  | "ep_auto_converter";          // L2+ — converts EP to PP at 1:1
 
 export interface UpgradeDef {
   id: string;
@@ -235,7 +247,24 @@ export interface GameState {
   showChallenges: boolean; // challenge modal visibility
 
   // Auto-action timers (game-time markers for periodic automation)
-  autoTimers: { system: number; tech: number; evolve: number; challenge: number };
+  // PP-SHOP-TABS — extended with universal auto-buyer timers (one per layer's
+  // automation upgrade). Each timer marks the next game-time the auto-buyer
+  // is allowed to fire. -1 / missing means "not yet active".
+  autoTimers: {
+    system: number;
+    tech: number;
+    evolve: number;
+    challenge: number;
+    // Universal auto-buyers (PP-SHOP-TABS):
+    light_stars: number;       // auto_light_stars — every 20s
+    invest_market: number;     // auto_invest_market — every 30s
+    claim_systems: number;      // auto_claim_systems — every 15s
+    manage_heresy: number;      // auto_manage_heresy — every 15s
+    place_anchors: number;      // auto_place_anchors — every 60s
+    negotiate: number;          // auto_negotiate — every 30s
+    attack_old_gods: number;    // auto_attack_old_gods — every 10s
+    author_universes: number;   // auto_author_universes — every 120s
+  };
 
   // Layer 2 — Enlightenment (Foresight / Constellation Map)
   // Currency = Divinity (earned at prestige while this layer is unlocked).
@@ -290,7 +319,7 @@ export interface GameState {
   activeWorshipMode: string | null;
   performedMiracles: Record<string, number>; // miracleId -> count
   miracleTimers: Record<string, number>; // miracleId -> remaining seconds (for temporary effects)
-  heresy: number; // 0-100; run ends at 100
+  heresy: number; // 0-100; DERIVED display value = average of owned galaxies' galaxyHeresy (run ends at 100)
   activeHeresyResponse: string; // default "hr_ignore"
   showApotheosis: boolean;
 
@@ -324,14 +353,23 @@ export interface GameState {
   // Layer 7 — Omnipotence (Bio-engineering)
   equippedHybrids: Record<string, boolean>; // LEGACY: kept for migration; unused by new logic
   activeOmnipotenceStance: string; // "contained" | "balanced" | "embraced"
-  instability: number; // 0-100; creatures go rogue at 100 — run ends
-  peakInstability: number; // peak this run (for unlock check)
+  instability: number; // 0-100; at 100 creatures go rogue (lose a system, reset to 50)
+  peakInstability: number; // peak this run (for legacy unlock check)
   showOmnipotence: boolean;
   // NEW: Creature Lab
   creatures: Array<import("../data/omnipotence").Creature>;
   legions: Array<import("../data/omnipotence").Legion>;
   geneticInstability: number; // alias of instability (kept for clarity)
   creatureDesignDraft: { bodyType: string; diet: string; special: string; name: string } | null;
+  // NEW: Skirmish Arena — outpost raids + creature XP/levels
+  outpostRaids: Array<import("../data/omnipotence").OutpostRaid>;
+  raidsRepelled: number;                          // count toward L7 → L8 unlock
+  activeOutpostRaid: string | null;              // currently selected raid id
+  creatureXp: Record<string, number>;            // creature id → XP
+  creatureLevels: Record<string, number>;        // creature id → level (1+)
+  outpostRaidSpawnTimer: number;                  // seconds until next raid spawn tick
+  // NOTE: Auto-Manage Heresy uses `autoTimers.manage_heresy` (defined under
+  // GameState.autoTimers) — no separate field needed here.
 
   // Layer 8 — Divinity (the layer; not the resource) — Divine Alliance
   prayer: number; // currency (preserved for legacy refs)
@@ -355,17 +393,35 @@ export interface GameState {
   oldGodBattles: Record<string, import("../data/infinity").BattleState>;
   divineFragments: number;
 
-  // Layer 10 — Eternity — Ascension
-  testamentClauses: number; // LEGACY: kept for migration (used as currency)
+  // Layer 10 — Eternity — Genesis Engine (crucible + divine relics + 100 archetypes)
+  // (Legacy fields kept as no-ops for migration: testamentClauses,
+  // purchasedTestamentClauses, activeCanonizations, activePermanenceWeaves.)
+  testamentClauses: number; // LEGACY: kept for migration
   purchasedTestamentClauses: Record<string, boolean>; // LEGACY
   activeCanonizations: Record<string, boolean>; // LEGACY
   activePermanenceWeaves: Record<string, boolean>; // LEGACY
-  chosenEnding: string | null; // "preserve" | "reset" | null
-  cosmicBoonStacks: number; // +1 per "Reset Universe" ending chosen
+  chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
+  cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
-  // NEW: Universe Creation
-  universeRules: Array<string | null>; // 8 slots: physics, biology, magic, time, space, consciousness, death, rebirth
-  keptGods: string[]; // minor god ids kept as part of the new pantheon
+  // NEW: Genesis Engine state
+  //   divineRelics        — inventory of relics (each with rules + revealed state)
+  //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)
+  //   discoveredArchetypes — archetype id → discovered (need all 100 to win)
+  //   universeSimulating  — true during the 30s Big Bang animation
+  //   simulationStartTime — game-time when the current Big Bang started
+  //   lastSimulationResult — null until the first Big Bang completes
+  divineRelics: Array<import("../data/genesisEngine").DivineRelic>;
+  crucibleRelicIds: string[];
+  discoveredArchetypes: Record<string, boolean>;
+  universeSimulating: boolean;
+  simulationStartTime: number;
+  lastSimulationResult: {
+    stable: boolean;
+    archetypeId: string | null;
+    relicsGained: number;
+    relicsLost: number;
+    instability: number;
+  } | null;
 
   // UI state
   currentTab: TabId;
@@ -454,7 +510,8 @@ export interface GameState {
   followerGrid: Array<{ state: string; type: string }>; // LEGACY — kept empty
   heresySpreadTimer: number;                   // seconds until next spread tick (per-galaxy cycle)
   heresySeedTimer: number;                     // seconds until next auto-seed of a heretic (per-galaxy cycle)
-  heresyThresholdsSeeded: Record<string, boolean>; // LEGACY — kept for save compat
+  /** Per-galaxy threshold tracking. Keys are `${galaxyId}:${threshold}` (threshold ∈ {25,50,75}). */
+  heresyThresholdsSeeded: Record<string, boolean>;
   // FEATURE 5 — Prophets (now per-galaxy: { galaxyId, cellIndex, lastConvertedAt })
   prophets: Array<{ galaxyId: string; cellIndex: number; lastConvertedAt: number }>;
   prophetConvertTimer: number;                  // seconds until next prophet conversion tick
@@ -488,7 +545,9 @@ export interface GameState {
   amplifiers: Array<{ id: number; godId: string }>;
   // FEATURE 9 — Temporal Storms (per-battle): shuffle timeline, delays/accelerates enemy attacks
   temporalStorms: Record<string, boolean>;     // oldGodId → storm active
-  // FEATURE 10 — Forbidden Words: paradox counter; ≥3 resets universe creation
+  // FEATURE 10 — Forbidden Words (paradox counter): LEGACY — Genesis Engine
+  // redesign removed the paradox mechanic. Field kept for save-shape compat;
+  // always 0 in new saves.
   universeParadox: number;
 
   // ===== BACKGROUND-SIMULATION =====
@@ -596,6 +655,11 @@ export interface GameStore extends GameState {
   removeCreatureFromLegion: (creatureId: string, legionId: string) => void;
   createLegion: (name: string) => void;
   deleteLegion: (legionId: string) => void;
+  // NEW: Skirmish Arena (outpost raids) actions
+  spawnOutpostRaid: (outpostDefId?: string) => void;
+  deployLegionToRaid: (raidId: string, legionId: string) => void;
+  attackOutpost: (raidId: string) => void;
+  setActiveOutpostRaid: (raidId: string | null) => void;
 
   // Layer 8 — Divinity (layer) — Divine Alliance
   setShowDivinityLayer: (v: boolean) => void;
@@ -619,15 +683,28 @@ export interface GameStore extends GameState {
   callAllyToBattle: (oldGodId: string, godId: string) => void;
   attackOldGod: (oldGodId: string) => void;
 
-  // Layer 10 — Eternity — Ascension
+  // Layer 10 — Eternity — Genesis Engine
   setShowEternity: (v: boolean) => void;
   purchaseTestamentClause: (clauseId: string) => void; // LEGACY stub
   toggleCanonization: (canonId: string) => void; // LEGACY stub
   togglePermanenceWeave: (weaveId: string) => void; // LEGACY stub
   chooseEnding: (endingId: "preserve" | "reset") => void;
-  // NEW: Universe Creation actions
+  // LEGACY stubs (kept for save-compat — Genesis Engine redesign removed these)
   setUniverseRule: (slotIndex: number, optionId: string) => void;
   toggleKeptGod: (godId: string) => void;
+  // NEW: Genesis Engine actions
+  /** Add a relic to the crucible (max 5, no duplicates). Cannot be removed once added. */
+  addRelicToCrucible: (relicId: string) => void;
+  /** Remove ALL relics from the crucible (reset). Allowed only when not simulating. */
+  clearCrucible: () => void;
+  /** Spend Divinity to reveal a relic's rule NAME (cost: REVEAL_COST_RULE). */
+  revealRelicRule: (relicId: string, ruleIndex: number) => void;
+  /** Spend Divinity to reveal a relic's rule AMOUNT (cost: REVEAL_COST_AMOUNT). */
+  revealRelicAmount: (relicId: string, ruleIndex: number) => void;
+  /** Begin a Big Bang (requires ≥1 relic in crucible, not already simulating). 30s sim. */
+  triggerBigBang: () => void;
+  /** Complete the Big Bang after 30s. Stable → discover archetype + new relics. Unstable → lose relics. */
+  completeBigBang: () => void;
 
   // Theme customization
   setStageTheme: (id: string) => void;
@@ -700,7 +777,8 @@ export interface GameStore extends GameState {
   removeAmplifier: (godId: string) => void;
   // FEATURE 9 — Temporal Storms
   stabilizeTime: (oldGodId: string) => void;
-  // FEATURE 10 — Forbidden Words
+  // FEATURE 10 — Forbidden Words: LEGACY stub — Genesis Engine redesign removed
+  // the paradox mechanic. The action is kept for save-compat; calling it does nothing.
   resolveParadox: () => void;
 
   // ===== BACKGROUND-SIMULATION =====

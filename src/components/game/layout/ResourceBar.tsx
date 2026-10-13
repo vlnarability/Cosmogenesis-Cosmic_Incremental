@@ -17,6 +17,9 @@ export function ResourceBar() {
   const galacticWins = useGameStore((s) => s.galacticWins);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+  // PP-SHOP-TABS — read the EP Auto-Converter ownership so we can hide the EP
+  // chip from the ResourceBar once EP becomes internal-only.
+  const upgrades = useGameStore((s) => s.upgrades);
 
   // Layer currencies (shown when their layer is unlocked)
   const divinity = useGameStore((s) => s.divinity);
@@ -245,8 +248,9 @@ export function ResourceBar() {
             {isLayerAtLeast("eternity", unlockedLayers) && cosmicBoonStacks > 0 && (
               <MetaChip icon="🌠" label="Boon" value={formatCompact(cosmicBoonStacks)} color="text-indigo-300" title="Cosmic Boons (Layer 10)" />
             )}
-            {/* EP — always show if > 0 */}
-            {(evolutionPoints > 0 || galacticWins > 0) && (
+            {/* EP — always show if > 0, UNLESS the EP Auto-Converter upgrade
+                is owned (PP-SHOP-TABS — EP becomes internal-only at that point). */}
+            {(evolutionPoints > 0 || galacticWins > 0) && (upgrades["ep_auto_converter"] || 0) === 0 && (
               <div className="res-chip shrink-0" title="Evolution Points">
                 <span className="text-sm">🌱</span>
                 <span className="font-semibold text-emerald-400 text-xs tabular-nums">

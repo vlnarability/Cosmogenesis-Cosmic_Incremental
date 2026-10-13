@@ -137,6 +137,7 @@ import {
   RELIC_LOADOUTS,
   RELIC_LOADOUT_MAP,
   relicBonus,
+  logicCoreBonus,
 } from "../data/singularity";
 import {
   UNIVERSAL_GALAXIES,
@@ -187,12 +188,25 @@ import {
   instabilityRateMult,
   effectiveInstabilityRate,
   isOmnipotenceComplete,
+  OUTPOST_RAIDS,
+  OUTPOST_RAID_MAP,
+  OUTPOST_RAID_COUNT_FOR_L8,
+  CREATURE_XP_PER_LEVEL,
+  CREATURE_XP_PER_RAID,
+  OUTPOST_RAID_SPAWN_INTERVAL_SEC,
+  MAX_ACTIVE_OUTPOST_RAIDS,
+  INSTABILITY_ROGUE_THRESHOLD,
+  INSTABILITY_AFTER_ROGUE,
+  creatureLevel,
+  creatureLevelBonus,
+  raidDeployedPower,
   type OmnipotenceStanceId,
   type CreatureBodyTypeId,
   type CreatureDietId,
   type CreatureSpecialId,
   type Creature,
   type Legion,
+  type OutpostRaid,
 } from "../data/omnipotence";
 import {
   MINOR_GODS,
@@ -249,6 +263,26 @@ import {
   cosmicBoonBonus,
   isEternityComplete,
 } from "../data/eternity";
+import {
+  UNIVERSE_RULES,
+  RULE_IDS,
+  RULE_BASE,
+  RULE_TOTAL_TARGET,
+  BIG_BANG_DURATION_SEC,
+  REVEAL_COST_RULE,
+  REVEAL_COST_AMOUNT,
+  ARCHETYPES,
+  ARCHETYPE_MAP as GENESIS_ARCHETYPE_MAP,
+  ARCHETYPE_COUNT,
+  generateRandomRelic,
+  generateRelicReward,
+  computeCrucibleRules,
+  matchArchetype,
+  archetypeBonus,
+  relicLossCount,
+  isGenesisComplete,
+  type DivineRelic,
+} from "../data/genesisEngine";
 import {
   STAGE_INDEX_TO_THEME,
   LAYER_ID_TO_THEME,
@@ -308,13 +342,10 @@ function makeInitialFollowerGrid(): Array<{ state: string; type: string }> {
   return Array.from({ length: 32 }, () => ({ state: "faithful", type: "follower" }));
 }
 
-function makeInitialDimensions() {
-  return [
-    { id: 0, name: "Alpha", speed: 1, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-    { id: 1, name: "Beta", speed: 0.5, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-    { id: 2, name: "Gamma", speed: 0.25, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-  ];
-}
+// (Legacy) makeInitialDimensions — REMOVED in the Universal Map redesign.
+// The `dimensions` array is kept as an empty stub for save-shape compat; the
+// canonical L6 state lives in `universalGalaxies` (built via
+// makeInitialUniversalGalaxies() from the data layer).
 
 // Returns the layer overlay theme id for the highest unlocked layer (used by auto theme mode).
 // Order matches the layer progression order in LAYER_ID_TO_THEME keys.
@@ -392,8 +423,23 @@ function initialMetaState(): Partial<GameState> {
     completedChallenges: {},
     challengeRepeatCounts: {},
     showChallenges: false,
-    // Auto-action timers (game-time markers for periodic automation)
-    autoTimers: { system: 0, tech: 0, evolve: 0, challenge: 0 },
+    // Auto-action timers (game-time markers for periodic automation).
+    // PP-SHOP-TABS — extended with universal auto-buyer timers (one per layer).
+    autoTimers: {
+      system: 0,
+      tech: 0,
+      evolve: 0,
+      challenge: 0,
+      // Universal auto-buyers (PP-SHOP-TABS):
+      light_stars: 0,
+      invest_market: 0,
+      claim_systems: 0,
+      manage_heresy: 0,
+      place_anchors: 0,
+      negotiate: 0,
+      attack_old_gods: 0,
+      author_universes: 0,
+    },
 
     // Layer 2 — Enlightenment (Foresight / Constellation Map)
     divinity: 0,
@@ -465,6 +511,16 @@ function initialMetaState(): Partial<GameState> {
     legions: [],
     geneticInstability: 0,
     creatureDesignDraft: { bodyType: "predator", diet: "herbivore", special: "regen", name: "" },
+    // NEW: Skirmish Arena — outpost raids + creature XP/levels
+    outpostRaids: [],
+    raidsRepelled: 0,
+    activeOutpostRaid: null,
+    creatureXp: {},
+    creatureLevels: {},
+    outpostRaidSpawnTimer: OUTPOST_RAID_SPAWN_INTERVAL_SEC,
+    // NOTE: autoManageHeresyTimer is intentionally NOT used — the canonical
+    // Auto-Manage Heresy tick (further below) uses `autoTimers.manage_heresy`
+    // and operates on per-galaxy `galaxyFollowerGrid`.
 
     // Layer 8 — Divinity (the layer; not the resource) — Divine Alliance
     prayer: 0,
@@ -488,7 +544,7 @@ function initialMetaState(): Partial<GameState> {
     oldGodBattles: Object.fromEntries(OLD_GODS.map((g) => [g.id, makeInitialBattleState(g.id)])),
     divineFragments: 0,
 
-    // Layer 10 — Eternity — Ascension
+    // Layer 10 — Eternity — Genesis Engine (crucible + divine relics + 100 archetypes)
     testamentClauses: 0,
     purchasedTestamentClauses: {},
     activeCanonizations: {},
@@ -496,9 +552,13 @@ function initialMetaState(): Partial<GameState> {
     chosenEnding: null,
     cosmicBoonStacks: 0,
     showEternity: false,
-    // NEW: Universe Creation — 8 slots, each holding an option id or null
-    universeRules: Array(UNIVERSE_SLOTS.length).fill(null),
-    keptGods: [],
+    // NEW: Genesis Engine state
+    divineRelics: [],
+    crucibleRelicIds: [],
+    discoveredArchetypes: {},
+    universeSimulating: false,
+    simulationStartTime: 0,
+    lastSimulationResult: null,
 
     currentTab: "actions",
     speed: 1,
@@ -571,10 +631,23 @@ function initialMetaState(): Partial<GameState> {
     followerGrid: makeInitialFollowerGrid(),
     heresySpreadTimer: 10,
     heresySeedTimer: 30,            // seed first heretic after 30s if grid is all-faithful
-    heresyThresholdsSeeded: {},     // tracks 25/50/75 threshold seeding (per-run)
-    // FEATURE 5 — Prophets (max 2 at a time)
+    heresyThresholdsSeeded: {},     // tracks 25/50/75 threshold seeding (per-galaxy, key `${gid}:${threshold}`)
+    // FEATURE 5 — Prophets (max 2 at a time; per-galaxy: { galaxyId, cellIndex, lastConvertedAt })
     prophets: [],
     prophetConvertTimer: 10,
+    // === L5 redesign — Galactic Conquest ===
+    // Per-galaxy heresy level (galaxyId → 0-100). Starter starts at 0.
+    galaxyHeresy: { [STARTER_GALAXY_ID]: 0 },
+    // Per-galaxy 8×4 heresy follower grid. Starter seeded with all faithful.
+    galaxyFollowerGrid: { [STARTER_GALAXY_ID]: makeInitialFollowerGrid() },
+    // Per-galaxy rival star systems. Each rival galaxy gets `makeInitialRivalSystems(gid)`.
+    galaxyRivalSystems: Object.fromEntries(
+      RIVAL_GALAXIES.map((g) => [g.id, makeInitialRivalSystems(g.id)])
+    ),
+    // galaxyId → fully conquered. Drives the L5 → L6 unlock (3+ conquered).
+    conqueredGalaxies: {},
+    // Currently selected galaxy tab in the Apotheosis modal (cosmetic; persisted).
+    selectedGalaxyId: STARTER_GALAXY_ID,
     // (Layer 6 — Dimension Engine removed. The new L6 state lives above next
     // to the other L6 fields: universalGalaxies, rifts, realityAnchors,
     // riftSpawnTimer, riftsClosed, anchorsPlaced.)
@@ -676,20 +749,20 @@ export const useGameStore = create<GameStore>()(
         const forkB = forkBonus(s.resolvedForks || {});
         const debtB = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {});
         const fragmentB = divineFragmentBonus(s.divineFragments || 0);
-        // Layer 10 — Eternity (universe rules + kept gods + cosmic boon)
+        // Layer 10 — Eternity — Genesis Engine
+        // Legacy bonuses (testament clauses / canonizations / weaves / universe slots /
+        // kept gods) all return 0 in the new design — they are kept as no-op shims.
         const testB = testamentClauseBonus(s.purchasedTestamentClauses || {});
         const canonB = canonizationBonus(s.activeCanonizations || {});
         const weaveB = permanenceWeaveBonus(s.activePermanenceWeaves || {});
-        const universeB = universeSlotBonus(s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null));
-        // LAYER UPGRADE — universe_foundation: +25% per level (max 4) to all universe slot bonuses
-        // (mutates the fresh object returned by universeSlotBonus — productionMult, capMult, popGrowthMult, epMult)
+        void testB; void canonB; void weaveB; // no-ops in the new design
+        // NEW: Genesis Engine — archetype bonus (+1% production per discovered archetype)
+        const archetypeB = archetypeBonus(s.discoveredArchetypes || {});
+        // LAYER UPGRADE — universe_foundation (now "Crucible Mastery"):
+        // +25% per level (max 4) to the archetype bonus.
         const ufLvl = (s.upgrades?.universe_foundation as number) || 0;
         const ufMult = 1 + 0.25 * ufLvl;
-        universeB.productionMult *= ufMult;
-        universeB.capMult *= ufMult;
-        universeB.popGrowthMult *= ufMult;
-        universeB.epMult *= ufMult;
-        const keptB = keptGodsBonus(s.keptGods || []);
+        const archetypeProdMult = archetypeB.productionMult * ufMult;
         const cosmicBoon = cosmicBoonBonus(s.cosmicBoonStacks || 0);
 
         // L4 REDESIGN — Galaxy Claim bonuses (replaces the old Sacred Grid).
@@ -715,8 +788,8 @@ export const useGameStore = create<GameStore>()(
           hybrids.productionMult + chanBonus.productionMult + maskBonus.productionMult +
           polarityBonus.productionMult + allianceB.productionMult +
           echoB.productionMult + forkB.productionMult + debtB.productionMult +
-          fragmentB.productionMult + testB.productionMult + canonB.productionMult +
-          weaveB.productionMult + universeB.productionMult + keptB.productionMult + cosmicBoon +
+          fragmentB.productionMult +
+          archetypeProdMult + cosmicBoon +
           galaxySummary.productionMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
           trialReward.prodMult;
         const layerCapBonus =
@@ -726,8 +799,7 @@ export const useGameStore = create<GameStore>()(
           hybrids.capMult + chanBonus.capMult + maskBonus.capMult +
           polarityBonus.capMult + allianceB.capMult +
           echoB.capMult + forkB.capMult + debtB.capMult +
-          fragmentB.capMult + testB.capMult + canonB.capMult +
-          weaveB.capMult + universeB.capMult + keptB.capMult +
+          fragmentB.capMult +
           galaxySummary.capMult +  // L4 Galaxy Claim capacity bonuses
           trialReward.capMult;
         const layerPopBonus =
@@ -737,8 +809,7 @@ export const useGameStore = create<GameStore>()(
           hybrids.popGrowthMult + chanBonus.popGrowthMult + maskBonus.popGrowthMult +
           polarityBonus.popGrowthMult + allianceB.popGrowthMult +
           echoB.popGrowthMult + forkB.popGrowthMult + debtB.popGrowthMult +
-          fragmentB.popGrowthMult + testB.popGrowthMult + canonB.popGrowthMult +
-          weaveB.popGrowthMult + universeB.popGrowthMult + keptB.popGrowthMult +
+          fragmentB.popGrowthMult +
           galaxySummary.popGrowthMult +  // L4 Galaxy Claim pop-growth bonuses
           trialReward.popMult + lateBloomPopBonus;
 
@@ -1179,6 +1250,11 @@ export const useGameStore = create<GameStore>()(
         let evolutionPoints = s.evolutionPoints || 0;  // mutable — background sims add EP
         let faith = s.faith || 0;
         let heresy = s.heresy || 0;
+        // L5 redesign — per-galaxy heresy surge staging variable. When the L5
+        // Heresy Surge event fires (every 90s), we stage a new starter-galaxy
+        // grid with one heretic seeded. The per-galaxy L5 tick block below
+        // consumes this so the surge is applied on the same tick it fires.
+        let pendingSurgeGrid: Array<{ state: string; type: string }> | null = null;
         let activeTemporaryRituals = s.activeTemporaryRituals || {};
         let miracleTimers = s.miracleTimers || {};
         const activeScripts = s.activeScripts || {};
@@ -1288,14 +1364,28 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog("🌀 Divine Whim! Ritual energies surge (+30 Divinity)."), 0);
           }
         }
-        // Layer 5 — Heresy Surge: every 90s (after apotheosis unlocked), +10 heresy (BAD event)
+        // Layer 5 — Heresy Surge: every 90s (after apotheosis unlocked), seed a
+        // heretic in a random owned galaxy's grid (BAD event). Global heresy is
+        // now derived from the grid heretic counts — the surge effectively bumps
+        // the average by ~3 (1 heretic / 32 cells × 100, distributed across N galaxies).
         if (unlockedLayers.apotheosis) {
           if ((layerEventTimers.heresy_surge || 0) === 0) {
             layerEventTimers.heresy_surge = newTime;
           } else if (newTime - layerEventTimers.heresy_surge >= 90) {
             layerEventTimers.heresy_surge = newTime;
-            heresy = Math.min(100, heresy + 10);
-            setTimeout(() => get().addToLog("🔥 Heresy Surge! +10 heresy accrued — the flock doubts."), 0);
+            // Seed a heretic in the starter galaxy (always owned). The mutation
+            // is applied to a fresh local galaxyFollowerGrid object that gets
+            // flushed by the per-galaxy L5 tick block further below.
+            const surgeGrid = (s.galaxyFollowerGrid?.[STARTER_GALAXY_ID] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+            const faithfulIdx = surgeGrid
+              .map((c, i) => (c.state === "faithful" ? i : -1))
+              .filter((i) => i >= 0);
+            if (faithfulIdx.length > 0) {
+              const pick = faithfulIdx[Math.floor(Math.random() * faithfulIdx.length)];
+              surgeGrid[pick] = { ...surgeGrid[pick], state: "heretical" };
+              pendingSurgeGrid = surgeGrid;
+            }
+            setTimeout(() => get().addToLog("🔥 Heresy Surge! A heretic appears in the Aurora Galaxy flock."), 0);
           }
         }
 
@@ -1374,31 +1464,28 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // Layer 5 — Faith generation, heresy accrual (Apotheosis)
+        // Layer 5 — Faith generation (Apotheosis). Per-galaxy heresy accrual is
+        // now derived from each owned galaxy's heresy grid (handled in the
+        // per-galaxy L5 tick block further below). Global `heresy` is the
+        // average of `galaxyHeresy` across owned galaxies; the run-ender at
+        // heresy ≥ 100 is retained but is effectively unreachable now (a
+        // galaxy hitting 75 resets to 50), so the L5 loop is no longer a
+        // run-ender — it's a system-loss loop.
         if (unlockedLayers.apotheosis) {
           faith += wMode.faithPerSec * realDt;
-          // Heresy gain = worship mode's heresyPerSec × divine law heresy mult × heresy response mult
-          const heresyGain = wMode.heresyPerSec * dLaw.heresyRateMult * heresyRateMult(activeHeresyResponse);
-          if (heresyGain > 0) {
-            heresy = Math.min(100, heresy + heresyGain * realDt);
-            if (heresy >= 100) {
-              // Run ends — force prestige (deferred to avoid mid-set race)
-              heresy = 100;
-              setTimeout(() => {
-                get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
-                get().triggerPrestige();
-              }, 0);
-            }
-          }
         }
 
         // Layer 6 — Singularity (Universal Map redesign — replaces the old Logic Core automation).
         // The L6 universal map tick block runs further below (rift spawn + corruption spread).
         // Logic Cores were removed; Reality Anchors now provide the strategic lever.
 
-        // ---- Layer 7 — Omnipotence (Bio-engineering): genetic instability accrual ----
+        // ---- Layer 7 — Omnipotence (Bio-engineering): genetic instability accrual + Skirmish Arena ----
         let instability = s.instability || 0;
         let peakInstability = s.peakInstability || 0;
+        let raidsRepelled = s.raidsRepelled || 0;
+        let outpostRaidSpawnTimer = Math.max(0, (s.outpostRaidSpawnTimer ?? OUTPOST_RAID_SPAWN_INTERVAL_SEC) - realDt);
+        let outpostRaids = (s.outpostRaids || []).map((r) => ({ ...r, log: [...r.log], deployedLegionIds: [...r.deployedLegionIds] }));
+        let galaxySystems = (s.galaxySystems || []).map((g) => ({ ...g }));
         if (unlockedLayers.omnipotence) {
           const rate = effectiveInstabilityRate(s.creatures || [], s.legions || [], s.activeOmnipotenceStance);
           // LAYER UPGRADE — genetic_stabilizer: -25% per level (max 4 → no instability gain)
@@ -1406,14 +1493,65 @@ export const useGameStore = create<GameStore>()(
           const stabMult = Math.max(0, 1 - 0.25 * gsLvl);
           const effectiveRate = rate * stabMult;
           if (effectiveRate > 0) {
-            instability = Math.min(100, instability + effectiveRate * realDt);
+            instability = Math.min(INSTABILITY_ROGUE_THRESHOLD, instability + effectiveRate * realDt);
             peakInstability = Math.max(peakInstability, instability);
-            if (instability >= 100) {
-              instability = 100;
-              peakInstability = 100;
+          }
+          // Skirmish Arena — periodic raid spawn (every 120s, max 3 active)
+          if (outpostRaidSpawnTimer <= 0) {
+            outpostRaidSpawnTimer = OUTPOST_RAID_SPAWN_INTERVAL_SEC;
+            const activeRaids = outpostRaids.filter((r) => r.status === "active");
+            if (activeRaids.length < MAX_ACTIVE_OUTPOST_RAIDS) {
+              const def = OUTPOST_RAIDS[Math.floor(Math.random() * OUTPOST_RAIDS.length)];
+              const id = `raid_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+              outpostRaids.push({
+                id,
+                outpostDef: def.id,
+                status: "active",
+                bossHp: def.hp,
+                bossMaxHp: def.hp,
+                playerHp: 200,
+                playerMaxHp: 200,
+                turn: 0,
+                log: [`${def.icon} ${def.name} raids your galaxies! HP ${def.hp}, ATK ${def.attack}, DEF ${def.defense}.`],
+                deployedLegionIds: [],
+              });
+              setTimeout(() => get().addToLog(`⚔️ ${def.name} (${def.icon}) raids your galaxies! Deploy legions to repel it.`), 0);
+            }
+          }
+          // Instability ≥ 100 — creatures go ROGUE: lose 1 random claimed system, reset instability to 50.
+          // (Replaces the old "run ends at 100" behavior. Player keeps the run but suffers a setback.)
+          // The system-loss is deferred to a setTimeout so it reads the post-tick galaxy state
+          // (avoiding conflicts with the L6 universal-map block that mutates universalGalaxies below).
+          if (instability >= INSTABILITY_ROGUE_THRESHOLD) {
+            instability = INSTABILITY_AFTER_ROGUE;
+            // Try L4 galaxy systems first (always available at L7).
+            const claimedL4 = galaxySystems.filter((g) => g.claimed);
+            if (claimedL4.length > 0) {
+              const idx = Math.floor(Math.random() * claimedL4.length);
+              const sys = claimedL4[idx];
+              sys.claimed = false;
+              const lostName = sys.id;
+              setTimeout(() => get().addToLog(`🧬 Creatures go rogue! They raid your galaxies and destroy system ${lostName}. Instability reset to ${INSTABILITY_AFTER_ROGUE}.`), 0);
+            } else {
+              // Defer to post-tick set() — decrement `systemsClaimed` on a random L6
+              // universal galaxy that the player has claimed systems in.
               setTimeout(() => {
-                get().addToLog("Genetic instability has reached 100. Your creatures go rogue — the run ends.");
-                get().triggerPrestige();
+                const cur = get();
+                let lostName: string | null = null;
+                const nextUniversal = (cur.universalGalaxies || []).map((g) => ({ ...g }));
+                for (const g of nextUniversal) {
+                  if ((g.systemsClaimed || 0) > 0) {
+                    lostName = `${g.id} (1 of ${g.systemsClaimed} system${g.systemsClaimed === 1 ? "" : "s"})`;
+                    g.systemsClaimed = Math.max(0, (g.systemsClaimed || 0) - 1);
+                    break;
+                  }
+                }
+                if (lostName) {
+                  set({ universalGalaxies: nextUniversal });
+                  get().addToLog(`🧬 Creatures go rogue! They overrun galaxy ${lostName}. Instability reset to ${INSTABILITY_AFTER_ROGUE}.`);
+                } else {
+                  get().addToLog(`🧬 Creatures go rogue — but you have no claimed systems to lose. Instability reset to ${INSTABILITY_AFTER_ROGUE}.`);
+                }
               }, 0);
             }
           }
@@ -1469,11 +1607,11 @@ export const useGameStore = create<GameStore>()(
             ), 0);
           }
         }
-        // Layer 8 (Divinity): 2+ alliances formed
+        // Layer 8 (Divinity): repel OUTPOST_RAID_COUNT_FOR_L8 outpost raids
         if (unlockedLayers.omnipotence && !unlockedLayers.divinity) {
-          if (isOmnipotenceComplete(peakInstability)) {
+          if (isOmnipotenceComplete(raidsRepelled)) {
             unlockedLayers = { ...unlockedLayers, divinity: true };
-            setTimeout(() => get().addToLog("Peak instability reached 80. Divine Alliance layer unlocked."), 0);
+            setTimeout(() => get().addToLog(`⚔️ ${OUTPOST_RAID_COUNT_FOR_L8} outpost raids repelled! Divine Alliance layer unlocked.`), 0);
           }
         }
         // Layer 9 (Infinity): 2+ alliances formed (Divine Alliance complete)
@@ -1483,11 +1621,17 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog("Two alliances forged. Divine War layer unlocked."), 0);
           }
         }
-        // Layer 10 (Eternity): all 3 Old Gods defeated
+        // Layer 10 (Eternity — Genesis Engine): all 3 Old Gods defeated.
+        // Seed 3 starter Divine Relics on first unlock so the player can begin
+        // the crucible + Big Bang loop immediately.
         if (unlockedLayers.infinity && !unlockedLayers.eternity) {
           if (isInfinityComplete(s.oldGodBattles || {})) {
             unlockedLayers = { ...unlockedLayers, eternity: true };
-            setTimeout(() => get().addToLog("All 3 Old Gods defeated. Ascension layer unlocked."), 0);
+            const starterRelics = generateRelicReward(3);
+            setTimeout(() => {
+              get().addToLog("All 3 Old Gods defeated. Genesis Engine unlocked — 3 starter relics granted.");
+              set({ divineRelics: [...(get().divineRelics || []), ...starterRelics] });
+            }, 0);
           }
         }
 
@@ -1915,122 +2059,207 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // Layer 5 — Heresy Web: spread every 10s (independent of the global heresy meter)
-        let followerGrid = s.followerGrid ? s.followerGrid.slice() : makeInitialFollowerGrid();
-        let heresySpreadTimer = (s.heresySpreadTimer || 10) - realDt;
-
-        // HERETIC SEEDING — if there are 0 heretics in the grid, seed one every 30s.
-        // Also seed extra heretics when global heresy crosses 25/50/75 thresholds (one-time per run).
-        let heresySeedTimer = Math.max(0, (s.heresySeedTimer || 30) - realDt);
+        // ===== Layer 5 — Heresy Web (Galactic Conquest redesign) =====
+        // Per-galaxy 8×4 heresy grid. Loop through ALL owned galaxies (starter
+        // + any rival with ≥1 claimed system). For each:
+        //   • Spread heresy every 10s (faithful→heretical via adjacent spread).
+        //   • Seed 1 heretic every 30s if the grid is all-faithful.
+        //   • Prophets convert adjacent heretics every 10s.
+        //   • Compute heresy % = (hereticCount / 32) × 100.
+        //   • When heresy crosses 25/50/75 (one-time per galaxy per threshold),
+        //     apply system loss: yellow=1, orange=2, red=3 random claimed
+        //     systems (rival galaxies only). Reset grid to 16 heretics (heresy=50).
+        // Global `heresy` is recomputed as the average of galaxyHeresy across
+        // owned galaxies (display value).
+        let galaxyHeresy = { ...(s.galaxyHeresy || {}) };
+        let galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        let galaxyRivalSystems = { ...(s.galaxyRivalSystems || {}) };
         let heresyThresholdsSeeded = { ...(s.heresyThresholdsSeeded || {}) };
-        if (unlockedLayers.apotheosis) {
-          // Threshold-based seeding (one-time per run per threshold)
-          const heresyNow = s.heresy || 0;
-          for (const threshold of [25, 50, 75]) {
-            if (heresyNow >= threshold && !heresyThresholdsSeeded[String(threshold)]) {
-              heresyThresholdsSeeded[String(threshold)] = true;
-              const count = threshold === 25 ? 1 : threshold === 50 ? 2 : 3;
-              const faithfulIndices = followerGrid
-                .map((c, i) => (c.state === "faithful" ? i : -1))
-                .filter((i) => i >= 0);
-              for (let k = 0; k < count && faithfulIndices.length > 0; k++) {
-                const pick = Math.floor(Math.random() * faithfulIndices.length);
-                const idx = faithfulIndices.splice(pick, 1)[0];
-                followerGrid[idx] = { ...followerGrid[idx], state: "heretical" };
-              }
-              setTimeout(() => get().addToLog(`😈 Heresy surges past ${threshold}! ${count} heretic(s) seeded in your flock.`), 0);
-            }
+        let prophets = (s.prophets || []).map((p) => ({ ...p }));
+        let heresySpreadTimer = (s.heresySpreadTimer || 10) - realDt;
+        let heresySeedTimer = Math.max(0, (s.heresySeedTimer || 30) - realDt);
+        let prophetConvertTimer = Math.max(0, (s.prophetConvertTimer || 10) - realDt);
+        const heresyLog: string[] = [];
+        const l5Upgrades = s.upgrades || {};
+        const hwLvl = (l5Upgrades.heresy_ward as number) || 0;
+        const spreadChance = Math.max(0, 1 - 0.30 * hwLvl);
+        const piLvl = (l5Upgrades.prophet_inspiration as number) || 0;
+        const owned = ownedGalaxyIds(galaxyRivalSystems);
+
+        // Consume the staged surge grid (applied to the starter galaxy).
+        if (pendingSurgeGrid) {
+          galaxyFollowerGrid = {
+            ...galaxyFollowerGrid,
+            [STARTER_GALAXY_ID]: pendingSurgeGrid,
+          };
+          pendingSurgeGrid = null;
+        }
+
+        for (const gid of owned) {
+          if (!galaxyFollowerGrid[gid]) {
+            galaxyFollowerGrid[gid] = makeInitialFollowerGrid();
           }
-          // Timer-based seeding (every 30s if grid is all-faithful)
-          if (heresySeedTimer <= 0) {
-            heresySeedTimer = 30;
-            const hereticCount = followerGrid.filter((c) => c.state === "heretical").length;
+          let grid = galaxyFollowerGrid[gid].map((c) => ({ ...c }));
+
+          // Spread heresy every 10s (faithful→heretical via adjacent spread).
+          if (unlockedLayers.apotheosis && heresySpreadTimer <= 0) {
+            const next = grid.map((c) => ({ ...c }));
+            for (let i = 0; i < next.length; i++) {
+              if (next[i].state !== "heretical") continue;
+              if (Math.random() >= spreadChance) continue; // ward blocks this spread
+              const row = Math.floor(i / 8);
+              const col = i % 8;
+              const neighbors = [
+                col > 0 ? i - 1 : -1,
+                col < 7 ? i + 1 : -1,
+                row > 0 ? i - 8 : -1,
+                row < 3 ? i + 8 : -1,
+              ].filter((n) => n >= 0 && next[n].state === "faithful");
+              if (neighbors.length === 0) continue;
+              const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+              next[target].state = "heretical";
+            }
+            grid = next;
+          }
+
+          // Seed heretic every 30s if grid is all-faithful.
+          if (unlockedLayers.apotheosis && heresySeedTimer <= 0) {
+            const hereticCount = grid.filter((c) => c.state === "heretical").length;
             if (hereticCount === 0) {
-              const faithfulIndices = followerGrid
+              const faithfulIndices = grid
                 .map((c, i) => (c.state === "faithful" ? i : -1))
                 .filter((i) => i >= 0);
               if (faithfulIndices.length > 0) {
                 const pick = faithfulIndices[Math.floor(Math.random() * faithfulIndices.length)];
-                followerGrid[pick] = { ...followerGrid[pick], state: "heretical" };
-                setTimeout(() => get().addToLog("😈 A whisper of doubt spreads through your flock. A heretic appears."), 0);
+                grid[pick] = { ...grid[pick], state: "heretical" };
               }
             }
           }
-        }
 
-        if (unlockedLayers.apotheosis && heresySpreadTimer <= 0) {
-          heresySpreadTimer = 10;
-          // LAYER UPGRADE — heresy_ward: -30% spread chance per level (max 4 → 0% spread)
-          const hwLvl = (s.upgrades?.heresy_ward as number) || 0;
-          const spreadChance = Math.max(0, 1 - 0.30 * hwLvl);
-          const next = followerGrid.map((c) => ({ ...c }));
-          // Spread from each heretical cell to one random adjacent faithful cell
-          for (let i = 0; i < next.length; i++) {
-            if (next[i].state !== "heretical") continue;
-            if (Math.random() >= spreadChance) continue; // ward blocks this spread
-            const row = Math.floor(i / 8);
-            const col = i % 8;
-            const neighbors = [
-              col > 0 ? i - 1 : -1,
-              col < 7 ? i + 1 : -1,
-              row > 0 ? i - 8 : -1,
-              row < 3 ? i + 8 : -1,
-            ].filter((n) => n >= 0 && next[n].state === "faithful");
-            if (neighbors.length === 0) continue;
-            const target = neighbors[Math.floor(Math.random() * neighbors.length)];
-            next[target].state = "heretical";
-          }
-          followerGrid = next;
-        }
-
-        // FEATURE 5 — Prophets: every 10s, each prophet converts ALL adjacent heretics to faithful
-        let prophets = (s.prophets || []).map((p) => ({ ...p }));
-        let prophetConvertTimer = Math.max(0, (s.prophetConvertTimer || 10) - realDt);
-        if (unlockedLayers.apotheosis && prophets.length > 0 && prophetConvertTimer <= 0) {
-          prophetConvertTimer = 10;
-          // LAYER UPGRADE — prophet_inspiration: +1 cell layer per level (max 2).
-          // Level 0 = 4 orthogonal neighbors; Level 1 = also 4 diagonals (8 total);
-          // Level 2 = also 4 two-step orthogonal cells (12 total).
-          const piLvl = (s.upgrades?.prophet_inspiration as number) || 0;
-          const next = followerGrid.map((c) => ({ ...c }));
-          for (const p of prophets) {
-            const i = p.cellIndex;
-            const row = Math.floor(i / 8);
-            const col = i % 8;
-            const candidates: number[] = [];
-            // Orthogonal (always)
-            if (col > 0) candidates.push(i - 1);
-            if (col < 7) candidates.push(i + 1);
-            if (row > 0) candidates.push(i - 8);
-            if (row < 3) candidates.push(i + 8);
-            // Level 1+ — diagonals
-            if (piLvl >= 1) {
-              if (col > 0 && row > 0) candidates.push(i - 9);
-              if (col < 7 && row > 0) candidates.push(i - 7);
-              if (col > 0 && row < 3) candidates.push(i + 7);
-              if (col < 7 && row < 3) candidates.push(i + 9);
-            }
-            // Level 2+ — two-step orthogonal
-            if (piLvl >= 2) {
-              if (col > 1) candidates.push(i - 2);
-              if (col < 6) candidates.push(i + 2);
-              if (row > 1) candidates.push(i - 16);
-              if (row < 2) candidates.push(i + 16);
-            }
-            const neighbors = candidates.filter((n) => n >= 0 && n < next.length);
-            let converted = 0;
-            for (const n of neighbors) {
-              if (next[n].state === "heretical") {
-                next[n].state = "faithful";
-                converted++;
+          // Prophets on this galaxy convert adjacent heretics every 10s.
+          const galaxyProphets = prophets.filter((p) => p.galaxyId === gid);
+          if (unlockedLayers.apotheosis && galaxyProphets.length > 0 && prophetConvertTimer <= 0) {
+            const next = grid.map((c) => ({ ...c }));
+            for (const p of galaxyProphets) {
+              const i = p.cellIndex;
+              const row = Math.floor(i / 8);
+              const col = i % 8;
+              const candidates: number[] = [];
+              if (col > 0) candidates.push(i - 1);
+              if (col < 7) candidates.push(i + 1);
+              if (row > 0) candidates.push(i - 8);
+              if (row < 3) candidates.push(i + 8);
+              if (piLvl >= 1) {
+                if (col > 0 && row > 0) candidates.push(i - 9);
+                if (col < 7 && row > 0) candidates.push(i - 7);
+                if (col > 0 && row < 3) candidates.push(i + 7);
+                if (col < 7 && row < 3) candidates.push(i + 9);
+              }
+              if (piLvl >= 2) {
+                if (col > 1) candidates.push(i - 2);
+                if (col < 6) candidates.push(i + 2);
+                if (row > 1) candidates.push(i - 16);
+                if (row < 2) candidates.push(i + 16);
+              }
+              const neighbors = candidates.filter((n) => n >= 0 && n < next.length);
+              let converted = 0;
+              for (const n of neighbors) {
+                if (next[n].state === "heretical") {
+                  next[n].state = "faithful";
+                  converted++;
+                }
+              }
+              if (converted > 0) {
+                p.lastConvertedAt = newTime;
+                heresyLog.push(`🌟 Prophet in ${RIVAL_GALAXY_MAP[gid]?.name || gid} converted ${converted} heretic(s).`);
               }
             }
-            if (converted > 0) {
-              p.lastConvertedAt = newTime;
-              setTimeout(() => get().addToLog(`🌟 Prophet converted ${converted} adjacent heretic(s) back to the faithful.`), 0);
+            grid = next;
+          }
+
+          // Compute heresy % = (hereticCount / 32) × 100.
+          const hereticCount = grid.filter((c) => c.state === "heretical").length;
+          const heresyPct = (hereticCount / 32) * 100;
+          galaxyHeresy[gid] = heresyPct;
+
+          // Threshold crossings: 25/50/75 → system loss + grid reset (one-time per galaxy per threshold).
+          for (const threshold of [25, 50, 75]) {
+            const key = `${gid}:${threshold}`;
+            if (heresyPct >= threshold && !heresyThresholdsSeeded[key]) {
+              heresyThresholdsSeeded[key] = true;
+              const lossCount = threshold === 25 ? 1 : threshold === 50 ? 2 : 3;
+              const galaxyName = RIVAL_GALAXY_MAP[gid]?.name || gid;
+
+              if (gid !== STARTER_GALAXY_ID) {
+                // Lose random claimed systems from this rival galaxy.
+                const systems = (galaxyRivalSystems[gid] || []).map((sys) => ({ ...sys }));
+                const claimedIdx = systems
+                  .map((sys, i) => (sys.claimed ? i : -1))
+                  .filter((i) => i >= 0);
+                let actuallyLost = 0;
+                for (let k = 0; k < lossCount && claimedIdx.length > 0; k++) {
+                  const pick = Math.floor(Math.random() * claimedIdx.length);
+                  const idx = claimedIdx.splice(pick, 1)[0];
+                  systems[idx].claimed = false;
+                  actuallyLost++;
+                }
+                galaxyRivalSystems[gid] = systems;
+                heresyLog.push(`🔥 ${galaxyName} heresy hit ${threshold}%. Lost ${actuallyLost} claimed system(s).`);
+              } else {
+                heresyLog.push(`🔥 ${galaxyName} heresy hit ${threshold}%. The flock wavers in doubt.`);
+              }
+
+              // Reset grid to 16 heretics (heresy = 50). Preserve prophet positions.
+              const resetGrid = grid.map((c) => ({
+                state: "faithful",
+                type: c.type === "prophet" ? "prophet" : "follower",
+              }));
+              const nonProphetIdx = resetGrid
+                .map((c, i) => (c.type !== "prophet" ? i : -1))
+                .filter((i) => i >= 0);
+              // Fisher-Yates shuffle then pick first 16 to convert.
+              for (let i = nonProphetIdx.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [nonProphetIdx[i], nonProphetIdx[j]] = [nonProphetIdx[j], nonProphetIdx[i]];
+              }
+              for (let k = 0; k < 16 && k < nonProphetIdx.length; k++) {
+                resetGrid[nonProphetIdx[k]].state = "heretical";
+              }
+              grid = resetGrid;
+              galaxyHeresy[gid] = 50;
+              break; // only one threshold per tick per galaxy
             }
           }
-          followerGrid = next;
+
+          galaxyFollowerGrid[gid] = grid;
+        }
+
+        // Reset spread/seed/prophet timers.
+        if (heresySpreadTimer <= 0) heresySpreadTimer = 10;
+        if (heresySeedTimer <= 0) heresySeedTimer = 30;
+        if (prophetConvertTimer <= 0) prophetConvertTimer = 10;
+
+        // Recompute global heresy as the average of owned galaxies' heresy.
+        const newHeresy = owned.length > 0
+          ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
+          : 0;
+        heresy = newHeresy;
+        // Run-ender: if average heresy is 100 (all owned galaxies maxed), trigger prestige.
+        if (heresy >= 100) {
+          heresy = 100;
+          setTimeout(() => {
+            get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
+            get().triggerPrestige();
+          }, 0);
+        }
+
+        // Legacy `followerGrid` variable — points at the starter galaxy's grid
+        // for backward compat with the auto_manage_heresy upgrade below.
+        let followerGrid = galaxyFollowerGrid[STARTER_GALAXY_ID] || makeInitialFollowerGrid();
+
+        // Flush L5 per-galaxy heresy log messages (deferred to avoid setState-in-loop).
+        for (const msg of heresyLog) {
+          setTimeout(() => get().addToLog(msg), 0);
         }
 
         // ===== LAYER 6 — UNIVERSAL MAP (Rift Defense + Reality Anchors) =====
@@ -2113,7 +2342,10 @@ export const useGameStore = create<GameStore>()(
         const claimedGalaxyCount = (s.galaxySystems || []).filter((g) => g.claimed).length;
         const l4Worlds = s.unlockedLayers?.genesis ? claimedGalaxyCount * 10 : 0;
         // L5 Rival galaxies: each claimed rival system grants +18 worlds.
-        const claimedRivalCount = totalRivalSystemsClaimed(universalGalaxies);
+        // L5 redesign — source of truth is `galaxyRivalSystems` (the L5 attack
+        // loop). The L6 universal map's `totalRivalSystemsClaimed` no longer
+        // drives L5 worlds — it just shadows L5 galaxies for narrative continuity.
+        const claimedRivalCount = countClaimedRivalSystems(s.galaxyRivalSystems || {});
         const l5Worlds = s.unlockedLayers?.apotheosis ? claimedRivalCount * 18 : 0;
         // L6 Universal Map: each claimed NEW system grants +198 worlds.
         const claimedNewCount = totalNewSystemsClaimed(universalGalaxies);
@@ -2146,6 +2378,247 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog(
               `🌌 Worlds: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters + ${claimedGalaxyCount} L4 systems × 10 + ${claimedRivalCount} rival × 18 + ${claimedNewCount} new × 198 = cap ${worldCap.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
             ), 0);
+          }
+        }
+
+        // ===== PP-SHOP-TABS — UNIVERSAL AUTO-BUYER TICK =====
+        // Each auto-buyer is a universal upgrade (purchased with Prestige Points).
+        // The auto-buyer for layer N unlocks when layer N+1 is unlocked (chain spec).
+        // We update the per-tick timer AND defer the actual action via setTimeout
+        // so the action's own set() call doesn't race with the tick's set() below.
+        // Defensive: actions are guarded by their own layer-unlock checks, so if
+        // any are not yet implemented (e.g. attackGalaxy for L5 rival galaxies),
+        // the timer simply advances with no work done.
+
+        // ---- auto_light_stars (L3+ unlocked): cheapest affordable constellation star ----
+        if ((s.upgrades["auto_light_stars"] || 0) > 0
+            && s.unlockedLayers?.transcendence
+            && newTime - (autoTimers.light_stars || 0) >= 20) {
+          autoTimers.light_stars = newTime;
+          // Find the cheapest affordable unlit star across all constellations.
+          const cs: ConstellationState = {
+            constellationStars: s.constellationStars || {},
+            constellationProgress: s.constellationProgress || {},
+            constellationsStarted: s.constellationsStarted || {},
+            constellationsCompleted: s.constellationsCompleted || {},
+          };
+          const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+          const foresightDiscountMult = Math.pow(0.80, fdLvl);
+          let best: { cId: string; sId: string; cost: number } | null = null;
+          for (const c of CONSTELLATIONS) {
+            for (const st of c.stars) {
+              if (cs.constellationStars[st.id]) continue; // already lit
+              const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+              if (cost <= (divinity) && (!best || cost < best.cost)) {
+                best = { cId: c.id, sId: st.id, cost };
+              }
+            }
+          }
+          if (best) {
+            const pick = best;
+            setTimeout(() => get().illuminateStar(pick.cId, pick.sId), 0);
+          }
+        }
+
+        // ---- auto_invest_market (L4+ unlocked): sell owned market resources for Divinity ----
+        if ((s.upgrades["auto_invest_market"] || 0) > 0
+            && s.unlockedLayers?.genesis
+            && newTime - (autoTimers.invest_market || 0) >= 30) {
+          autoTimers.invest_market = newTime;
+          // Pick the resource with the highest current price × owned-qty to convert.
+          const owned = s.marketOwnedResources || {};
+          const prices = s.marketPrices || {};
+          let bestRes: string | null = null;
+          let bestValue = 0;
+          for (const [rid, qty] of Object.entries(owned)) {
+            if (!qty) continue;
+            const price = prices[rid] || 10;
+            const value = price * qty;
+            if (value > bestValue) {
+              bestValue = value;
+              bestRes = rid;
+            }
+          }
+          if (bestRes) {
+            const rid = bestRes;
+            const qty = owned[rid] || 0;
+            setTimeout(() => get().marketOffering(rid, qty), 0);
+          }
+        }
+
+        // ---- auto_claim_systems (L5+ unlocked): attack the cheapest affordable
+        //      unclaimed system — L5 rival galaxy OR L6 NEW galaxy (whichever is cheaper) ----
+        if ((s.upgrades["auto_claim_systems"] || 0) > 0
+            && s.unlockedLayers?.apotheosis
+            && newTime - (autoTimers.claim_systems || 0) >= 15) {
+          autoTimers.claim_systems = newTime;
+          // Candidate A: cheapest unclaimed L5 rival galaxy system.
+          let bestGalaxy: { kind: "l5" | "l6"; id: string; cost: number } | null = null;
+          const grs = s.galaxyRivalSystems || {};
+          for (const g of RIVAL_GALAXIES) {
+            if (g.ownerId === "player") continue; // starter — no attacking
+            const list = grs[g.id] || [];
+            const claimedCount = list.filter((sys) => sys.claimed).length;
+            if (claimedCount >= g.systemCount) continue; // fully claimed
+            const cost = galaxyAttackCost(claimedCount, g.defenseStrength);
+            if (cost <= (s.faith || 0) && (!bestGalaxy || cost < bestGalaxy.cost)) {
+              bestGalaxy = { kind: "l5", id: g.id, cost };
+            }
+          }
+          // Candidate B: cheapest unclaimed L6 NEW galaxy system (Singularity unlocked).
+          if (s.unlockedLayers?.singularity) {
+            const ug = (universalGalaxies || []).map((g) => ({ ...g }));
+            const totalNewClaimed = totalNewSystemsClaimed(ug);
+            for (const g of ug) {
+              const def = UNIVERSAL_GALAXY_MAP[g.id];
+              if (!def || !def.isNewL6) continue;
+              if (g.systemsClaimed >= def.systemCount) continue;
+              const cost = newGalaxyAttackCost(totalNewClaimed);
+              if (cost <= (s.faith || 0) && (!bestGalaxy || cost < bestGalaxy.cost)) {
+                bestGalaxy = { kind: "l6", id: g.id, cost };
+              }
+            }
+          }
+          if (bestGalaxy) {
+            const pick = bestGalaxy;
+            setTimeout(() => {
+              if (pick.kind === "l5") {
+                // L5 rival galaxy attack — `attackGalaxy` is declared on
+                // GameStore but not yet implemented (deferred to a future L5
+                // wiring task). Defensively check before calling so the
+                // auto-buyer doesn't crash if it's still undefined.
+                const fn = (get() as any).attackGalaxy;
+                if (typeof fn === "function") fn(pick.id);
+              } else {
+                get().attackUniversalGalaxy(pick.id);
+              }
+            }, 0);
+          }
+        }
+
+        // ---- auto_manage_heresy (L7+ unlocked): convert heretics across owned galaxies ----
+        if ((s.upgrades["auto_manage_heresy"] || 0) > 0
+            && s.unlockedLayers?.omnipotence
+            && newTime - (autoTimers.manage_heresy || 0) >= 15) {
+          autoTimers.manage_heresy = newTime;
+          // Auto-buyer is free per spec ("No Divinity/Faith cost — the Inquisition
+          // runs itself"). Walk owned galaxies and convert the first heretic found.
+          let convertedGalaxy: string | null = null;
+          let convertedIdx = -1;
+          for (const gid of owned) {
+            const g = (galaxyFollowerGrid[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+            const idx = g.findIndex((c) => c?.state === "heretical");
+            if (idx >= 0) {
+              g[idx].state = "faithful";
+              galaxyFollowerGrid = { ...galaxyFollowerGrid, [gid]: g };
+              // Keep the legacy `followerGrid` variable in sync with the starter galaxy.
+              if (gid === STARTER_GALAXY_ID) followerGrid = g;
+              convertedGalaxy = gid;
+              convertedIdx = idx;
+              break;
+            }
+          }
+          if (convertedGalaxy) {
+            const gname = RIVAL_GALAXY_MAP[convertedGalaxy]?.name || convertedGalaxy;
+            setTimeout(() => get().addToLog(`⚖️ Auto-Manage Heresy: converted cell ${convertedIdx + 1} in ${gname} back to the faithful.`), 0);
+          }
+        }
+
+        // ---- auto_place_anchors (L7+ unlocked): place anchor on random unanchored galaxy ----
+        if ((s.upgrades["auto_place_anchors"] || 0) > 0
+            && s.unlockedLayers?.omnipotence
+            && newTime - (autoTimers.place_anchors || 0) >= 60) {
+          autoTimers.place_anchors = newTime;
+          // Pick a random unanchored galaxy where anchorPlaceCost <= singularityCores.
+          const ug = (universalGalaxies || []);
+          const anchorsPlacedNow = s.anchorsPlaced || 0;
+          const anchorCost = anchorPlaceCost(anchorsPlacedNow);
+          const unanchored = ug.filter((g) => !g.anchored);
+          if (unanchored.length > 0 && (s.singularityCores || 0) >= anchorCost) {
+            const pick = unanchored[Math.floor(Math.random() * unanchored.length)];
+            setTimeout(() => get().placeRealityAnchor(pick.id), 0);
+          }
+        }
+
+        // ---- auto_negotiate (L9+ unlocked): negotiate with first available minor god ----
+        if ((s.upgrades["auto_negotiate"] || 0) > 0
+            && s.unlockedLayers?.infinity
+            && newTime - (autoTimers.negotiate || 0) >= 30) {
+          autoTimers.negotiate = newTime;
+          // Pick the first god whose negotiate cooldown is 0 and relationship not maxed.
+          const gods = (s.minorGods || []).slice();
+          const rels = s.godRelationships || {};
+          let pickGod: string | null = null;
+          for (const g of gods) {
+            const cdKey = `negotiate_${g.id}`;
+            const cd = (s as any)[cdKey] || 0;
+            if (cd > 0) continue;
+            if ((rels[g.id] || g.startingRelationship) >= RELATIONSHIP_MAX) continue;
+            pickGod = g.id;
+            break;
+          }
+          if (pickGod) {
+            const gid = pickGod;
+            setTimeout(() => get().negotiateWithGod(gid), 0);
+          }
+        }
+
+        // ---- auto_attack_old_gods (L10+ unlocked): attack every active Old God battle ----
+        if ((s.upgrades["auto_attack_old_gods"] || 0) > 0
+            && s.unlockedLayers?.eternity
+            && newTime - (autoTimers.attack_old_gods || 0) >= 10) {
+          autoTimers.attack_old_gods = newTime;
+          // Iterate every active in_progress battle and attack it.
+          const battles = s.oldGodBattles || {};
+          const activeIds = Object.keys(battles).filter((id) => battles[id]?.status === "in_progress");
+          for (const oldGodId of activeIds) {
+            setTimeout(() => get().attackOldGod(oldGodId), 0);
+          }
+        }
+
+        // ---- auto_author_universes (L10 finished — Genesis Engine): reveal a
+        // random unrevealed rule name on a random owned relic every 120s.
+        // (Re-purposed from the legacy "fill universe slot" action.)
+        if ((s.upgrades["auto_author_universes"] || 0) > 0
+            && s.unlockedLayers?.eternity
+            && !s.universeSimulating
+            && newTime - (autoTimers.author_universes || 0) >= 120) {
+          autoTimers.author_universes = newTime;
+          // Find relics with at least one unrevealed rule name.
+          const relics = (s.divineRelics || []);
+          const candidates: Array<{ relicId: string; ruleIndex: number }> = [];
+          for (const r of relics) {
+            for (let i = 0; i < r.rules.length; i++) {
+              if (!r.rules[i].revealed.rule) {
+                candidates.push({ relicId: r.id, ruleIndex: i });
+              }
+            }
+          }
+          if (candidates.length > 0 && (s.divinity || 0) >= REVEAL_COST_RULE) {
+            const pick = candidates[Math.floor(Math.random() * candidates.length)];
+            setTimeout(() => get().revealRelicRule(pick.relicId, pick.ruleIndex), 0);
+          }
+        }
+
+        // ---- Big Bang simulation completion check ----
+        // If a Big Bang is in progress and 30s have elapsed, complete it.
+        if (s.universeSimulating && newTime - (s.simulationStartTime || 0) >= BIG_BANG_DURATION_SEC) {
+          setTimeout(() => get().completeBigBang(), 0);
+        }
+
+        // ---- ep_auto_converter (L2+ unlocked, every tick): convert ALL EP to PP at 1:1 ----
+        // Done inline (not deferred) so the EP→PP transfer is atomic with this tick.
+        if ((s.upgrades["ep_auto_converter"] || 0) > 0
+            && s.unlockedLayers?.enlightenment
+            && evolutionPoints > 0) {
+          const epToConvert = evolutionPoints;
+          evolutionPoints = 0;
+          prestigePoints += epToConvert;
+          // One-time log message per session of conversion (rate-limited to avoid spam).
+          const lastConvertLog = (s as any)._lastEpConvertLog || 0;
+          if (newTime - lastConvertLog >= 30) {
+            (s as any)._lastEpConvertLog = newTime;
+            setTimeout(() => get().addToLog(`🌱✦ EP Auto-Converter: +${epToConvert.toFixed(1)} EP → +${epToConvert.toFixed(1)} PP.`), 0);
           }
         }
 
@@ -2194,9 +2667,15 @@ export const useGameStore = create<GameStore>()(
           geneticInstability,
           peakInstability,
           prayer,
+          // NEW: Skirmish Arena — outpost raids + creature XP/levels
+          outpostRaids,
+          raidsRepelled,
+          outpostRaidSpawnTimer,
+          galaxySystems,
           // NEW: Layer 7-10 runtime state
-          // (creatures/legions/minorGods/oldGodBattles/universeRules are mutated
-          //  through dedicated actions, not inside the tick — they persist as-is.)
+          // (creatures/legions/minorGods/oldGodBattles/divineRelics/crucibleRelicIds/
+          //  discoveredArchetypes are mutated through dedicated actions, not inside
+          //  the tick — they persist as-is.)
           // QUICK WINS — runtime timers + universal currency
           activeAbilityCooldowns,
           activeAbilityEffects,
@@ -2226,9 +2705,13 @@ export const useGameStore = create<GameStore>()(
           heresySpreadTimer,
           heresySeedTimer,
           heresyThresholdsSeeded,
-          // FEATURE 5 — Prophets
+          // FEATURE 5 — Prophets (per-galaxy)
           prophets,
           prophetConvertTimer,
+          // L5 redesign — Galactic Conquest per-galaxy state
+          galaxyHeresy,
+          galaxyFollowerGrid,
+          galaxyRivalSystems,
           // L6 Universal Map — new state.
           universalGalaxies,
           rifts,
@@ -2663,15 +3146,18 @@ export const useGameStore = create<GameStore>()(
         const forkEp = forkBonus(s.resolvedForks || {}).epMult;
         const debtEp = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {}).epMult;
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
+        // Layer 10 — Genesis Engine: archetype bonus does not boost EP gain
+        // (legacy testament/canonization/weave/universe/kept bonuses return 0).
         const testEp = testamentClauseBonus(s.purchasedTestamentClauses || {}).epMult;
         const canonEp = canonizationBonus(s.activeCanonizations || {}).epMult;
         const weaveEp = permanenceWeaveBonus(s.activePermanenceWeaves || {}).epMult;
-        const universeEp = universeSlotBonus(s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null)).epMult;
-        const keptEp = keptGodsBonus(s.keptGods || []).epMult;
+        const universeEp = universeSlotBonus([]).epMult;
+        const keptEp = keptGodsBonus([]).epMult;
+        void testEp; void canonEp; void weaveEp; void universeEp; void keptEp;
         const layerEpMult = 1 +
           fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult + relicEp + coreEp +
           hybridEp + chanEp + maskEp + polEp + allianceEp + echoEp + forkEp + debtEp +
-          fragmentEp + testEp + canonEp + weaveEp + universeEp + keptEp;
+          fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
 
         // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
@@ -2802,8 +3288,21 @@ export const useGameStore = create<GameStore>()(
           completedChallenges: s.completedChallenges || {},
           challengeRepeatCounts: newChallengeRepeatCounts,
           showChallenges: false,
-          // Reset auto-action timers
-          autoTimers: { system: 0, tech: 0, evolve: 0, challenge: 0 },
+          // Reset auto-action timers (PP-SHOP-TABS — universal auto-buyer timers also reset on prestige).
+          autoTimers: {
+            system: 0,
+            tech: 0,
+            evolve: 0,
+            challenge: 0,
+            light_stars: 0,
+            invest_market: 0,
+            claim_systems: 0,
+            manage_heresy: 0,
+            place_anchors: 0,
+            negotiate: 0,
+            attack_old_gods: 0,
+            author_universes: 0,
+          },
 
           // Layer 2 — Enlightenment (persist meta state, currency accrues)
           divinity: (s.divinity || 0) + divinityGain,
@@ -2843,11 +3342,31 @@ export const useGameStore = create<GameStore>()(
           activeWorshipMode: s.activeWorshipMode,
           performedMiracles: {}, // reset per-run
           miracleTimers: {}, // reset per-run
-          heresy: 0, // reset per-run
+          heresy: 0, // reset per-run — derived from galaxyHeresy average
           activeHeresyResponse: s.activeHeresyResponse || "hr_ignore",
           showApotheosis: false,
+          // L5 redesign — Galactic Conquest per-galaxy state reset.
+          // Rival galaxy claim progress persists across prestiges (L5 attack progress
+          // is a permanent investment, like L4 galaxy systems). Conquered flags persist.
+          // Per-galaxy heresy grids reset to all-faithful; galaxyHeresy resets to 0.
+          galaxyHeresy: Object.fromEntries(RIVAL_GALAXIES.map((g) => [g.id, 0])),
+          galaxyFollowerGrid: Object.fromEntries(
+            RIVAL_GALAXIES.map((g) => [g.id, makeInitialFollowerGrid()])
+          ),
+          galaxyRivalSystems: s.galaxyRivalSystems || Object.fromEntries(
+            RIVAL_GALAXIES.map((g) => [g.id, makeInitialRivalSystems(g.id)])
+          ),
+          conqueredGalaxies: s.conqueredGalaxies || {},
+          selectedGalaxyId: STARTER_GALAXY_ID,
+          // Legacy L5 fields — also reset.
+          followerGrid: makeInitialFollowerGrid(),
+          heresySpreadTimer: 10,
+          heresySeedTimer: 30,
+          heresyThresholdsSeeded: {}, // per-galaxy threshold tracking — fresh per run
+          prophets: [], // remove all placed prophets on prestige
+          prophetConvertTimer: 10,
 
-          // Layer 6 — Singularity (persist relics + cores; reset timers)
+          // Layer 6 — Singularity (persist relics + cores + universal map; reset rifts per-run)
           singularityCores: (s.singularityCores || 0) + singularityCoreGain,
           equippedRelics: s.equippedRelics || {},
           activeLogicCores: s.activeLogicCores || {},
@@ -2855,6 +3374,18 @@ export const useGameStore = create<GameStore>()(
           showSingularity: false,
           // L6 FIX — Dimension Engine bonus is one-time per run; reset on prestige.
           dimensionEngineBonusClaimed: false,
+          // L6 Universal Map — persist galaxy ownership + anchor coverage (anchors
+          // are a permanent investment); reset per-run rifts + heresy (a fresh run
+          // starts with no rifts open and all galaxies purged of corruption).
+          universalGalaxies: (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({
+            ...g,
+            heresy: 0, // reset per-run — no rifts to sustain corruption
+          })),
+          rifts: [], // reset per-run
+          realityAnchors: s.realityAnchors || [], // persists (permanent investment)
+          riftSpawnTimer: 45, // reset per-run
+          riftsClosed: s.riftsClosed || 0, // lifetime counter — persists
+          anchorsPlaced: s.anchorsPlaced || 0, // lifetime counter — persists
 
           // Layer 7 — Omnipotence (Bio-engineering) — persist creatures, legions, stance; reset instability
           equippedHybrids: s.equippedHybrids || {},
@@ -2866,6 +3397,13 @@ export const useGameStore = create<GameStore>()(
           creatures: s.creatures || [],
           legions: s.legions || [],
           creatureDesignDraft: s.creatureDesignDraft || null,
+          // Skirmish Arena — reset raids + raidsRepelled per-run; persist creature XP/levels.
+          outpostRaids: [],
+          raidsRepelled: 0,
+          activeOutpostRaid: null,
+          creatureXp: s.creatureXp || {},
+          creatureLevels: s.creatureLevels || {},
+          outpostRaidSpawnTimer: OUTPOST_RAID_SPAWN_INTERVAL_SEC,
 
           // Layer 8 — Divinity (Divine Alliance) — persist minor gods, relationships, alliances
           prayer: (s.prayer || 0), // currency persists
@@ -2888,7 +3426,8 @@ export const useGameStore = create<GameStore>()(
           oldGodBattles: Object.fromEntries(OLD_GODS.map((g) => [g.id, makeInitialBattleState(g.id)])),
           divineFragments: s.divineFragments || 0,
 
-          // Layer 10 — Eternity (Ascension) — persist universe rules + kept gods; reset ending
+          // Layer 10 — Eternity — Genesis Engine: persist relics + discovered
+          // archetypes + cosmic boons; reset chosen ending + simulation state.
           testamentClauses: (s.testamentClauses || 0) + testamentGain,
           purchasedTestamentClauses: s.purchasedTestamentClauses || {},
           activeCanonizations: s.activeCanonizations || {},
@@ -2897,8 +3436,13 @@ export const useGameStore = create<GameStore>()(
           cosmicBoonStacks: (s.cosmicBoonStacks || 0) +
             (s.chosenEnding === "reset" ? 1 : 0),
           showEternity: false,
-          universeRules: s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null),
-          keptGods: s.keptGods || [],
+          // NEW: Genesis Engine state — persist relics + discoveries across prestiges
+          divineRelics: s.divineRelics || [],
+          crucibleRelicIds: [], // crucible is cleared on prestige
+          discoveredArchetypes: s.discoveredArchetypes || {},
+          universeSimulating: false,
+          simulationStartTime: 0,
+          lastSimulationResult: s.lastSimulationResult || null,
 
           // ===== QUICK WINS — prestige reset rules =====
           // prestigePoints is a universal currency — persists across prestiges
@@ -3257,6 +3801,9 @@ export const useGameStore = create<GameStore>()(
         let pop = s.population;
         let faith = (s.faith || 0) - m.faithCost;
         let heresy = s.heresy || 0;
+        // L5 redesign — for reduceHeresy miracles, mutate per-galaxy grids.
+        let miracleGalaxyFollowerGrid: Record<string, Array<{ state: string; type: string }>> | null = null;
+        let miracleGalaxyHeresy: Record<string, number> | null = null;
         const miracleTimers = { ...(s.miracleTimers || {}) };
         const performedMiracles = { ...(s.performedMiracles || {}), [miracleId]: (s.performedMiracles?.[miracleId] || 0) + 1 };
         switch (m.effect) {
@@ -3272,9 +3819,34 @@ export const useGameStore = create<GameStore>()(
               if (cap > 0) res[r] = Math.min(cap, (res[r] || 0) + cap * m.magnitude);
             }
             break;
-          case "reduceHeresy":
-            heresy = Math.max(0, heresy - m.magnitude);
+          case "reduceHeresy": {
+            // Convert up to N heretics to faithful across owned galaxies
+            // (N = ceil(magnitude/100 × 32)). Recomputes galaxyHeresy + global heresy.
+            const owned = ownedGalaxyIds(s.galaxyRivalSystems || {});
+            const gf = { ...(s.galaxyFollowerGrid || {}) };
+            const gh = { ...(s.galaxyHeresy || {}) };
+            const hereticsToConvert = Math.max(1, Math.ceil((m.magnitude / 100) * 32));
+            let converted = 0;
+            for (const gid of owned) {
+              const grid = (gf[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+              for (let i = 0; i < grid.length && converted < hereticsToConvert; i++) {
+                if (grid[i].state === "heretical") {
+                  grid[i].state = "faithful";
+                  converted++;
+                }
+              }
+              gf[gid] = grid;
+              const hc = grid.filter((c) => c.state === "heretical").length;
+              gh[gid] = (hc / 32) * 100;
+              if (converted >= hereticsToConvert) break;
+            }
+            heresy = owned.length > 0
+              ? owned.reduce((sum, gid) => sum + (gh[gid] || 0), 0) / owned.length
+              : 0;
+            miracleGalaxyFollowerGrid = gf;
+            miracleGalaxyHeresy = gh;
             break;
+          }
           case "doubleProduction":
             miracleTimers[miracleId] = m.magnitude;
             break;
@@ -3288,6 +3860,8 @@ export const useGameStore = create<GameStore>()(
           heresy,
           miracleTimers,
           performedMiracles,
+          ...(miracleGalaxyFollowerGrid ? { galaxyFollowerGrid: miracleGalaxyFollowerGrid } : {}),
+          ...(miracleGalaxyHeresy ? { galaxyHeresy: miracleGalaxyHeresy } : {}),
           [cdKey]: cdSec,
         });
         get().addToLog(`${m.name} performed!${cdSec > 0 ? ` (${cdSec}s cooldown)` : ""}`);
@@ -3338,14 +3912,141 @@ export const useGameStore = create<GameStore>()(
       },
 
       toggleLogicCore: (coreId) => {
+        // LEGACY no-op — Logic Cores were removed in the Universal Map redesign.
+        // Kept for save-shape compat (action signature retained). Does nothing.
+        void coreId;
+      },
+
+      // ===== LAYER 6 — UNIVERSAL MAP ACTIONS (Rift Defense + Reality Anchors) =====
+      // These replace the old Dimension Engine actions. Singularity Cores are
+      // the L6 currency — spent to close rifts (severity-scaled) and to place
+      // reality anchors (count-scaled).
+      closeRift: (riftId) => {
         const s = get();
         if (!s.unlockedLayers?.singularity) return;
-        const core = LOGIC_CORE_MAP[coreId];
-        if (!core) return;
-        const activeLogicCores = { ...(s.activeLogicCores || {}) };
-        activeLogicCores[coreId] = !activeLogicCores[coreId];
-        set({ activeLogicCores });
-        get().addToLog(`${core.name} ${activeLogicCores[coreId] ? "activated" : "deactivated"}.`);
+        const rifts = (s.rifts || []).map((r) => ({ ...r }));
+        const rift = rifts.find((r) => r.id === riftId);
+        if (!rift) return;
+        const cost = riftCloseCost(rift.severity);
+        const cores = s.singularityCores || 0;
+        if (cores < cost) {
+          get().addToLog(`Not enough Singularity Cores to close rift (need ${cost}, have ${cores}).`);
+          return;
+        }
+        const remaining = rifts.filter((r) => r.id !== riftId);
+        const riftsClosed = (s.riftsClosed || 0) + 1;
+        // Clear the host galaxy's heresy back to 0 (the rift was its source).
+        const universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) =>
+          g.id === rift.galaxyId ? { ...g, heresy: 0 } : g
+        );
+        const galaxyName = UNIVERSAL_GALAXY_MAP[rift.galaxyId]?.name || rift.galaxyId;
+        set({
+          singularityCores: cores - cost,
+          rifts: remaining,
+          riftsClosed,
+          universalGalaxies,
+        });
+        get().addToLog(
+          `🛡️ Rift in ${galaxyName} sealed (severity ${rift.severity}, -${cost} Singularity Core${cost === 1 ? "" : "s"}). ${riftsClosed}/${RIFTS_REQUIRED_FOR_L7} rifts closed.`
+        );
+        // L6 → L7 unlock check.
+        const anchorsPlaced = s.anchorsPlaced || 0;
+        if (
+          !s.unlockedLayers?.omnipotence &&
+          isUniversalMapComplete(riftsClosed, anchorsPlaced)
+        ) {
+          set({ unlockedLayers: { ...s.unlockedLayers, omnipotence: true } });
+          get().addToLog(
+            `Universal Map stabilized — ${riftsClosed}/${RIFTS_REQUIRED_FOR_L7} rifts closed, ${anchorsPlaced}/${ANCHORS_REQUIRED_FOR_L7} anchors placed. Omnipotence layer unlocked.`
+          );
+        }
+      },
+
+      placeRealityAnchor: (galaxyId) => {
+        const s = get();
+        if (!s.unlockedLayers?.singularity) return;
+        const galaxy = UNIVERSAL_GALAXY_MAP[galaxyId];
+        if (!galaxy) return;
+        const universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({ ...g }));
+        const st = universalGalaxies.find((g) => g.id === galaxyId);
+        if (!st) return;
+        if (st.anchored) {
+          get().addToLog(`${galaxy.name} already has a Reality Anchor.`);
+          return;
+        }
+        const anchorsPlaced = s.anchorsPlaced || 0;
+        const cost = anchorPlaceCost(anchorsPlaced);
+        const cores = s.singularityCores || 0;
+        if (cores < cost) {
+          get().addToLog(`Not enough Singularity Cores to place anchor (need ${cost}, have ${cores}).`);
+          return;
+        }
+        st.anchored = true;
+        // Anchored galaxies also shed their current heresy.
+        st.heresy = 0;
+        const realityAnchors = [
+          ...(s.realityAnchors || []),
+          { id: `anchor_${Date.now()}_${Math.floor(Math.random() * 100000)}`, galaxyId, placedAt: s.time || 0 },
+        ];
+        const newAnchorsPlaced = anchorsPlaced + 1;
+        set({
+          singularityCores: cores - cost,
+          universalGalaxies,
+          realityAnchors,
+          anchorsPlaced: newAnchorsPlaced,
+        });
+        const coveredNames = galaxiesInAnchorRadius(galaxyId)
+          .map((g) => g.name)
+          .join(", ");
+        get().addToLog(
+          `⚓ Reality Anchor placed on ${galaxy.name} (-${cost} Singularity Core${cost === 1 ? "" : "s"}). Covers: ${coveredNames}. ${newAnchorsPlaced}/${ANCHORS_REQUIRED_FOR_L7} anchors placed.`
+        );
+        // L6 → L7 unlock check.
+        const riftsClosed = s.riftsClosed || 0;
+        if (
+          !s.unlockedLayers?.omnipotence &&
+          isUniversalMapComplete(riftsClosed, newAnchorsPlaced)
+        ) {
+          set({ unlockedLayers: { ...s.unlockedLayers, omnipotence: true } });
+          get().addToLog(
+            `Universal Map stabilized — ${riftsClosed}/${RIFTS_REQUIRED_FOR_L7} rifts closed, ${newAnchorsPlaced}/${ANCHORS_REQUIRED_FOR_L7} anchors placed. Omnipotence layer unlocked.`
+          );
+        }
+      },
+
+      attackUniversalGalaxy: (galaxyId) => {
+        const s = get();
+        if (!s.unlockedLayers?.singularity) return;
+        const galaxy = UNIVERSAL_GALAXY_MAP[galaxyId];
+        if (!galaxy) return;
+        // Only NEW neutral L6 galaxies are attackable here (L5 rival galaxies use attackGalaxy).
+        if (!galaxy.isNewL6) {
+          get().addToLog(`${galaxy.name} cannot be attacked from the Universal Map (use the Apotheosis view).`);
+          return;
+        }
+        const universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({ ...g }));
+        const st = universalGalaxies.find((g) => g.id === galaxyId);
+        if (!st) return;
+        if (st.systemsClaimed >= galaxy.systemCount) {
+          get().addToLog(`${galaxy.name} is fully claimed (${galaxy.systemCount}/${galaxy.systemCount} systems).`);
+          return;
+        }
+        const totalNewClaimed = totalNewSystemsClaimed(universalGalaxies);
+        const cost = newGalaxyAttackCost(totalNewClaimed);
+        const faith = s.faith || 0;
+        if (faith < cost) {
+          get().addToLog(`Not enough Faith to attack ${galaxy.name} (need ${cost}, have ${Math.floor(faith)}).`);
+          return;
+        }
+        st.systemsClaimed += 1;
+        if (st.ownerId === "neutral") st.ownerId = "player";
+        set({
+          faith: faith - cost,
+          universalGalaxies,
+        });
+        get().addToLog(
+          `⚔️ ${galaxy.name}: system ${st.systemsClaimed}/${galaxy.systemCount} claimed (-${cost} Faith, +198 worlds).`
+        );
       },
 
       // ============ REBUILD L1-6 — NEW MINI-GAME ACTIONS ============
@@ -3783,104 +4484,171 @@ export const useGameStore = create<GameStore>()(
         get().addToLog("🗺️ Sacred Grid reset.");
       },
 
-      // ---- Layer 5 — Heresy Web ----
-      convertFollower: (cellIndex) => {
+      // ---- Layer 5 — Heresy Web (per-galaxy) ----
+      // For backward compat, if galaxyId is falsy/empty, the starter galaxy is used.
+      convertFollower: (galaxyId, cellIndex) => {
         const s = get();
         if (!s.unlockedLayers?.apotheosis) return;
+        const gid = galaxyId || STARTER_GALAXY_ID;
         if (cellIndex < 0 || cellIndex >= 32) return;
-        const grid = (s.followerGrid || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+        const galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        const grid = (galaxyFollowerGrid[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
         if (grid[cellIndex].state === "faithful") return; // already faithful
         const cost = 5;
         if ((s.divinity || 0) < cost) return;
         grid[cellIndex].state = "faithful";
-        set({ divinity: (s.divinity || 0) - cost, followerGrid: grid });
+        galaxyFollowerGrid[gid] = grid;
+        // Recompute this galaxy's heresy.
+        const galaxyHeresy = { ...(s.galaxyHeresy || {}) };
+        const hc = grid.filter((c) => c.state === "heretical").length;
+        galaxyHeresy[gid] = (hc / 32) * 100;
+        // Recompute global heresy as average of owned galaxies' heresy.
+        const owned = ownedGalaxyIds(s.galaxyRivalSystems || {});
+        const newHeresy = owned.length > 0 ? owned.reduce((sum, g) => sum + (galaxyHeresy[g] || 0), 0) / owned.length : 0;
+        set({ divinity: (s.divinity || 0) - cost, galaxyFollowerGrid, galaxyHeresy, heresy: newHeresy });
       },
 
-      purgeFollower: (cellIndex) => {
+      purgeFollower: (galaxyId, cellIndex) => {
         const s = get();
         if (!s.unlockedLayers?.apotheosis) return;
+        const gid = galaxyId || STARTER_GALAXY_ID;
         if (cellIndex < 0 || cellIndex >= 32) return;
-        const grid = (s.followerGrid || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+        const galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        const grid = (galaxyFollowerGrid[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
         if (grid[cellIndex].state === "empty") return;
         grid[cellIndex].state = "empty";
         // Faith drop minor
         const faithDrop = 2;
-        set({ followerGrid: grid, faith: Math.max(0, (s.faith || 0) - faithDrop) });
+        galaxyFollowerGrid[gid] = grid;
+        const galaxyHeresy = { ...(s.galaxyHeresy || {}) };
+        const hc = grid.filter((c) => c.state === "heretical").length;
+        galaxyHeresy[gid] = (hc / 32) * 100;
+        const owned = ownedGalaxyIds(s.galaxyRivalSystems || {});
+        const newHeresy = owned.length > 0 ? owned.reduce((sum, g) => sum + (galaxyHeresy[g] || 0), 0) / owned.length : 0;
+        set({ galaxyFollowerGrid, galaxyHeresy, heresy: newHeresy, faith: Math.max(0, (s.faith || 0) - faithDrop) });
       },
 
-      initFollowerGrid: () => {
+      initFollowerGrid: (galaxyId) => {
         const s = get();
         if (!s.unlockedLayers?.apotheosis) return;
-        set({ followerGrid: makeInitialFollowerGrid() });
-        get().addToLog("Flock restored to 32 faithful followers.");
+        const gid = galaxyId || STARTER_GALAXY_ID;
+        const galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        galaxyFollowerGrid[gid] = makeInitialFollowerGrid();
+        const galaxyHeresy = { ...(s.galaxyHeresy || {}) };
+        galaxyHeresy[gid] = 0;
+        const owned = ownedGalaxyIds(s.galaxyRivalSystems || {});
+        const newHeresy = owned.length > 0 ? owned.reduce((sum, g) => sum + (galaxyHeresy[g] || 0), 0) / owned.length : 0;
+        set({ galaxyFollowerGrid, galaxyHeresy, heresy: newHeresy });
+        const gname = RIVAL_GALAXY_MAP[gid]?.name || gid;
+        get().addToLog(`${gname} flock restored to 32 faithful followers.`);
       },
 
-      // ---- Layer 6 — Dimension Engine ----
-      setDimensionSpeed: (dimId, speed) => {
+      // ===== LAYER 5 — Galactic Conquest: attack rival galaxy (claims next system) =====
+      // Spends Faith (scaled by claimed count + galaxy defense strength), claims
+      // the next unclaimed rival system in the galaxy, and (when the galaxy is
+      // fully claimed) marks it conquered. Each claimed rival system grants
+      // +18 worlds to the Divine Engine (via countClaimedRivalSystems).
+      // Conquering 3+ rival galaxies unlocks L6 (Singularity).
+      attackGalaxy: (galaxyId) => {
         const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        const dims = (s.dimensions || makeInitialDimensions()).map((d) => ({ ...d }));
-        const d = dims.find((x) => x.id === dimId);
-        if (!d) return;
-        if (![1, 0.5, 0.25].includes(speed)) return;
-        d.speed = speed;
-        set({ dimensions: dims });
+        if (!s.unlockedLayers?.apotheosis) return;
+        const galaxy = RIVAL_GALAXY_MAP[galaxyId];
+        if (!galaxy) return;
+        if (galaxy.ownerId === "player") return; // starter — no attacking
+        const grs = { ...(s.galaxyRivalSystems || {}) };
+        let list = grs[galaxyId];
+        if (!list || list.length === 0) {
+          list = makeInitialRivalSystems(galaxyId);
+        } else {
+          list = list.map((sys) => ({ ...sys }));
+        }
+        const claimedCount = list.filter((sys) => sys.claimed).length;
+        if (claimedCount >= galaxy.systemCount) {
+          get().addToLog(`${galaxy.name} is already fully conquered (${galaxy.systemCount}/${galaxy.systemCount}).`);
+          return;
+        }
+        const cost = galaxyAttackCost(claimedCount, galaxy.defenseStrength);
+        const faith = s.faith || 0;
+        if (faith < cost) {
+          get().addToLog(`Not enough Faith to attack ${galaxy.name} (need ${cost}, have ${Math.floor(faith)}).`);
+          return;
+        }
+        const nextSys = list.find((sys) => !sys.claimed);
+        if (!nextSys) return;
+        nextSys.claimed = true;
+        nextSys.explored = true;
+        grs[galaxyId] = list;
+        const conqueredGalaxies = { ...(s.conqueredGalaxies || {}) };
+        const nowConquered = list.every((sys) => sys.claimed);
+        let justConquered = false;
+        if (nowConquered && !conqueredGalaxies[galaxyId]) {
+          conqueredGalaxies[galaxyId] = true;
+          justConquered = true;
+        }
+        // L5 → L6 unlock: 3+ rival galaxies conquered.
+        const unlockedLayers = { ...(s.unlockedLayers || {}) };
+        let l6Unlock = false;
+        if (justConquered && !unlockedLayers.singularity) {
+          const conqueredCount = countConqueredGalaxies(grs);
+          if (conqueredCount >= GALAXIES_REQUIRED_FOR_L6) {
+            unlockedLayers.singularity = true;
+            l6Unlock = true;
+          }
+        }
+        set({
+          faith: faith - cost,
+          galaxyRivalSystems: grs,
+          ...(justConquered ? { conqueredGalaxies } : {}),
+          ...(l6Unlock ? { unlockedLayers } : {}),
+        });
+        get().addToLog(
+          `⚔️ ${galaxy.name}: system ${claimedCount + 1}/${galaxy.systemCount} claimed (-${cost} Faith, +18 worlds).${nowConquered ? " Galaxy conquered!" : ""}`
+        );
+        if (justConquered) {
+          setTimeout(() => get().addToLog(`🏆 ${galaxy.name} conquered! All ${galaxy.systemCount} systems claimed.`), 0);
+        }
+        if (l6Unlock) {
+          setTimeout(() => get().addToLog(`3 rival galaxies conquered. Singularity layer unlocked.`), 0);
+        }
+      },
+
+      setSelectedGalaxyId: (galaxyId) => {
+        if (!RIVAL_GALAXY_MAP[galaxyId]) return;
+        set({ selectedGalaxyId: galaxyId });
+      },
+
+      // ---- Layer 6 — Dimension Engine (LEGACY no-op stubs) ----
+      // The Dimension Engine was REMOVED in the Universal Map redesign. These
+      // actions are kept as no-op stubs for save-shape compat; calling them
+      // does nothing. Use closeRift / placeRealityAnchor / attackUniversalGalaxy
+      // for the new L6 gameplay loop.
+      setDimensionSpeed: (dimId, speed) => {
+        void dimId;
+        void speed;
       },
 
       syncDimension: (fromId, toId) => {
-        const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        const cost = 50;
-        if ((s.divinity || 0) < cost) return;
-        const dims = (s.dimensions || makeInitialDimensions()).map((d) => ({ ...d }));
-        const from = dims.find((x) => x.id === fromId);
-        const to = dims.find((x) => x.id === toId);
-        if (!from || !to || from.id === to.id) return;
-        // Copy progress: stageIndex and population (not resources — to prevent full duplication)
-        to.stageIndex = Math.max(to.stageIndex, from.stageIndex);
-        to.pop = Math.max(to.pop, Math.floor(from.pop * 0.5));
-        if (from.reachedGalactic) to.reachedGalactic = true;
-        set({ divinity: (s.divinity || 0) - cost, dimensions: dims });
-        get().addToLog(`🔄 Sync: ${from.name} → ${to.name} (-50 Divinity).`);
+        void fromId;
+        void toId;
       },
 
       initDimensions: () => {
-        const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        set({ dimensions: makeInitialDimensions() });
-        get().addToLog("Dimension Engine initialized — three parallel timelines.");
+        // No-op — Dimension Engine was removed.
       },
 
       // FEATURE 6 — Collapse two dimensions of the same stage into one
+      // (LEGACY no-op — Dimension Engine was removed in the Universal Map redesign.)
       collapseDimensions: (fromId, toId) => {
-        const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        const cost = 50;
-        if ((s.divinity || 0) < cost) return;
-        const dims = (s.dimensions || makeInitialDimensions()).map((d) => ({ ...d }));
-        const from = dims.find((x) => x.id === fromId);
-        const to = dims.find((x) => x.id === toId);
-        if (!from || !to || from.id === to.id) return;
-        // Both dimensions must be at the same stageIndex to collapse
-        if (from.stageIndex !== to.stageIndex) {
-          get().addToLog(`Collapse requires both dimensions at the same stage (${from.name}: ${from.stageIndex}, ${to.name}: ${to.stageIndex}).`);
-          return;
-        }
-        // Merge into `to`: combined speed + combined resources + combined pop
-        to.speed = to.speed + from.speed;
-        to.resources = to.resources + from.resources;
-        to.pop = to.pop + from.pop;
-        to.reachedGalactic = to.reachedGalactic || from.reachedGalactic;
-        const remaining = dims.filter((d) => d.id !== from.id);
-        set({ divinity: (s.divinity || 0) - cost, dimensions: remaining });
-        get().addToLog(`🌌 Dimension Collapse! ${from.name} merged into ${to.name} — combined speed ${to.speed}×, resources ${to.resources.toFixed(0)}, pop ${Math.floor(to.pop)} (-50 Divinity).`);
+        void fromId;
+        void toId;
       },
 
       // ===== FEATURE ENHANCEMENTS — NEW ACTIONS =====
-      // FEATURE 5 — Prophets (place on heresy grid; max 2)
-      placeProphet: (cellIndex) => {
+      // FEATURE 5 — Prophets (per-galaxy: place on a galaxy's heresy grid; max 2 globally)
+      placeProphet: (galaxyId, cellIndex) => {
         const s = get();
         if (!s.unlockedLayers?.apotheosis) return;
+        const gid = galaxyId || STARTER_GALAXY_ID;
         if (cellIndex < 0 || cellIndex >= 32) return;
         const cost = 50;
         if ((s.divinity || 0) < cost) return;
@@ -3889,12 +4657,12 @@ export const useGameStore = create<GameStore>()(
           get().addToLog("Max 2 Prophets at a time.");
           return;
         }
-        if (prophets.some((p) => p.cellIndex === cellIndex)) {
+        if (prophets.some((p) => p.galaxyId === gid && p.cellIndex === cellIndex)) {
           get().addToLog("A Prophet is already placed there.");
           return;
         }
-        // Place only on empty or faithful cells
-        const grid = (s.followerGrid || makeInitialFollowerGrid()).slice();
+        const galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        const grid = (galaxyFollowerGrid[gid] || makeInitialFollowerGrid()).slice();
         const cell = grid[cellIndex];
         if (!cell || cell.state === "empty") {
           // Convert empty cell to faithful so the prophet has a place to stand
@@ -3904,25 +4672,29 @@ export const useGameStore = create<GameStore>()(
         } else {
           grid[cellIndex] = { ...cell, type: "prophet" };
         }
-        prophets.push({ cellIndex, lastConvertedAt: 0 });
+        galaxyFollowerGrid[gid] = grid;
+        prophets.push({ galaxyId: gid, cellIndex, lastConvertedAt: 0 });
         set({
           divinity: (s.divinity || 0) - cost,
           prophets,
-          followerGrid: grid,
+          galaxyFollowerGrid,
         });
-        get().addToLog(`🌟 Prophet placed on cell ${cellIndex + 1} (-50 Divinity). Converts adjacent heretics every 10s.`);
+        get().addToLog(`🌟 Prophet placed on cell ${cellIndex + 1} in ${RIVAL_GALAXY_MAP[gid]?.name || gid} (-50 Divinity). Converts adjacent heretics every 10s.`);
       },
 
-      removeProphet: (cellIndex) => {
+      removeProphet: (galaxyId, cellIndex) => {
         const s = get();
         if (!s.unlockedLayers?.apotheosis) return;
-        const prophets = (s.prophets || []).filter((p) => p.cellIndex !== cellIndex);
-        const grid = (s.followerGrid || makeInitialFollowerGrid()).slice();
+        const gid = galaxyId || STARTER_GALAXY_ID;
+        const prophets = (s.prophets || []).filter((p) => !(p.galaxyId === gid && p.cellIndex === cellIndex));
+        const galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+        const grid = (galaxyFollowerGrid[gid] || makeInitialFollowerGrid()).slice();
         if (grid[cellIndex]?.type === "prophet") {
           grid[cellIndex] = { state: "faithful", type: "follower" };
         }
-        set({ prophets, followerGrid: grid });
-        get().addToLog(`Prophet removed from cell ${cellIndex + 1}.`);
+        galaxyFollowerGrid[gid] = grid;
+        set({ prophets, galaxyFollowerGrid });
+        get().addToLog(`Prophet removed from cell ${cellIndex + 1} in ${RIVAL_GALAXY_MAP[gid]?.name || gid}.`);
       },
 
       // FEATURE 8 — Amplifiers (max 3; place between your god and an NPC god to double Negotiate gains)
@@ -3973,18 +4745,12 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`⏳ Time Stabilized — temporal storm ended (-1 Divine Fragment).`);
       },
 
-      // FEATURE 10 — Resolve Paradox (costs 100 Divinity; reduces paradox by 1)
+      // FEATURE 10 — Forbidden Words (LEGACY): The Genesis Engine redesign
+      // removed the paradox mechanic. This action is kept as a no-op stub for
+      // save-compat (older saves may still call it). Use revealRelicRule /
+      // revealRelicAmount in the new Genesis Engine instead.
       resolveParadox: () => {
-        const s = get();
-        if (!s.unlockedLayers?.eternity) return;
-        const cost = 100;
-        if ((s.divinity || 0) < cost) return;
-        if ((s.universeParadox || 0) <= 0) {
-          get().addToLog("No paradox to resolve.");
-          return;
-        }
-        set({ divinity: (s.divinity || 0) - cost, universeParadox: (s.universeParadox || 0) - 1 });
-        get().addToLog(`✦ Paradox resolved (-1 Paradox, -100 Divinity). Reality steadies.`);
+        get().addToLog("Paradoxes are no more — the Genesis Engine has restructured reality. Use the Crucible to shape universes.");
       },
 
       // ===== BACKGROUND-SIMULATION — spawn action REMOVED =====
@@ -4027,12 +4793,14 @@ export const useGameStore = create<GameStore>()(
           get().addToLog(`Creature lab requires ${divinityCost} Divinity + ${faithCost} Faith to author a creature.`);
           return;
         }
-        // L7 FIX Bug 1 — Cap: base 5 + 1 per L10 universe slot filled (so L10 choices expand the cap).
-        const filledSlots = (s.universeRules || []).filter(Boolean).length;
+        // L7 FIX Bug 1 — Cap: base 5 + 1 per L10 archetype discovered (so L10
+        // Genesis Engine progress expands the creature lab capacity).
+        const discoveredArchetypesCount = Object.values(s.discoveredArchetypes || {}).filter(Boolean).length;
+        const filledSlots = discoveredArchetypesCount;
         const maxCreatures = 5 + filledSlots;
         const currentCount = (s.creatures || []).length;
         if (currentCount >= maxCreatures) {
-          get().addToLog(`Creature lab at capacity (${currentCount}/${maxCreatures}). Author more universe rules or release a creature.`);
+          get().addToLog(`Creature lab at capacity (${currentCount}/${maxCreatures}). Discover more L10 archetypes or release a creature.`);
           return;
         }
         const bodyType = draft.bodyType as CreatureBodyTypeId;
@@ -4127,6 +4895,188 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         if (!s.unlockedLayers?.omnipotence) return;
         set({ legions: (s.legions || []).filter((l) => l.id !== legionId) });
+      },
+
+      // ===== Skirmish Arena (L7 Outpost Raids) =====
+      spawnOutpostRaid: (outpostDefId) => {
+        const s = get();
+        if (!s.unlockedLayers?.omnipotence) return;
+        const defId = outpostDefId
+          ? OUTPOST_RAID_MAP[outpostDefId]?.id
+          : OUTPOST_RAIDS[Math.floor(Math.random() * OUTPOST_RAIDS.length)].id;
+        if (!defId) return;
+        const def = OUTPOST_RAID_MAP[defId];
+        const activeRaids = (s.outpostRaids || []).filter((r) => r.status === "active");
+        if (activeRaids.length >= MAX_ACTIVE_OUTPOST_RAIDS) {
+          get().addToLog(`Skirmish Arena is full (${MAX_ACTIVE_OUTPOST_RAIDS}/${MAX_ACTIVE_OUTPOST_RAIDS} active raids). Repel one first.`);
+          return;
+        }
+        const id = `raid_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const raid: OutpostRaid = {
+          id,
+          outpostDef: def.id,
+          status: "active",
+          bossHp: def.hp,
+          bossMaxHp: def.hp,
+          playerHp: 200,
+          playerMaxHp: 200,
+          turn: 0,
+          log: [`${def.icon} ${def.name} raids your galaxies! HP ${def.hp}, ATK ${def.attack}, DEF ${def.defense}.`],
+          deployedLegionIds: [],
+        };
+        set({
+          outpostRaids: [...(s.outpostRaids || []), raid],
+          activeOutpostRaid: s.activeOutpostRaid || id,
+        });
+        get().addToLog(`⚔️ ${def.name} (${def.icon}) engages your galaxies — deploy legions to repel it.`);
+      },
+
+      deployLegionToRaid: (raidId, legionId) => {
+        const s = get();
+        if (!s.unlockedLayers?.omnipotence) return;
+        const raids = (s.outpostRaids || []).map((r) => ({ ...r, deployedLegionIds: [...r.deployedLegionIds] }));
+        const raid = raids.find((r) => r.id === raidId);
+        if (!raid || raid.status !== "active") return;
+        const legion = (s.legions || []).find((l) => l.id === legionId);
+        if (!legion) return;
+        if (raid.deployedLegionIds.includes(legionId)) {
+          raid.deployedLegionIds = raid.deployedLegionIds.filter((id) => id !== legionId);
+          set({ outpostRaids: raids });
+          get().addToLog(`Legion ${legion.name} recalled from ${OUTPOST_RAID_MAP[raid.outpostDef].name}.`);
+          return;
+        }
+        raid.deployedLegionIds = [...raid.deployedLegionIds, legionId];
+        set({ outpostRaids: raids });
+        get().addToLog(`Legion ${legion.name} deployed against ${OUTPOST_RAID_MAP[raid.outpostDef].name}.`);
+      },
+
+      setActiveOutpostRaid: (raidId) => {
+        const s = get();
+        if (!s.unlockedLayers?.omnipotence) return;
+        set({ activeOutpostRaid: raidId });
+      },
+
+      attackOutpost: (raidId) => {
+        const s = get();
+        if (!s.unlockedLayers?.omnipotence) return;
+        const raids = (s.outpostRaids || []).map((r) => ({ ...r, log: [...r.log], deployedLegionIds: [...r.deployedLegionIds] }));
+        const idx = raids.findIndex((r) => r.id === raidId);
+        if (idx < 0) return;
+        const raid = raids[idx];
+        if (raid.status !== "active") return;
+        const def = OUTPOST_RAID_MAP[raid.outpostDef];
+        if (!def) return;
+        // Collect all deployed creature IDs.
+        const deployedCreatureIds = new Set<string>();
+        for (const lid of raid.deployedLegionIds) {
+          const legion = (s.legions || []).find((l) => l.id === lid);
+          if (!legion) continue;
+          for (const cid of legion.creatureIds) deployedCreatureIds.add(cid);
+        }
+        // Apply creature level multipliers to attack/defense.
+        let totalAttack = 0;
+        let totalDefense = 0;
+        let deployedCount = 0;
+        for (const c of (s.creatures || [])) {
+          if (!deployedCreatureIds.has(c.id)) continue;
+          const lvl = creatureLevel(c.id, s.creatureLevels);
+          const bonus = creatureLevelBonus(lvl);
+          totalAttack += c.attack * bonus.attackMult;
+          totalDefense += c.defense * bonus.defenseMult;
+          deployedCount += 1;
+        }
+        // Count deployed specials (mirrors L9 Old God combat semantics at smaller scale).
+        let berserkCount = 0;
+        let shieldCount = 0;
+        let regenCount = 0;
+        for (const c of (s.creatures || [])) {
+          if (!deployedCreatureIds.has(c.id)) continue;
+          if (c.special === "berserk") berserkCount += 1;
+          else if (c.special === "shield") shieldCount += 1;
+          else if (c.special === "regen") regenCount += 1;
+        }
+        if (deployedCount === 0) {
+          get().addToLog(`No legions deployed against ${def.name}. Deploy at least one legion before attacking.`);
+          return;
+        }
+        const berserkBonusMult = 1 + 0.20 * berserkCount; // +20% player dmg per berserk creature
+        const shieldReductionMult = Math.max(0, 1 - 0.20 * shieldCount); // -20% boss dmg per shield creature
+        // Outpost defense shaves player damage (same formula as L9 boss attack).
+        const outpostDefenseAbsorb = def.defense * 0.3;
+        const playerDmg = Math.max(1, Math.round(totalAttack * berserkBonusMult - outpostDefenseAbsorb));
+        // Compute boss attack back
+        const bossDmg = Math.max(1, Math.round((def.attack - totalDefense * 0.3) * shieldReductionMult));
+        // Apply damage
+        const bossHp = Math.max(0, raid.bossHp - playerDmg);
+        let playerHp = Math.max(0, raid.playerHp - bossDmg);
+        // regen special: heal player HP by 1 per regen creature per turn
+        if (regenCount > 0) {
+          playerHp = Math.min(raid.playerMaxHp, playerHp + regenCount);
+        }
+        const log = raid.log;
+        log.push(`Turn ${raid.turn + 1}: You deal ${playerDmg} damage. ${def.name} retaliates for ${bossDmg}. (Your HP: ${playerHp}/${raid.playerMaxHp})`);
+        if (log.length > 8) log.shift();
+        let status: import("../data/omnipotence").OutpostRaidStatus = raid.status;
+        if (bossHp <= 0) {
+          status = "won";
+          log.push(`${def.name} has been repelled! +${def.reward.fragments} Divine Fragment, +${CREATURE_XP_PER_RAID} XP per deployed creature.`);
+        } else if (playerHp <= 0) {
+          status = "lost";
+          log.push(`Your forces have been routed! ${def.name} overruns your systems.`);
+        }
+        raids[idx] = {
+          ...raid,
+          bossHp,
+          playerHp,
+          status,
+          turn: raid.turn + 1,
+          log,
+        };
+        set({ outpostRaids: raids });
+        if (status === "won") {
+          // Grant Divine Fragment + XP per deployed creature + raidsRepelled counter
+          const fragments = (s.divineFragments || 0) + def.reward.fragments;
+          const newRaidsRepelled = (s.raidsRepelled || 0) + 1;
+          const newXp = { ...(s.creatureXp || {}) };
+          const newLevels = { ...(s.creatureLevels || {}) };
+          let leveledUp = 0;
+          for (const cid of deployedCreatureIds) {
+            const curXp = newXp[cid] || 0;
+            const nextXp = curXp + CREATURE_XP_PER_RAID;
+            newXp[cid] = nextXp;
+            // Level up for every CREATURE_XP_PER_LEVEL XP accumulated.
+            const curLvl = newLevels[cid] || 1;
+            const newLvl = curLvl + Math.floor(nextXp / CREATURE_XP_PER_LEVEL) - Math.floor(curXp / CREATURE_XP_PER_LEVEL);
+            if (newLvl > curLvl) {
+              newLevels[cid] = newLvl;
+              leveledUp += newLvl - curLvl;
+            } else {
+              // Ensure level entry exists even if no level-up.
+              if (!(cid in newLevels)) newLevels[cid] = curLvl;
+            }
+          }
+          set({
+            divineFragments: fragments,
+            raidsRepelled: newRaidsRepelled,
+            creatureXp: newXp,
+            creatureLevels: newLevels,
+          });
+          get().addToLog(`⚔️ Repelled ${def.name}! +${def.reward.fragments} Divine Fragment (total: ${fragments}), +${CREATURE_XP_PER_RAID} XP × ${deployedCount} creature(s)${leveledUp > 0 ? `, ${leveledUp} level-up(s) (+10% ATK/DEF/SPD each)` : ""}. Raids repelled: ${newRaidsRepelled}/${OUTPOST_RAID_COUNT_FOR_L8}.`);
+        } else if (status === "lost") {
+          // Reset the raid for retry (same outpost, fresh HP pool).
+          raids[idx] = {
+            ...raids[idx],
+            status: "active",
+            bossHp: raid.bossMaxHp,
+            playerHp: raid.playerMaxHp,
+            turn: 0,
+            log: ["Raid reset after defeat. Re-engage when ready."],
+          };
+          set({ outpostRaids: raids });
+          get().addToLog(`Defeated by ${def.name}. Raid reset — re-engage when ready.`);
+        } else {
+          get().addToLog(`Strike ${def.name} for ${playerDmg} (HP ${bossHp}/${raid.bossMaxHp}). Boss hits back for ${bossDmg} (Your HP: ${playerHp}/${raid.playerMaxHp}).`);
+        }
       },
 
       // ============ LAYER 8 — DIVINITY (Divine Alliance) ============
@@ -4461,9 +5411,10 @@ export const useGameStore = create<GameStore>()(
         }
       },
 
-      // ============ LAYER 10 — ETERNITY (Ascension) ============
+      // ============ LAYER 10 — ETERNITY (GENESIS ENGINE) ============
       purchaseTestamentClause: (_clauseId) => {
-        // LEGACY stub — kept for migration. The new Ascension uses Universe Creation.
+        // LEGACY stub — kept for migration. The new Genesis Engine uses
+        // divine relics + crucible instead of testament clauses.
         void _clauseId;
       },
 
@@ -4482,76 +5433,204 @@ export const useGameStore = create<GameStore>()(
         if (!s.unlockedLayers?.eternity) return;
         const ending = ENDING_CHOICE_MAP[endingId];
         if (!ending) return;
-        // Reset ending requires all 8 universe slots filled
-        if (endingId === "reset") {
-          const { filledCount } = universeSlotBonus(s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null));
-          if (filledCount < UNIVERSE_SLOTS.length) {
-            get().addToLog(`Cannot Reset Universe: ${filledCount}/${UNIVERSE_SLOTS.length} universe slots filled. Fill all 8 to ascend.`);
-            return;
-          }
+        // Ending choice is only available once all 100 archetypes are discovered.
+        const discoveredCount = Object.values(s.discoveredArchetypes || {}).filter(Boolean).length;
+        if (discoveredCount < ARCHETYPE_COUNT) {
+          get().addToLog(`Ending locked: ${discoveredCount}/${ARCHETYPE_COUNT} archetypes discovered. Find all 100 to ascend.`);
+          return;
         }
         set({ chosenEnding: endingId });
         get().addToLog(`Ending chosen: ${ending.name}. ${ending.desc}`);
+        // Reset ending ("Explore another Dimension") triggers a prestige with a Cosmic Boon stack.
         if (endingId === "reset") {
           setTimeout(() => {
-            get().addToLog("The universe is reset. A new cosmos stirs, governed by your rules.");
+            get().addToLog("You step beyond the veil. A new dimension unfolds before you.");
             get().triggerPrestige();
           }, 0);
         }
       },
 
-      setUniverseRule: (slotIndex, optionId) => {
-        const s = get();
-        if (!s.unlockedLayers?.eternity) return;
-        if (slotIndex < 0 || slotIndex >= UNIVERSE_SLOTS.length) return;
-        const slot = UNIVERSE_SLOTS[slotIndex];
-        const opt = slot.options.find((o) => o.id === optionId);
-        if (!opt) return;
-        const rules = (s.universeRules || Array(UNIVERSE_SLOTS.length).fill(null)).slice();
-        const prevOptId = rules[slotIndex];
-        const prevOpt = prevOptId ? slot.options.find((o) => o.id === prevOptId) : null;
-        // FEATURE 10 — Forbidden Words: track paradox delta
-        let universeParadox = s.universeParadox || 0;
-        if (prevOpt?.forbidden && !opt.forbidden) universeParadox = Math.max(0, universeParadox - 1);
-        if (!prevOpt?.forbidden && opt.forbidden) universeParadox = universeParadox + 1;
-        rules[slotIndex] = optionId;
-        // LAYER UPGRADE — paradox_insight: paradox threshold +1 per level (max 1 — base 2 → 3)
-        // L10 FIX — Base threshold lowered from 3 to 2 so picking 2 Forbidden Words triggers reset.
-        // Player must invest in paradox_insight to safely pick even one Forbidden Word.
-        const piLvl = (s.upgrades?.paradox_insight as number) || 0;
-        const paradoxThreshold = 2 + piLvl;
-        // If paradox reaches the threshold, universe creation fails and resets
-        if (universeParadox >= paradoxThreshold) {
-          set({
-            universeRules: Array(UNIVERSE_SLOTS.length).fill(null),
-            universeParadox: 0,
-          });
-          setTimeout(() => get().addToLog(`💥 PARADOX OVERLOAD! Reality rejects your creation — universe rules reset. Resolve paradoxes before they pile up.`), 0);
-          return;
-        }
-        set({ universeRules: rules, universeParadox });
-        get().addToLog(`Universe rule set: ${slot.name} → ${opt.label}${opt.forbidden ? " (FORBIDDEN — +1 Paradox)" : ""}.`);
+      // LEGACY — Genesis Engine redesign removed universe-rule slots.
+      // Kept as no-op stub for save-compat (older saves may still call it).
+      setUniverseRule: (_slotIndex, _optionId) => {
+        void _slotIndex;
+        void _optionId;
       },
 
-      toggleKeptGod: (godId) => {
+      // LEGACY — Genesis Engine redesign removed the kept-gods pantheon.
+      // Kept as no-op stub for save-compat.
+      toggleKeptGod: (_godId) => {
+        void _godId;
+      },
+
+      // ============ GENESIS ENGINE — new actions ============
+      addRelicToCrucible: (relicId) => {
         const s = get();
         if (!s.unlockedLayers?.eternity) return;
-        if (!MINOR_GOD_MAP[godId]) return;
-        // Only allied gods can be kept in the new pantheon
-        if (!s.alliances?.[godId]) {
-          get().addToLog(`${MINOR_GOD_MAP[godId].name} is not an ally — cannot keep.`);
+        if (s.universeSimulating) return; // can't modify crucible mid-sim
+        const crucible = [...(s.crucibleRelicIds || [])];
+        if (crucible.length >= 5) {
+          get().addToLog("Crucible is full (max 5 relics). Trigger a Big Bang or clear the crucible.");
           return;
         }
-        const kept = [...(s.keptGods || [])];
-        const idx = kept.indexOf(godId);
-        if (idx >= 0) {
-          kept.splice(idx, 1);
-          get().addToLog(`${MINOR_GOD_MAP[godId].name} removed from your pantheon.`);
-        } else {
-          kept.push(godId);
-          get().addToLog(`${MINOR_GOD_MAP[godId].name} will be kept in your new pantheon.`);
+        if (crucible.includes(relicId)) {
+          get().addToLog("That relic is already in the crucible.");
+          return;
         }
-        set({ keptGods: kept });
+        const relic = (s.divineRelics || []).find((r) => r.id === relicId);
+        if (!relic) return;
+        crucible.push(relicId);
+        set({ crucibleRelicIds: crucible });
+        get().addToLog(`Added ${relic.name} to the crucible (${crucible.length}/5).`);
+      },
+
+      clearCrucible: () => {
+        const s = get();
+        if (!s.unlockedLayers?.eternity) return;
+        if (s.universeSimulating) return;
+        if ((s.crucibleRelicIds || []).length === 0) return;
+        set({ crucibleRelicIds: [] });
+        get().addToLog("Crucible cleared.");
+      },
+
+      revealRelicRule: (relicId, ruleIndex) => {
+        const s = get();
+        if (!s.unlockedLayers?.eternity) return;
+        const relics = (s.divineRelics || []).map((r) => ({ ...r, rules: r.rules.map((rr) => ({ ...rr, revealed: { ...rr.revealed } })) }));
+        const relic = relics.find((r) => r.id === relicId);
+        if (!relic) return;
+        if (ruleIndex < 0 || ruleIndex >= relic.rules.length) return;
+        if (relic.rules[ruleIndex].revealed.rule) return; // already revealed
+        if ((s.divinity || 0) < REVEAL_COST_RULE) {
+          get().addToLog(`Need ${REVEAL_COST_RULE} Divinity to reveal a rule name.`);
+          return;
+        }
+        relic.rules[ruleIndex].revealed.rule = true;
+        set({ divinity: (s.divinity || 0) - REVEAL_COST_RULE, divineRelics: relics });
+        const ruleName = UNIVERSE_RULES.find((r) => r.id === relic.rules[ruleIndex].ruleId)?.shortName || "?";
+        get().addToLog(`✦ Revealed: ${relic.name} affects ${ruleName} (-${REVEAL_COST_RULE} Divinity).`);
+      },
+
+      revealRelicAmount: (relicId, ruleIndex) => {
+        const s = get();
+        if (!s.unlockedLayers?.eternity) return;
+        const relics = (s.divineRelics || []).map((r) => ({ ...r, rules: r.rules.map((rr) => ({ ...rr, revealed: { ...rr.revealed } })) }));
+        const relic = relics.find((r) => r.id === relicId);
+        if (!relic) return;
+        if (ruleIndex < 0 || ruleIndex >= relic.rules.length) return;
+        // Must reveal rule name first
+        if (!relic.rules[ruleIndex].revealed.rule) {
+          get().addToLog("Reveal the rule name first before revealing the amount.");
+          return;
+        }
+        if (relic.rules[ruleIndex].revealed.amount) return; // already revealed
+        if ((s.divinity || 0) < REVEAL_COST_AMOUNT) {
+          get().addToLog(`Need ${REVEAL_COST_AMOUNT} Divinity to reveal a rule amount.`);
+          return;
+        }
+        relic.rules[ruleIndex].revealed.amount = true;
+        set({ divinity: (s.divinity || 0) - REVEAL_COST_AMOUNT, divineRelics: relics });
+        const amt = relic.rules[ruleIndex].amount;
+        const ruleName = UNIVERSE_RULES.find((r) => r.id === relic.rules[ruleIndex].ruleId)?.shortName || "?";
+        get().addToLog(`✦ Revealed: ${relic.name} → ${ruleName} ${amt >= 0 ? "+" : ""}${amt} (-${REVEAL_COST_AMOUNT} Divinity).`);
+      },
+
+      triggerBigBang: () => {
+        const s = get();
+        if (!s.unlockedLayers?.eternity) return;
+        if (s.universeSimulating) return;
+        const crucibleIds = s.crucibleRelicIds || [];
+        if (crucibleIds.length < 1) {
+          get().addToLog("Add at least one relic to the crucible to trigger a Big Bang.");
+          return;
+        }
+        set({
+          universeSimulating: true,
+          simulationStartTime: s.time,
+          lastSimulationResult: null,
+        });
+        get().addToLog("💥 Big Bang initiated — simulating the cosmos... (30s)");
+      },
+
+      completeBigBang: () => {
+        const s = get();
+        if (!s.universeSimulating) return;
+        const crucibleIds = s.crucibleRelicIds || [];
+        const relics = (s.divineRelics || []);
+        const crucibleRelics = crucibleIds
+          .map((id) => relics.find((r) => r.id === id))
+          .filter((r): r is DivineRelic => !!r);
+        if (crucibleRelics.length === 0) {
+          // No relics (shouldn't happen — triggerBigBang requires ≥1) — bail.
+          set({ universeSimulating: false, crucibleRelicIds: [] });
+          return;
+        }
+        // Compute final rule levels + stability.
+        const comp = computeCrucibleRules(crucibleRelics);
+        const finalValues = comp.rules.map((r) => r.finalValue);
+        // Crucible relics are CONSUMED in the Big Bang (always — stable or unstable).
+        const remainingRelics = relics.filter((r) => !crucibleIds.includes(r.id));
+        let relicsGained = 0;
+        let relicsLost = 0;
+        let archetypeId: string | null = null;
+        if (comp.unstable) {
+          // Unstable: lose additional relics from inventory based on instability level.
+          const loss = relicLossCount(comp.instability, remainingRelics.length);
+          // Remove the first `loss` relics from inventory (oldest first — by createdAt asc).
+          const sortedRemaining = [...remainingRelics].sort((a, b) => a.createdAt - b.createdAt);
+          const lostRelicIds = new Set(sortedRemaining.slice(0, loss).map((r) => r.id));
+          relicsLost = loss;
+          const afterLoss = remainingRelics.filter((r) => !lostRelicIds.has(r.id));
+          set({
+            universeSimulating: false,
+            crucibleRelicIds: [],
+            divineRelics: afterLoss,
+            lastSimulationResult: {
+              stable: false,
+              archetypeId: null,
+              relicsGained: 0,
+              relicsLost: relicsLost,
+              instability: comp.instability,
+            },
+          });
+          get().addToLog(`💥 Big Bang FAILED — instability ${comp.instability}. Lost ${relicsLost} relic(s) from inventory.`);
+        } else {
+          // Stable: discover an archetype + gain 3-5 new relics.
+          archetypeId = matchArchetype(finalValues);
+          const newRelics = generateRelicReward(3 + Math.floor(Math.random() * 3)); // 3..5
+          relicsGained = newRelics.length;
+          const discovered = { ...(s.discoveredArchetypes || {}) };
+          let isNew = false;
+          if (archetypeId && !discovered[archetypeId]) {
+            discovered[archetypeId] = true;
+            isNew = true;
+          }
+          set({
+            universeSimulating: false,
+            crucibleRelicIds: [],
+            divineRelics: [...remainingRelics, ...newRelics],
+            discoveredArchetypes: discovered,
+            lastSimulationResult: {
+              stable: true,
+              archetypeId,
+              relicsGained,
+              relicsLost: 0,
+              instability: 0,
+            },
+          });
+          const discoveredCount = Object.values(discovered).filter(Boolean).length;
+          const archName = archetypeId ? (GENESIS_ARCHETYPE_MAP[archetypeId]?.name || "Unknown") : "no archetype";
+          if (archetypeId && isNew) {
+            get().addToLog(`🌟 Big Bang stable! Discovered new archetype: ${archName} (${discoveredCount}/${ARCHETYPE_COUNT}). Gained ${relicsGained} new relic(s).`);
+          } else if (archetypeId) {
+            get().addToLog(`🌟 Big Bang stable — archetype ${archName} already known (${discoveredCount}/${ARCHETYPE_COUNT}). Gained ${relicsGained} new relic(s).`);
+          } else {
+            get().addToLog(`🌟 Big Bang stable, but no archetype matched. Gained ${relicsGained} new relic(s).`);
+          }
+          if (isGenesisComplete(discovered)) {
+            get().addToLog("🌠 You have discovered all 100 archetypes! The Genesis Engine unlocks the ending screen.");
+          }
+        }
       },
 
       // ============ THEME CUSTOMIZATION (Part 1) ============
@@ -4657,7 +5736,31 @@ export const useGameStore = create<GameStore>()(
             break;
           }
           case "reduce_heresy": {
-            patch.heresy = Math.max(0, (s.heresy || 0) - (ability.effect.magnitude || 0));
+            // L5 redesign — convert up to N heretics across owned galaxies.
+            const ownedAb = ownedGalaxyIds(s.galaxyRivalSystems || {});
+            const gfAb = { ...(s.galaxyFollowerGrid || {}) };
+            const ghAb = { ...(s.galaxyHeresy || {}) };
+            const nConvert = Math.max(1, Math.ceil(((ability.effect.magnitude || 0) / 100) * 32));
+            let conv = 0;
+            for (const gid of ownedAb) {
+              const grid = (gfAb[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+              for (let i = 0; i < grid.length && conv < nConvert; i++) {
+                if (grid[i].state === "heretical") {
+                  grid[i].state = "faithful";
+                  conv++;
+                }
+              }
+              gfAb[gid] = grid;
+              const hc = grid.filter((c) => c.state === "heretical").length;
+              ghAb[gid] = (hc / 32) * 100;
+              if (conv >= nConvert) break;
+            }
+            const newH = ownedAb.length > 0
+              ? ownedAb.reduce((sum, gid) => sum + (ghAb[gid] || 0), 0) / ownedAb.length
+              : 0;
+            patch.heresy = newH;
+            patch.galaxyFollowerGrid = gfAb;
+            patch.galaxyHeresy = ghAb;
             break;
           }
           case "temp_overclock": {
@@ -4832,6 +5935,9 @@ export const useGameStore = create<GameStore>()(
 
       debugUnlockAll: () => {
         const s = get();
+        // Seed 3 starter relics if the player has none (so the Genesis Engine is usable).
+        const currentRelics = s.divineRelics || [];
+        const starterRelics = currentRelics.length === 0 ? generateRelicReward(3) : [];
         set({
           unlockedChallenges: true,
           galacticWins: Math.max(s.galacticWins, 1),
@@ -4848,15 +5954,16 @@ export const useGameStore = create<GameStore>()(
             eternity: true,
           },
           evolutionPoints: (s.evolutionPoints || 0) + 1000,
-          divinity: (s.divinity || 0) + 500,
+          divinity: (s.divinity || 0) + 5000,
           prayer: (s.prayer || 0) + 200,
           faith: (s.faith || 0) + 200,
+          divineRelics: [...currentRelics, ...starterRelics],
           // BACKGROUND-SIMULATION — seed a non-zero peak so the Divine Engine
           // panel has visible Divinity generation when debug-unlocked.
           // (backgroundSimulations is computed from stars lit, not set here.)
           peakProductionRate: Math.max(s.peakProductionRate || 0, 100),
         });
-        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +500 Divinity, +200 Prayer, +200 Faith granted.");
+        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +5000 Divinity, +200 Prayer, +200 Faith granted. 3 starter relics seeded.");
       },
 
       saveGame: () => {
@@ -4894,7 +6001,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 10,
+      version: 12,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -4946,6 +6053,19 @@ export const useGameStore = create<GameStore>()(
         if (persisted.showChallenges === undefined) persisted.showChallenges = false;
         // v3: auto-action timers
         if (!persisted.autoTimers) persisted.autoTimers = { system: 0, tech: 0, evolve: 0, challenge: 0 };
+        // PP-SHOP-TABS — extend autoTimers with the new universal auto-buyer
+        // keys for old saves (v1-v10) that pre-date the tab redesign.
+        // The base-game timers (system/tech/evolve/challenge) are preserved.
+        if (persisted.autoTimers) {
+          if (persisted.autoTimers.light_stars === undefined) persisted.autoTimers.light_stars = 0;
+          if (persisted.autoTimers.invest_market === undefined) persisted.autoTimers.invest_market = 0;
+          if (persisted.autoTimers.claim_systems === undefined) persisted.autoTimers.claim_systems = 0;
+          if (persisted.autoTimers.manage_heresy === undefined) persisted.autoTimers.manage_heresy = 0;
+          if (persisted.autoTimers.place_anchors === undefined) persisted.autoTimers.place_anchors = 0;
+          if (persisted.autoTimers.negotiate === undefined) persisted.autoTimers.negotiate = 0;
+          if (persisted.autoTimers.attack_old_gods === undefined) persisted.autoTimers.attack_old_gods = 0;
+          if (persisted.autoTimers.author_universes === undefined) persisted.autoTimers.author_universes = 0;
+        }
 
         // v4 migration: Layers 2-6 state fields
         // Layer 2 — Enlightenment (Foresight)
@@ -4983,6 +6103,30 @@ export const useGameStore = create<GameStore>()(
         if (persisted.showSingularity === undefined) persisted.showSingularity = false;
         // L6 FIX — Dimension Engine bonus tracker (defaults false on old saves)
         if (persisted.dimensionEngineBonusClaimed === undefined) persisted.dimensionEngineBonusClaimed = false;
+        // L6 Universal Map redesign migration — initialize new fields on old saves.
+        // `universalGalaxies` is the 50-galaxy runtime state; `realityAnchors` +
+        // `riftsClosed` + `anchorsPlaced` persist across prestiges; `rifts` +
+        // `riftSpawnTimer` reset per-run. Old saves that only have legacy
+        // `dimensions`/`dimensionRiftTimer` get a fresh Universal Map.
+        if (!persisted.universalGalaxies || !Array.isArray(persisted.universalGalaxies) || persisted.universalGalaxies.length === 0) {
+          persisted.universalGalaxies = makeInitialUniversalGalaxies();
+        } else {
+          // Reconcile against the canonical 50-galaxy list — if any new galaxies
+          // were added to UNIVERSAL_GALAXIES (shouldn't happen mid-run, but be
+          // defensive), backfill them. Also drop any stale ids.
+          const canonical = makeInitialUniversalGalaxies();
+          const byId = Object.fromEntries(persisted.universalGalaxies.map((g: UniversalGalaxyState) => [g.id, g]));
+          persisted.universalGalaxies = canonical.map((g) => {
+            const existing = byId[g.id];
+            if (!existing) return g;
+            return { ...g, ownerId: existing.ownerId || g.ownerId, systemsClaimed: existing.systemsClaimed || 0, heresy: existing.heresy || 0, anchored: !!existing.anchored };
+          });
+        }
+        if (!persisted.rifts) persisted.rifts = [];
+        if (!persisted.realityAnchors) persisted.realityAnchors = [];
+        if (persisted.riftSpawnTimer === undefined) persisted.riftSpawnTimer = 45;
+        if (persisted.riftsClosed === undefined) persisted.riftsClosed = 0;
+        if (persisted.anchorsPlaced === undefined) persisted.anchorsPlaced = 0;
         // unlockedLayers should always exist (v3+); ensure all 10 layer flags exist
         if (!persisted.unlockedLayers) persisted.unlockedLayers = { evolution: true };
         if (persisted.unlockedLayers.enlightenment === undefined) persisted.unlockedLayers.enlightenment = false;
@@ -5014,7 +6158,7 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.repaidFutureDebts) persisted.repaidFutureDebts = {};
         if (persisted.showInfinity === undefined) persisted.showInfinity = false;
         if (persisted.unlockedLayers.infinity === undefined) persisted.unlockedLayers.infinity = false;
-        // Layer 10 — Eternity
+        // Layer 10 — Eternity — Genesis Engine
         if (persisted.testamentClauses === undefined) persisted.testamentClauses = 0;
         if (!persisted.purchasedTestamentClauses) persisted.purchasedTestamentClauses = {};
         if (!persisted.activeCanonizations) persisted.activeCanonizations = {};
@@ -5023,6 +6167,27 @@ export const useGameStore = create<GameStore>()(
         if (persisted.cosmicBoonStacks === undefined) persisted.cosmicBoonStacks = 0;
         if (persisted.showEternity === undefined) persisted.showEternity = false;
         if (persisted.unlockedLayers.eternity === undefined) persisted.unlockedLayers.eternity = false;
+        // NEW: Genesis Engine state migration (v12).
+        //   - Legacy `universeRules` (8-slot array) and `keptGods` (god ids) are
+        //     dropped — the Genesis Engine does not use them. Old saves simply
+        //     lose them on load (no migration path needed since the new system
+        //     starts the player with no relics / no discoveries).
+        //   - New fields are initialized to empty / false / null.
+        if (!persisted.divineRelics) persisted.divineRelics = [];
+        if (!persisted.crucibleRelicIds) persisted.crucibleRelicIds = [];
+        if (!persisted.discoveredArchetypes) persisted.discoveredArchetypes = {};
+        if (persisted.universeSimulating === undefined) persisted.universeSimulating = false;
+        if (persisted.simulationStartTime === undefined) persisted.simulationStartTime = 0;
+        if (persisted.lastSimulationResult === undefined) persisted.lastSimulationResult = null;
+        // If a save was mid-simulation when last persisted, cancel the sim
+        // (we can't reliably resume a half-finished Big Bang).
+        if (persisted.universeSimulating) {
+          persisted.universeSimulating = false;
+          persisted.simulationStartTime = 0;
+        }
+        // Drop legacy fields if they still exist (no-op for the new design).
+        delete (persisted as any).universeRules;
+        delete (persisted as any).keptGods;
 
         // v6 migration: Theme customization fields
         if (persisted.activeStageTheme === undefined) persisted.activeStageTheme = "stage-cell";
@@ -5092,12 +6257,59 @@ export const useGameStore = create<GameStore>()(
         // FEATURE 5 — Prophets migration
         if (!persisted.prophets) persisted.prophets = [];
         if (persisted.prophetConvertTimer === undefined) persisted.prophetConvertTimer = 10;
-        if (!persisted.dimensions) persisted.dimensions = [
-          { id: 0, name: "Alpha", speed: 1, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-          { id: 1, name: "Beta", speed: 0.5, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-          { id: 2, name: "Gamma", speed: 0.25, pop: 8, stageIndex: 0, resources: 0, reachedGalactic: false },
-        ];
-        if (persisted.dimensionRiftTimer === undefined) persisted.dimensionRiftTimer = 60;
+        // === L5 redesign — Galactic Conquest migration ===
+        // Per-galaxy heresy (starter seeded at 0). Ensure starter key exists.
+        if (!persisted.galaxyHeresy) persisted.galaxyHeresy = {};
+        if (persisted.galaxyHeresy[STARTER_GALAXY_ID] === undefined) {
+          persisted.galaxyHeresy[STARTER_GALAXY_ID] = 0;
+        }
+        // Per-galaxy 8×4 heresy grid (starter seeded all faithful).
+        if (!persisted.galaxyFollowerGrid) persisted.galaxyFollowerGrid = {};
+        if (!persisted.galaxyFollowerGrid[STARTER_GALAXY_ID]) {
+          persisted.galaxyFollowerGrid[STARTER_GALAXY_ID] = Array.from({ length: 32 }, () => ({ state: "faithful", type: "follower" }));
+        }
+        // Per-galaxy rival star systems — initialize from makeInitialRivalSystems
+        // for every rival galaxy (idempotent: only initializes missing/short lists).
+        if (!persisted.galaxyRivalSystems) persisted.galaxyRivalSystems = {};
+        for (const g of RIVAL_GALAXIES) {
+          const list = persisted.galaxyRivalSystems[g.id];
+          if (!Array.isArray(list) || list.length !== g.systemCount) {
+            persisted.galaxyRivalSystems[g.id] = makeInitialRivalSystems(g.id);
+          } else {
+            // Ensure each system has the expected shape (id/claimed/explored).
+            persisted.galaxyRivalSystems[g.id] = list.map((sys: any, idx: number) => ({
+              id: sys?.id || `rsys_${g.id}_${String(idx + 1).padStart(3, "0")}`,
+              claimed: !!sys?.claimed,
+              explored: !!sys?.explored,
+            }));
+          }
+        }
+        // Backfill any per-galaxy heresy grids for galaxies the player partially owns
+        // (so the modal has a grid to render). Initialize all-faithful for any rival
+        // galaxy that's missing a grid entry.
+        for (const g of RIVAL_GALAXIES) {
+          if (!persisted.galaxyFollowerGrid[g.id]) {
+            persisted.galaxyFollowerGrid[g.id] = Array.from({ length: 32 }, () => ({ state: "faithful", type: "follower" }));
+          }
+          if (persisted.galaxyHeresy[g.id] === undefined) {
+            persisted.galaxyHeresy[g.id] = 0;
+          }
+        }
+        if (!persisted.conqueredGalaxies) persisted.conqueredGalaxies = {};
+        if (!persisted.selectedGalaxyId) persisted.selectedGalaxyId = STARTER_GALAXY_ID;
+        // Normalize prophet entries to per-galaxy shape (backfill galaxyId=starter for old saves).
+        if (Array.isArray(persisted.prophets)) {
+          persisted.prophets = persisted.prophets.map((p: any) => ({
+            galaxyId: p?.galaxyId || STARTER_GALAXY_ID,
+            cellIndex: p?.cellIndex ?? 0,
+            lastConvertedAt: p?.lastConvertedAt ?? 0,
+          }));
+        }
+        // LEGACY: `dimensions` + `dimensionRiftTimer` were the old Dimension Engine
+        // state. Kept as empty stubs for save-shape compat — the L6 redesign
+        // uses `universalGalaxies` + `rifts` + `realityAnchors` instead.
+        if (!persisted.dimensions) persisted.dimensions = [];
+        if (persisted.dimensionRiftTimer === undefined) persisted.dimensionRiftTimer = 0;
 
         // v10 migration: FEATURE ENHANCEMENTS — L7 mutations (creature.mutated flag), L8 amplifiers, L9 temporal storms, L10 paradox
         if (persisted.creatures) {
@@ -5116,6 +6328,17 @@ export const useGameStore = create<GameStore>()(
         if (persisted.geneticInstability === undefined) persisted.geneticInstability = 0;
         if (persisted.creatureDesignDraft === undefined) {
           persisted.creatureDesignDraft = { bodyType: "predator", diet: "herbivore", special: "regen", name: "" };
+        }
+        // v11 migration: L7 Skirmish Arena — outpost raids + creature XP/levels + heresy auto-buyer timer
+        if (!persisted.outpostRaids) persisted.outpostRaids = [];
+        if (persisted.raidsRepelled === undefined) persisted.raidsRepelled = 0;
+        if (persisted.activeOutpostRaid === undefined) persisted.activeOutpostRaid = null;
+        if (!persisted.creatureXp) persisted.creatureXp = {};
+        if (!persisted.creatureLevels) persisted.creatureLevels = {};
+        if (persisted.outpostRaidSpawnTimer === undefined) persisted.outpostRaidSpawnTimer = OUTPOST_RAID_SPAWN_INTERVAL_SEC;
+        // Backfill the auto_manage_heresy upgrade entry (universal shop upgrade).
+        if (persisted.upgrades && persisted.upgrades.auto_manage_heresy === undefined) {
+          persisted.upgrades.auto_manage_heresy = 0;
         }
         // Layer 8 — Divine Alliance
         if (!persisted.minorGods) {
@@ -5140,11 +6363,9 @@ export const useGameStore = create<GameStore>()(
           }
         }
         if (persisted.divineFragments === undefined) persisted.divineFragments = 0;
-        // Layer 10 — Universe Creation
-        if (!persisted.universeRules) {
-          persisted.universeRules = Array(UNIVERSE_SLOTS.length).fill(null);
-        }
-        if (!persisted.keptGods) persisted.keptGods = [];
+        // Layer 10 — Genesis Engine (legacy `universeRules` / `keptGods` already
+        // dropped above in the v12 migration block). The new Genesis Engine
+        // state is also initialized there.
 
         // v10 migration: BACKGROUND-SIMULATION — peak production tracker +
         // lifetime Divinity + EP counters. backgroundSimulations is now COMPUTED
