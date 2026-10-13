@@ -10,11 +10,12 @@ import { cn } from "@/lib/utils";
 // DivineEnginePanel — replaces StagePanel in the left rail once the player
 // has unlocked Enlightenment (L2+). The base game (Cell → Galactic) is now
 // abstracted away and simulated in the background as `backgroundSimulations`
-// parallel runs, each generating Divinity at 1% of `peakProductionRate` per
-// second. Simulations are no longer purchased manually — they are computed
-// each tick as (3 starter + constellation stars lit) × Simulation Amplifier
-// multiplier. To get more sims, light more stars in the Enlightenment
-// (constellation) modal OR buy the Simulation Amplifier shop upgrade.
+// (called "Worlds" in the UI) — parallel runs, each generating Divinity at
+// 1% of `peakProductionRate` per second. Worlds are no longer purchased
+// manually — they are computed each tick as (3 starter + constellation
+// stars lit) × Simulation Amplifier multiplier. To get more worlds, light
+// more stars in the Enlightenment (constellation) modal OR buy the
+// Simulation Amplifier shop upgrade.
 export function DivineEnginePanel() {
   const peakProductionRate = useGameStore((s) => s.peakProductionRate || 0);
   const backgroundSimulations = useGameStore((s) => s.backgroundSimulations || 0);
@@ -24,8 +25,7 @@ export function DivineEnginePanel() {
   const ownedSystems = useGameStore((s) => s.ownedSystems);
   const technologies = useGameStore((s) => s.technologies);
   const upgrades = useGameStore((s) => s.upgrades);
-  const galacticWins = useGameStore((s) => s.galacticWins);
-  // Constellation stars lit — drives the background sim count formula.
+  // Constellation stars lit — drives the background world count formula.
   const constellationStars = useGameStore((s) => s.constellationStars || {});
 
   // Divine generation rate = peak × 1% × backgroundSimulations (Divinity/sec).
@@ -85,7 +85,7 @@ export function DivineEnginePanel() {
               Divine Engine
             </h2>
             <p className="text-xs text-muted-foreground italic mt-0.5">
-              Background simulations spinning Divinity from mortal ambition.
+              Worlds under your command spinning Divinity from mortal ambition.
             </p>
           </div>
         </div>
@@ -151,7 +151,7 @@ export function DivineEnginePanel() {
         {/* Engine label overlay */}
         <div className="absolute bottom-1 left-0 right-0 text-center text-[0.55rem] text-violet-200/70 font-mono uppercase tracking-[0.2em] pointer-events-none">
           {backgroundSimulations > 0
-            ? `${backgroundSimulations}× simulation${backgroundSimulations === 1 ? "" : "s"} running`
+            ? `${backgroundSimulations} world${backgroundSimulations === 1 ? "" : "s"} running`
             : "idle — awaiting ascension"}
         </div>
       </div>
@@ -160,9 +160,9 @@ export function DivineEnginePanel() {
       <div className="grid grid-cols-2 gap-2 mb-3">
         <StatCard
           icon={<Atom className="w-3 h-3" />}
-          label="Sims"
+          label="Worlds"
           value={formatNumber(backgroundSimulations, 0)}
-          sub={`${galacticWins} galactic win${galacticWins === 1 ? "" : "s"}`}
+          sub={`${starsLit} stars lit`}
           accent="text-violet-300"
         />
         <StatCard
@@ -193,7 +193,7 @@ export function DivineEnginePanel() {
         </div>
         <div className="mt-1 text-[0.65rem] text-muted-foreground tabular-nums">
           {peakProductionRate > 0
-            ? `${formatCompact(peakProductionRate)} peak × 0.01 × ${backgroundSimulations} sims`
+            ? `${formatCompact(peakProductionRate)} peak × 0.01 × ${backgroundSimulations} worlds`
             : "Peak production will be recorded as your civilizations run."}
         </div>
       </div>
@@ -245,14 +245,14 @@ export function DivineEnginePanel() {
         </div>
       )}
 
-      {/* Simulation count — informational display.
-          Formula: sims = (3 starters + stars lit) × Simulation Amplifier multiplier.
-          More stars lit → more sims → more Divinity + EP per second. */}
+      {/* Worlds count — informational display.
+          Formula: worlds = (3 starters + stars lit) × Simulation Amplifier multiplier.
+          More stars lit → more worlds → more Divinity + EP per second. */}
       <div className="stat-card mb-3 border-violet-400/30 bg-violet-500/5">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 text-violet-200 text-xs uppercase tracking-wide">
             <StarIcon className="w-3.5 h-3.5" />
-            <span>Simulations</span>
+            <span>Worlds</span>
           </div>
           <Badge variant="outline" className="text-[0.55rem] text-violet-300 border-violet-400/40 px-1 py-0">
             3 + stars × {simMult}×
@@ -267,18 +267,18 @@ export function DivineEnginePanel() {
           </span>
         </div>
         <div className="mt-1 text-[0.65rem] text-muted-foreground tabular-nums">
-          formula: (3 starter sims + {starsLit} constellation star{starsLit === 1 ? "" : "s"} lit) × {simMult}× amplifier = {formatNumber(backgroundSimulations, 0)} sims
+          formula: (3 starter worlds + {starsLit} constellation star{starsLit === 1 ? "" : "s"} lit) × {simMult}× amplifier = {formatNumber(backgroundSimulations, 0)} worlds
         </div>
       </div>
 
-      {/* How to get more sims — explainer hint. */}
+      {/* How to get more worlds — explainer hint. */}
       <div className="stat-card mb-3 flex items-start gap-2 border-amber-400/30 bg-amber-500/5">
         <Lightbulb className="w-3.5 h-3.5 text-amber-300 mt-0.5 shrink-0" />
         <div className="text-[0.65rem] text-amber-100/90 leading-snug">
-          <span className="font-semibold">Want more sims?</span>{" "}
+          <span className="font-semibold">Want more worlds?</span>{" "}
           Light more stars in the{" "}
           <span className="text-amber-300 font-medium">Enlightenment (constellation) modal</span>{" "}
-          to add a sim per star, or buy the{" "}
+          to add a world per star, or buy the{" "}
           <span className="text-amber-300 font-medium">Simulation Amplifier</span>{" "}
           shop upgrade (×{simMult + 1} at level {simAmpLevel + 1}).
         </div>

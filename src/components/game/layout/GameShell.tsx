@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
@@ -51,6 +52,17 @@ export function GameShell() {
   // fully abstracted into the Divine Engine panel; we swap out StagePanel.
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const showDivineEngine = !!(unlockedLayers?.enlightenment);
+  const setTab = useGameStore((s) => s.setTab);
+
+  // AUTO-REDIRECT: At L2+, if the current tab is a hidden base-game tab
+  // (actions/systems/tech/production/story), redirect to "prestige" so the
+  // player never sees the Cell Actions / Manual Action section.
+  // This was the cause of the "can't leave the Actions tab" bug.
+  useEffect(() => {
+    if (showDivineEngine && ["actions", "systems", "tech", "production", "story"].includes(currentTab)) {
+      setTab("prestige");
+    }
+  }, [showDivineEngine, currentTab, setTab]);
 
   // Theme state — apply CSS classes to the root div.
   // Special overrides everything; otherwise stage + optional layer overlay.

@@ -2141,7 +2141,7 @@ export const useGameStore = create<GameStore>()(
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
             setTimeout(() => get().addToLog(
-              `🌌 Background sims: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
+              `🌌 Worlds: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
             ), 0);
           }
         }
@@ -2920,9 +2920,11 @@ export const useGameStore = create<GameStore>()(
         set({
           ...fresh,
           ...metaState,
-          currentTab: "actions",
-          speed: 1,
-          paused: false,
+          // PRESERVE player's current tab + pause/speed state across prestiges.
+          // (Old behavior reset to "actions" tab + paused=false + speed=1, which was jarring.)
+          currentTab: s.currentTab,
+          speed: s.speed,
+          paused: s.paused,
           showShop: false,
           showEvolve: false,
           activeStoryPopup: s.totalRuns === 0 ? "god_opens_its_eyes" : null,

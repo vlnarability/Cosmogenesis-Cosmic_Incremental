@@ -172,7 +172,7 @@ export function Header() {
           {evolutionPoints > 0 && (
             <HeaderStat
               label="EP"
-              value={formatNumber(evolutionPoints, 0)}
+              value={formatCompact(evolutionPoints)}
               color="text-amber-300"
             />
           )}

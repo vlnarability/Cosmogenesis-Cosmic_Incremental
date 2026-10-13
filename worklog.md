@@ -3768,3 +3768,22 @@ Stage Summary:
 - Worship mode spread descriptions now match the actual mode IDs.
 - 0 lint errors. Dev server HTTP 200. SSR renders game shell correctly.
 - The game is in its best state ever per the comprehensive review — all 10 claimed fixes verified present, L5 + L9 functional, sim economy working.
+
+---
+Task ID: UI-FIXES-V4
+Agent: main
+Task: Fix critical tab-reset bug + EP formatting + rename Sims→Worlds + hide galactic wins + event popup layer filter
+
+Work Log:
+- **CRITICAL FIX — Tab/pause auto-reset bug**: `triggerPrestige` was hard-setting `currentTab: "actions"`, `speed: 1`, `paused: false` on every prestige. This caused the game to snap back to the Actions tab and unpause whenever the auto-evolver triggered a prestige at Galactic. Fixed by preserving `s.currentTab`, `s.speed`, `s.paused` across prestiges.
+- **CRITICAL FIX — Stuck on hidden tab**: At L2+, the TabNav hides base-game tabs (actions/systems/tech/production/story). If the player's saved `currentTab` was "actions" (from first playthrough), the ActionsTab would still render even though the tab was hidden — player couldn't navigate away. Fixed in GameShell with a `useEffect` that auto-redirects to "prestige" if `showDivineEngine && currentTab` is a hidden base-game tab.
+- **Event popups layer-filtered**: Random cell-galactic events no longer fire at L2+ (enlightenment unlocked). Added `isL2Plus` check to the event firing condition. The base game runs silently in the background.
+- **EP formatting**: Header EP stat now uses `formatCompact` (e.g. 2.1M instead of 2113026.433039885).
+- **Renamed "Simulations" → "Worlds"**: All UI text in DivineEnginePanel now says "Worlds" instead of "Sims"/"Simulations". Flavor text changed from "Background simulations spinning Divinity from mortal ambition" → "Worlds under your command spinning Divinity from mortal ambition". Log message changed from "Background sims: N running" → "Worlds: N running".
+- **Removed galactic wins display**: The DivineEnginePanel stat card previously showed "N galactic wins" under the sim count. Replaced with "N stars lit" (more relevant to the world formula).
+
+Stage Summary:
+- The game is now navigable at L2+ — no more auto-reset to Actions tab, no more auto-unpause.
+- Event popups no longer interrupt L2+ players.
+- EP displays compactly. "Worlds" terminology consistent. Galactic wins hidden.
+- 0 lint errors. Dev server HTTP 200.
