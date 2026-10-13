@@ -4042,3 +4042,156 @@ Stage Summary:
   1. ApotheosisModal (L5) UI redesign — cosmic map with galaxy tabs + heresy pulsing (core mechanics work, just visual polish)
   2. Divine Market (L3) redesign to the investment portfolio system (approved but not yet implemented — current market still works)
   3. Playtest + balance tuning (reveal costs, instability penalty, trial difficulty curves)
+
+---
+Task ID: REVIEW-ACTUAL-STATE
+Agent: subagent (general-purpose)
+Task: Comprehensive code review — verify what's ACTUALLY implemented vs claimed. Read every file the user listed, no trust without verification.
+
+# Comprehensive Code Review — Actual State
+
+## Verification Matrix
+
+### Trials (L1)
+- 10 trials as run modifiers: ✅ VERIFIED — but lives in `src/game/data/challenges.ts:51-346` (NOT `trialRealms.ts`). 10 challenges with `BASE_MAX_REPEATS=5` (`challenges.ts:11`) and `MAX_REPEATS_WITH_MASTERY=10` (`challenges.ts:12`). `trialRealms.ts` is a SEPARATE L1 system — 10 standalone mini-games (Growth, Famine, Discontent, Ignorance, Stagnation, Weakness, Late Bloom, Purity, Ascetic, Swiftness), each with its own runtime state in `makeDefaultRealmState` (`trialRealms.ts:158-262`) and progress tick in `store.ts:1685-2050`. The reviewer's request pointed at the wrong file.
+- 5-level scaling (10 with upgrade): ✅ VERIFIED — `challenges.ts:11-17` defines `BASE_MAX_REPEATS=5`, `MAX_REPEATS_WITH_MASTERY=10`, `DEBUFF_SCALE_PER_REPEAT=0.20`, `MASTERY_SCALE_PER_REPEAT=0.50`. The `challenge_mastery` upgrade (`upgrades.ts:172-181`) flips max from 5 to 10.
+- Autobuyers disabled during trials: ❌ NOT FOUND — searched store.ts for `activeChallenge && autoTimers`, `disableAutobuyer`, etc.; no gating exists. Auto-buyers (lines 2393-2623 of store.ts) fire regardless of `s.activeChallenge`. The 9 auto-buyers only gate on `(s.upgrades[id] || 0) > 0 && s.unlockedLayers?.<layer> && newTime - autoTimers.<key> >= period`. Challenges apply combat/economy debuffs but auto-buyers continue running.
+- Trial modifier effects in tick: ✅ VERIFIED — `challengeDebuff` (computed in store.ts:702-705 from `CHALLENGE_MAP[s.activeChallenge]` with repeat scaling) drives `disableMilitary` (store.ts:1011, 1069, 2808, 2937), `disableTech` (store.ts:1058, 2933), `disableEvents` (store.ts:1171), `maxSystems` (store.ts:2815), `productionMult`/`costMult`/`capMult` etc. via the production tick at store.ts:700+.
+
+### L2 — Constellations
+- 88 IAU constellations: ✅ VERIFIED — `constellations.ts:2242 lines` total; `grep -c "^  {"` returns 88 entries; intro comment at line 12 says "ALL 88 (12 zodiac + 23 northern + 23 equatorial + 30 southern)".
+- Star map UI: ✅ VERIFIED — `EnlightenmentModal.tsx` renders a `<svg viewBox>` (line 213) with all 88 constellations as `<circle>` stars + connection lines. Click handler `onStarClick` → `illuminateStar` (line 156-159). Sidebar shows cost formula breakdown + constellation list.
+- Cost scaling formula: ✅ VERIFIED — `constellations.ts:97-100` defines `CONSTELLATION_BASE_COST=10`, `WITHIN_CONSTELLATION_GROWTH=1.5`, `COST_GROWTH_PER_STARTED=2.0`, `NEW_CONSTELLATION_PENALTY=2.0`. Matches spec.
+- L2 active abilities removed: ✅ VERIFIED — `stargazeReveal`, `supernovaIlluminate`, `blackHoleReset`, `activateCosmicBridge` are listed as "Legacy stubs (kept for save-compat — no-ops)" in `types.ts:738-741`. `purchaseForesightNode` is a no-op (`store.ts:3578-3580`). `illuminateStar` (`types.ts:614`) is the only L2 purchase action.
+
+### L3 — Divine Market
+- Market trading: ✅ VERIFIED — `TranscendenceModal.tsx:53-64` reads `marketPrices`, `marketOwnedResources`, `marketTickTimer`, `marketCrashTimer`, `marketCrashActive`. Buy/Sell/Offering buttons at lines 221-227 call `marketBuyResource`/`marketSellResource`/`marketOffering`. Market crashes (FEATURE 3) wired at lines 132-148.
+- Investment portfolio redesign: ❌ NOT FOUND — worklog explicitly notes "approved but not yet implemented — current market still works". The current L3 is still the original buy-low/sell-high Divine Market with 100-resource-dividend bonus, NOT a portfolio system.
+
+### L4 — Galaxy Claim
+- 50 hex-grid star systems: ✅ VERIFIED in data — `galaxyMap.ts:121-158` `buildGalaxySystems()` generates 50 systems via `generateHexSpiral(50)` (line 123), each with axial hex coords, bonus, rareResource, explored flag. `GALAXY_TOTAL_SYSTEMS = 50` (line 161).
+- Each system = +10 worlds: ✅ VERIFIED in tick — `store.ts:2343`: `const l4Worlds = s.unlockedLayers?.genesis ? claimedGalaxyCount * 10 : 0;`.
+- Hex map UI: ❌ NOT FOUND — `GenesisModal.tsx` STILL renders the OLD 5×4 Sacred Grid (lines 196-233) with 5 tile types (forest/mountain/ocean/desert/plains) + authored world config picker (lines 247-285). There is NO hex grid SVG, no system-claim button, no scan button anywhere. The `hexToPixel` (galaxyMap.ts:184) and `hexPolygonPoints` (galaxyMap.ts:192) helpers exist but are NEVER imported by any UI file. The L4 hex-grid galaxy claim UI was NEVER built.
+- Cap raised to 1000: ✅ VERIFIED — `store.ts:2357`: `s.unlockedLayers?.genesis ? 1_000 : ...`.
+
+### L5 — Galactic Conquest
+- Rival galaxies (500 systems, 18 worlds each): ✅ VERIFIED — `galaxies.ts:103-213` defines 10 galaxies (1 starter + 9 rivals) with system counts summing to exactly 500 (verified at line 385-391 with sanity-check console.warn). `WORLDS_PER_RIVAL_SYSTEM = 18` (line 232).
+- attackGalaxy action: ✅ VERIFIED — `store.ts:4552-4613` `attackGalaxy(galaxyId)` deducts `galaxyAttackCost(claimedCount, galaxy.defenseStrength)` Faith, marks next unclaimed system as claimed, marks galaxy conquered when all systems claimed, +18 worlds per claim.
+- Per-galaxy heresy: ✅ VERIFIED — `types.ts:520-524`: `galaxyHeresy`, `galaxyFollowerGrid`, `galaxyRivalSystems`, `conqueredGalaxies`, `selectedGalaxyId` all per-galaxy.
+- Heresy severity (yellow/orange/red system loss): ✅ VERIFIED — `galaxies.ts:333-350`: `heresySeverity()` returns calm/yellow/orange/red; `heresyLossCount()` returns 0/1/2/3 systems lost. Tick consumes these (used in L5 heresy tick block).
+- Cosmic map UI: ✅ VERIFIED (despite worklog claiming otherwise) — `ApotheosisModal.tsx:182-227` renders a galaxy list sidebar with all 10 galaxies, per-galaxy heresy % badges with severity-colored borders (lines 200-224). Selected-galaxy panel (lines 229-296) shows attack button calling `attackGalaxy(selectedGalaxy.id)` (line 284). Per-galaxy 8×4 heresy grid (lines 365-432) renders inside the selected-galaxy panel. Prophets panel (lines 316-337). The worklog's "ApotheosisModal still needs the cosmic map UI redesign" claim is OUTDATED — the cosmic map IS implemented.
+- Cap raised to 10000: ✅ VERIFIED — `store.ts:2356`: `s.unlockedLayers?.apotheosis ? 10_000 : ...`.
+
+### L6 — Universal Map
+- 50 galaxies: ✅ VERIFIED — `universalMap.ts:158` `UNIVERSAL_GALAXIES: UniversalGalaxy[] = buildUniversalGalaxies()` produces 50 (10 L5 starter+rival + 40 NEW neutral). `TOTAL_UNIVERSAL_GALAXIES = UNIVERSAL_GALAXIES.length; // 50` (line 164).
+- Rift defense (closeRift): ✅ VERIFIED — `store.ts:3924-3963` `closeRift(riftId)` gates on L6 unlock, costs `riftCloseCost(rift.severity)` Singularity Cores, removes rift, clears host galaxy heresy, increments `riftsClosed`, re-checks L7 unlock.
+- Reality anchors (placeRealityAnchor): ✅ VERIFIED — `store.ts:3965-4015` `placeRealityAnchor(galaxyId)` gates on L6 unlock, costs `anchorPlaceCost(anchorsPlaced)`, marks galaxy `anchored=true`, sheds heresy, appends to `realityAnchors`, re-checks L7 unlock.
+- Universal map UI: ✅ VERIFIED — `SingularityModal.tsx` (558 lines) renders SVG `viewBox=0 0 100 100` with all 50 galaxies as circles, owned/rival/neutral color-coded (line 73-87 stateById), rift pulse indicators, anchor rings, click selection + detail panel.
+- 5000 new systems × 198 = 990K worlds: ✅ VERIFIED — `universalMap.ts:90` `TARGET_TOTAL_SYSTEMS = 5000`; lines 108-114 acknowledge the spec said 10-100 systems per galaxy but math requires 10-150 to hit exactly 5,000. `TOTAL_NEW_SYSTEMS_L6 = 5,000` (line 166-168), `WORLDS_PER_NEW_SYSTEM_L6 = 198` (line 169), `TOTAL_NEW_WORLDS_L6 = 990,000` (line 170).
+- Cap raised to 1M: ✅ VERIFIED — `store.ts:2355`: `s.unlockedLayers?.singularity ? 1_000_000 : ...`.
+
+### L7 — Creature Lab + Skirmish
+- Creature creation (costs 5 Div + 5 Faith): ✅ VERIFIED — `OmnipotenceModal.tsx:80-81`: `createCostDiv = 5`, `createCostFaith = 5`. `canAffordCreature = divinity >= createCostDiv && faith >= createCostFaith` (line 82).
+- 5 outpost raids: ✅ VERIFIED — `omnipotence.ts:184-190` defines `OUTPOST_RAIDS` with 5 entries (Void Scout, Husk Pack, Tendril Brood, Whisper Vanguard, Eclipse Harbinger), HP 80-220, attack 12-30, defense 4-14.
+- Turn-based combat (attackOutpost): ✅ VERIFIED — `store.ts:4959-5080` `attackOutpost(raidId)` computes player damage from deployed creatures + level bonuses + berserk bonus, computes boss damage back, applies shield reduction, applies regen healing, updates HP, on boss HP ≤ 0 → "won" + grants Divine Fragment + XP, on player HP ≤ 0 → resets raid for retry.
+- Creature XP/levels: ✅ VERIFIED — `omnipotence.ts:166-167`: `CREATURE_XP_PER_LEVEL=100`, `CREATURE_XP_PER_RAID=20`. `creatureLevelBonus(level)` returns `1 + (level-1) * 0.1` per stat (line 226-233). Wired into attackOutpost at store.ts:4982-4987.
+- 10 raids → L8 unlock: ✅ VERIFIED — `omnipotence.ts:165`: `OUTPOST_RAID_COUNT_FOR_L8 = 10`. `isOmnipotenceComplete(raidsRepelled)` returns `raidsRepelled >= 10` (line 384-386). Wired at `store.ts:1612`.
+- Heresy auto-buyer: ✅ VERIFIED — `upgrades.ts:296-307` `auto_manage_heresy` upgrade (15s period). Wired at `store.ts:2500-2525`: walks owned galaxies, converts first heretic found in each.
+
+### L8 — Diplomacy
+- Negotiate costs 10 Div + 30s cooldown: ✅ VERIFIED — `store.ts:5104-5105`: `const NEGOTIATE_COST = 10; const NEGOTIATE_COOLDOWN = 30;`. Cooldown stored as `negotiate_<godId>` field, decayed each tick at `store.ts:1295-1300`.
+- Worship mode IDs fixed: ✅ VERIFIED — `ApotheosisModal.tsx:128-136` `spreadPattern` uses `wm_chanting`, `wm_proselytizing`, `wm_crusade`, `wm_ecstatic`, `wm_silent` — all match `apotheosis.ts:111-166` `WORSHIP_MODES` IDs (wm_silent, wm_chanting, wm_proselytizing, wm_crusade, wm_ecstasy, wm_void). No nonexistent IDs. Note: `wm_ecstasy` and `wm_void` don't have specific spread-pattern descriptions (they fall to the default case "Current mode active") — not a bug, just no special-case text.
+- Amplifiers: ✅ VERIFIED — `types.ts:545`: `amplifiers: Array<{ id: number; godId: string }>`. `types.ts:776-777`: `placeAmplifier(godId)` / `removeAmplifier(godId)` actions. Wired into `negotiateWithGod` at `store.ts:5123-5130`: `hasAmplifier ? (2 + 0.50 * aoLvl) : 1` multiplier on relationship gain.
+
+### L9 — Divine War
+- Player HP (200): ✅ VERIFIED — `infinity.ts:120-121`: `playerHp: 200, playerMaxHp: 200,` in `makeInitialBattleState()`. Same default in `attackOutpost` at `store.ts:4921-4922` (L7 raids also use 200 HP).
+- Battles losable: ✅ VERIFIED — `store.ts:5374-5377`: `else if (playerHp <= 0) { status = "lost"; log.push("Your forces have been routed!..."); }`. On loss, battle resets to "not_started" with full HP (store.ts:5397-5408). Player can re-engage.
+- Weakness check uses deployed body types: ✅ VERIFIED — `store.ts:5321-5334`: iterates `battle.deployedLegionIds` → `legion.creatureIds` → `creatures.find(cr => cr.id === cId).bodyType`, builds `deployedBodyTypes` Set, returns `deployedBodyTypes.has(god.weakness)`. Old God weakness in `infinity.ts:42, 56, 70` (predator, flyer, burrower) — all match `omnipotence.ts:14-20` `CreatureBodyTypeId`.
+- Phases mechanical: ✅ VERIFIED — `infinity.ts:43-47, 58-62, 73-77`: each Old God has 3 phases (skirmish, siege, final_stand) with `hpThreshold`. `phaseForHp(god, hp)` (line 183-187) maps boss HP to current phase. `attackOldGod` calls `phaseForHp` at `store.ts:5380` after each turn.
+- Player HP bar in UI: ✅ VERIFIED — `InfinityModal.tsx:171-183`: green HP bar labeled "Your HP" with `{Math.ceil(battle.playerHp || 200)}/{battle.playerMaxHp || 200}` and color shifts to red+animate-pulse when `playerHpPct < 33`.
+
+### L10 — Genesis Engine
+- 10 universe rules: ✅ VERIFIED — `genesisEngine.ts:55-146` `UNIVERSE_RULES` array with 10 entries (spacetime, mythos, entropy, determinism, physics, morality, consciousness, meta_sovereignty, metamorphic, veil). Each has min=1, max=5, desc, icon.
+- Divine relics (1-5 rules, -5 to +5): ✅ VERIFIED — `genesisEngine.ts:222-262` `generateRandomRelic()` picks 1-5 unique rules (line 224), assigns each a non-zero amount in [-5, +5] (lines 234-237). `DivineRelicRule` interface at lines 186-193 with `amount: number; revealed: { rule: boolean; amount: boolean }`.
+- Crucible (1-5 relics, overflow to 50): ✅ VERIFIED — `genesisEngine.ts:309-360` `computeCrucibleRules(relics)` computes rawValues (3 base per rule), then overflow-normalizes total to 50 via `resolveOverflow()` (line 366-372). `addRelicToCrucible` caps at 5 (`store.ts:5472-5474`). Crucible relics always consumed in Big Bang (`store.ts:5571-5572`).
+- 100 archetypes: ✅ VERIFIED — `genesisEngine.ts:478-557` `generateArchetypes()` produces 100 unique 10-tuples via seeded PRNG (mulberry32, seed 0x5eed5eed), each summing to 50 with all values in [1..9]. First archetype is `[5,5,5,5,5,5,5,5,5,5]` ("The Balanced Cosmos"). Safety net at line 534-554 ensures count = 100. `ARCHETYPES` exported at line 559.
+- Big Bang 30s simulation: ✅ VERIFIED — `genesisEngine.ts:162`: `BIG_BANG_DURATION_SEC = 30`. `triggerBigBang` (`store.ts:5538-5553`) sets `universeSimulating: true`, `simulationStartTime: s.time`. Tick checks completion at `store.ts:2605-2607`: `if (s.universeSimulating && newTime - s.simulationStartTime >= BIG_BANG_DURATION_SEC) → completeBigBang()`.
+- Ending screen: ✅ VERIFIED — `EternityModal.tsx:179-189`: `allDiscovered && chosenEnding === null ? <EndingScreen ... />` (component defined at line 539). Stats grid shows archetypes, total play time, this-dimension time, dimensions explored, cosmic boons, final score. Two buttons: "Continue in this Realm" + "Explore another Dimension".
+- Reveal costs (1000/2000 Divinity): ✅ VERIFIED — `genesisEngine.ts:167-168`: `REVEAL_COST_RULE = 1000`, `REVEAL_COST_AMOUNT = 2000`. `revealRelicRule` (`store.ts:5496-5512`) checks + deducts 1000 Divinity. `revealRelicAmount` (`store.ts:5514-5536`) requires rule revealed first, checks + deducts 2000 Divinity.
+
+### PP Shop + Automation
+- 11 layer tabs: ✅ VERIFIED — `ShopModal.tsx:43-55` `SHOP_TABS` array has 11 entries: Main + L1 + L2-L10. Each L2-L10 tab gates on `layerId` (lines 112-117 only render visible tabs).
+- 9 auto-buyers: ✅ VERIFIED — `upgrades.ts:250-386` defines: `auto_light_stars` (20s), `auto_invest_market` (30s), `auto_claim_systems` (15s), `auto_manage_heresy` (15s), `auto_place_anchors` (60s), `auto_negotiate` (30s), `auto_attack_old_gods` (10s), `auto_author_universes` (120s), `ep_auto_converter` (1 per tick). 9 total. Each wired in tick at `store.ts:2393-2623`.
+- EP auto-converter (hides EP): ✅ VERIFIED — `store.ts:2611-2623`: if `ep_auto_converter` owned + EP > 0, sets `evolutionPoints = 0; prestigePoints += epToConvert`. `Header.tsx:174`: EP chip rendered with `evolutionPoints > 0 && (upgrades["ep_auto_converter"] || 0) === 0` gate — hidden when converter owned.
+- EP nested under PP: ⚠️ PARTIAL — ShopModal has Main tab (PP currency) + L1-L10 tabs (EP currency for layer-specific, EP for L1 universal-EP). The Main tab includes the 9 auto-buyers + universal_boost + universal_speed (PP-purchased). EP upgrades remain on L1 tab. EP is NOT nested under PP as a sub-section — they're sibling tabs.
+
+### Background Simulation
+- Sims computed from (3 + starsLit) × simMult: ✅ VERIFIED — `store.ts:2336-2339`: `const starsLitCount = Object.values(s.constellationStars || {}).filter(Boolean).length;` + `const simMult = 1 + (s.upgrades["simulation_amplifier"] || 0);` + `constellationWorlds = (s.unlockedLayers?.enlightenment) ? (3 + starsLitCount) * simMult : 0;`.
+- Sims generate Divinity + EP: ✅ VERIFIED — `store.ts:2365-2373`: `bgDivPerSec = peakProductionRate * 0.01 * backgroundSimulations` and `bgEpPerSec = peakProductionRate * 0.001 * backgroundSimulations` (EP at 10% of divinity rate). Applied to `divinity` and `evolutionPoints` + lifetime trackers `divinityFromBackground` and `epFromBackground`.
+- Divine engine caps (500→1K→10K→1M): ✅ VERIFIED — `store.ts:2355-2360`: `worldCap = s.unlockedLayers?.singularity ? 1_000_000 : apotheosis ? 10_000 : genesis ? 1_000 : transcendence ? 500 : enlightenment ? 500 : 0`. (L2 and L3 both cap at 500 — matches worklog's "500 → 1K → 10K → 1M" for L2 → L4 → L5 → L6.)
+- "Worlds" terminology: ✅ VERIFIED — `DivineEnginePanel.tsx:13` comment: "(called 'Worlds' in the UI)". UI uses "Worlds" everywhere (lines 163, 255, 270, 278). Log message at `store.ts:2379` uses "🌌 Worlds: ${backgroundSimulations} running".
+
+### UI Fixes
+- Tab/pause auto-reset fixed: ✅ VERIFIED — `store.ts:3473-3477`: `triggerPrestige` preserves `currentTab: s.currentTab, speed: s.speed, paused: s.paused`. Comment explicitly notes the old behavior was jarring.
+- Event popups filtered at L2+: ✅ VERIFIED — `store.ts:1172-1173`: `const isL2Plus = !!(s.unlockedLayers?.enlightenment);` + event spawn gate `!isL2Plus` (line 1173). Cell-galactic events no longer fire once L2 is unlocked.
+- Stage transition first-playthrough-only: ✅ VERIFIED — `StageTransition.tsx:9-10, 21`: "ONLY on first playthrough (galacticWins === 0). After first prestige, evolution is silent". `if (galacticWins > 0) { ... return; }` short-circuits the transition effect.
+- "Simulations" → "Worlds" renamed: ✅ VERIFIED — see "Worlds" terminology above. All UI strings use "Worlds" not "Simulations".
+- Galactic wins removed from Divine Engine: ⚠️ PARTIAL — `DivineEnginePanel.tsx` does NOT display `galacticWins` (only Worlds, Peak, Lifetime Divinity, Auto-evolver progress). However, `Header.tsx:191` still shows `galacticWins` as a header chip (separate from the Divine Engine panel). So galactic wins are removed FROM the Divine Engine panel but still visible in the header.
+- EP formatted compactly: ✅ VERIFIED — `Header.tsx:177`: `value={formatCompact(evolutionPoints)}` (instead of `formatNumber`).
+- Auto-redirect from hidden tabs at L2+: ✅ VERIFIED — `GameShell.tsx:57-65`: `useEffect` checks `showDivineEngine && ["actions", "systems", "tech", "production", "story"].includes(currentTab)` → `setTab("prestige")`. Forces redirect to prestige tab when L2+ active.
+
+## Fun Assessment Per Layer
+
+- **L1 — Trials**: 🔥 Two parallel systems both work. Challenges are concrete run modifiers ("no military", "stunted pop growth", "limited systems") with scaled rewards — these feel like real incremental challenge runs. The 10 trial mini-games (Growth clicker, Famine balance, Discontent oscillation, Ignorance tech-tree, Stagnation chain, Weakness tower-defense, Late Bloom, Purity, Ascetic, Swiftness) are diverse and each has its own UI screen + completion state. Solid mini-game variety.
+
+- **L2 — Constellations**: 🔥 SVG star map with all 88 IAU constellations is genuinely beautiful and the cost formula (1.5× within constellation, 2.0× per started constellation) creates real strategic tension between finishing vs starting. The "new constellation penalty" makes you commit. This layer is fun.
+
+- **L3 — Divine Market**: 😐 Buy-low/sell-high with random price drift + market crashes (20% chance per tick) + dividend bonus at 100+ owned. Functional but flat — the worklog admits the "investment portfolio" redesign was approved but never implemented. Current market has no real strategy beyond watching sparklines.
+
+- **L4 — Galaxy Claim**: 🪲 DEAD CODE. Data file `galaxyMap.ts` defines 50 hex systems with bonuses + rare resources + adjacency synergy. Tick aggregates bonuses via `summarizeGalaxyBonuses()`. But the UI (`GenesisModal.tsx`) STILL renders the OLD 5×4 Sacred Grid + authored-world config picker. There is NO claim action, NO scan action, NO hex grid SVG. The L4 → L5 unlock uses the OLD `hasAuthoredWorld()` path (1 authored world → unlock), NOT "all 50 systems claimed". Players never see the new L4 system.
+
+- **L5 — Galactic Conquest**: 🔥 Cosmic map with 10 galaxies (1 starter + 9 rivals, 500 total rival systems, 9 named rival gods with personalities), per-galaxy heresy grid with severity color coding + system loss at red severity, attack button calling attackGalaxy with faith-scaled costs, prophet placement for heresy conversion. Real strategic depth.
+
+- **L6 — Universal Map**: 🔥 SVG universe with 50 galaxies (10 L5 + 40 new), rift pulse animations, anchor coverage rings, click-to-select detail panel. 990K new worlds at +198 per claimed new system. Closest to a "boss layer" of any idle layer.
+
+- **L7 — Creature Lab + Skirmish**: 🔥 6 body types × 4 diets × 6 specials = 144 creature variants. Legion system (max 5 creatures per legion), skirmish arena with 5 outpost types + turn-based combat + HP bars + XP/levels. Raids auto-spawn every 120s, max 3 active. The L7 → L8 unlock (repel 10 raids) gives a clear progression goal.
+
+- **L8 — Diplomacy**: 😐 6 minor gods with personalities + power levels + demands/rewards + relationship meters. Negotiate costs 10 Div + 30s cooldown, amplifier system doubles gains. Functional but a bit shallow — mostly just click "Negotiate" until relationship ≥ 60, then "Form Alliance". No trade-offs or betrayal dynamics.
+
+- **L9 — Divine War**: 🔥 3 Old Gods with 600/800/1000 HP, 3 phases each (skirmish/siege/final_stand), weakness to specific body types (predator/flyer/burrower — creating a feedback loop with L7 creature design), temporal storms (20% chance per turn), player HP 200 with green HP bar + pulsing-red warning at <33%. Losable + retryable.
+
+- **L10 — Genesis Engine**: 🔥 10 universe rules × 5 levels = nuanced crucible mechanics. Divine relics with hidden amounts (reveal costs 1000/2000 Divinity) create a research loop. 30s Big Bang simulation + archetype matching + 3-5 new relics on success. 100 archetypes is a LONG goal but each one grants +1% production so progress compounds. Ending screen with cosmic visualization + stats grid is satisfying payoff.
+
+## What's Missing
+
+1. **L4 Hex-Grid Galaxy Claim UI** — data + tick wiring exist (`galaxyMap.ts`, `summarizeGalaxyBonuses()` in `store.ts:774`), but NO GenesisModal rendering and NO claim/scan actions. The player has no way to interact with the 50 hex systems. GenesisModal still shows the OLD 5×4 Sacred Grid + authored world config picker.
+
+2. **L4 → L5 unlock tied to new galaxy claim** — current unlock is `hasAuthoredWorld(s.authoredWorlds)` (1 authored world), NOT "all 50 systems claimed" per the redesign spec.
+
+3. **L3 Investment Portfolio redesign** — worklog explicitly notes "approved but not yet implemented — current market still works". Still the original buy-low/sell-high Divine Market.
+
+4. **L5 → L6 unlock tied to rival galaxy conquest** — worklog says "Conquering 3+ rival galaxies unlocks L6", but actual `store.ts:1593-1598` unlocks L6 via `hasEnactedThreeLaws(enactedDivineLaws)` (3+ Divine Laws enacted). The `attackGalaxy` action has its own L5→L6 unlock check at `store.ts:4591-4596` (3+ conquered), but the tick's primary gate is the 3-laws path. Both paths exist; the galaxy-conquest path is reachable but secondary.
+
+5. **Autobuyers disabled during trials** — claimed but never implemented. No `activeChallenge` gate on auto-buyer ticks.
+
+6. **Galactic wins removed from header** — DivineEnginePanel correctly omits galacticWins, but `Header.tsx:191` still shows it as a chip.
+
+7. **ApotheosisModal cosmic map "still needs redesign"** — worklog claims this is missing; the actual code has it (galaxy list sidebar + selected-galaxy panel + per-galaxy heresy grid). The worklog is outdated here.
+
+## What's Broken
+
+1. **L4 hex-grid is dead code** — `galaxyMap.ts` (284 lines), `summarizeGalaxyBonuses`, `makeInitialGalaxySystems`, `isGalaxyComplete`, `galaxyClaimCost`, `GALAXY_SCAN_COST`, `hexToPixel`, `hexPolygonPoints`, `GALAXY_SYSTEMS` (50 systems) — all imported into `store.ts` (lines 107-111) and `summarizeGalaxyBonuses` IS called each tick (line 774), but with `galaxySystems: makeInitialGalaxySystems()` (line 629) → all 50 systems start with `claimed: false` and there's NO action to claim them. So `galaxySummary` always returns zero bonuses. Players see no L4 progression from the hex grid.
+
+2. **Auto-claim-systems upgrade silently does nothing for L4** — `auto_claim_systems` (`store.ts:2451-2497`) only checks L5 rival galaxies + L6 new galaxies — NEVER checks L4 hex systems. Even if the L4 hex grid were interactive, the auto-buyer wouldn't claim L4 systems.
+
+3. **L2-L3 cap edge case** — `worldCap` returns 500 for both L2 (`enlightenment`) AND L3 (`transcendence`). Once a player unlocks L3, the cap doesn't rise. Worklog describes "500 → 1K → 10K → 1M" for "L2 → L4 → L5 → L6" which matches but means L3 has no cap progression. Not strictly broken, just slightly awkward.
+
+4. **L9 `attackOldGod` regen healing uses `battle.playerHp || 200`** (`store.ts:5360, 5363`) — if `playerHp` is undefined (legacy save), defaults to 200, but if the battle was reset after a loss, `playerHp` is set to `battle.playerMaxHp || 200` (`store.ts:5402`). The `|| 200` fallback could mask a real 0 HP bug. Minor.
+
+5. **`mir_blessing` still grants +50 Faith for 0 Faith cost** — `apotheosis.ts:187-195`: `faithCost: 0, cooldownSec: 60, magnitude: 50`. After the cooldown fix, this is no longer infinite, but it's still a free +50 Faith per 60s. Whether this is "broken" depends on balance — at 60s cooldown it's +0.83 Faith/sec passive, which is less than `wm_silent` (+0.5/s) on paper but in practice is free Faith on top of any worship mode. Tuning issue, not a bug.
+
+6. **`temporalStorms` only clears on win/loss** — once a storm spawns (20% chance per turn), it persists until the battle ends. `stabilizeTime` action exists (called from `InfinityModal.tsx:148` for 1 Divine Fragment cost) but its implementation wasn't reviewed in detail — verify it actually clears the storm.
+
+## Honest Verdict
+
+The game is **mechanically playable end-to-end** — all 10 layers have working data, store actions, tick integration, and UI modals. The user can advance from Cell to Galactic, prestige into L1 trials, light stars on the L2 constellation map, trade on L3, author worlds on L4 (via the OLD Sacred Grid), attack rival galaxies on L5 with the cosmic map, defend rifts on L6, breed creatures and skirmish on L7, negotiate with minor gods on L8, fight Old Gods with HP bars on L9, and trigger Big Bangs to discover archetypes on L10. The "fun" rating is 🔥 for 7 of 10 layers and 😐/🪲 for L3/L4/L8. **The #1 thing needed for launch: build the L4 hex-grid galaxy claim UI and rewire the L4→L5 unlock to use `isGalaxyComplete(galaxySystems)` instead of `hasAuthoredWorld(authoredWorlds)`.** Without it, the L4 redesign is 200+ lines of dead data and the player's first introduction to "cosmic-scale" gameplay (the L4 hex map) is missing — they go from L3's flat market straight to L5's galaxy tabs without ever plotting on a hex grid.
