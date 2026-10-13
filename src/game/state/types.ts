@@ -1,6 +1,13 @@
 // Core game type definitions for Evolution Idle
 
 import type { WorldConfig } from "../data/genesis";
+import type { GalaxySystemState } from "../data/galaxyMap";
+import type { RivalSystemState } from "../data/galaxies";
+import type {
+  UniversalGalaxyState,
+  Rift,
+  RealityAnchor,
+} from "../data/universalMap";
 
 export type ResourceId =
   | "atp" | "glucose" | "proteins" | "lipids" | "elements"
@@ -287,15 +294,32 @@ export interface GameState {
   activeHeresyResponse: string; // default "hr_ignore"
   showApotheosis: boolean;
 
-  // Layer 6 — Singularity
-  singularityCores: number; // currency for relics/logic cores
+  // Layer 6 — Singularity (Universal Map redesign — adds rifts + anchors).
+  // Singularity Cores are the L6 currency (spent to close rifts + place
+  // reality anchors). Relics apply their bonus to the tick. Logic Cores +
+  // Dimension Engine were the OLD L6 design — these legacy fields are kept
+  // here for save-shape compat with pre-redesign store.ts code that still
+  // references them. They are no-ops.
+  singularityCores: number; // currency for closing rifts + placing anchors
   equippedRelics: Record<string, boolean>; // relicId -> equipped
-  activeLogicCores: Record<string, boolean>; // coreId -> on
-  logicCoreTimers: Record<string, number>; // coreId -> last-fired game-time
+  activeLogicCores: Record<string, boolean>; // LEGACY — kept for compat; no-op
+  logicCoreTimers: Record<string, number>; // LEGACY — kept for compat; no-op
   showSingularity: boolean;
-  // L6 FIX — Dimension Engine: +1 core per dimension reaching Galactic,
-  // +5 bonus (one-time per run) when all 3 reach Galactic. Resets on prestige.
-  dimensionEngineBonusClaimed: boolean;
+  // L6 Universal Map — 50 galaxies (10 L5 starter+rival + 40 NEW neutral).
+  // Each NEW galaxy has 10-150 systems (totaling exactly 5,000). Each claimed
+  // NEW system grants +198 worlds (5,000 × 198 = 990,000 new worlds; with
+  // L4+L5's 10,000 baseline → 1,000,000 total at L6 cap).
+  universalGalaxies: UniversalGalaxyState[];
+  /** Active Old-God rifts the player must close. */
+  rifts: Rift[];
+  /** Reality Anchors placed on the universal map (anti-corruption coverage). */
+  realityAnchors: RealityAnchor[];
+  /** Countdown (seconds) to the next rift spawn. */
+  riftSpawnTimer: number;
+  /** # rifts closed this run (L6 → L7 unlock needs 20). */
+  riftsClosed: number;
+  /** # anchors placed (persists across prestiges; L6 → L7 unlock needs 10). */
+  anchorsPlaced: number;
 
   // Layer 7 — Omnipotence (Bio-engineering)
   equippedHybrids: Record<string, boolean>; // LEGACY: kept for migration; unused by new logic
@@ -412,21 +436,39 @@ export interface GameState {
   marketCrashTimer: number;                    // seconds until next crash check
   marketCrashActive: boolean;
   marketCrashDuration: number;                 // seconds remaining of crash
-  // Layer 4 — Sacred Grid (tile placement)
-  worldGrid: Array<string | null>;             // 20 cells (5×4); tile type id or null
-  worldGridSeeds: Array<string | null>;        // hidden dormant seeds revealed on adjacency
-  // FEATURE 4 — Natural Disasters
-  disasterTimer: number;                       // seconds until next disaster roll
-  lastDisasterCell: number | null;             // last affected cell (for visual flash)
-  lastDisasterAt: number;                      // game-time of last disaster
-  // Layer 5 — Heresy Web (containment grid)
-  followerGrid: Array<{ state: string; type: string }>; // 32 cells (8×4): "faithful"|"heretical"|"empty"; type id
-  heresySpreadTimer: number;                   // seconds until next spread tick
-  heresySeedTimer: number;                     // seconds until next auto-seed of a heretic (if grid is all-faithful)
-  heresyThresholdsSeeded: Record<string, boolean>; // tracks 25/50/75 thresholds (one-time seeding per run)
-  // FEATURE 5 — Prophets (place on heresy grid; convert adjacent heretics every 10s)
-  prophets: Array<{ cellIndex: number; lastConvertedAt: number }>;
+  // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems below; worldGrid
+  // kept as an empty array for save-shape compat). worldGridSeeds also legacy.
+  worldGrid: Array<string | null>;             // LEGACY — 20 cells; no longer used
+  worldGridSeeds: Array<string | null>;        // LEGACY — always empty
+  // FEATURE 4 — Natural Disasters (LEGACY — disaster logic removed in L4 redesign)
+  disasterTimer: number;                       // seconds until next disaster roll (legacy)
+  lastDisasterCell: number | null;             // last affected cell (legacy, unused)
+  lastDisasterAt: number;                      // game-time of last disaster (legacy, unused)
+  // Layer 4 — Galaxy Claim (the new L4 loop). 50 star systems on a hex spiral.
+  // Each claimed system grants its bonus (production/cap/EP/pop), +10 worlds
+  // to the Divine Engine, and adjacency synergy if 2+ neighbors are claimed.
+  galaxySystems: GalaxySystemState[];
+  // Layer 5 — Heresy Web (8×4 = 32 follower cells) — LEGACY followerGrid is
+  // kept empty for save-shape compat; the new per-galaxy grids live in
+  // galaxyFollowerGrid below.
+  followerGrid: Array<{ state: string; type: string }>; // LEGACY — kept empty
+  heresySpreadTimer: number;                   // seconds until next spread tick (per-galaxy cycle)
+  heresySeedTimer: number;                     // seconds until next auto-seed of a heretic (per-galaxy cycle)
+  heresyThresholdsSeeded: Record<string, boolean>; // LEGACY — kept for save compat
+  // FEATURE 5 — Prophets (now per-galaxy: { galaxyId, cellIndex, lastConvertedAt })
+  prophets: Array<{ galaxyId: string; cellIndex: number; lastConvertedAt: number }>;
   prophetConvertTimer: number;                  // seconds until next prophet conversion tick
+  // === NEW (L5 redesign — Galactic Conquest) ===
+  /** Per-galaxy heresy level (galaxyId → 0-100). Resets to 50 after a system-loss tick. */
+  galaxyHeresy: Record<string, number>;
+  /** Per-galaxy 8×4 heresy follower grid (galaxyId → 32 cells). */
+  galaxyFollowerGrid: Record<string, Array<{ state: string; type: string }>>;
+  /** Per-galaxy rival star systems (galaxyId → list of { id, claimed, explored }). */
+  galaxyRivalSystems: Record<string, RivalSystemState[]>;
+  /** galaxyId → fully conquered. Drives the L5 → L6 unlock (3+ conquered). */
+  conqueredGalaxies: Record<string, boolean>;
+  /** Currently selected galaxy tab in the Apotheosis modal (cosmetic; persisted). */
+  selectedGalaxyId: string;
   // Layer 6 — Dimension Engine (parallel dimensions)
   dimensions: Array<{
     id: number;
@@ -531,10 +573,17 @@ export interface GameStore extends GameState {
   performMiracle: (miracleId: string) => void;
   setHeresyResponse: (responseId: string) => void;
 
-  // Layer 6 — Singularity
+  // Layer 6 — Singularity (Universal Map redesign)
   setShowSingularity: (v: boolean) => void;
   toggleRelicLoadout: (relicId: string) => void;
+  /** LEGACY — Logic Cores were deprecated in favor of Reality Anchors; kept as no-op stub. */
   toggleLogicCore: (coreId: string) => void;
+  /** Close an active rift — spend Singularity Cores (scales with severity). */
+  closeRift: (riftId: string) => void;
+  /** Place a Reality Anchor on a galaxy — spend Singularity Cores (scales with anchors placed). */
+  placeRealityAnchor: (galaxyId: string) => void;
+  /** Attack a NEW neutral universal galaxy — spend Faith, claim 1 system. */
+  attackUniversalGalaxy: (galaxyId: string) => void;
 
   // Layer 7 — Omnipotence (Bio-engineering)
   setShowOmnipotence: (v: boolean) => void;
@@ -608,8 +657,6 @@ export interface GameStore extends GameState {
   // Layer 2 — Constellation Map
   /** LEGACY stub — old action signature, kept for compatibility. No-op. */
   illuminateConstellationNode: (nodeId: string) => void;
-  // L2 Constellation actions (active abilities REMOVED — stars are lit only by purchasing with Divinity)
-  illuminateStar: (constellationId: string, starId: string) => void;
   // Legacy stubs (kept for save-compat — no-ops)
   stargazeReveal: () => void;
   supernovaIlluminate: (constellationId: string, starId: string) => void;
@@ -625,12 +672,19 @@ export interface GameStore extends GameState {
   placeGridTile: (cellIndex: number, tileType: string) => void;
   resetWorldGrid: () => void;
 
-  // Layer 5 — Heresy Web
-  convertFollower: (cellIndex: number) => void;
-  purgeFollower: (cellIndex: number) => void;
-  initFollowerGrid: () => void;
+  // Layer 5 — Heresy Web (Galactic Conquest redesign; per-galaxy)
+  convertFollower: (galaxyId: string, cellIndex: number) => void;
+  purgeFollower: (galaxyId: string, cellIndex: number) => void;
+  initFollowerGrid: (galaxyId: string) => void;
+  /** Attack a rival galaxy: spend Faith, claim the next unclaimed system. */
+  attackGalaxy: (galaxyId: string) => void;
+  /** Select a galaxy tab in the Apotheosis modal (cosmetic; persists). */
+  setSelectedGalaxyId: (galaxyId: string) => void;
 
-  // Layer 6 — Dimension Engine
+  // Layer 6 — Dimension Engine (LEGACY — Dimension Engine was REMOVED in the
+  // Universal Map redesign. These action signatures are kept as no-op stubs
+  // for save-compat; calling them does nothing. Use `closeRift`,
+  // `placeRealityAnchor`, `attackUniversalGalaxy` instead.)
   setDimensionSpeed: (dimId: number, speed: number) => void;
   syncDimension: (fromId: number, toId: number) => void;
   initDimensions: () => void;
@@ -638,9 +692,9 @@ export interface GameStore extends GameState {
   collapseDimensions: (fromId: number, toId: number) => void;
 
   // ===== FEATURE ENHANCEMENTS =====
-  // FEATURE 5 — Prophets
-  placeProphet: (cellIndex: number) => void;
-  removeProphet: (cellIndex: number) => void;
+  // FEATURE 5 — Prophets (per-galaxy: place/remove on a galaxy's heresy grid)
+  placeProphet: (galaxyId: string, cellIndex: number) => void;
+  removeProphet: (galaxyId: string, cellIndex: number) => void;
   // FEATURE 8 — Amplifiers
   placeAmplifier: (godId: string) => void;
   removeAmplifier: (godId: string) => void;

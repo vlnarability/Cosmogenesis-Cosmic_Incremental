@@ -102,13 +102,73 @@ import {
   hasEnactedThreeLaws,
 } from "../data/apotheosis";
 import {
+  GALAXY_SYSTEMS,
+  GALAXY_SYSTEM_MAP,
+  GALAXY_SCAN_COST,
+  makeInitialGalaxySystems,
+  summarizeGalaxyBonuses,
+  isGalaxyComplete,
+  galaxyClaimCost,
+  getGalaxySystemNeighbors,
+  type GalaxySystemState,
+} from "../data/galaxyMap";
+import {
+  RIVAL_GALAXIES,
+  RIVAL_GALAXY_MAP,
+  GALAXY_MAP_BY_ID,
+  STARTER_GALAXY_ID,
+  TOTAL_RIVAL_SYSTEMS,
+  WORLDS_PER_RIVAL_SYSTEM,
+  TOTAL_NEW_WORLDS_L5,
+  GALAXIES_REQUIRED_FOR_L6,
+  makeInitialRivalSystems,
+  galaxyAttackCost,
+  isGalaxyConquered,
+  countConqueredGalaxies,
+  countClaimedRivalSystems,
+  rivalSystemWorlds,
+  heresySeverity,
+  heresyLossCount,
+  averageHeresy,
+  ownedGalaxyIds,
+  type RivalSystemState,
+} from "../data/galaxies";
+import {
   RELIC_LOADOUTS,
   RELIC_LOADOUT_MAP,
-  LOGIC_CORES,
-  LOGIC_CORE_MAP,
   relicBonus,
-  logicCoreBonus,
 } from "../data/singularity";
+import {
+  UNIVERSAL_GALAXIES,
+  UNIVERSAL_GALAXY_MAP,
+  TOTAL_UNIVERSAL_GALAXIES,
+  TOTAL_NEW_GALAXIES_L6,
+  TOTAL_NEW_SYSTEMS_L6,
+  WORLDS_PER_NEW_SYSTEM_L6,
+  TOTAL_NEW_WORLDS_L6,
+  RIFTS_REQUIRED_FOR_L7,
+  ANCHORS_REQUIRED_FOR_L7,
+  ANCHOR_RADIUS,
+  RIFT_SPAWN_MIN_SEC,
+  RIFT_SPAWN_MAX_SEC,
+  RIFT_CORRUPTION_PER_TICK,
+  RIFT_SEVERITY_MIN,
+  RIFT_SEVERITY_MAX,
+  galaxiesInAnchorRadius,
+  isGalaxyAnchored,
+  riftCloseCost,
+  anchorPlaceCost,
+  newGalaxyAttackCost,
+  isUniversalMapComplete,
+  makeInitialUniversalGalaxies,
+  totalNewSystemsClaimed,
+  totalRivalSystemsClaimed,
+  totalUniversalSystemsClaimed,
+  pickRiftSpawnTarget,
+  type UniversalGalaxyState,
+  type Rift,
+  type RealityAnchor,
+} from "../data/universalMap";
 import {
   CREATURE_BODY_TYPES,
   CREATURE_BODY_TYPE_MAP,
@@ -375,14 +435,24 @@ function initialMetaState(): Partial<GameState> {
     activeHeresyResponse: "hr_ignore",
     showApotheosis: false,
 
-    // Layer 6 — Singularity
+    // Layer 6 — Singularity (Universal Map redesign — replaces Dimension Engine + Logic Cores)
     singularityCores: 0,
     equippedRelics: {},
-    activeLogicCores: {},
-    logicCoreTimers: {},
     showSingularity: false,
-    // L6 FIX — Dimension Engine bonus tracker (resets each run)
-    dimensionEngineBonusClaimed: false,
+    // L6 Universal Map — 50 galaxies (10 L5 starter+rival + 40 NEW neutral).
+    // `universalGalaxies` + `realityAnchors` persist across prestiges (anchors
+    // are a permanent investment). `rifts` + `riftSpawnTimer` reset per-run.
+    // `riftsClosed` + `anchorsPlaced` are lifetime counters (persist).
+    universalGalaxies: makeInitialUniversalGalaxies(),
+    rifts: [],
+    realityAnchors: [],
+    riftSpawnTimer: 45,
+    riftsClosed: 0,
+    anchorsPlaced: 0,
+    // LEGACY: dimensions + dimensionRiftTimer (Dimension Engine) — kept as
+    // empty stubs for save-shape compat. No longer used by the L6 redesign.
+    dimensions: [],
+    dimensionRiftTimer: 0,
 
     // Layer 7 — Omnipotence (Bio-engineering)
     equippedHybrids: {},
@@ -486,13 +556,17 @@ function initialMetaState(): Partial<GameState> {
     marketCrashTimer: 120,
     marketCrashActive: false,
     marketCrashDuration: 0,
-    // Layer 4 — Sacred Grid (5×4 = 20 cells)
+    // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems in the L4 redesign).
+    // `worldGrid` + `worldGridSeeds` kept as empty arrays for save-shape compat.
     worldGrid: Array(20).fill(null),
     worldGridSeeds: Array(20).fill(null),
-    // FEATURE 4 — Natural Disasters
+    // FEATURE 4 — Natural Disasters (LEGACY — disaster logic removed in L4 redesign)
     disasterTimer: 90,
     lastDisasterCell: null,
     lastDisasterAt: 0,
+    // Layer 4 — Galaxy Claim: 50 star systems on a hex spiral (all unclaimed
+    // at fresh-start; the explored flags come from the galaxyMap data).
+    galaxySystems: makeInitialGalaxySystems(),
     // Layer 5 — Heresy Web (8×4 = 32 follower cells)
     followerGrid: makeInitialFollowerGrid(),
     heresySpreadTimer: 10,
@@ -501,9 +575,9 @@ function initialMetaState(): Partial<GameState> {
     // FEATURE 5 — Prophets (max 2 at a time)
     prophets: [],
     prophetConvertTimer: 10,
-    // Layer 6 — Dimension Engine (3 parallel dimensions)
-    dimensions: makeInitialDimensions(),
-    dimensionRiftTimer: 60,
+    // (Layer 6 — Dimension Engine removed. The new L6 state lives above next
+    // to the other L6 fields: universalGalaxies, rifts, realityAnchors,
+    // riftSpawnTimer, riftsClosed, anchorsPlaced.)
 
     // ===== FEATURE ENHANCEMENTS (L7–L10) =====
     // FEATURE 8 — Amplifiers (max 3 at a time)
@@ -588,7 +662,8 @@ export const useGameStore = create<GameStore>()(
         const wMode = worshipModeBonus(s.activeWorshipMode);
         const hResp = heresyResponseProductionMult(s.activeHeresyResponse);
         const relics = relicBonus(s.equippedRelics || {});
-        const cores = logicCoreBonus(s.activeLogicCores || {});
+        // L6 — Logic Cores were REMOVED in the Universal Map redesign. The
+        // production/cap/EP bonuses they used to grant are no longer applied.
         // Layer 7 — Omnipotence (creatures + legions + stance)
         const hybrids = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance);
         // Layer 8 — Divinity (alliances with minor gods)
@@ -617,11 +692,14 @@ export const useGameStore = create<GameStore>()(
         const keptB = keptGodsBonus(s.keptGods || []);
         const cosmicBoon = cosmicBoonBonus(s.cosmicBoonStacks || 0);
 
-        // L4 FIX — Sacred Grid tile bonuses (were display-only, now applied to production).
-        // Each placed tile gives +5% production. Mountains also give +5% capacity (sturdy).
-        const gridTiles = (s.worldGrid || []).filter((t) => t !== null);
-        const sacredGridProdBonus = gridTiles.length * 0.05;  // +5% per tile
-        const sacredGridCapBonus = gridTiles.filter((t) => t === "mountain").length * 0.05;  // +5% cap per mountain
+        // L4 REDESIGN — Galaxy Claim bonuses (replaces the old Sacred Grid).
+        // Each claimed system grants its bonus (production / capacity / EP /
+        // pop). Systems adjacent to 2+ other claimed systems gain +50% to
+        // their bonus value (synergy). Rare resources (alloys/data) are
+        // tracked for the sidebar display but don't apply a direct tick bonus
+        // (their boost is implicit: they sit on systems with stronger bonuses).
+        const galaxySummary = summarizeGalaxyBonuses(s.galaxySystems || []);
+        // (Legacy Sacred Grid tile bonuses removed in L4 redesign.)
 
         // TRIALS-7 — Layer 1 trial realm rewards (permanent bonuses from completed realms)
         const trialReward = trialRealmRewardBonus(s.trialRealmsCompleted || {});
@@ -633,24 +711,24 @@ export const useGameStore = create<GameStore>()(
           constB.productionMult +
           foresight.productionMult + route.productionMult + ritualProd +
           wProd + dLaw.productionMult + wMode.productionMult + hResp +
-          relics.productionMult + cores.productionMult +
+          relics.productionMult +
           hybrids.productionMult + chanBonus.productionMult + maskBonus.productionMult +
           polarityBonus.productionMult + allianceB.productionMult +
           echoB.productionMult + forkB.productionMult + debtB.productionMult +
           fragmentB.productionMult + testB.productionMult + canonB.productionMult +
           weaveB.productionMult + universeB.productionMult + keptB.productionMult + cosmicBoon +
-          sacredGridProdBonus +  // L4 Sacred Grid tile bonus
+          galaxySummary.productionMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
           trialReward.prodMult;
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult + ritualCap + wCap +
-          dLaw.capMult + relics.capMult + cores.capMult +
+          dLaw.capMult + relics.capMult +
           hybrids.capMult + chanBonus.capMult + maskBonus.capMult +
           polarityBonus.capMult + allianceB.capMult +
           echoB.capMult + forkB.capMult + debtB.capMult +
           fragmentB.capMult + testB.capMult + canonB.capMult +
           weaveB.capMult + universeB.capMult + keptB.capMult +
-          sacredGridCapBonus +  // L4 Sacred Grid mountain capacity bonus
+          galaxySummary.capMult +  // L4 Galaxy Claim capacity bonuses
           trialReward.capMult;
         const layerPopBonus =
           constB.popGrowthMult +
@@ -661,6 +739,7 @@ export const useGameStore = create<GameStore>()(
           echoB.popGrowthMult + forkB.popGrowthMult + debtB.popGrowthMult +
           fragmentB.popGrowthMult + testB.popGrowthMult + canonB.popGrowthMult +
           weaveB.popGrowthMult + universeB.popGrowthMult + keptB.popGrowthMult +
+          galaxySummary.popGrowthMult +  // L4 Galaxy Claim pop-growth bonuses
           trialReward.popMult + lateBloomPopBonus;
 
         // QUICK WIN 2 — Active abilities: Surge (×3 prod) + Overclock (×2 layer bonuses)
@@ -1104,8 +1183,6 @@ export const useGameStore = create<GameStore>()(
         let miracleTimers = s.miracleTimers || {};
         const activeScripts = s.activeScripts || {};
         let scriptTimers = s.scriptTimers || {};
-        const activeLogicCores = s.activeLogicCores || {};
-        let logicCoreTimers = s.logicCoreTimers || {};
         let bloodPactsUsed = s.bloodPactsUsed || {};
         const activeHeresyResponse = s.activeHeresyResponse || "hr_ignore";
 
@@ -1315,97 +1392,9 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // Layer 6 — Logic Core automation (Singularity)
-        if (unlockedLayers.singularity) {
-          // Architect Core: every 10s, buy cheapest affordable system (faster than Auto-Builder)
-          if (activeLogicCores["core_architect"] && newTime - (logicCoreTimers["core_architect"] || 0) >= 10) {
-            logicCoreTimers = { ...logicCoreTimers, core_architect: newTime };
-            const stageId = STAGES[s.stageIndex].id;
-            const candidates = SYSTEMS.filter((sys) => sys.stage === stageId)
-              .map((sys) => {
-                const owned = ownedSystems[sys.id] || 0;
-                if (sys.maxOwned && owned >= sys.maxOwned) return null;
-                if (sys.requiredTech && !technologies[sys.requiredTech]) return null;
-                const cost = systemCost(sys, owned, costReduction);
-                const scaledCost: Record<string, number> = {};
-                let totalCost = 0;
-                let canAfford = true;
-                for (const [r, v] of Object.entries(cost)) {
-                  const scaled = Math.ceil((v as number) * challengeCostMult);
-                  scaledCost[r] = scaled;
-                  totalCost += scaled;
-                  if ((resources[r] || 0) < scaled) canAfford = false;
-                }
-                return { sys, scaledCost, totalCost, canAfford };
-              })
-              .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
-            if (candidates.length > 0) {
-              candidates.sort((a, b) => a.totalCost - b.totalCost);
-              const pick = candidates[0];
-              for (const [r, v] of Object.entries(pick.scaledCost)) {
-                resources[r] -= v;
-              }
-              ownedSystems = { ...ownedSystems, [pick.sys.id]: (ownedSystems[pick.sys.id] || 0) + 1 };
-              if (systemEnabled[pick.sys.id] === undefined) {
-                systemEnabled = { ...systemEnabled, [pick.sys.id]: true };
-              }
-              totalSystemsBuilt += 1;
-            }
-          }
-
-          // Sage Core: every 15s, research cheapest affordable tech (faster than Auto-Researcher)
-          if (activeLogicCores["core_sage"] && newTime - (logicCoreTimers["core_sage"] || 0) >= 15) {
-            logicCoreTimers = { ...logicCoreTimers, core_sage: newTime };
-            const stageId = STAGES[s.stageIndex].id;
-            const techCands = TECHS.filter((t) => t.stage === stageId && !technologies[t.id])
-              .map((t) => {
-                if (t.requires) {
-                  for (const req of t.requires) {
-                    if (!technologies[req]) return null;
-                  }
-                }
-                const cost = t.cost as Record<string, number>;
-                let canAfford = true;
-                let totalCost = 0;
-                for (const [r, v] of Object.entries(cost)) {
-                  const scaled = Math.ceil(v * challengeCostMult);
-                  totalCost += scaled;
-                  if ((resources[r] || 0) < scaled) canAfford = false;
-                }
-                return { t, totalCost, canAfford };
-              })
-              .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
-            if (techCands.length > 0) {
-              techCands.sort((a, b) => a.totalCost - b.totalCost);
-              const pick = techCands[0];
-              for (const [r, v] of Object.entries(pick.t.cost)) {
-                const scaled = Math.ceil((v as number) * challengeCostMult);
-                resources[r] = Math.max(0, resources[r] - scaled);
-              }
-              technologies = { ...technologies, [pick.t.id]: true };
-              totalTechResearched += 1;
-            }
-          }
-
-          // Chronicler Core: every 60s, perform cheapest affordable offering (Layer 3 helper)
-          if (activeLogicCores["core_chronicler"] && unlockedLayers.transcendence && newTime - (logicCoreTimers["core_chronicler"] || 0) >= 60) {
-            logicCoreTimers = { ...logicCoreTimers, core_chronicler: newTime };
-            const candidates = OFFERINGS.filter((o) => {
-              for (const [r, v] of Object.entries(o.cost)) {
-                if ((resources[r] || 0) < (v as number)) return false;
-              }
-              return true;
-            });
-            if (candidates.length > 0) {
-              const pick = candidates.reduce((a, b) => (a.divinityGain < b.divinityGain ? a : b));
-              for (const [r, v] of Object.entries(pick.cost)) {
-                resources[r] = Math.max(0, (resources[r] || 0) - (v as number));
-              }
-              const repeats = (s.transcendenceOfferingsUsed?.[pick.id] || 0);
-              divinity += offeringDivinityAtRepeat(pick, repeats);
-            }
-          }
-        }
+        // Layer 6 — Singularity (Universal Map redesign — replaces the old Logic Core automation).
+        // The L6 universal map tick block runs further below (rift spawn + corruption spread).
+        // Logic Cores were removed; Reality Anchors now provide the strategic lever.
 
         // ---- Layer 7 — Omnipotence (Bio-engineering): genetic instability accrual ----
         let instability = s.instability || 0;
@@ -1469,12 +1458,15 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog("3 Divine Laws enacted. Singularity layer unlocked."), 0);
           }
         }
-        // Layer 7 (Omnipotence): 3+ active logic cores
-        const activeCoreCount = Object.values(s.activeLogicCores || {}).filter(Boolean).length;
+        // Layer 7 (Omnipotence): L6 Universal Map complete (20 rifts closed + 10 anchors placed)
+        const l6RiftsClosed = s.riftsClosed || 0;
+        const l6AnchorsPlaced = s.anchorsPlaced || 0;
         if (unlockedLayers.singularity && !unlockedLayers.omnipotence) {
-          if (activeCoreCount >= 3) {
+          if (isUniversalMapComplete(l6RiftsClosed, l6AnchorsPlaced)) {
             unlockedLayers = { ...unlockedLayers, omnipotence: true };
-            setTimeout(() => get().addToLog("3 Logic Cores activated. Omnipotence layer unlocked."), 0);
+            setTimeout(() => get().addToLog(
+              `Universal Map stabilized — ${l6RiftsClosed}/${RIFTS_REQUIRED_FOR_L7} rifts closed, ${l6AnchorsPlaced}/${ANCHORS_REQUIRED_FOR_L7} anchors placed. Omnipotence layer unlocked.`
+            ), 0);
           }
         }
         // Layer 8 (Divinity): 2+ alliances formed
@@ -2041,90 +2033,101 @@ export const useGameStore = create<GameStore>()(
           followerGrid = next;
         }
 
-        // Layer 6 — Dimension Engine: parallel dimension progress
-        let dimensions = (s.dimensions || makeInitialDimensions()).map((d) => ({ ...d }));
-        let dimensionRiftTimer = (s.dimensionRiftTimer || 60) - realDt;
-        // LAYER UPGRADE — dimension_boost: +20% accrual speed per level (max 5)
-        const dbLvl = (s.upgrades?.dimension_boost as number) || 0;
-        const dimSpeedMult = 1 + 0.20 * dbLvl;
-        // LAYER UPGRADE — rift_redirect: rifts always transfer from richest → poorest
-        const rrLvl = (s.upgrades?.rift_redirect as number) || 0;
-        const riftRedirected = rrLvl > 0;
-        // L6 FIX — Track Galactic transitions & singularity core rewards
-        let singularityCores = s.singularityCores || 0;
-        let dimensionEngineBonusClaimed = !!(s.dimensionEngineBonusClaimed);
-        const galacticLog: string[] = [];
-        for (const d of dimensions) {
-          if (d.reachedGalactic) continue;
-          // Each dimension accrues resources & population at its own speed (boosted)
-          d.resources += d.pop * 0.1 * d.speed * dimSpeedMult * realDt;
-          // Pop grows slowly (1 per 5s at speed 1)
-          d.pop += 0.2 * d.speed * dimSpeedMult * realDt;
-          // Stage up: every 100 resources → advance stage
-          while (d.resources >= 100 && d.stageIndex < STAGES.length - 1) {
-            d.resources -= 100;
-            d.stageIndex += 1;
-          }
-          if (d.stageIndex >= STAGES.length - 1) {
-            d.reachedGalactic = true;
-            // L6 FIX — +1 Singularity Core per dimension reaching Galactic
-            singularityCores += 1;
-            galacticLog.push(`Dimension ${d.name} reached Galactic! +1 Singularity Core.`);
-          }
-        }
-        // L6 FIX — +5 Singularity Core bonus when ALL 3 dimensions reach Galactic (one-time per run)
-        if (
-          !dimensionEngineBonusClaimed &&
-          dimensions.length === 3 &&
-          dimensions.every((d) => d.reachedGalactic)
-        ) {
-          singularityCores += 5;
-          dimensionEngineBonusClaimed = true;
-          galacticLog.push("All dimensions synchronized! +5 Singularity Core bonus.");
-        }
-        if (dimensionRiftTimer <= 0) {
-          // Rift event — transfer resources between two dimensions
-          dimensionRiftTimer = 60;
-          if (dimensions.length >= 2) {
-            let fromIdx = 0;
-            let toIdx = 1;
-            if (riftRedirected) {
-              // Always transfer from the richest dimension to the poorest (always beneficial)
-              let maxRes = -Infinity;
-              let minRes = Infinity;
-              for (let i = 0; i < dimensions.length; i++) {
-                if (dimensions[i].resources > maxRes) { maxRes = dimensions[i].resources; fromIdx = i; }
-                if (dimensions[i].resources < minRes) { minRes = dimensions[i].resources; toIdx = i; }
-              }
-              // Fallback to random if (impossibly) identical
-              if (fromIdx === toIdx) {
-                fromIdx = Math.floor(Math.random() * dimensions.length);
-                toIdx = Math.floor(Math.random() * dimensions.length);
-                while (toIdx === fromIdx) toIdx = Math.floor(Math.random() * dimensions.length);
-              }
-            } else {
-              fromIdx = Math.floor(Math.random() * dimensions.length);
-              toIdx = Math.floor(Math.random() * dimensions.length);
-              while (toIdx === fromIdx) toIdx = Math.floor(Math.random() * dimensions.length);
+        // ===== LAYER 6 — UNIVERSAL MAP (Rift Defense + Reality Anchors) =====
+        // Replaces the old Dimension Engine. Each tick:
+        //   • riftSpawnTimer counts down; at 0, spawn a rift on a random
+        //     galaxy (preferring unanchored ones). Reset timer to 30-60s (random).
+        //   • Each open rift spreads corruption: +5% heresy to a random
+        //     non-anchored galaxy. Anchored galaxies are immune.
+        //   • When a galaxy's heresy reaches 100, apply the L5 heresy loss
+        //     rules (handled in the L5 tick above — universal galaxies inherit
+        //     the same loss-count formula via heresyLossCount).
+        let universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({ ...g }));
+        let rifts = (s.rifts || []).map((r) => ({ ...r }));
+        let realityAnchors = (s.realityAnchors || []).map((a) => ({ ...a }));
+        let riftSpawnTimer = Math.max(0, (s.riftSpawnTimer ?? 45) - realDt);
+        let riftsClosed = s.riftsClosed || 0;
+        const anchorsPlaced = s.anchorsPlaced || 0;
+        // Set of galaxy ids currently covered by an anchor (immune to rift corruption).
+        const anchorGalaxyIds = realityAnchors.map((a) => a.galaxyId);
+        const riftLog: string[] = [];
+        if (unlockedLayers.singularity) {
+          // Spawn a rift when the timer expires.
+          if (riftSpawnTimer <= 0) {
+            riftSpawnTimer = RIFT_SPAWN_MIN_SEC + Math.random() * (RIFT_SPAWN_MAX_SEC - RIFT_SPAWN_MIN_SEC);
+            const targetId = pickRiftSpawnTarget(universalGalaxies, Math.random);
+            if (targetId) {
+              const severity = RIFT_SEVERITY_MIN + Math.floor(Math.random() * (RIFT_SEVERITY_MAX - RIFT_SEVERITY_MIN + 1));
+              const riftId = `rift_${newTime.toFixed(0)}_${Math.floor(Math.random() * 100000)}`;
+              rifts = [...rifts, { id: riftId, galaxyId: targetId, severity, spawnedAt: newTime }];
+              const galaxyName = UNIVERSAL_GALAXY_MAP[targetId]?.name || targetId;
+              riftLog.push(`🌀 Old-God rift opened in ${galaxyName} (severity ${severity}).`);
             }
-            const transfer = Math.min(dimensions[fromIdx].resources, 25);
-            dimensions[fromIdx].resources -= transfer;
-            dimensions[toIdx].resources += transfer;
-            setTimeout(() => get().addToLog(`🌀 Rift event! ${dimensions[fromIdx].name} → ${dimensions[toIdx].name}: ${transfer.toFixed(1)} resources transferred.${riftRedirected ? " (Rift Redirect active)" : ""}`), 0);
+          }
+          // Each open rift spreads corruption to a random non-anchored galaxy.
+          if (rifts.length > 0) {
+            const nonAnchoredIds = universalGalaxies
+              .filter((g) => !isGalaxyAnchored(g.id, anchorGalaxyIds))
+              .map((g) => g.id);
+            if (nonAnchoredIds.length > 0) {
+              const updated = [...universalGalaxies];
+              for (const rift of rifts) {
+                // Corruption target: prefer the rift's host galaxy if it isn't
+                // anchored; otherwise spread to a random non-anchored galaxy.
+                let target = rift.galaxyId;
+                if (isGalaxyAnchored(target, anchorGalaxyIds)) {
+                  target = nonAnchoredIds[Math.floor(Math.random() * nonAnchoredIds.length)];
+                }
+                const idx = updated.findIndex((g) => g.id === target);
+                if (idx >= 0) {
+                  updated[idx] = {
+                    ...updated[idx],
+                    heresy: Math.min(100, updated[idx].heresy + RIFT_CORRUPTION_PER_TICK),
+                  };
+                }
+              }
+              universalGalaxies = updated;
+            }
           }
         }
 
         // ===== BACKGROUND-SIMULATION — Divinity + EP generation =====
         // At L2+ (Enlightenment unlocked), the base game runs in the background.
-        // Simulations = (3 starter + starsLit) × simMult (from simulation_amplifier upgrade).
-        // Each sim generates Divinity at 1% of peakProductionRate/sec AND EP at 0.1% of peak/sec.
+        // Worlds formula (L6 redesign):
+        //   worlds = (3 + starsLit) × simMult            [constellation stars + starter]
+        //          + claimedL4Systems × 10               [L4 galaxy claim]
+        //          + claimedRivalSystems × 18            [L5 rival galaxy conquest]
+        //          + claimedNewSystems × 198            [L6 universal map: 5,000 × 198 = 990,000]
+        //   capped at: 500 (L2/L3), 1000 (L4), 10000 (L5), 1,000,000 (L6+).
+        // Each world generates Divinity at 1% of peakProductionRate/sec AND
+        // EP at 0.1% of peak/sec.
         let divinityFromBackground = s.divinityFromBackground || 0;
         let epFromBackground = s.epFromBackground || 0;
         // Compute current sim count from constellation stars + shop upgrade.
         const starsLitCount = Object.values(s.constellationStars || {}).filter(Boolean).length;
         const simMult = 1 + (s.upgrades["simulation_amplifier"] || 0);  // level 0 = ×1, level 1 = ×2, ...
-        const computedBackgroundSims = (s.unlockedLayers?.enlightenment)
+        const constellationWorlds = (s.unlockedLayers?.enlightenment)
           ? (3 + starsLitCount) * simMult  // 3 starter sims + 1 per star × multiplier
+          : 0;
+        // L4 Galaxy Claim: each claimed system grants +10 worlds.
+        const claimedGalaxyCount = (s.galaxySystems || []).filter((g) => g.claimed).length;
+        const l4Worlds = s.unlockedLayers?.genesis ? claimedGalaxyCount * 10 : 0;
+        // L5 Rival galaxies: each claimed rival system grants +18 worlds.
+        const claimedRivalCount = totalRivalSystemsClaimed(universalGalaxies);
+        const l5Worlds = s.unlockedLayers?.apotheosis ? claimedRivalCount * 18 : 0;
+        // L6 Universal Map: each claimed NEW system grants +198 worlds.
+        const claimedNewCount = totalNewSystemsClaimed(universalGalaxies);
+        const l6Worlds = s.unlockedLayers?.singularity ? claimedNewCount * 198 : 0;
+        // Cap depends on the highest layer the player has unlocked:
+        //   L2/L3: 500, L4: 1000, L5: 10000, L6+: 1000000.
+        const worldCap = s.unlockedLayers?.singularity ? 1_000_000
+          : s.unlockedLayers?.apotheosis ? 10_000
+          : s.unlockedLayers?.genesis ? 1_000
+          : s.unlockedLayers?.transcendence ? 500
+          : s.unlockedLayers?.enlightenment ? 500
+          : 0;
+        const computedBackgroundSims = worldCap > 0
+          ? Math.min(worldCap, constellationWorlds + l4Worlds + l5Worlds + l6Worlds)
           : 0;
         const backgroundSimulations = computedBackgroundSims;
         if (backgroundSimulations > 0 && peakProductionRate > 0) {
@@ -2141,7 +2144,7 @@ export const useGameStore = create<GameStore>()(
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
             setTimeout(() => get().addToLog(
-              `🌌 Worlds: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
+              `🌌 Worlds: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters + ${claimedGalaxyCount} L4 systems × 10 + ${claimedRivalCount} rival × 18 + ${claimedNewCount} new × 198 = cap ${worldCap.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
             ), 0);
           }
         }
@@ -2183,8 +2186,6 @@ export const useGameStore = create<GameStore>()(
           miracleTimers,
           activeScripts,
           scriptTimers,
-          activeLogicCores,
-          logicCoreTimers,
           bloodPactsUsed,
           // L8 FIX — per-god Negotiate cooldowns
           ...negotiateCooldowns,
@@ -2228,11 +2229,16 @@ export const useGameStore = create<GameStore>()(
           // FEATURE 5 — Prophets
           prophets,
           prophetConvertTimer,
-          dimensions,
-          dimensionRiftTimer,
-          // L6 FIX — Dimension Engine rewards
-          singularityCores,
-          dimensionEngineBonusClaimed,
+          // L6 Universal Map — new state.
+          universalGalaxies,
+          rifts,
+          realityAnchors,
+          riftSpawnTimer,
+          riftsClosed,
+          // anchorsPlaced is mutated only via the placeRealityAnchor action —
+          // the tick does not change it. We don't write it here.
+          // L6 Singularity Cores — kept as-is (not granted by the tick anymore;
+          // gained via prestige + the close-rift action).
           // BACKGROUND-SIMULATION — peak + lifetime trackers + computed sim count
           peakProductionRate,
           backgroundSimulations,
@@ -2240,8 +2246,8 @@ export const useGameStore = create<GameStore>()(
           epFromBackground,
           evolutionPoints,
         });
-        // L6 FIX — log Galactic transition messages (deferred to avoid setState-in-loop)
-        for (const msg of galacticLog) {
+        // L6 Universal Map — log rift spawn / corruption events (deferred to avoid setState-in-loop).
+        for (const msg of riftLog) {
           setTimeout(() => get().addToLog(msg), 0);
         }
       },

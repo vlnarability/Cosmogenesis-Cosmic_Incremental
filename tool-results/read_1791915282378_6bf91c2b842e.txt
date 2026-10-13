@@ -1,0 +1,1256 @@
+     1→"use client";
+     2→
+     3→import { useGameStore } from "@/game/state/store";
+     4→import { CHALLENGES, getMaxRepeats, getChallengeDebuffAtRepeat, getChallengeMasteryAtRepeat, type ChallengeCompleteWhen } from "@/game/data/challenges";
+     5→import {
+     6→  TRIAL_REALMS,
+     7→  PLAYABLE_REALM_IDS,
+     8→  REALM_GROWTH_BREAKS_GOAL,
+     9→  REALM_DISCONTENT_HAPPINESS_THRESHOLD,
+    10→  REALM_DISCONTENT_SURVIVE_SECONDS,
+    11→  REALM_DISCONTENT_GOLD_GOAL,
+    12→  REALM_SWIFTNESS_TIME_LIMIT,
+    13→  // TRIALS-7 — newly playable realm constants
+    14→  REALM_FAMINE_SURVIVE_SECONDS,
+    15→  REALM_FAMINE_THRESHOLD,
+    16→  REALM_FAMINE_PUMP_FROM,
+    17→  REALM_FAMINE_PUMP_TO,
+    18→  REALM_IGNORANCE_NODE_COUNT,
+    19→  REALM_IGNORANCE_BUDGET,
+    20→  REALM_IGNORANCE_NODE_COSTS,
+    21→  REALM_STAGNATION_GOODS_GOAL,
+    22→  REALM_STAGNATION_UPGRADE_BASE_COST,
+    23→  REALM_STAGNATION_RATE_DIVISOR,
+    24→  REALM_WEAKNESS_WAVE_COUNT,
+    25→  REALM_WEAKNESS_WAVE_DURATION,
+    26→  REALM_WEAKNESS_TOWER_COST,
+    27→  REALM_WEAKNESS_LEAK_DAMAGE,
+    28→  REALM_LATE_BLOOM_POP_GOAL,
+    29→  REALM_LATE_BLOOM_PROD_COEFF,
+    30→  REALM_LATE_BLOOM_COST_PER_POP,
+    31→  REALM_PURITY_POOL_CAP,
+    32→  REALM_PURITY_SYSTEMS_GOAL,
+    33→  REALM_PURITY_BUILD_COST,
+    34→  REALM_PURITY_DRAIN_PER_SYSTEM,
+    35→  REALM_ASCETIC_STAGES,
+    36→  REALM_ASCETIC_SYSTEM_COSTS,
+    37→} from "@/game/data/trialRealms";
+    38→import { STAGES, STAGE_IDS } from "@/game/data/stages";
+    39→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+    40→import { Button } from "@/components/ui/button";
+    41→import { Badge } from "@/components/ui/badge";
+    42→import { Separator } from "@/components/ui/separator";
+    43→import { CheckCircle2, Lock, Trophy, Skull, Sparkles, Clock, Hourglass, Swords, Heart, Hammer, Beaker, Gem, Brain, Flame } from "lucide-react";
+    44→import { formatNumber } from "../shared/format";
+    45→import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+    46→
+    47→// Static color class lookup so Tailwind keeps the classes at build time.
+    48→const REALM_COLOR_CLASSES: Record<string, { text: string; border: string }> = {
+    49→  emerald: { text: "text-emerald-300", border: "border-emerald-400/40" },
+    50→  amber: { text: "text-amber-300", border: "border-amber-400/40" },
+    51→  rose: { text: "text-rose-300", border: "border-rose-400/40" },
+    52→  violet: { text: "text-violet-300", border: "border-violet-400/40" },
+    53→  cyan: { text: "text-cyan-300", border: "border-cyan-400/40" },
+    54→  red: { text: "text-red-300", border: "border-red-400/40" },
+    55→  pink: { text: "text-pink-300", border: "border-pink-400/40" },
+    56→  sky: { text: "text-sky-300", border: "border-sky-400/40" },
+    57→  indigo: { text: "text-indigo-300", border: "border-indigo-400/40" },
+    58→  yellow: { text: "text-yellow-300", border: "border-yellow-400/40" },
+    59→};
+    60→
+    61→export function ChallengeModal() {
+    62→  const showChallenges = useGameStore((s) => s.showChallenges);
+    63→  const setShowChallenges = useGameStore((s) => s.setShowChallenges);
+    64→  const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
+    65→  const activeChallenge = useGameStore((s) => s.activeChallenge);
+    66→  const completedChallenges = useGameStore((s) => s.completedChallenges || {});
+    67→  const upgrades = useGameStore((s) => s.upgrades);
+    68→  const setActiveChallenge = useGameStore((s) => s.setActiveChallenge);
+    69→
+    70→  // QUICK WIN 4 — real-time challenge progress fields
+    71→  const population = useGameStore((s) => s.population);
+    72→  const stageIndex = useGameStore((s) => s.stageIndex);
+    73→  const resources = useGameStore((s) => s.resources || {});
+    74→
+    75→  // REBUILD L1 — Trial Realms state
+    76→  const activeTrialRealm = useGameStore((s) => s.activeTrialRealm);
+    77→  const trialRealmState = useGameStore((s) => s.trialRealmState || {});
+    78→  const trialRealmsCompleted = useGameStore((s) => s.trialRealmsCompleted || {});
+    79→  const trialRealmBestTimes = useGameStore((s) => s.trialRealmBestTimes || {}); // FEATURE 1 — local leaderboard
+    80→  const gameTime = useGameStore((s) => s.time); // FEATURE 1 — live timer tick
+    81→  const setActiveTrialRealm = useGameStore((s) => s.setActiveTrialRealm);
+    82→  const realmBreakthrough = useGameStore((s) => s.realmBreakthrough);
+    83→  const realmDiscontentAction = useGameStore((s) => s.realmDiscontentAction);
+    84→  // TRIALS-7 — newly playable realm actions
+    85→  const realmFaminePump = useGameStore((s) => s.realmFaminePump);
+    86→  const realmIgnoranceBuyNode = useGameStore((s) => s.realmIgnoranceBuyNode);
+    87→  const realmStagnationUpgrade = useGameStore((s) => s.realmStagnationUpgrade);
+    88→  const realmWeaknessPlaceTower = useGameStore((s) => s.realmWeaknessPlaceTower);
+    89→  const realmPurityBuildSystem = useGameStore((s) => s.realmPurityBuildSystem);
+    90→  const realmAsceticBuildSystem = useGameStore((s) => s.realmAsceticBuildSystem);
+    91→
+    92→  const hasMastery = (upgrades["challenge_mastery"] || 0) > 0;
+    93→  const maxRepeats = getMaxRepeats(hasMastery);
+    94→  const totalCompleted = Object.values(completedChallenges).filter((c) => c > 0).length;
+    95→  const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
+    96→  const realmsCompletedCount = Object.values(trialRealmsCompleted).filter(Boolean).length;
+    97→
+    98→  // FEATURE 1 — format best time as "Xm Ys"
+    99→  function formatBestTime(seconds: number): string {
+   100→    const m = Math.floor(seconds / 60);
+   101→    const s = Math.floor(seconds % 60);
+   102→    return `${m}m ${s}s`;
+   103→  }
+   104→  // Live timer for the currently active realm
+   105→  const liveElapsed = activeTrialRealm
+   106→    ? Math.max(0, gameTime - ((trialRealmState[activeTrialRealm]?.startedAt) || gameTime))
+   107→    : 0;
+   108→
+   109→  return (
+   110→    <Dialog open={showChallenges} onOpenChange={setShowChallenges}>
+   111→      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
+   112→        <DialogHeader>
+   113→          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+   114→            <Skull className="w-5 h-5" />
+   115→            Layer 1 — Trials & Realms
+   116→            <BackgroundLayerBadge layerId="evolution" />
+   117→          </DialogTitle>
+   118→          <DialogDescription asChild>
+   119→            <div className="flex items-center justify-between">
+   120→            <span>
+   121→              Two paths of mastery: <span className="text-cyan-300">Trials</span> (debuff runs) and <span className="text-amber-300">Realms</span> (mini-games).
+   122→            </span>
+   123→            <div className="flex gap-1">
+   124→              <Badge variant="outline" className="text-cyan-400 border-cyan-400/40">
+   125→                {totalCompleted}/{CHALLENGES.length} trials
+   126→              </Badge>
+   127→              <Badge variant="outline" className="text-amber-400 border-amber-400/40">
+   128→                {realmsCompletedCount}/{TRIAL_REALMS.length} realms
+   129→              </Badge>
+   130→              <Badge variant="outline" className="text-violet-400 border-violet-400/40">
+   131→                {totalRepeats} repeats
+   132→              </Badge>
+   133→            </div>
+   134→          
+   135→            </div>
+   136→          </DialogDescription>
+   137→        </DialogHeader>
+   138→
+   139→        {!unlockedChallenges ? (
+   140→          <div className="text-center text-muted-foreground py-10">
+   141→            <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   142→            <p className="text-sm">Trials are sealed.</p>
+   143→            <p className="text-xs mt-1">Earn your first Galactic Ascension to unlock Layer 1.</p>
+   144→          </div>
+   145→        ) : activeTrialRealm ? (
+   146→          <ActiveRealmView
+   147→            realmId={activeTrialRealm}
+   148→            state={trialRealmState[activeTrialRealm] || {}}
+   149→            onClose={() => setActiveTrialRealm(null)}
+   150→            onBreakthrough={realmBreakthrough}
+   151→            onDiscontentAction={realmDiscontentAction}
+   152→            onFaminePump={realmFaminePump}
+   153→            onIgnoranceBuyNode={realmIgnoranceBuyNode}
+   154→            onStagnationUpgrade={realmStagnationUpgrade}
+   155→            onWeaknessPlaceTower={realmWeaknessPlaceTower}
+   156→            onPurityBuildSystem={realmPurityBuildSystem}
+   157→            onAsceticBuildSystem={realmAsceticBuildSystem}
+   158→            stageIndex={stageIndex}
+   159→            liveElapsed={liveElapsed}
+   160→          />
+   161→        ) : (
+   162→          <>
+   163→            {/* Trial Realms — the new gameplay loop */}
+   164→            <section>
+   165→              <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 mb-2 flex items-center gap-1">
+   166→                <Sparkles className="w-3 h-3" /> Trial Realms — distinct mini-games
+   167→              </div>
+   168→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   169→                {TRIAL_REALMS.map((r) => {
+   170→                  const completed = !!trialRealmsCompleted[r.id];
+   171→                  const isActive = activeTrialRealm === r.id;
+   172→                  const playable = PLAYABLE_REALM_IDS.includes(r.id);
+   173→                  const colorClass = REALM_COLOR_CLASSES[r.color] || REALM_COLOR_CLASSES.amber;
+   174→                  const bestTime = trialRealmBestTimes[r.id]; // FEATURE 1 — local best time
+   175→                  return (
+   176→                    <button
+   177→                      key={r.id}
+   178→                      onClick={() => playable && !completed && setActiveTrialRealm(r.id)}
+   179→                      disabled={!playable || completed || isActive}
+   180→                      className={`stat-card text-left p-3 ${isActive ? "border-amber-400/60 bg-amber-500/10" : completed ? "opacity-60 border-emerald-400/40" : playable ? "hover:border-amber-400/40" : "opacity-70"}`}
+   181→                    >
+   182→                      <div className="flex items-start gap-2">
+   183→                        <span className="text-2xl shrink-0">{r.icon}</span>
+   184→                        <div className="min-w-0 flex-1">
+   185→                          <div className="flex items-center gap-1 flex-wrap">
+   186→                            <span className="text-sm font-semibold">{r.name}</span>
+   187→                            {playable ? (
+   188→                              <Badge variant="outline" className={`text-[0.55rem] ${colorClass.text} ${colorClass.border}`}>Mini-game</Badge>
+   189→                            ) : (
+   190→                              <Badge variant="outline" className="text-[0.55rem] text-muted-foreground">Coming Soon</Badge>
+   191→                            )}
+   192→                            {completed && (
+   193→                              <Badge className="text-[0.55rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   194→                                <Trophy className="w-2.5 h-2.5 mr-0.5" /> Done
+   195→                              </Badge>
+   196→                            )}
+   197→                            {/* FEATURE 1 — local best-time leaderboard */}
+   198→                            {bestTime !== undefined && (
+   199→                              <Badge variant="outline" className="text-[0.55rem] text-amber-300 border-amber-400/40">
+   200→                                <Clock className="w-2.5 h-2.5 mr-0.5" /> Best: {formatBestTime(bestTime)}
+   201→                              </Badge>
+   202→                            )}
+   203→                            {/* FEATURE 1 — live timer for currently active realm */}
+   204→                            {isActive && (
+   205→                              <Badge variant="outline" className="text-[0.55rem] text-cyan-300 border-cyan-400/40 animate-pulse">
+   206→                                <Hourglass className="w-2.5 h-2.5 mr-0.5" /> Time: {Math.floor(liveElapsed)}s
+   207→                              </Badge>
+   208→                            )}
+   209→                          </div>
+   210→                          <div className="text-[0.65rem] text-muted-foreground leading-snug mt-0.5">{r.tagline}</div>
+   211→                          <div className="text-[0.6rem] text-amber-300/70 mt-1">Goal: {r.goal}</div>
+   212→                          {!playable && (
+   213→                            <div className="text-[0.55rem] text-muted-foreground mt-1 italic">{r.mechanic}</div>
+   214→                          )}
+   215→                        </div>
+   216→                      </div>
+   217→                    </button>
+   218→                  );
+   219→                })}
+   220→              </div>
+   221→            </section>
+   222→
+   223→            <Separator className="my-3" />
+   224→
+   225→            {/* Classic Trials — the existing debuff system */}
+   226→            <section>
+   227→              <div className="text-[0.7rem] uppercase tracking-wide text-cyan-300/80 mb-2 flex items-center gap-1">
+   228→                <Skull className="w-3 h-3" /> Classic Trials — debuff runs for permanent mastery
+   229→              </div>
+   230→              <div className="space-y-2">
+   231→                {CHALLENGES.map((ch) => {
+   232→                  const completed = completedChallenges[ch.id] || 0;
+   233→                  const isActive = activeChallenge === ch.id;
+   234→                  const maxed = completed >= maxRepeats;
+   235→                  const nextRepeat = completed;
+   236→                  const debuff = getChallengeDebuffAtRepeat(ch, nextRepeat);
+   237→                  const mastery = getChallengeMasteryAtRepeat(ch, nextRepeat);
+   238→                  return (
+   239→                    <div key={ch.id} className={`stat-card ${isActive ? "border-amber-400/60" : maxed ? "opacity-60" : ""}`}>
+   240→                      <div className="flex items-start gap-3 mb-2">
+   241→                        <span className="text-2xl shrink-0">{ch.icon}</span>
+   242→                        <div className="min-w-0 flex-1">
+   243→                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+   244→                            <span className="text-sm font-semibold">{ch.name}</span>
+   245→                            <Badge variant="outline" className="text-[0.6rem] capitalize">{ch.category}</Badge>
+   246→                            {isActive && (
+   247→                              <Badge className="text-[0.6rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
+   248→                                <Sparkles className="w-2.5 h-2.5 mr-0.5" /> Active
+   249→                              </Badge>
+   250→                            )}
+   251→                            {maxed && (
+   252→                              <Badge className="text-[0.6rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   253→                                <Trophy className="w-2.5 h-2.5 mr-0.5" /> Mastered
+   254→                              </Badge>
+   255→                            )}
+   256→                          </div>
+   257→                          <p className="text-xs text-muted-foreground leading-snug">{ch.desc}</p>
+   258→                        </div>
+   259→                        <div className="text-right shrink-0">
+   260→                          <Badge variant="outline" className="text-[0.6rem]">{completed}/{maxRepeats}</Badge>
+   261→                        </div>
+   262→                      </div>
+   263→                      <div className="text-[0.65rem] text-muted-foreground mb-1">
+   264→                        <span className="font-semibold text-foreground/80">Goal:</span> {formatGoal(ch)}
+   265→                      </div>
+   266→                      {isActive && (
+   267→                        <div className="text-[0.65rem] mb-1">
+   268→                          <ChallengeProgress cond={ch.completeWhen} population={population} stageIndex={stageIndex} resources={resources} />
+   269→                        </div>
+   270→                      )}
+   271→                      <div className="grid grid-cols-2 gap-2 mt-2">
+   272→                        <div className="rounded-md bg-red-500/10 border border-red-400/20 p-2">
+   273→                          <div className="text-[0.6rem] uppercase tracking-wide text-red-300/80 mb-0.5">Debuff (repeat {nextRepeat + 1})</div>
+   274→                          <div className="text-[0.7rem] text-foreground/90 leading-snug">{ch.debuff.label}</div>
+   275→                          <div className="text-[0.6rem] text-red-300/70 mt-0.5">{formatEffects(debuff)}</div>
+   276→                        </div>
+   277→                        <div className="rounded-md bg-emerald-500/10 border border-emerald-400/20 p-2">
+   278→                          <div className="text-[0.6rem] uppercase tracking-wide text-emerald-300/80 mb-0.5">Reward (repeat {nextRepeat + 1})</div>
+   279→                          <div className="text-[0.7rem] text-foreground/90 leading-snug">{ch.mastery.label}</div>
+   280→                          <div className="text-[0.6rem] text-emerald-300/70 mt-0.5">{formatEffects(mastery)}</div>
+   281→                        </div>
+   282→                      </div>
+   283→                      <div className="flex items-center justify-end mt-2">
+   284→                        {maxed ? (
+   285→                          <Button size="sm" variant="outline" disabled className="h-7">
+   286→                            <CheckCircle2 className="w-3 h-3 mr-1" /> Maxed
+   287→                          </Button>
+   288→                        ) : isActive ? (
+   289→                          <Button size="sm" variant="outline" className="h-7" onClick={() => setActiveChallenge(null)}>
+   290→                            Abandon Trial
+   291→                          </Button>
+   292→                        ) : (
+   293→                          <Button size="sm" className="h-7" onClick={() => setActiveChallenge(ch.id)}>
+   294→                            Begin Trial (repeat {nextRepeat + 1})
+   295→                          </Button>
+   296→                        )}
+   297→                      </div>
+   298→                    </div>
+   299→                  );
+   300→                })}
+   301→              </div>
+   302→            </section>
+   303→          </>
+   304→        )}
+   305→
+   306→        <Separator className="my-2" />
+   307→        <div className="text-[0.65rem] text-muted-foreground px-1">
+   308→          <span className="text-amber-300">Trial Realms</span> are interactive mini-games with one core mechanic each.
+   309→          The <span className="text-cyan-300">Classic Trials</span> apply debuffs for repeatable mastery bonuses.
+   310→          Complete any 3 distinct trials to unlock the Enlightenment prestige layer.
+   311→        </div>
+   312→
+   313→        <div className="flex justify-end pt-2">
+   314→          <Button variant="outline" onClick={() => setShowChallenges(false)}>Close</Button>
+   315→        </div>
+   316→      </DialogContent>
+   317→    </Dialog>
+   318→  );
+   319→}
+   320→
+   321→// ===== Active realm view — shows the actual mini-game UI =====
+   322→function ActiveRealmView({
+   323→  realmId,
+   324→  state,
+   325→  onClose,
+   326→  onBreakthrough,
+   327→  onDiscontentAction,
+   328→  onFaminePump,
+   329→  onIgnoranceBuyNode,
+   330→  onStagnationUpgrade,
+   331→  onWeaknessPlaceTower,
+   332→  onPurityBuildSystem,
+   333→  onAsceticBuildSystem,
+   334→  stageIndex,
+   335→  liveElapsed = 0,
+   336→}: {
+   337→  realmId: string;
+   338→  state: Record<string, any>;
+   339→  onClose: () => void;
+   340→  onBreakthrough: () => void;
+   341→  onDiscontentAction: (action: "celebrate" | "tax" | "ignore") => void;
+   342→  onFaminePump: (resourceId: "a" | "b" | "c") => void;
+   343→  onIgnoranceBuyNode: (nodeId: number) => void;
+   344→  onStagnationUpgrade: (stage: number) => void;
+   345→  onWeaknessPlaceTower: () => void;
+   346→  onPurityBuildSystem: () => void;
+   347→  onAsceticBuildSystem: (systemId: number) => void;
+   348→  stageIndex: number;
+   349→  liveElapsed?: number; // FEATURE 1 — live timer
+   350→}) {
+   351→  const realm = TRIAL_REALMS.find((r) => r.id === realmId);
+   352→  if (!realm) return null;
+   353→
+   354→  return (
+   355→    <div className="space-y-3">
+   356→      <div className="flex items-center justify-between">
+   357→        <div className="flex items-center gap-2">
+   358→          <span className="text-3xl">{realm.icon}</span>
+   359→          <div>
+   360→            <div className="text-base font-semibold">{realm.name}</div>
+   361→            <div className="text-[0.65rem] text-muted-foreground">{realm.tagline}</div>
+   362→          </div>
+   363→          {/* FEATURE 1 — live timer in the active realm header */}
+   364→          <Badge variant="outline" className="ml-2 text-[0.6rem] text-cyan-300 border-cyan-400/40 animate-pulse">
+   365→            <Hourglass className="w-2.5 h-2.5 mr-0.5" /> Time: {Math.floor(liveElapsed)}s
+   366→          </Badge>
+   367→        </div>
+   368→        <Button size="sm" variant="outline" onClick={onClose}>Exit Realm</Button>
+   369→      </div>
+   370→
+   371→      {realmId === "realm_growth" && (
+   372→        <RealmGrowthGame state={state} onBreakthrough={onBreakthrough} />
+   373→      )}
+   374→      {realmId === "realm_famine" && (
+   375→        <RealmFamineGame state={state} onPump={onFaminePump} />
+   376→      )}
+   377→      {realmId === "realm_discontent" && (
+   378→        <RealmDiscontentGame state={state} onAction={onDiscontentAction} />
+   379→      )}
+   380→      {realmId === "realm_ignorance" && (
+   381→        <RealmIgnoranceGame state={state} onBuyNode={onIgnoranceBuyNode} />
+   382→      )}
+   383→      {realmId === "realm_stagnation" && (
+   384→        <RealmStagnationGame state={state} onUpgrade={onStagnationUpgrade} />
+   385→      )}
+   386→      {realmId === "realm_weakness" && (
+   387→        <RealmWeaknessGame state={state} onPlaceTower={onWeaknessPlaceTower} />
+   388→      )}
+   389→      {realmId === "realm_late_bloom" && (
+   390→        <RealmLateBloomGame state={state} />
+   391→      )}
+   392→      {realmId === "realm_purity" && (
+   393→        <RealmPurityGame state={state} onBuildSystem={onPurityBuildSystem} />
+   394→      )}
+   395→      {realmId === "realm_ascetic" && (
+   396→        <RealmAsceticGame state={state} onBuildSystem={onAsceticBuildSystem} />
+   397→      )}
+   398→      {realmId === "realm_swiftness" && (
+   399→        <RealmSwiftnessGame state={state} stageIndex={stageIndex} />
+   400→      )}
+   401→    </div>
+   402→  );
+   403→}
+   404→
+   405→// ===== Realm of Growth — energy bar that fills passively, click to Break Through =====
+   406→function RealmGrowthGame({ state, onBreakthrough }: { state: Record<string, any>; onBreakthrough: () => void }) {
+   407→  const energy = state.energy || 0;
+   408→  const breaks = state.breaks || 0;
+   409→  const completed = !!state.completed;
+   410→  const canBreak = energy >= 100 && !completed;
+   411→
+   412→  return (
+   413→    <div className="stat-card space-y-3">
+   414→      <div className="text-[0.7rem] text-muted-foreground">
+   415→        Energy fills at 0.5/s. When the bar is full, click Break Through to convert energy into +50% population.
+   416→      </div>
+   417→
+   418→      <div className="space-y-1">
+   419→        <div className="flex justify-between text-xs">
+   420→          <span className="text-emerald-300/80">Energy</span>
+   421→          <span className="font-mono">{energy.toFixed(1)} / 100</span>
+   422→        </div>
+   423→        <div className="h-6 rounded-md bg-emerald-950/40 border border-emerald-500/30 overflow-hidden">
+   424→          <div
+   425→            className="h-full bg-gradient-to-r from-emerald-600/60 to-emerald-400/80 transition-all"
+   426→            style={{ width: `${Math.min(100, energy)}%` }}
+   427→          />
+   428→        </div>
+   429→      </div>
+   430→
+   431→      <div className="flex items-center justify-between">
+   432→        <div className="text-xs">
+   433→          <span className="text-muted-foreground">Break-Throughs: </span>
+   434→          <span className="font-semibold text-amber-300">{breaks} / {REALM_GROWTH_BREAKS_GOAL}</span>
+   435→        </div>
+   436→        {completed ? (
+   437→          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   438→            <Trophy className="w-3 h-3 mr-1" /> Conquered
+   439→          </Badge>
+   440→        ) : (
+   441→          <Button size="sm" disabled={!canBreak} onClick={onBreakthrough}>
+   442→            <Sparkles className="w-3 h-3 mr-1" /> Break Through
+   443→          </Button>
+   444→        )}
+   445→      </div>
+   446→
+   447→      {/* Progress dots */}
+   448→      <div className="flex gap-1">
+   449→        {Array.from({ length: REALM_GROWTH_BREAKS_GOAL }, (_, i) => (
+   450→          <div
+   451→            key={i}
+   452→            className={`h-1.5 flex-1 rounded-sm ${i < breaks ? "bg-emerald-400" : "bg-muted-foreground/20"}`}
+   453→          />
+   454→        ))}
+   455→      </div>
+   456→    </div>
+   457→  );
+   458→}
+   459→
+   460→// ===== Realm of Discontent — oscillating happiness + gold goal =====
+   461→function RealmDiscontentGame({
+   462→  state,
+   463→  onAction,
+   464→}: {
+   465→  state: Record<string, any>;
+   466→  onAction: (action: "celebrate" | "tax" | "ignore") => void;
+   467→}) {
+   468→  const happiness = state.happiness ?? 50;
+   469→  const gold = state.gold ?? 0;
+   470→  const survivedTime = state.survivedTime ?? 0;
+   471→  const completed = !!state.completed;
+   472→  const happinessBelowThreshold = !!state.happinessBelowThreshold;
+   473→  const survivalProgress = Math.min(REALM_DISCONTENT_SURVIVE_SECONDS, survivedTime);
+   474→
+   475→  const danger = happiness < REALM_DISCONTENT_HAPPINESS_THRESHOLD + 5;
+   476→
+   477→  return (
+   478→    <div className="stat-card space-y-3">
+   479→      <div className="text-[0.7rem] text-muted-foreground">
+   480→        Happiness oscillates between 0-100. Keep it above <span className="text-rose-300">{REALM_DISCONTENT_HAPPINESS_THRESHOLD}</span> while stockpiling <span className="text-amber-300">{REALM_DISCONTENT_GOLD_GOAL} gold</span>. Survive {REALM_DISCONTENT_SURVIVE_SECONDS}s above the threshold.
+   481→      </div>
+   482→
+   483→      <div className="space-y-1">
+   484→        <div className="flex justify-between text-xs">
+   485→          <span className={danger ? "text-rose-300" : "text-amber-300/80"}>Happiness</span>
+   486→          <span className="font-mono">{happiness.toFixed(1)} / 100</span>
+   487→        </div>
+   488→        <div className="h-4 rounded-md bg-rose-950/40 border border-rose-500/30 overflow-hidden relative">
+   489→          {/* Threshold line at 30% */}
+   490→          <div className="absolute top-0 bottom-0 w-px bg-rose-400/50 z-10" style={{ left: `${REALM_DISCONTENT_HAPPINESS_THRESHOLD}%` }} />
+   491→          <div
+   492→            className={`h-full transition-all ${danger ? "bg-rose-500/80" : "bg-gradient-to-r from-amber-600/60 to-amber-400/80"}`}
+   493→            style={{ width: `${Math.min(100, happiness)}%` }}
+   494→          />
+   495→        </div>
+   496→      </div>
+   497→
+   498→      <div className="grid grid-cols-2 gap-3">
+   499→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+   500→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Gold</div>
+   501→          <div className="text-lg font-mono">{Math.floor(gold)} / {REALM_DISCONTENT_GOLD_GOAL}</div>
+   502→        </div>
+   503→        <div className="rounded-md bg-cyan-500/10 border border-cyan-400/20 p-2">
+   504→          <div className="text-[0.6rem] uppercase tracking-wide text-cyan-300/80">Survived (above threshold)</div>
+   505→          <div className="text-lg font-mono">{survivalProgress.toFixed(0)} / {REALM_DISCONTENT_SURVIVE_SECONDS}s</div>
+   506→        </div>
+   507→      </div>
+   508→
+   509→      {happinessBelowThreshold && happiness < REALM_DISCONTENT_HAPPINESS_THRESHOLD && (
+   510→        <div className="text-[0.65rem] text-rose-300/80 italic">
+   511→          ⚠ Happiness is below the threshold — survival counter paused. Restore happiness above 30 to resume.
+   512→        </div>
+   513→      )}
+   514→
+   515→      {completed ? (
+   516→        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   517→          <Trophy className="w-3 h-3 mr-1" /> Conquered — gold & survival goals reached
+   518→        </Badge>
+   519→      ) : (
+   520→        <div className="grid grid-cols-3 gap-1.5">
+   521→          <Button size="sm" variant="default" onClick={() => onAction("celebrate")}>
+   522→            🎉 Celebrate
+   523→            <div className="text-[0.55rem] opacity-80">+20 happy, -10 gold</div>
+   524→          </Button>
+   525→          <Button size="sm" variant="outline" onClick={() => onAction("tax")}>
+   526→            💰 Tax
+   527→            <div className="text-[0.55rem] opacity-80">+20 gold, -15 happy</div>
+   528→          </Button>
+   529→          <Button size="sm" variant="ghost" onClick={() => onAction("ignore")}>
+   530→            🤷 Ignore
+   531→            <div className="text-[0.55rem] opacity-80">+5 each</div>
+   532→          </Button>
+   533→        </div>
+   534→      )}
+   535→    </div>
+   536→  );
+   537→}
+   538→
+   539→// ===== Realm of Swiftness — countdown with 5× production, reach Galactic =====
+   540→function RealmSwiftnessGame({ state, stageIndex }: { state: Record<string, any>; stageIndex: number }) {
+   541→  const timeLeft = state.timeLeft ?? REALM_SWIFTNESS_TIME_LIMIT;
+   542→  const reachedGalactic = !!state.reachedGalactic;
+   543→  const completed = !!state.completed;
+   544→  const totalStages = STAGES.length;
+   545→  const progressPct = ((stageIndex + 1) / totalStages) * 100;
+   546→
+   547→  return (
+   548→    <div className="stat-card space-y-3">
+   549→      <div className="text-[0.7rem] text-muted-foreground">
+   550→        Reach the <span className="text-amber-300">Galactic</span> stage within <span className="text-amber-300">{REALM_SWIFTNESS_TIME_LIMIT}s</span>. Production is multiplied by 5× while the realm is active.
+   551→      </div>
+   552→
+   553→      <div className="flex items-center justify-between">
+   554→        <div className="flex items-center gap-2">
+   555→          <Hourglass className={`w-5 h-5 ${timeLeft < 60 ? "text-rose-400" : "text-amber-300"}`} />
+   556→          <span className={`text-2xl font-mono ${timeLeft < 60 ? "text-rose-300" : "text-amber-300"}`}>
+   557→            {Math.floor(timeLeft / 60)}:{String(Math.floor(timeLeft % 60)).padStart(2, "0")}
+   558→          </span>
+   559→        </div>
+   560→        {completed ? (
+   561→          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   562→            <Trophy className="w-3 h-3 mr-1" /> Conquered
+   563→          </Badge>
+   564→        ) : reachedGalactic ? (
+   565→          <Badge className="bg-amber-500/20 text-amber-300 border-amber-400/40">
+   566→            <Sparkles className="w-3 h-3 mr-1" /> Galactic reached
+   567→          </Badge>
+   568→        ) : (
+   569→          <Badge variant="outline" className="text-rose-400 border-rose-400/40">
+   570→            <Clock className="w-3 h-3 mr-1" /> Racing
+   571→          </Badge>
+   572→        )}
+   573→      </div>
+   574→
+   575→      <div className="space-y-1">
+   576→        <div className="flex justify-between text-xs">
+   577→          <span className="text-cyan-300/80">Stage progress</span>
+   578→          <span className="font-mono">{STAGES[stageIndex]?.name} ({stageIndex + 1}/{totalStages})</span>
+   579→        </div>
+   580→        <div className="h-3 rounded-md bg-cyan-950/40 border border-cyan-500/30 overflow-hidden">
+   581→          <div className="h-full bg-gradient-to-r from-cyan-600/60 to-amber-400/80 transition-all" style={{ width: `${progressPct}%` }} />
+   582→        </div>
+   583→      </div>
+   584→
+   585→      <div className="text-[0.65rem] text-muted-foreground">
+   586→        Production is 5× normal. Use your normal actions and systems to evolve quickly. The realm closes when you reach Galactic or time runs out.
+   587→      </div>
+   588→    </div>
+   589→  );
+   590→}
+   591→
+   592→// ===== TRIALS-7 — 7 newly playable realm UI components =====
+   593→
+   594→// ===== Realm of Famine — balance three resources A/B/C with pump buttons =====
+   595→function RealmFamineGame({
+   596→  state,
+   597→  onPump,
+   598→}: {
+   599→  state: Record<string, any>;
+   600→  onPump: (resourceId: "a" | "b" | "c") => void;
+   601→}) {
+   602→  const a = state.a ?? 70;
+   603→  const b = state.b ?? 70;
+   604→  const c = state.c ?? 70;
+   605→  const survivedTime = state.survivedTime ?? 0;
+   606→  const completed = !!state.completed;
+   607→  const failed = !!state.failed;
+   608→  const survivalProgress = Math.min(REALM_FAMINE_SURVIVE_SECONDS, survivedTime);
+   609→  const allAbove = a >= REALM_FAMINE_THRESHOLD && b >= REALM_FAMINE_THRESHOLD && c >= REALM_FAMINE_THRESHOLD;
+   610→
+   611→  const bars: Array<{ id: "a" | "b" | "c"; label: string; value: number; next: string }> = [
+   612→    { id: "a", label: "A", value: a, next: "B" },
+   613→    { id: "b", label: "B", value: b, next: "C" },
+   614→    { id: "c", label: "C", value: c, next: "A" },
+   615→  ];
+   616→
+   617→  return (
+   618→    <div className="stat-card space-y-3">
+   619→      <div className="text-[0.7rem] text-muted-foreground">
+   620→        All three resources decay over time. Click a <span className="text-amber-300">Pump</span> button to convert (A→B, B→C, C→A): source loses <span className="text-rose-300">{REALM_FAMINE_PUMP_FROM}</span>, target gains <span className="text-emerald-300">{REALM_FAMINE_PUMP_TO}</span>. Keep all three at <span className="text-amber-300">{REALM_FAMINE_THRESHOLD}%+</span> for {REALM_FAMINE_SURVIVE_SECONDS}s.
+   621→      </div>
+   622→
+   623→      <div className="space-y-2">
+   624→        {bars.map((bar) => {
+   625→          const danger = bar.value < REALM_FAMINE_THRESHOLD + 5;
+   626→          return (
+   627→            <div key={bar.id} className="space-y-1">
+   628→              <div className="flex justify-between text-xs">
+   629→                <span className={danger ? "text-rose-300" : "text-amber-300/80"}>Resource {bar.label}</span>
+   630→                <span className="font-mono">{bar.value.toFixed(1)} / 100</span>
+   631→              </div>
+   632→              <div className="h-4 rounded-md bg-amber-950/40 border border-amber-500/30 overflow-hidden relative">
+   633→                <div className="absolute top-0 bottom-0 w-px bg-rose-400/50 z-10" style={{ left: `${REALM_FAMINE_THRESHOLD}%` }} />
+   634→                <div
+   635→                  className={`h-full transition-all ${danger ? "bg-rose-500/80" : "bg-gradient-to-r from-amber-600/60 to-amber-400/80"}`}
+   636→                  style={{ width: `${Math.min(100, bar.value)}%` }}
+   637→                />
+   638→              </div>
+   639→            </div>
+   640→          );
+   641→        })}
+   642→      </div>
+   643→
+   644→      <div className="grid grid-cols-3 gap-1.5">
+   645→        {bars.map((bar) => {
+   646→          const canPump = bar.value >= REALM_FAMINE_PUMP_FROM && !completed && !failed;
+   647→          return (
+   648→            <Button
+   649→              key={bar.id}
+   650→              size="sm"
+   651→              variant="default"
+   652→              disabled={!canPump}
+   653→              onClick={() => onPump(bar.id)}
+   654→            >
+   655→              <Flame className="w-3 h-3 mr-1" /> {bar.label}→{bar.next}
+   656→              <div className="text-[0.55rem] opacity-80">-{REALM_FAMINE_PUMP_FROM} / +{REALM_FAMINE_PUMP_TO}</div>
+   657→            </Button>
+   658→          );
+   659→        })}
+   660→      </div>
+   661→
+   662→      <div className="grid grid-cols-2 gap-3">
+   663→        <div className="rounded-md bg-cyan-500/10 border border-cyan-400/20 p-2">
+   664→          <div className="text-[0.6rem] uppercase tracking-wide text-cyan-300/80">Survived (all ≥ {REALM_FAMINE_THRESHOLD}%)</div>
+   665→          <div className="text-lg font-mono">{survivalProgress.toFixed(0)} / {REALM_FAMINE_SURVIVE_SECONDS}s</div>
+   666→        </div>
+   667→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+   668→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Status</div>
+   669→          <div className="text-sm">
+   670→            {completed ? (
+   671→              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40"><Trophy className="w-3 h-3 mr-1" /> Conquered</Badge>
+   672→            ) : failed ? (
+   673→              <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40"><Skull className="w-3 h-3 mr-1" /> Failed</Badge>
+   674→            ) : allAbove ? (
+   675→              <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">Holding</Badge>
+   676→            ) : (
+   677→              <Badge variant="outline" className="text-rose-400 border-rose-400/40">Below threshold</Badge>
+   678→            )}
+   679→          </div>
+   680→        </div>
+   681→      </div>
+   682→    </div>
+   683→  );
+   684→}
+   685→
+   686→// ===== Realm of Ignorance — 10-node tech tree =====
+   687→function RealmIgnoranceGame({
+   688→  state,
+   689→  onBuyNode,
+   690→}: {
+   691→  state: Record<string, any>;
+   692→  onBuyNode: (nodeId: number) => void;
+   693→}) {
+   694→  const science = state.science ?? REALM_IGNORANCE_BUDGET;
+   695→  const unlocked: boolean[] = state.unlocked || Array(REALM_IGNORANCE_NODE_COUNT).fill(false);
+   696→  const completed = !!state.completed;
+   697→
+   698→  return (
+   699→    <div className="stat-card space-y-3">
+   700→      <div className="text-[0.7rem] text-muted-foreground">
+   701→        Spend science to unlock 10 tech nodes in chain order. Reach the final node within your budget of <span className="text-violet-300">{REALM_IGNORANCE_BUDGET}</span> science.
+   702→      </div>
+   703→
+   704→      <div className="flex items-center justify-between">
+   705→        <div className="flex items-center gap-2">
+   706→          <Brain className="w-4 h-4 text-violet-300" />
+   707→          <span className="text-lg font-mono text-violet-300">{Math.floor(science)} / {REALM_IGNORANCE_BUDGET}</span>
+   708→          <span className="text-[0.6rem] text-muted-foreground">science</span>
+   709→        </div>
+   710→        {completed && (
+   711→          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   712→            <Trophy className="w-3 h-3 mr-1" /> Conquered
+   713→          </Badge>
+   714→        )}
+   715→      </div>
+   716→
+   717→      <div className="flex flex-wrap items-center gap-1">
+   718→        {Array.from({ length: REALM_IGNORANCE_NODE_COUNT }, (_, i) => {
+   719→          const isUnlocked = !!unlocked[i];
+   720→          const isNext = !completed && !isUnlocked && (i === 0 || unlocked[i - 1]);
+   721→          const cost = REALM_IGNORANCE_NODE_COSTS[i];
+   722→          const canBuy = isNext && science >= cost;
+   723→          return (
+   724→            <div key={i} className="flex items-center">
+   725→              <button
+   726→                disabled={!canBuy}
+   727→                onClick={() => canBuy && onBuyNode(i)}
+   728→                className={`relative w-12 h-12 rounded-md border text-[0.6rem] flex items-center justify-center transition-all ${
+   729→                  isUnlocked
+   730→                    ? "bg-violet-500/30 border-violet-400/60 text-violet-100"
+   731→                    : isNext
+   732→                    ? science >= cost
+   733→                      ? "bg-violet-500/10 border-violet-400/40 text-violet-300 hover:bg-violet-500/20 cursor-pointer animate-pulse"
+   734→                      : "bg-muted/40 border-muted-foreground/30 text-muted-foreground"
+   735→                    : "bg-muted/20 border-muted-foreground/20 text-muted-foreground/50"
+   736→                }`}
+   737→                title={`Node ${i + 1} — cost ${cost} science`}
+   738→              >
+   739→                {isUnlocked ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+   740→                {isNext && !isUnlocked && (
+   741→                  <span className="absolute -bottom-4 text-[0.55rem] text-violet-300/80">{cost} sci</span>
+   742→                )}
+   743→              </button>
+   744→              {i < REALM_IGNORANCE_NODE_COUNT - 1 && (
+   745→                <div className={`w-3 h-px ${unlocked[i] ? "bg-violet-400/60" : "bg-muted-foreground/20"}`} />
+   746→              )}
+   747→            </div>
+   748→          );
+   749→        })}
+   750→      </div>
+   751→
+   752→      <div className="text-[0.65rem] text-muted-foreground">
+   753→        {completed
+   754→          ? "All 10 nodes unlocked — realm conquered!"
+   755→          : `Nodes unlocked: ${unlocked.filter(Boolean).length} / ${REALM_IGNORANCE_NODE_COUNT}`}
+   756→      </div>
+   757→    </div>
+   758→  );
+   759→}
+   760→
+   761→// ===== Realm of Stagnation — upgrade 4 stages to produce 100 final goods =====
+   762→function RealmStagnationGame({
+   763→  state,
+   764→  onUpgrade,
+   765→}: {
+   766→  state: Record<string, any>;
+   767→  onUpgrade: (stage: number) => void;
+   768→}) {
+   769→  const levels: number[] = state.levels || [1, 1, 1, 1];
+   770→  const goods = state.goods ?? 0;
+   771→  const produced = state.produced ?? 0;
+   772→  const completed = !!state.completed;
+   773→  const rate = (levels[0] * levels[1] * levels[2] * levels[3]) / REALM_STAGNATION_RATE_DIVISOR;
+   774→
+   775→  return (
+   776→    <div className="stat-card space-y-3">
+   777→      <div className="text-[0.7rem] text-muted-foreground">
+   778→        Production rate = (L1 × L2 × L3 × L4) ÷ {REALM_STAGNATION_RATE_DIVISOR} per sec. Spend goods to upgrade each stage (cost = 10 × level). Produce <span className="text-cyan-300">{REALM_STAGNATION_GOODS_GOAL}</span> total goods to conquer.
+   779→      </div>
+   780→
+   781→      <div className="grid grid-cols-2 gap-3">
+   782→        <div className="rounded-md bg-cyan-500/10 border border-cyan-400/20 p-2">
+   783→          <div className="text-[0.6rem] uppercase tracking-wide text-cyan-300/80">Goods (spendable)</div>
+   784→          <div className="text-lg font-mono">{Math.floor(goods)}</div>
+   785→        </div>
+   786→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+   787→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Produced (total)</div>
+   788→          <div className="text-lg font-mono">{Math.floor(produced)} / {REALM_STAGNATION_GOODS_GOAL}</div>
+   789→        </div>
+   790→      </div>
+   791→
+   792→      <div className="space-y-1">
+   793→        <div className="flex justify-between text-xs">
+   794→          <span className="text-cyan-300/80">Production rate</span>
+   795→          <span className="font-mono">{rate.toFixed(3)} /s</span>
+   796→        </div>
+   797→        <div className="h-2 rounded-md bg-cyan-950/40 border border-cyan-500/30 overflow-hidden">
+   798→          <div className="h-full bg-gradient-to-r from-cyan-600/60 to-cyan-400/80 transition-all" style={{ width: `${Math.min(100, (produced / REALM_STAGNATION_GOODS_GOAL) * 100)}%` }} />
+   799→        </div>
+   800→      </div>
+   801→
+   802→      {completed ? (
+   803→        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   804→          <Trophy className="w-3 h-3 mr-1" /> Conquered — 100 goods produced
+   805→        </Badge>
+   806→      ) : (
+   807→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+   808→          {levels.map((lvl, i) => {
+   809→            const cost = REALM_STAGNATION_UPGRADE_BASE_COST * lvl;
+   810→            const canUpgrade = goods >= cost;
+   811→            return (
+   812→              <Button
+   813→                key={i}
+   814→                size="sm"
+   815→                variant="outline"
+   816→                disabled={!canUpgrade}
+   817→                onClick={() => onUpgrade(i)}
+   818→                className="flex flex-col items-center h-auto py-1.5"
+   819→              >
+   820→                <span className="text-[0.7rem] font-semibold">Stage {i + 1}</span>
+   821→                <span className="text-[0.6rem] opacity-80">Lvl {lvl}</span>
+   822→                <span className="text-[0.55rem] opacity-70">-{cost} goods</span>
+   823→              </Button>
+   824→            );
+   825→          })}
+   826→        </div>
+   827→      )}
+   828→    </div>
+   829→  );
+   830→}
+   831→
+   832→// ===== Realm of Weakness — tower defense vs 10 waves =====
+   833→function RealmWeaknessGame({
+   834→  state,
+   835→  onPlaceTower,
+   836→}: {
+   837→  state: Record<string, any>;
+   838→  onPlaceTower: () => void;
+   839→}) {
+   840→  const wave = state.wave ?? 0;
+   841→  const enemies = state.enemies ?? 0;
+   842→  const waveTimer = state.waveTimer ?? 0;
+   843→  const military = state.military ?? 30;
+   844→  const towers = state.towers ?? 0;
+   845→  const baseHp = state.baseHp ?? 100;
+   846→  const completed = !!state.completed;
+   847→  const failed = !!state.failed;
+   848→  const canPlace = military >= REALM_WEAKNESS_TOWER_COST && !completed && !failed;
+   849→
+   850→  return (
+   851→    <div className="stat-card space-y-3">
+   852→      <div className="text-[0.7rem] text-muted-foreground">
+   853→        Each wave lasts {REALM_WEAKNESS_WAVE_DURATION}s. Towers kill {`0.6`} enemies/sec each. Leftover enemies at wave end deal <span className="text-rose-300">{REALM_WEAKNESS_LEAK_DAMAGE}</span> damage each to your base (100 HP). Survive all <span className="text-amber-300">{REALM_WEAKNESS_WAVE_COUNT}</span> waves.
+   854→      </div>
+   855→
+   856→      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+   857→        <div className="rounded-md bg-red-500/10 border border-red-400/20 p-2">
+   858→          <div className="text-[0.6rem] uppercase tracking-wide text-red-300/80 flex items-center gap-1"><Swords className="w-2.5 h-2.5" /> Wave</div>
+   859→          <div className="text-lg font-mono">{Math.min(wave, REALM_WEAKNESS_WAVE_COUNT)} / {REALM_WEAKNESS_WAVE_COUNT}</div>
+   860→        </div>
+   861→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+   862→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1"><Hammer className="w-2.5 h-2.5" /> Towers</div>
+   863→          <div className="text-lg font-mono">{towers}</div>
+   864→        </div>
+   865→        <div className="rounded-md bg-rose-500/10 border border-rose-400/20 p-2">
+   866→          <div className="text-[0.6rem] uppercase tracking-wide text-rose-300/80 flex items-center gap-1"><Heart className="w-2.5 h-2.5" /> Base HP</div>
+   867→          <div className="text-lg font-mono">{Math.max(0, Math.floor(baseHp))} / 100</div>
+   868→        </div>
+   869→      </div>
+   870→
+   871→      {wave > 0 && !completed && !failed && (
+   872→        <div className="space-y-1">
+   873→          <div className="flex justify-between text-xs">
+   874→            <span className="text-red-300/80">Wave {wave} — enemies remaining</span>
+   875→            <span className="font-mono">{Math.ceil(enemies)} (kills/sec: {(towers * 0.6).toFixed(1)})</span>
+   876→          </div>
+   877→          <div className="h-2 rounded-md bg-red-950/40 border border-red-500/30 overflow-hidden">
+   878→            <div className="h-full bg-gradient-to-r from-red-600/60 to-amber-400/80 transition-all" style={{ width: `${Math.min(100, (waveTimer / REALM_WEAKNESS_WAVE_DURATION) * 100)}%` }} />
+   879→          </div>
+   880→          <div className="text-[0.6rem] text-muted-foreground text-right">Time left: {waveTimer.toFixed(1)}s</div>
+   881→        </div>
+   882→      )}
+   883→
+   884→      <div className="flex items-center justify-between">
+   885→        <div className="text-xs">
+   886→          <span className="text-muted-foreground">Military: </span>
+   887→          <span className="font-mono text-amber-300">{Math.floor(military)}</span>
+   888→        </div>
+   889→        {completed ? (
+   890→          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   891→            <Trophy className="w-3 h-3 mr-1" /> Conquered — 10 waves survived
+   892→          </Badge>
+   893→        ) : failed ? (
+   894→          <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40">
+   895→            <Skull className="w-3 h-3 mr-1" /> Base destroyed — exit & retry
+   896→          </Badge>
+   897→        ) : (
+   898→          <Button size="sm" disabled={!canPlace} onClick={onPlaceTower}>
+   899→            <Hammer className="w-3 h-3 mr-1" /> Build Tower ({REALM_WEAKNESS_TOWER_COST} mil)
+   900→          </Button>
+   901→        )}
+   902→      </div>
+   903→    </div>
+   904→  );
+   905→}
+   906→
+   907→// ===== Realm of Late Bloom — passive geometric growth (no actions) =====
+   908→function RealmLateBloomGame({ state }: { state: Record<string, any> }) {
+   909→  const pop = state.pop ?? 1;
+   910→  const food = state.food ?? 0;
+   911→  const completed = !!state.completed;
+   912→  const popProgress = REALM_LATE_BLOOM_POP_GOAL > 0 ? Math.min(100, (pop / REALM_LATE_BLOOM_POP_GOAL) * 100) : 0;
+   913→  const foodRate = pop * pop * REALM_LATE_BLOOM_PROD_COEFF;
+   914→  const foodNeeded = pop * REALM_LATE_BLOOM_COST_PER_POP;
+   915→  const foodPct = foodNeeded > 0 ? Math.min(100, (food / foodNeeded) * 100) : 0;
+   916→
+   917→  return (
+   918→    <div className="stat-card space-y-3">
+   919→      <div className="text-[0.7rem] text-muted-foreground">
+   920→        Passive growth — production is 10× but costs 5×. Food rate = pop² × {REALM_LATE_BLOOM_PROD_COEFF}/s; next pop costs <span className="text-pink-300">pop × {REALM_LATE_BLOOM_COST_PER_POP}</span> food. Watch the geometric acceleration.
+   921→      </div>
+   922→
+   923→      <div className="grid grid-cols-2 gap-3">
+   924→        <div className="rounded-md bg-pink-500/10 border border-pink-400/20 p-2">
+   925→          <div className="text-[0.6rem] uppercase tracking-wide text-pink-300/80">Population</div>
+   926→          <div className="text-lg font-mono">{Math.floor(pop)} / {REALM_LATE_BLOOM_POP_GOAL}</div>
+   927→        </div>
+   928→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+   929→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Food</div>
+   930→          <div className="text-lg font-mono">{Math.floor(food)}</div>
+   931→          <div className="text-[0.55rem] text-muted-foreground">+{foodRate.toFixed(2)}/s · need {foodNeeded.toFixed(0)}</div>
+   932→        </div>
+   933→      </div>
+   934→
+   935→      <div className="space-y-1">
+   936→        <div className="flex justify-between text-xs">
+   937→          <span className="text-pink-300/80">Population progress</span>
+   938→          <span className="font-mono">{popProgress.toFixed(1)}%</span>
+   939→        </div>
+   940→        <div className="h-3 rounded-md bg-pink-950/40 border border-pink-500/30 overflow-hidden">
+   941→          <div className="h-full bg-gradient-to-r from-pink-600/60 to-pink-400/80 transition-all" style={{ width: `${popProgress}%` }} />
+   942→        </div>
+   943→      </div>
+   944→
+   945→      <div className="space-y-1">
+   946→        <div className="flex justify-between text-xs">
+   947→          <span className="text-amber-300/80">Food toward next pop</span>
+   948→          <span className="font-mono">{foodPct.toFixed(0)}%</span>
+   949→        </div>
+   950→        <div className="h-1.5 rounded-md bg-amber-950/40 border border-amber-500/20 overflow-hidden">
+   951→          <div className="h-full bg-amber-400/60 transition-all" style={{ width: `${foodPct}%` }} />
+   952→        </div>
+   953→      </div>
+   954→
+   955→      {completed && (
+   956→        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+   957→          <Trophy className="w-3 h-3 mr-1" /> Conquered — 100 population reached
+   958→        </Badge>
+   959→      )}
+   960→      {!completed && (
+   961→        <div className="text-[0.65rem] text-muted-foreground italic">
+   962→          No actions needed — just watch it grow. (10× production · 5× costs)
+   963→        </div>
+   964→      )}
+   965→    </div>
+   966→  );
+   967→}
+   968→
+   969→// ===== Realm of Purity — single 500-cap pool, build 10 systems =====
+   970→function RealmPurityGame({
+   971→  state,
+   972→  onBuildSystem,
+   973→}: {
+   974→  state: Record<string, any>;
+   975→  onBuildSystem: () => void;
+   976→}) {
+   977→  const pool = state.pool ?? REALM_PURITY_POOL_CAP;
+   978→  const systemsBuilt = state.systemsBuilt ?? 0;
+   979→  const completed = !!state.completed;
+   980→  const failed = !!state.failed;
+   981→  const canBuild = pool >= REALM_PURITY_BUILD_COST && !completed && !failed;
+   982→  const drainPerSec = systemsBuilt * REALM_PURITY_DRAIN_PER_SYSTEM;
+   983→  const poolPct = (pool / REALM_PURITY_POOL_CAP) * 100;
+   984→
+   985→  return (
+   986→    <div className="stat-card space-y-3">
+   987→      <div className="text-[0.7rem] text-muted-foreground">
+   988→        All systems draw from a single shared pool of <span className="text-sky-300">{REALM_PURITY_POOL_CAP}</span>. Each system costs <span className="text-amber-300">{REALM_PURITY_BUILD_COST}</span> and drains <span className="text-rose-300">{REALM_PURITY_DRAIN_PER_SYSTEM}/s</span>. Build <span className="text-amber-300">{REALM_PURITY_SYSTEMS_GOAL}</span> systems before the pool runs dry.
+   989→      </div>
+   990→
+   991→      <div className="space-y-1">
+   992→        <div className="flex justify-between text-xs">
+   993→          <span className={pool < 100 ? "text-rose-300" : "text-sky-300/80"}>Shared pool</span>
+   994→          <span className="font-mono">{Math.floor(pool)} / {REALM_PURITY_POOL_CAP}</span>
+   995→        </div>
+   996→        <div className="h-5 rounded-md bg-sky-950/40 border border-sky-500/30 overflow-hidden">
+   997→          <div
+   998→            className={`h-full transition-all ${pool < 100 ? "bg-rose-500/80" : "bg-gradient-to-r from-sky-600/60 to-sky-400/80"}`}
+   999→            style={{ width: `${Math.min(100, poolPct)}%` }}
+  1000→          />
+  1001→        </div>
+  1002→        {systemsBuilt > 0 && (
+  1003→          <div className="text-[0.6rem] text-muted-foreground text-right">Drain: -{drainPerSec.toFixed(1)}/s</div>
+  1004→        )}
+  1005→      </div>
+  1006→
+  1007→      <div className="grid grid-cols-2 gap-3">
+  1008→        <div className="rounded-md bg-sky-500/10 border border-sky-400/20 p-2">
+  1009→          <div className="text-[0.6rem] uppercase tracking-wide text-sky-300/80 flex items-center gap-1"><Gem className="w-2.5 h-2.5" /> Systems built</div>
+  1010→          <div className="text-lg font-mono">{systemsBuilt} / {REALM_PURITY_SYSTEMS_GOAL}</div>
+  1011→        </div>
+  1012→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+  1013→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Build cost</div>
+  1014→          <div className="text-lg font-mono">{REALM_PURITY_BUILD_COST}</div>
+  1015→        </div>
+  1016→      </div>
+  1017→
+  1018→      <div className="flex items-center justify-between">
+  1019→        {completed ? (
+  1020→          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+  1021→            <Trophy className="w-3 h-3 mr-1" /> Conquered — 10 systems built
+  1022→          </Badge>
+  1023→        ) : failed ? (
+  1024→          <Badge className="bg-rose-500/20 text-rose-300 border-rose-400/40">
+  1025→            <Skull className="w-3 h-3 mr-1" /> Pool exhausted — exit & retry
+  1026→          </Badge>
+  1027→        ) : null}
+  1028→        {!completed && !failed && (
+  1029→          <Button size="sm" disabled={!canBuild} onClick={onBuildSystem} className="ml-auto">
+  1030→            <Beaker className="w-3 h-3 mr-1" /> Build System (-{REALM_PURITY_BUILD_COST})
+  1031→          </Button>
+  1032→        )}
+  1033→      </div>
+  1034→    </div>
+  1035→  );
+  1036→}
+  1037→
+  1038→// ===== Realm of the Ascetic — 7 unique systems, evolve through 7 stages =====
+  1039→function RealmAsceticGame({
+  1040→  state,
+  1041→  onBuildSystem,
+  1042→}: {
+  1043→  state: Record<string, any>;
+  1044→  onBuildSystem: (systemId: number) => void;
+  1045→}) {
+  1046→  const essence = state.essence ?? 0;
+  1047→  const stage = state.stage ?? 0;
+  1048→  const systems: boolean[] = state.systems || Array(REALM_ASCETIC_STAGES).fill(false);
+  1049→  const completed = !!state.completed;
+  1050→  const essenceRate = 1 + stage;
+  1051→
+  1052→  return (
+  1053→    <div className="stat-card space-y-3">
+  1054→      <div className="text-[0.7rem] text-muted-foreground">
+  1055→        Only one of each system may be built. Essence accrues at <span className="text-indigo-300">1 + stage</span> per sec. Buy all 7 systems to evolve through all 7 stages.
+  1056→      </div>
+  1057→
+  1058→      <div className="grid grid-cols-2 gap-3">
+  1059→        <div className="rounded-md bg-indigo-500/10 border border-indigo-400/20 p-2">
+  1060→          <div className="text-[0.6rem] uppercase tracking-wide text-indigo-300/80">Essence</div>
+  1061→          <div className="text-lg font-mono">{Math.floor(essence)}</div>
+  1062→          <div className="text-[0.55rem] text-muted-foreground">+{essenceRate.toFixed(0)}/s</div>
+  1063→        </div>
+  1064→        <div className="rounded-md bg-amber-500/10 border border-amber-400/20 p-2">
+  1065→          <div className="text-[0.6rem] uppercase tracking-wide text-amber-300/80">Stage</div>
+  1066→          <div className="text-lg font-mono">{stage} / {REALM_ASCETIC_STAGES}</div>
+  1067→        </div>
+  1068→      </div>
+  1069→
+  1070→      {completed ? (
+  1071→        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40">
+  1072→          <Trophy className="w-3 h-3 mr-1" /> Conquered — 7 stages evolved
+  1073→        </Badge>
+  1074→      ) : (
+  1075→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+  1076→          {Array.from({ length: REALM_ASCETIC_STAGES }, (_, i) => {
+  1077→            const isBuilt = !!systems[i];
+  1078→            const cost = REALM_ASCETIC_SYSTEM_COSTS[i];
+  1079→            const canBuild = !isBuilt && essence >= cost;
+  1080→            return (
+  1081→              <Button
+  1082→                key={i}
+  1083→                size="sm"
+  1084→                variant={isBuilt ? "default" : "outline"}
+  1085→                disabled={isBuilt || !canBuild}
+  1086→                onClick={() => onBuildSystem(i)}
+  1087→                className="flex flex-col items-center h-auto py-1.5"
+  1088→              >
+  1089→                <span className="text-[0.7rem] font-semibold">System {i + 1}</span>
+  1090→                {isBuilt ? (
+  1091→                  <CheckCircle2 className="w-3 h-3 mt-0.5" />
+  1092→                ) : (
+  1093→                  <span className="text-[0.55rem] opacity-70">-{cost} essence</span>
+  1094→                )}
+  1095→              </Button>
+  1096→            );
+  1097→          })}
+  1098→        </div>
+  1099→      )}
+  1100→
+  1101→      <div className="text-[0.65rem] text-muted-foreground">
+  1102→        Each system purchased advances your stage by 1 and boosts essence generation. Cheaper systems first = faster completion.
+  1103→      </div>
+  1104→    </div>
+  1105→  );
+  1106→}
+  1107→
+  1108→function formatGoal(ch: typeof CHALLENGES[number]): string {
+  1109→  switch (ch.completeWhen.type) {
+  1110→    case "reachPopulation":
+  1111→      return `Reach a population of ${ch.completeWhen.value}`;
+  1112→    case "reachStage":
+  1113→      return `Reach the ${cap(ch.completeWhen.stage)} stage`;
+  1114→    case "clearStage":
+  1115→      return `Clear the ${cap(ch.completeWhen.stage)} stage (evolve past it)`;
+  1116→    case "reachGalactic":
+  1117→      return `Reach the Galactic stage`;
+  1118→    case "stockpileResource":
+  1119→      return `Stockpile ${ch.completeWhen.value} of ${ch.completeWhen.resource.replace("_", " ")}`;
+  1120→    default:
+  1121→      return "Unknown goal";
+  1122→  }
+  1123→}
+  1124→
+  1125→function formatEffects(eff: Record<string, unknown>): string {
+  1126→  const parts: string[] = [];
+  1127→  if (eff.productionMult !== undefined) {
+  1128→    const v = eff.productionMult as number;
+  1129→    parts.push(v >= 0 ? `+${(v * 100).toFixed(0)}% prod` : `${(v * 100).toFixed(0)}% prod`);
+  1130→  }
+  1131→  if (eff.costMult !== undefined) {
+  1132→    const v = eff.costMult as number;
+  1133→    if (v >= 1) parts.push(`costs ×${v.toFixed(2)}`);
+  1134→    else parts.push(`costs ${(v * 100).toFixed(0)}%`);
+  1135→  }
+  1136→  if (eff.popGrowthMult !== undefined) {
+  1137→    const v = eff.popGrowthMult as number;
+  1138→    parts.push(v >= 1 ? `pop ×${v.toFixed(2)}` : `pop ${(v * 100).toFixed(0)}%`);
+  1139→  }
+  1140→  if (eff.capMult !== undefined) {
+  1141→    const v = eff.capMult as number;
+  1142→    parts.push(v >= 1 ? `cap ×${v.toFixed(2)}` : `cap ${(v * 100).toFixed(0)}%`);
+  1143→  }
+  1144→  if (eff.epMult !== undefined) {
+  1145→    const v = eff.epMult as number;
+  1146→    parts.push(`+${(v * 100).toFixed(0)}% EP`);
+  1147→  }
+  1148→  if (eff.disableTech) parts.push("no tech");
+  1149→  if (eff.disableMilitary) parts.push("no military");
+  1150→  if (eff.disableEvents) parts.push("no events");
+  1151→  if (eff.disablePause) parts.push("no pause");
+  1152→  if (eff.startPop !== undefined) parts.push(`start pop = ${eff.startPop}`);
+  1153→  if (eff.maxSystems !== undefined) parts.push(`max ${eff.maxSystems} systems`);
+  1154→  return parts.join(" · ");
+  1155→}
+  1156→
+  1157→function cap(s: string): string {
+  1158→  return s.charAt(0).toUpperCase() + s.slice(1);
+  1159→}
+  1160→
+  1161→// QUICK WIN 4 — Real-time progress for an active challenge, based on its completeWhen condition.
+  1162→function ChallengeProgress({
+  1163→  cond,
+  1164→  population,
+  1165→  stageIndex,
+  1166→  resources,
+  1167→}: {
+  1168→  cond: ChallengeCompleteWhen;
+  1169→  population: number;
+  1170→  stageIndex: number;
+  1171→  resources: Record<string, number>;
+  1172→}) {
+  1173→  const curStageId = STAGES[stageIndex]?.id;
+  1174→  switch (cond.type) {
+  1175→    case "reachPopulation": {
+  1176→      const cur = Math.min(population, cond.value);
+  1177→      const pct = Math.min(100, (cur / cond.value) * 100);
+  1178→      return (
+  1179→        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 p-1.5">
+  1180→          <div className="flex items-center justify-between text-amber-300/90">
+  1181→            <span className="font-semibold">Population progress</span>
+  1182→            <span>{formatNumber(cur, 0)}/{formatNumber(cond.value, 0)}</span>
+  1183→          </div>
+  1184→          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
+  1185→            <div className="h-full bg-amber-400/80 transition-all" style={{ width: `${pct}%` }} />
+  1186→          </div>
+  1187→        </div>
+  1188→      );
+  1189→    }
+  1190→    case "stockpileResource": {
+  1191→      const cur = Math.min(resources[cond.resource] || 0, cond.value);
+  1192→      const pct = Math.min(100, (cur / cond.value) * 100);
+  1193→      return (
+  1194→        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 p-1.5">
+  1195→          <div className="flex items-center justify-between text-amber-300/90">
+  1196→            <span className="font-semibold">Resources ({cond.resource.replace("_", " ")})</span>
+  1197→            <span>{formatNumber(cur, 0)}/{formatNumber(cond.value, 0)}</span>
+  1198→          </div>
+  1199→          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
+  1200→            <div className="h-full bg-amber-400/80 transition-all" style={{ width: `${pct}%` }} />
+  1201→          </div>
+  1202→        </div>
+  1203→      );
+  1204→    }
+  1205→    case "reachStage": {
+  1206→      const targetIdx = STAGE_IDS.indexOf(cond.stage);
+  1207→      const reached = stageIndex >= targetIdx;
+  1208→      return (
+  1209→        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 p-1.5">
+  1210→          <div className="flex items-center justify-between text-amber-300/90">
+  1211→            <span className="font-semibold">Stage</span>
+  1212→            <span>Current: {cap(curStageId || "")} · need {cap(cond.stage)}</span>
+  1213→          </div>
+  1214→          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
+  1215→            <div className="h-full bg-amber-400/80 transition-all" style={{ width: `${reached ? 100 : (stageIndex / Math.max(targetIdx, 1)) * 100}%` }} />
+  1216→          </div>
+  1217→        </div>
+  1218→      );
+  1219→    }
+  1220→    case "clearStage": {
+  1221→      const targetIdx = STAGE_IDS.indexOf(cond.stage);
+  1222→      const cleared = stageIndex > targetIdx;
+  1223→      const pct = cleared ? 100 : Math.min(100, (stageIndex / Math.max(targetIdx + 1, 1)) * 100);
+  1224→      return (
+  1225→        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 p-1.5">
+  1226→          <div className="flex items-center justify-between text-amber-300/90">
+  1227→            <span className="font-semibold">Clear stage</span>
+  1228→            <span>{cleared ? "Cleared!" : `At ${cap(curStageId || "")} — need to evolve past ${cap(cond.stage)}`}</span>
+  1229→          </div>
+  1230→          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
+  1231→            <div className="h-full bg-amber-400/80 transition-all" style={{ width: `${pct}%` }} />
+  1232→          </div>
+  1233→        </div>
+  1234→      );
+  1235→    }
+  1236→    case "reachGalactic": {
+  1237→      const totalStages = STAGES.length;
+  1238→      const pct = Math.min(100, ((stageIndex + 1) / totalStages) * 100);
+  1239→      const reached = stageIndex >= totalStages - 1;
+  1240→      return (
+  1241→        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 p-1.5">
+  1242→          <div className="flex items-center justify-between text-amber-300/90">
+  1243→            <span className="font-semibold">Reach Galactic</span>
+  1244→            <span>{reached ? "Galactic!" : `Stage ${stageIndex + 1}/${totalStages}`}</span>
+  1245→          </div>
+  1246→          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
+  1247→            <div className="h-full bg-amber-400/80 transition-all" style={{ width: `${pct}%` }} />
+  1248→          </div>
+  1249→        </div>
+  1250→      );
+  1251→    }
+  1252→    default:
+  1253→      return null;
+  1254→  }
+  1255→}
+  1256→

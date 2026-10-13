@@ -3787,3 +3787,26 @@ Stage Summary:
 - Event popups no longer interrupt L2+ players.
 - EP displays compactly. "Worlds" terminology consistent. Galactic wins hidden.
 - 0 lint errors. Dev server HTTP 200.
+
+---
+Task ID: IMPLEMENTATION-STATUS-CHECKPOINT
+Agent: main
+Task: Checkpoint after trials redesign + L4 galaxy claim + partial L5/L6
+
+Work Log:
+- **TRIALS-REDESIGN** (subagent): COMPLETED. All 10 trials redesigned as run modifiers with 5-level scaling (10 with challenge_mastery upgrade). New state: activeTrial, trialLevel, trialModifiers, trialRuntime, completedTrials, trialAutobuyerUnlocked. Old mini-game realm state removed. Migration handles old saves.
+- **L4-GALAXY-CLAIM** (subagent): COMPLETED. 50 star systems in a hex-spiral layout. Each claimed system = +10 worlds (cap 1000 at L4). Scan/claim actions. GenesisModal fully redesigned with SVG hex grid. DivineEnginePanel updated with galaxy breakdown.
+- **L5-GALACTIC-CONQUEST** (subagent): PARTIAL. Data file `galaxies.ts` created (7-11 rival galaxies, 500 systems, 18 worlds each = 9000 new). But the subagent exceeded max turns before fully wiring the store actions, tick logic, and ApotheosisModal UI redesign.
+- **L6-UNIVERSAL-MAP** (subagent): PARTIAL. Data file `universalMap.ts` created (50 galaxies, 5000 new systems, 198 worlds each = 990000 new). But the subagent exceeded max turns before fully wiring the store actions, tick logic, and SingularityModal UI redesign.
+- 0 lint errors (7 warnings — 1 new, likely from the partial L5/L6 work). Dev server HTTP 200. Game renders correctly.
+
+Stage Summary:
+- Trials + L4 are fully implemented and working.
+- L5 and L6 have data files but incomplete store wiring + UI. Need follow-up.
+- Remaining work for the cron job / next session:
+  1. Complete L5: wire store actions (attackGalaxy, per-galaxy heresy), tick logic (per-galaxy heresy spread + system loss), ApotheosisModal redesign (cosmic map + galaxy tabs with heresy pulsing).
+  2. Complete L6: wire store actions (closeRift, placeRealityAnchor, attackUniversalGalaxy), tick logic (rift spawning + corruption spread), SingularityModal redesign (universal map + rift/anchor UI).
+  3. Implement L7: Creature Lab + Skirmish Arena + heresy auto-buyer.
+  4. Implement L10: Genesis Engine (crucible + divine relics + 100 archetypes + ending screen) — AFTER L1-L9 done to set divinity costs.
+  5. Implement PP shop layer tabs + automation chain (EP nested under PP, EP auto-converter hides EP resource).
+  6. Divine engine caps (500→1000→10000→1M) — partially done in L4, need L5/L6 caps wired.
