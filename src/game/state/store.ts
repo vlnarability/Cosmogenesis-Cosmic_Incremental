@@ -1011,13 +1011,16 @@ export const useGameStore = create<GameStore>()(
           (s as any)._lastAchCheck = newTime; // not persisted, just a runtime marker
         }
 
-        // Random event firing — only if no popup/modal is active, and not blocked by challenge
+        // Random event firing — only if no popup/modal is active, and not blocked by challenge.
+        // LAYER FILTER: At L2+ (enlightenment unlocked), the base game runs in the background
+        // and cell-galactic events no longer fire — the player is focused on the divine layers.
         let activeEvent = s.activeEvent;
         let eventCooldown = (s.eventCooldown || 0) - realDt;
         if (eventCooldown < 0) eventCooldown = 0;
         const eventFreq = s.eventFrequency || "normal";
         const eventsAllowed = !challengeDebuff.disableEvents;
-        if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0) {
+        const isL2Plus = !!(s.unlockedLayers?.enlightenment);
+        if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0 && !isL2Plus) {
           const stageId = STAGES[s.stageIndex].id;
           const possible = eventsForStage(stageId, newTime);
           if (possible.length > 0) {
