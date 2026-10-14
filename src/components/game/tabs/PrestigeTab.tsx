@@ -179,6 +179,19 @@ export function PrestigeTab() {
   const oldGodsDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
   const archetypesDiscovered = Object.values(discoveredArchetypes).filter(Boolean).length;
 
+  if (!galacticWins || galacticWins < 1) {
+    return (
+      <Card className="glass-panel">
+        <CardContent className="py-12 text-center">
+          <Crown className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            Reach the Galactic stage and prestige for the first time to unlock the prestige layer roadmap.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Auto-running banner — shown when the player owns any auto-buyer upgrade */}
@@ -559,32 +572,53 @@ export function PrestigeTab() {
         </CardContent>
       </Card>
 
-      {/* Layer roadmap (full 10-layer overview) */}
+      {/* Locked layers — show as ??? teasers (only next 1-2, not all) */}
       <Card className="glass-panel">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Prestige Roadmap (Long-term)</CardTitle>
+          <CardTitle className="text-sm">What Lies Beyond</CardTitle>
           <CardDescription>
-            10 layers, each a different system. From the first spark to Eternity.
+            The next layers await. Unlock conditions hidden until discovered.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-1.5">
-            {PRESTIGE_LAYERS.map((layer, idx) => {
-              const unlocked = isLayerUnlocked(layer, {
-                galacticWins,
-                totalRuns,
-                unlockedLayers,
-                challengesCompletedCount,
-              });
-              return (
-                <LayerRow
-                  key={layer.id}
-                  layer={layer}
-                  unlocked={unlocked}
-                  isLast={idx === PRESTIGE_LAYERS.length - 1}
-                />
-              );
-            })}
+            {PRESTIGE_LAYERS
+              .filter((layer) => {
+                // Show only the next 1-2 locked layers (not all 10)
+                const unlocked = isLayerUnlocked(layer, {
+                  galacticWins,
+                  totalRuns,
+                  unlockedLayers,
+                  challengesCompletedCount,
+                });
+                if (unlocked) return false;
+                // Show only layers whose previous layer is unlocked
+                const idx = PRESTIGE_LAYERS.findIndex((l) => l.id === layer.id);
+                if (idx === 0) return false;
+                const prev = PRESTIGE_LAYERS[idx - 1];
+                const prevUnlocked = isLayerUnlocked(prev, {
+                  galacticWins,
+                  totalRuns,
+                  unlockedLayers,
+                  challengesCompletedCount,
+                });
+                return prevUnlocked;
+              })
+              .slice(0, 2) // max 2 teasers
+              .map((layer) => (
+                <div key={layer.id} className="flex items-center gap-2 p-2 rounded-md border border-border/40 bg-muted/20">
+                  <span className="text-lg opacity-30">?</span>
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-muted-foreground">??? — Locked</div>
+                    <div className="text-[0.65rem] text-muted-foreground/60">Unlock by progressing through the current layer</div>
+                  </div>
+                </div>
+              ))}
+            {PRESTIGE_LAYERS.every((l) => isLayerUnlocked(l, { galacticWins, totalRuns, unlockedLayers, challengesCompletedCount })) && (
+              <div className="text-xs text-muted-foreground italic text-center py-2">
+                All layers unlocked.
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

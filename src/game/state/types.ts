@@ -429,6 +429,7 @@ export interface GameState {
   lastPurchaseError: { message: string; ts: number } | null;
   activeStoryPopup: string | null;
   activeEvent: string | null; // ID of the currently-offered random event
+  eventTimer: number; // seconds remaining before auto-resolve (60s timeout with default choice)
   eventCooldown: number; // seconds until next event can fire
   eventHistory: EventHistoryEntry[]; // log of past event choices this run
   hasSeenIntro: boolean;
@@ -611,6 +612,7 @@ export interface GameStore extends GameState {
   debugUnlockAll: () => void;
   debugFreeBuy: boolean;
   toggleDebugFreeBuy: () => void;
+  triggerDebugEvent: (eventId: string | "random") => void;
 
   // Layer 2 — Enlightenment (Foresight / Constellation Map)
   setShowEnlightenment: (v: boolean) => void;

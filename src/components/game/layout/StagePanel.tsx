@@ -4,6 +4,7 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
 import { formatNumber } from "../shared/format";
+import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -188,46 +189,22 @@ export function StagePanel() {
 
         {isLocked ? (
           <LockedArchetypeDisplay archId={lockedArchetype!} />
-        ) : hasAffinity && archInsight ? (
-          <div className="space-y-1.5">
-            {ARCHETYPES
-              .filter((a) => (archetypeAffinity[a.id] || 0) > 0)
-              .sort((a, b) => (archetypeAffinity[b.id] || 0) - (archetypeAffinity[a.id] || 0))
-              .map((a) => {
-                const v = archetypeAffinity[a.id] || 0;
-                const pct = totalAffinity > 0 ? (v / totalAffinity) * 100 : 0;
-                const isDom = a.id === domArch;
-                return (
-                  <div key={a.id} className="flex items-center gap-2">
-                    <span
-                      className="text-xs font-mono w-5 text-center"
-                      style={{ color: a.color }}
-                    >
-                      {a.glyph}
-                    </span>
-                    <span className={`text-xs w-20 shrink-0 ${isDom ? "font-bold" : ""}`} style={{ color: isDom ? a.color : undefined }}>
-                      {a.name}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                      <div
-                        className="h-full transition-all"
-                        style={{ width: `${pct}%`, background: a.color }}
-                      />
-                    </div>
-                    <span className="text-[0.65rem] text-muted-foreground w-8 text-right tabular-nums">
-                      {v.toFixed(0)}
-                    </span>
-                  </div>
-                );
-              })}
+        ) : hasAffinity ? (
+          <div className="space-y-2">
+            <ArchetypeRadar
+              affinity={archetypeAffinity}
+              lockedArchetype={lockedArchetype}
+              archInsight={archInsight}
+              size={180}
+            />
             {stageIndex < 1 && (
-              <p className="text-[0.65rem] text-muted-foreground italic mt-1">
+              <p className="text-[0.65rem] text-muted-foreground italic text-center">
                 Lineage locks at Creature → Tribal evolution
               </p>
             )}
-            {stageIndex >= 1 && (
-              <p className="text-[0.65rem] text-amber-400 italic mt-1">
-                Will lock as {ARCHETYPE_MAP[domArch!]?.name} on evolution
+            {stageIndex >= 1 && domArch && (
+              <p className="text-[0.65rem] text-amber-400 italic text-center">
+                Will lock as {ARCHETYPE_MAP[domArch]?.name} on evolution
               </p>
             )}
           </div>

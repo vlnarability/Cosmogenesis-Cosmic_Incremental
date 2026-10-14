@@ -490,6 +490,7 @@ function initialMetaState(): Partial<GameState> {
     lastPurchaseError: null,
     activeStoryPopup: "first_spark",
     activeEvent: null,
+    eventTimer: 0, // 60s countdown — auto-resolves with default choice when it hits 0
     eventCooldown: 60, // first event can fire after 60s
     eventHistory: [],
     hasSeenIntro: false,
@@ -1051,9 +1052,29 @@ export const useGameStore = create<GameStore>()(
         // Random event firing — only if no popup/modal is active, and not blocked by challenge.
         // LAYER FILTER: At L2+ (enlightenment unlocked), the base game runs in the background
         // and cell-galactic events no longer fire — the player is focused on the divine layers.
+        // EVENT TIMEOUT: If an event is active and the player doesn't choose within 60s,
+        // auto-resolve with the default (first) choice.
         let activeEvent = s.activeEvent;
         let eventCooldown = (s.eventCooldown || 0) - realDt;
         if (eventCooldown < 0) eventCooldown = 0;
+        let eventTimer = s.eventTimer || 0;
+        // Countdown active event timer — auto-resolve at 0
+        if (activeEvent) {
+          eventTimer -= realDt;
+          if (eventTimer <= 0) {
+            // Auto-resolve with the default (first) choice
+            const evDef = EVENT_MAP[activeEvent];
+            if (evDef && evDef.choices.length > 0) {
+              const defaultChoice = evDef.choices[0];
+              setTimeout(() => {
+                get().resolveEvent(activeEvent, defaultChoice.id);
+                get().addToLog(`Event "${evDef.name}" auto-resolved with default choice: ${defaultChoice.label}.`);
+              }, 0);
+            }
+            activeEvent = null;
+            eventTimer = 0;
+          }
+        }
         const eventFreq = s.eventFrequency || "normal";
         const eventsAllowed = !challengeDebuff.disableEvents;
         const isL2Plus = !!(s.unlockedLayers?.enlightenment);
@@ -1068,6 +1089,7 @@ export const useGameStore = create<GameStore>()(
               cum += ev.weight;
               if (roll < cum) {
                 activeEvent = ev.id;
+                eventTimer = 60; // 60s to choose, else auto-resolve
                 const base = eventFreq === "frequent" ? 30 : 90;
                 const range = eventFreq === "frequent" ? 30 : 90;
                 eventCooldown = base + Math.random() * range;
@@ -2316,6 +2338,7 @@ export const useGameStore = create<GameStore>()(
           achievements,
           newAchievements,
           activeEvent,
+          eventTimer,
           eventCooldown,
           ownedSystems,
           systemEnabled,
@@ -5132,17 +5155,17 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if ((s.prestigePoints || 0) < cost) {
+        if (!s.debugFreeBuy && (s.prestigePoints || 0) < cost) {
           // P7 — Error state: surface insufficient Prestige Points.
           get().notifyPurchaseError("Not enough Prestige Points");
           return;
         }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          prestigePoints: (s.prestigePoints || 0) - cost,
+          prestigePoints: s.debugFreeBuy ? s.prestigePoints : (s.prestigePoints || 0) - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}) for ${cost} Prestige Points.`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1})${s.debugFreeBuy ? " (DEBUG: free)" : ` for ${cost} Prestige Points`}.`);
       },
 
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
@@ -5322,6 +5345,33 @@ export const useGameStore = create<GameStore>()(
         const next = !s.debugFreeBuy;
         set({ debugFreeBuy: next });
         get().addToLog(next ? "DEBUG: Free Buy ENABLED — all purchases cost 0." : "DEBUG: Free Buy disabled.");
+      },
+
+      // DEBUG: Trigger Event — force an event to fire immediately (random or specific).
+      triggerDebugEvent: (eventId) => {
+        const s = get();
+        if (s.activeEvent) {
+          get().addToLog("DEBUG: An event is already active — resolve it first.");
+          return;
+        }
+        const stageId = STAGES[s.stageIndex].id;
+        const possible = eventsForStage(stageId, s.time);
+        if (possible.length === 0) {
+          get().addToLog("DEBUG: No events available for the current stage.");
+          return;
+        }
+        let pick;
+        if (eventId === "random") {
+          pick = possible[Math.floor(Math.random() * possible.length)];
+        } else {
+          pick = possible.find((e) => e.id === eventId) || possible[0];
+        }
+        set({
+          activeEvent: pick.id,
+          eventTimer: 60,
+          eventCooldown: 0,
+        });
+        get().addToLog(`DEBUG: Triggered event "${pick.name}".`);
       },
 
       saveGame: () => {
