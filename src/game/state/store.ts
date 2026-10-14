@@ -74,6 +74,16 @@ import {
   allBloodPactsUsed,
 } from "../data/transcendence";
 import {
+  PORTFOLIOS,
+  PORTFOLIO_MAP,
+  PORTFOLIO_PRICE_MIN,
+  PORTFOLIO_PRICE_MAX,
+  PORTFOLIO_PRICE_START,
+  PORTFOLIO_PRICE_DRIFT,
+  portfolioDividendsPerSec,
+  totalAllocatedWorlds,
+} from "../data/marketPortfolios";
+import {
   CRADLE_WORLDS,
   PRIME_CONDITIONS,
   SACRED_GEOGRAPHIES,
@@ -616,6 +626,18 @@ function initialMetaState(): Partial<GameState> {
     marketCrashTimer: 120,
     marketCrashActive: false,
     marketCrashDuration: 0,
+    // Layer 3 — DIVINE INVESTMENT MARKET (new design). Worlds (background sims)
+    // allocated to the 5 portfolios in src/game/data/marketPortfolios.ts.
+    // Each portfolio pays dividends × baseYield × peakProductionRate × 0.01 per
+    // sec; riskier portfolios may crash & consume worlds. See the portfolio tick
+    // block below + the `allocateWorlds` / `deallocateWorlds` / `buyStarFromMarket`
+    // actions.
+    portfolioAllocations: {},
+    portfolioLockTimers: {},
+    portfolioPrices: Object.fromEntries(
+      PORTFOLIOS.map((p) => [p.id, PORTFOLIO_PRICE_START])
+    ),
+    portfolioDividendsEarned: 0,
     // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems in the L4 redesign).
     // `worldGrid` + `worldGridSeeds` kept as empty arrays for save-shape compat.
     worldGrid: Array(20).fill(null),
@@ -992,11 +1014,20 @@ export const useGameStore = create<GameStore>()(
         let technologies = s.technologies;
         let totalTechResearched = s.totalTechResearched || 0;
 
+        // FIX-AUTOBUYERS-TRIALS — Autobuyers must NOT run during an active trial
+        // realm (L1 mini-game) unless the player has already completed that
+        // realm at least once. `trialRealmsCompleted` gates the unlock per-realm
+        // (the per-realm completion record is the source of truth — once a
+        // realm has been beaten, its autobuyer exemption is permanent).
+        const trialAutobuyersBlocked =
+          !!(s.activeTrialRealm) &&
+          !(s.trialRealmsCompleted?.[s.activeTrialRealm] ?? false);
+
         // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
         // Player MUST purchase the auto_system_buyer shop upgrade (8 EP) to enable.
         const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0;
         const systemBuyerInterval = 8;
-        if (hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
+        if (!trialAutobuyersBlocked && hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
           const maxSystemsCap = challengeDebuff.maxSystems ?? Infinity;
@@ -1053,7 +1084,7 @@ export const useGameStore = create<GameStore>()(
         // Player MUST purchase the auto_tech_buyer shop upgrade (10 EP) to enable.
         const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0;
         const techBuyerInterval = 12;
-        if (hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
+        if (!trialAutobuyersBlocked && hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const disableTech = !!challengeDebuff.disableTech;
           const disableMilitary = !!challengeDebuff.disableMilitary;
@@ -1110,7 +1141,7 @@ export const useGameStore = create<GameStore>()(
         // Threshold scales with level: 1.2, 1.4, 1.6, 1.8, 2.0, 2.2 (auto-evolves EARLIER as level rises).
         const autoEvolveLvl = s.upgrades["auto_evolver"] || 0;
         const hasAutoEvolver = autoEvolveLvl > 0;
-        if (hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
+        if (!trialAutobuyersBlocked && hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
           autoTimers.evolve = newTime;
           const stage = STAGES[s.stageIndex];
           const next = nextStage(stage.id);
@@ -1582,18 +1613,35 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog("All 4 Blood Pacts performed. Genesis layer unlocked."), 0);
           }
         }
-        // Layer 5 (Apotheosis): authored at least 1 world config
+        // Layer 5 (Apotheosis): L4 redesign — completing the galaxy (all 50 systems
+        // claimed) unlocks L5. The old "authored 1 world" condition is kept as a
+        // fallback for save-compat (older saves that authored a world but didn't
+        // complete the galaxy can still progress).
         if (unlockedLayers.genesis && !unlockedLayers.apotheosis) {
-          if (hasAuthoredWorld(s.authoredWorlds || [])) {
+          const galaxyDone = isGalaxyComplete(s.galaxySystems || []);
+          const authoredDone = hasAuthoredWorld(s.authoredWorlds || []);
+          if (galaxyDone || authoredDone) {
             unlockedLayers = { ...unlockedLayers, apotheosis: true };
-            setTimeout(() => get().addToLog("First world authored. Apotheosis layer unlocked."), 0);
+            setTimeout(
+              () => get().addToLog(
+                galaxyDone
+                  ? "Galaxy fully claimed. Apotheosis layer unlocked."
+                  : "First world authored. Apotheosis layer unlocked."
+              ),
+              0
+            );
           }
         }
-        // Layer 6 (Singularity): enacted 3+ divine laws
+        // Layer 6 (Singularity): 3 galaxies conquered OR 3 divine laws enacted.
+        // FIX-AUTOBUYERS-TRIALS — previously used `hasEnactedThreeLaws` alone.
+        // Spec now also accepts `countConqueredGalaxies >= GALAXIES_REQUIRED_FOR_L6`
+        // (3 rival galaxies fully conquered). Either condition unlocks L6.
         if (unlockedLayers.apotheosis && !unlockedLayers.singularity) {
-          if (hasEnactedThreeLaws(s.enactedDivineLaws || {})) {
+          const conqueredCount = countConqueredGalaxies(s.galaxyRivalSystems || {});
+          const threeLawsEnacted = hasEnactedThreeLaws(s.enactedDivineLaws || {});
+          if (conqueredCount >= GALAXIES_REQUIRED_FOR_L6 || threeLawsEnacted) {
             unlockedLayers = { ...unlockedLayers, singularity: true };
-            setTimeout(() => get().addToLog("3 Divine Laws enacted. Singularity layer unlocked."), 0);
+            setTimeout(() => get().addToLog(`3 galaxies conquered (or 3 divine laws enacted). Singularity layer unlocked.`), 0);
           }
         }
         // Layer 7 (Omnipotence): L6 Universal Map complete (20 rifts closed + 10 anchors placed)
@@ -2381,6 +2429,103 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // ===== DIVINE INVESTMENT MARKET (new L3 design) =====
+        // Each background simulation can be allocated to one of 5 portfolios
+        // (see src/game/data/marketPortfolios.ts). Allocated worlds pay Divinity
+        // dividends = allocatedWorlds × portfolio.baseYield × peakProductionRate
+        // × 0.01 per sec. Riskier portfolios may crash (per-tick roll vs.
+        // portfolio.crashChance) and consume `crashLoss × allocatedWorlds`
+        // worlds. Stability Bonds lock worlds for 120s on allocation. Portfolio
+        // prices random-walk ±1 per tick (clamped 50–200) — currently cosmetic
+        // (drives the buy-low / sell-high sparkline on the card).
+        let portfolioAllocations = { ...(s.portfolioAllocations || {}) };
+        let portfolioLockTimers = { ...(s.portfolioLockTimers || {}) };
+        let portfolioPrices = { ...(s.portfolioPrices || {}) };
+        let portfolioDividendsEarned = s.portfolioDividendsEarned || 0;
+        // Defensive: ensure every portfolio has a starting price (50–200, init 100).
+        for (const p of PORTFOLIOS) {
+          if (typeof portfolioPrices[p.id] !== "number") {
+            portfolioPrices[p.id] = PORTFOLIO_PRICE_START;
+          }
+          if (typeof portfolioAllocations[p.id] !== "number") {
+            portfolioAllocations[p.id] = 0;
+          }
+        }
+        if (unlockedLayers.transcendence) {
+          // Pool of worlds the player has available — total minus already allocated.
+          // We use `backgroundSimulations` (the value computed THIS tick) so the
+          // cap stays in sync with the world count shown everywhere else.
+          const allocatedNow = totalAllocatedWorlds(portfolioAllocations);
+          const availableWorlds = Math.max(0, backgroundSimulations - allocatedNow);
+          // If the world pool shrank (e.g. player lost galaxies) and
+          // allocations now exceed the total, proportionally trim each
+          // portfolio's allocation down so the totals stay valid.
+          if (allocatedNow > backgroundSimulations && backgroundSimulations > 0) {
+            const trimRatio = backgroundSimulations / allocatedNow;
+            for (const p of PORTFOLIOS) {
+              portfolioAllocations[p.id] = Math.floor(
+                (portfolioAllocations[p.id] || 0) * trimRatio
+              );
+            }
+          }
+          // Track deferred log messages so we don't call setState mid-loop.
+          const portfolioLogs: string[] = [];
+          // Per-tick price random walk (±1 clamped 50–200). Cheap & expensive
+          // labels in the UI are derived from this signal.
+          for (const p of PORTFOLIOS) {
+            const cur = portfolioPrices[p.id] ?? PORTFOLIO_PRICE_START;
+            const drift = (Math.random() - 0.5) * PORTFOLIO_PRICE_DRIFT;
+            const next = Math.max(
+              PORTFOLIO_PRICE_MIN,
+              Math.min(PORTFOLIO_PRICE_MAX, cur + drift)
+            );
+            portfolioPrices[p.id] = next;
+          }
+          // Dividends + crash rolls for each portfolio with allocated worlds.
+          // We only process portfolios the player has invested in (alloc > 0)
+          // OR that are still locked down (Stability Bonds timer > 0).
+          for (const p of PORTFOLIOS) {
+            // Decrement lock timer for Stability Bonds (and any future locked
+            // portfolio) regardless of allocation — keeps the timer honest.
+            if ((portfolioLockTimers[p.id] || 0) > 0) {
+              portfolioLockTimers[p.id] = Math.max(
+                0,
+                (portfolioLockTimers[p.id] || 0) - realDt
+              );
+            }
+            const alloc = Math.max(0, Math.floor(portfolioAllocations[p.id] || 0));
+            if (alloc <= 0) continue;
+            // Dividends = allocatedWorlds × baseYield × peakProductionRate × 0.01 × realDt
+            // (×0.01 mirrors the 1%-of-peak-per-world background simulation rule.)
+            const dividends = portfolioDividendsPerSec(p, alloc, peakProductionRate) * realDt;
+            if (dividends > 0) {
+              divinity += dividends;
+              portfolioDividendsEarned += dividends;
+            }
+            // Crash roll — only when peakProductionRate > 0 (otherwise the
+            // portfolio is producing nothing, so crashes feel pointless).
+            if (peakProductionRate > 0 && p.crashChance > 0 && Math.random() < p.crashChance) {
+              const worldsLost = Math.max(1, Math.floor(alloc * p.crashLoss));
+              portfolioAllocations[p.id] = Math.max(0, alloc - worldsLost);
+              if (p.crashLoss >= 1.0) {
+                portfolioLogs.push(
+                  `👁️ Old God Futures CRASHED — ${worldsLost} worlds lost to the void.`
+                );
+              } else {
+                portfolioLogs.push(
+                  `${p.icon} ${p.name} crashed — lost ${worldsLost} worlds (${(p.crashLoss * 100).toFixed(0)}% of allocation).`
+                );
+              }
+            }
+          }
+          // Surface the available-worlds pool as a one-line runtime marker so
+          // the modal can show a "free worlds" hint without recomputing.
+          void availableWorlds;
+          for (const msg of portfolioLogs) {
+            setTimeout(() => get().addToLog(msg), 0);
+          }
+        }
+
         // ===== PP-SHOP-TABS — UNIVERSAL AUTO-BUYER TICK =====
         // Each auto-buyer is a universal upgrade (purchased with Prestige Points).
         // The auto-buyer for layer N unlocks when layer N+1 is unlocked (chain spec).
@@ -2391,7 +2536,7 @@ export const useGameStore = create<GameStore>()(
         // the timer simply advances with no work done.
 
         // ---- auto_light_stars (L3+ unlocked): cheapest affordable constellation star ----
-        if ((s.upgrades["auto_light_stars"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_light_stars"] || 0) > 0
             && s.unlockedLayers?.transcendence
             && newTime - (autoTimers.light_stars || 0) >= 20) {
           autoTimers.light_stars = newTime;
@@ -2448,7 +2593,7 @@ export const useGameStore = create<GameStore>()(
 
         // ---- auto_claim_systems (L5+ unlocked): attack the cheapest affordable
         //      unclaimed system — L5 rival galaxy OR L6 NEW galaxy (whichever is cheaper) ----
-        if ((s.upgrades["auto_claim_systems"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_claim_systems"] || 0) > 0
             && s.unlockedLayers?.apotheosis
             && newTime - (autoTimers.claim_systems || 0) >= 15) {
           autoTimers.claim_systems = newTime;
@@ -2497,7 +2642,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_manage_heresy (L7+ unlocked): convert heretics across owned galaxies ----
-        if ((s.upgrades["auto_manage_heresy"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_manage_heresy"] || 0) > 0
             && s.unlockedLayers?.omnipotence
             && newTime - (autoTimers.manage_heresy || 0) >= 15) {
           autoTimers.manage_heresy = newTime;
@@ -2525,7 +2670,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_place_anchors (L7+ unlocked): place anchor on random unanchored galaxy ----
-        if ((s.upgrades["auto_place_anchors"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_place_anchors"] || 0) > 0
             && s.unlockedLayers?.omnipotence
             && newTime - (autoTimers.place_anchors || 0) >= 60) {
           autoTimers.place_anchors = newTime;
@@ -2541,7 +2686,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_negotiate (L9+ unlocked): negotiate with first available minor god ----
-        if ((s.upgrades["auto_negotiate"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_negotiate"] || 0) > 0
             && s.unlockedLayers?.infinity
             && newTime - (autoTimers.negotiate || 0) >= 30) {
           autoTimers.negotiate = newTime;
@@ -2564,7 +2709,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_attack_old_gods (L10+ unlocked): attack every active Old God battle ----
-        if ((s.upgrades["auto_attack_old_gods"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_attack_old_gods"] || 0) > 0
             && s.unlockedLayers?.eternity
             && newTime - (autoTimers.attack_old_gods || 0) >= 10) {
           autoTimers.attack_old_gods = newTime;
@@ -2579,7 +2724,7 @@ export const useGameStore = create<GameStore>()(
         // ---- auto_author_universes (L10 finished — Genesis Engine): reveal a
         // random unrevealed rule name on a random owned relic every 120s.
         // (Re-purposed from the legacy "fill universe slot" action.)
-        if ((s.upgrades["auto_author_universes"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_author_universes"] || 0) > 0
             && s.unlockedLayers?.eternity
             && !s.universeSimulating
             && newTime - (autoTimers.author_universes || 0) >= 120) {
@@ -2695,6 +2840,11 @@ export const useGameStore = create<GameStore>()(
           marketCrashTimer,
           marketCrashActive,
           marketCrashDuration,
+          // DIVINE INVESTMENT MARKET — allocations, lock timers, prices, lifetime dividends
+          portfolioAllocations,
+          portfolioLockTimers,
+          portfolioPrices,
+          portfolioDividendsEarned,
           // FEATURE 4 — Natural Disasters
           worldGrid,
           worldGridSeeds,
@@ -4452,6 +4602,115 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`💎 Offering: ${qty} ${resourceId} → +${gain} Divinity (price ${price.toFixed(1)}).`);
       },
 
+      // ---- Layer 3 — DIVINE INVESTMENT MARKET (new design) ----
+      /**
+       * Allocate `count` worlds from the available pool (backgroundSimulations −
+       * already allocated) into the named portfolio. For Stability Bonds the
+       * allocated worlds are locked for `portfolio.lockDuration` seconds —
+       * `deallocateWorlds` will refuse to remove them while the lock is active.
+       * Crashes happen passively inside the tick (see portfolio tick block).
+       */
+      allocateWorlds: (portfolioId, count) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const portfolio = PORTFOLIO_MAP[portfolioId];
+        if (!portfolio) return;
+        if (count <= 0) return;
+        // Pool of worlds available = current backgroundSimulations − already allocated.
+        // (s.backgroundSimulations is the value computed by the LAST tick — the
+        // tick recomputes it every frame and persists it on the state.)
+        const bg = s.backgroundSimulations || 0;
+        const allocatedNow = totalAllocatedWorlds(s.portfolioAllocations || {});
+        const available = Math.max(0, bg - allocatedNow);
+        if (available <= 0) return;
+        const toAllocate = Math.min(count, available);
+        if (toAllocate <= 0) return;
+        const allocations = { ...(s.portfolioAllocations || {}) };
+        const lockTimers = { ...(s.portfolioLockTimers || {}) };
+        allocations[portfolioId] = (allocations[portfolioId] || 0) + toAllocate;
+        // Stability Bonds lock the LATEST allocation (the whole portfolio's lock
+        // is refreshed so any deallocate-attempt during the lock window fails).
+        // We don't lock the lock for re-allocations to existing locked portfolios —
+        // that would let players extend locks accidentally. The lock only refreshes
+        // when the player adds MORE worlds to a portfolio that is currently unlocked.
+        if (portfolio.lockDuration && portfolio.lockDuration > 0) {
+          // Only (re)start the lock if the timer is already at 0 — this prevents
+          // a player from accidentally extending their lock by topping-up.
+          if ((lockTimers[portfolioId] || 0) <= 0) {
+            lockTimers[portfolioId] = portfolio.lockDuration;
+          }
+        }
+        set({
+          portfolioAllocations: allocations,
+          portfolioLockTimers: lockTimers,
+        });
+        get().addToLog(
+          `📈 Allocated ${toAllocate} world${toAllocate === 1 ? "" : "s"} to ${portfolio.name}.` +
+          (portfolio.lockDuration ? ` Locked for ${portfolio.lockDuration}s.` : "")
+        );
+      },
+
+      /**
+       * Move `count` worlds back from a portfolio into the available pool.
+       * Refused while Stability Bonds lock is active (timer > 0).
+       */
+      deallocateWorlds: (portfolioId, count) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const portfolio = PORTFOLIO_MAP[portfolioId];
+        if (!portfolio) return;
+        if (count <= 0) return;
+        const allocations = { ...(s.portfolioAllocations || {}) };
+        const have = Math.max(0, Math.floor(allocations[portfolioId] || 0));
+        if (have <= 0) return;
+        // Stability Bonds lock check.
+        if ((s.portfolioLockTimers?.[portfolioId] || 0) > 0) {
+          get().addToLog(
+            `🔒 ${portfolio.name} worlds are locked for ${Math.ceil(s.portfolioLockTimers![portfolioId]!)}s — cannot deallocate.`
+          );
+          return;
+        }
+        const toRemove = Math.min(count, have);
+        allocations[portfolioId] = have - toRemove;
+        set({ portfolioAllocations: allocations });
+        get().addToLog(
+          `📉 Deallocated ${toRemove} world${toRemove === 1 ? "" : "s"} from ${portfolio.name}.`
+        );
+      },
+
+      /**
+       * Speed-up shortcut to L2: spend Divinity on the cheapest affordable
+       * constellation star. Returns the purchased star (or null if none
+       * affordable). Bridges the L3 dividend economy back into L2.
+       */
+      buyStarFromMarket: () => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return null;
+        const cs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        let best: { cId: string; sId: string; cost: number } | null = null;
+        for (const c of CONSTELLATIONS) {
+          for (const st of c.stars) {
+            if (cs.constellationStars[st.id]) continue;
+            const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+            if (cost <= (s.divinity || 0) && (!best || cost < best.cost)) {
+              best = { cId: c.id, sId: st.id, cost };
+            }
+          }
+        }
+        if (!best) return null;
+        // Illuminate the star via the existing action (handles the cost deduction,
+        // constellation progress, PP gain, log message).
+        get().illuminateStar(best.cId, best.sId);
+        return { constellationId: best.cId, starId: best.sId, cost: best.cost };
+      },
+
       // ---- Layer 4 — Sacred Grid ----
       placeGridTile: (cellIndex, tileType) => {
         const s = get();
@@ -4482,6 +4741,67 @@ export const useGameStore = create<GameStore>()(
         if (!s.unlockedLayers?.genesis) return;
         set({ worldGrid: Array(20).fill(null), worldGridSeeds: Array(20).fill(null) });
         get().addToLog("🗺️ Sacred Grid reset.");
+      },
+
+      // ---- Layer 4 — Galaxy Claim (L4 redesign) ----
+      // scanGalaxySystem: reveal an unexplored system. Costs GALAXY_SCAN_COST
+      // Genesis Seeds (5). Idempotent if already explored/claimed or unreachable.
+      scanGalaxySystem: (systemId) => {
+        const s = get();
+        if (!s.unlockedLayers?.genesis) return;
+        const sys = GALAXY_SYSTEM_MAP[systemId];
+        if (!sys) return;
+        const galaxySystems = (s.galaxySystems || []).map((g) => ({ ...g }));
+        const state = galaxySystems.find((g) => g.id === systemId);
+        if (!state) return;
+        if (state.explored || state.claimed) return;
+        if ((s.genesisSeeds || 0) < GALAXY_SCAN_COST) {
+          get().addToLog(`📡 Need ${GALAXY_SCAN_COST} Genesis Seeds to scan ${sys.name}.`);
+          return;
+        }
+        state.explored = true;
+        set({
+          genesisSeeds: (s.genesisSeeds || 0) - GALAXY_SCAN_COST,
+          galaxySystems,
+        });
+        const rareLabel = sys.rareResource || "none";
+        get().addToLog(
+          `📡 Scanned ${sys.name}. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%. Rare: ${rareLabel}.`
+        );
+      },
+
+      // claimGalaxySystem: claim an explored-but-unclaimed system. Cost scales
+      // 1.15× per existing claim via `galaxyClaimCost(claimedCount)`. Each claim
+      // grants +10 worlds (counted in backgroundSimulations) and the system's
+      // production / capacity / EP / pop bonus (with adjacency synergy applied
+      // in the tick via `summarizeGalaxyBonuses`).
+      claimGalaxySystem: (systemId) => {
+        const s = get();
+        if (!s.unlockedLayers?.genesis) return;
+        const sys = GALAXY_SYSTEM_MAP[systemId];
+        if (!sys) return;
+        const galaxySystems = (s.galaxySystems || []).map((g) => ({ ...g }));
+        const state = galaxySystems.find((g) => g.id === systemId);
+        if (!state) return;
+        if (!state.explored) {
+          get().addToLog(`📡 Scan ${sys.name} before claiming.`);
+          return;
+        }
+        if (state.claimed) return;
+        const claimedCount = galaxySystems.filter((g) => g.claimed).length;
+        const cost = galaxyClaimCost(claimedCount);
+        if ((s.genesisSeeds || 0) < cost) {
+          get().addToLog(`⭐ Need ${cost} Genesis Seeds to claim ${sys.name}.`);
+          return;
+        }
+        state.claimed = true;
+        set({
+          genesisSeeds: (s.genesisSeeds || 0) - cost,
+          galaxySystems,
+        });
+        get().addToLog(
+          `⭐ Claimed ${sys.name}! +10 worlds. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%.`
+        );
       },
 
       // ---- Layer 5 — Heresy Web (per-galaxy) ----
@@ -6244,6 +6564,17 @@ export const useGameStore = create<GameStore>()(
         if (persisted.marketCrashTimer === undefined) persisted.marketCrashTimer = 120;
         if (persisted.marketCrashActive === undefined) persisted.marketCrashActive = false;
         if (persisted.marketCrashDuration === undefined) persisted.marketCrashDuration = 0;
+        // DIVINE INVESTMENT MARKET migration — initialize the 4 new portfolio
+        // state fields. Existing saves default to "no allocations, prices start
+        // at 100" so the modal renders cleanly on first open after upgrade.
+        if (!persisted.portfolioAllocations) persisted.portfolioAllocations = {};
+        if (!persisted.portfolioLockTimers) persisted.portfolioLockTimers = {};
+        if (!persisted.portfolioPrices) {
+          persisted.portfolioPrices = Object.fromEntries(
+            PORTFOLIOS.map((p) => [p.id, PORTFOLIO_PRICE_START])
+          );
+        }
+        if (persisted.portfolioDividendsEarned === undefined) persisted.portfolioDividendsEarned = 0;
         if (!persisted.worldGrid) persisted.worldGrid = Array(20).fill(null);
         if (!persisted.worldGridSeeds) persisted.worldGridSeeds = Array(20).fill(null);
         // FEATURE 4 — Natural Disasters migration

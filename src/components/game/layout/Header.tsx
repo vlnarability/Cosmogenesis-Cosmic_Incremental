@@ -5,7 +5,7 @@ import { STAGES } from "@/game/data/stages";
 import { RITUALS, RITUAL_MAP } from "@/game/data/transcendence";
 import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
 import { useActiveLayer, layerName, layerRank } from "@/game/state/layerHelpers";
-import { formatNumber, formatTime } from "../shared/format";
+import { formatNumber, formatCompact, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Pause, Play, FastForward, Save, Settings, Store, Clock, Check, Skull, Crown, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, Layers } from "lucide-react";
@@ -185,7 +185,10 @@ export function Header() {
               color="text-fuchsia-300"
             />
           )}
-          {galacticWins > 0 && (
+          {/* FIX-AUTOBUYERS-TRIALS — Galactic Wins chip hidden once L2 (Enlightenment
+              / Divine Engine) is unlocked. The DivineEnginePanel already hides it;
+              the Header must match to avoid showing a stale L1-era stat. */}
+          {galacticWins > 0 && !unlockedLayers?.enlightenment && (
             <HeaderStat
               label="Wins"
               value={formatNumber(galacticWins, 0)}

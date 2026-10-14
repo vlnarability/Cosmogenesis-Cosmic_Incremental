@@ -8,12 +8,26 @@ import {
   BLOOD_PACTS,
   offeringDivinityAtRepeat,
 } from "@/game/data/transcendence";
+import {
+  PORTFOLIOS,
+  PORTFOLIO_MAP,
+  PORTFOLIO_PRICE_MIN,
+  PORTFOLIO_PRICE_MAX,
+  portfolioDividendsPerSec,
+  totalAllocatedWorlds,
+  riskLabel,
+} from "@/game/data/marketPortfolios";
+import {
+  CONSTELLATIONS,
+  starCost,
+  type ConstellationState,
+} from "@/game/data/constellations";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Triangle, CheckCircle2, Clock, TrendingUp, TrendingDown, Coins } from "lucide-react";
-import { formatNumber, resourceName } from "../shared/format";
+import { Lock, Triangle, CheckCircle2, Clock, TrendingUp, TrendingDown, Coins, Globe, Star, AlertTriangle } from "lucide-react";
+import { formatNumber, formatCompact, resourceName } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 const MARKET_RESOURCES = ["food", "water", "materials", "science", "gold", "energy"] as const;
@@ -63,11 +77,76 @@ export function TranscendenceModal() {
   const marketCrashDuration = useGameStore((s) => s.marketCrashDuration || 0);
   const marketCrashTimer = useGameStore((s) => s.marketCrashTimer || 0);
 
+  // DIVINE INVESTMENT MARKET — new L3 design (portfolios)
+  const backgroundSimulations = useGameStore((s) => s.backgroundSimulations || 0);
+  const peakProductionRate = useGameStore((s) => s.peakProductionRate || 0);
+  const portfolioAllocations = useGameStore((s) => s.portfolioAllocations || {});
+  const portfolioLockTimers = useGameStore((s) => s.portfolioLockTimers || {});
+  const portfolioPrices = useGameStore((s) => s.portfolioPrices || {});
+  const portfolioDividendsEarned = useGameStore((s) => s.portfolioDividendsEarned || 0);
+  const allocateWorlds = useGameStore((s) => s.allocateWorlds);
+  const deallocateWorlds = useGameStore((s) => s.deallocateWorlds);
+  const buyStarFromMarket = useGameStore((s) => s.buyStarFromMarket);
+  // Constellation state for the "Buy Star" speed-up button — kept reactive so
+  // the cheapest-star preview updates as stars get lit.
+  const constellationStars = useGameStore((s) => s.constellationStars || {});
+  const constellationProgress = useGameStore((s) => s.constellationProgress || {});
+  const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
+  const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
+  const upgrades = useGameStore((s) => s.upgrades || {});
+
   const isUnlocked = !!unlockedLayers.transcendence;
   const pactsUsedCount = BLOOD_PACTS.filter((p) => bloodPactsUsed[p.id]).length;
 
   // Compute dividends (live from owned resource counts ≥ 100)
   const dividendsPerSec = MARKET_RESOURCES.filter((r) => (marketOwned[r] || 0) >= 100).length;
+
+  // DIVINE INVESTMENT MARKET — derived values for the portfolio section.
+  // Available worlds = current background-simulation count − worlds already
+  // allocated to any portfolio. (Total stays in sync with the world cap shown
+  // everywhere else because backgroundSimulations is recomputed every tick.)
+  const allocatedTotal = totalAllocatedWorlds(portfolioAllocations);
+  const availableWorlds = Math.max(0, Math.floor(backgroundSimulations) - allocatedTotal);
+  // Per-portfolio live dividends preview — matches the tick formula exactly
+  // (allocatedWorlds × baseYield × peakProductionRate × 0.01 per sec).
+  const portfolioDivsPerSec = (pid: string): number => {
+    const p = PORTFOLIO_MAP[pid];
+    if (!p) return 0;
+    return portfolioDividendsPerSec(p, portfolioAllocations[pid] || 0, peakProductionRate);
+  };
+  const totalPortfolioDivsPerSec = PORTFOLIOS.reduce(
+    (sum, p) => sum + portfolioDivsPerSec(p.id),
+    0
+  );
+  // Cheapest affordable unlit constellation star — powers the "Buy Star"
+  // speed-up button (spends Divinity on the L2 constellation map directly
+  // from the L3 market modal).
+  const cheapestStar = (() => {
+    const cs: ConstellationState = {
+      constellationStars,
+      constellationProgress,
+      constellationsStarted,
+      constellationsCompleted,
+    };
+    const fdLvl = (upgrades?.foresight_discount as number) || 0;
+    const foresightDiscountMult = Math.pow(0.80, fdLvl);
+    let best: { cId: string; sId: string; cost: number } | null = null;
+    for (const c of CONSTELLATIONS) {
+      for (const st of c.stars) {
+        if (cs.constellationStars[st.id]) continue;
+        const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+        if (!best || cost < best.cost) best = { cId: c.id, sId: st.id, cost };
+      }
+    }
+    return best;
+  })();
+  const canBuyCheapestStar = !!cheapestStar && divinity >= cheapestStar.cost;
+  // Portfolio price-trend label (cheap / fair / expensive vs the 50–200 band).
+  function portfolioPriceLabel(price: number): { text: string; tone: string } {
+    if (price <= PORTFOLIO_PRICE_MIN + 20) return { text: "cheap", tone: "text-emerald-300" };
+    if (price >= PORTFOLIO_PRICE_MAX - 20) return { text: "expensive", tone: "text-rose-300" };
+    return { text: "fair", tone: "text-amber-300" };
+  }
 
   // QUICK WIN 3 — combo display
   const comboActive = ritualComboTimer > 0;
@@ -100,13 +179,13 @@ export function TranscendenceModal() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
             <Triangle className="w-5 h-5" />
-            Layer 3 — Transcendence (Divine Market)
+            Layer 3 — Transcendence (Divine Investment Market)
             <BackgroundLayerBadge layerId="transcendence" />
           </DialogTitle>
           <DialogDescription asChild>
             <div className="flex items-center justify-between">
             <span>
-              Buy low, sell high. Sacrifice resources for Divinity. All 4 Blood Pacts unlock Genesis.
+              Allocate background worlds to investment portfolios for Divinity dividends. All 4 Blood Pacts unlock Genesis.
             </span>
             <div className="flex gap-1">
               <Badge variant="outline" className="text-violet-300 border-violet-400/40">
@@ -145,7 +224,180 @@ export function TranscendenceModal() {
               </div>
             )}
 
-            {/* Divine Market — the new mini-game */}
+            {/* DIVINE INVESTMENT MARKET — new L3 design. Worlds (background
+                simulations) are allocated across 5 portfolios that pay Divinity
+                dividends × their baseYield. Riskier portfolios may crash and
+                consume allocated worlds per tick. */}
+            <section className="stat-card">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
+                  <Globe className="w-3 h-3" /> Divine Investment Market
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  <Badge variant="outline" className="text-[0.6rem] text-sky-300 border-sky-400/40">
+                    🌍 {formatCompact(backgroundSimulations)} worlds
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-cyan-300 border-cyan-400/40">
+                    ✨ {formatCompact(availableWorlds)} free
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">
+                    💰 +{formatNumber(totalPortfolioDivsPerSec, 2)} Div/s
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
+                    🏆 {formatCompact(portfolioDividendsEarned)} lifetime
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-[0.65rem] text-muted-foreground mb-2 leading-snug">
+                Allocate background worlds across 5 investment portfolios. Each portfolio pays
+                Divinity dividends = worlds × yield × peak production × 1%. Riskier portfolios
+                can crash and consume worlds. Blood Pacts below act as margin calls — sacrifice
+                population to cover losses.
+              </div>
+
+              {/* Portfolio cards */}
+              <div className="space-y-1.5">
+                {PORTFOLIOS.map((p) => {
+                  const alloc = Math.max(0, Math.floor(portfolioAllocations[p.id] || 0));
+                  const price = portfolioPrices[p.id] || 100;
+                  const priceBand = portfolioPriceLabel(price);
+                  const divs = portfolioDivsPerSec(p.id);
+                  const lockT = portfolioLockTimers[p.id] || 0;
+                  const locked = lockT > 0;
+                  const hasWorldsToAllocate = availableWorlds > 0;
+                  const hasWorldsToDeallocate = alloc > 0 && !locked;
+                  // Crash warning badge — high & extreme risk portfolios only.
+                  const crashWarning =
+                    p.riskLevel === "extreme"
+                      ? "50% chance / tick to lose ALL"
+                      : p.riskLevel === "high"
+                        ? "30% chance / tick of −30%"
+                        : p.crashChance > 0
+                          ? `${Math.round(p.crashChance * 100)}% chance / tick of −${Math.round(p.crashLoss * 100)}%`
+                          : null;
+                  // Risk badge color token — matches the portfolio's `color`.
+                  const riskTone =
+                    p.riskLevel === "extreme" ? "text-amber-300 border-amber-400/40"
+                    : p.riskLevel === "high" ? "text-rose-300 border-rose-400/40"
+                    : p.riskLevel === "medium" ? "text-violet-300 border-violet-400/40"
+                    : p.riskLevel === "low" ? "text-emerald-300 border-emerald-400/40"
+                    : "text-sky-300 border-sky-400/40"; // zero
+                  return (
+                    <div key={p.id} className={`rounded-md border p-2 ${locked ? "border-sky-400/40 bg-sky-500/5" : "border-border bg-muted/10"}`}>
+                      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-lg shrink-0">{p.icon}</span>
+                          <span className="text-xs font-semibold truncate">{p.name}</span>
+                          <Badge variant="outline" className={`text-[0.55rem] capitalize ${riskTone}`}>
+                            {riskLabel(p.riskLevel)}
+                          </Badge>
+                          {locked && (
+                            <Badge className="text-[0.55rem] bg-sky-500/20 text-sky-300 border-sky-400/40">
+                              <Lock className="w-2.5 h-2.5 mr-0.5" /> {Math.ceil(lockT)}s
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <div className={`text-sm font-mono ${priceBand.tone}`}>
+                              {price.toFixed(0)}
+                            </div>
+                            <div className="text-[0.55rem] text-muted-foreground">
+                              {priceBand.text} · +{(p.baseYield * 100).toFixed(0)}% yield
+                            </div>
+                          </div>
+                          {/* Tiny price band (50–200). Bar fill is proportional to price. */}
+                          <div className="w-16 h-2 rounded-full bg-muted/40 overflow-hidden">
+                            <div
+                              className={`h-full ${price <= PORTFOLIO_PRICE_MIN + 20 ? "bg-emerald-400" : price >= PORTFOLIO_PRICE_MAX - 20 ? "bg-rose-400" : "bg-amber-400"}`}
+                              style={{ width: `${((price - PORTFOLIO_PRICE_MIN) / (PORTFOLIO_PRICE_MAX - PORTFOLIO_PRICE_MIN)) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-[0.6rem] text-muted-foreground leading-snug mb-1">{p.desc}</div>
+                      <div className="flex items-center justify-between mb-1 text-[0.6rem]">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[0.55rem] text-amber-300 border-amber-400/40">
+                            🌍 {alloc} worlds
+                          </Badge>
+                          <Badge variant="outline" className="text-[0.55rem] text-emerald-300 border-emerald-400/40">
+                            💰 +{formatNumber(divs, 2)} Div/s
+                          </Badge>
+                          {crashWarning && (
+                            <Badge variant="outline" className="text-[0.55rem] text-rose-300 border-rose-400/40 flex items-center gap-0.5">
+                              <AlertTriangle className="w-2.5 h-2.5" /> {crashWarning}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          disabled={!hasWorldsToAllocate}
+                          onClick={() => allocateWorlds(p.id, 1)}
+                          className="h-7 text-[0.65rem]"
+                        >
+                          +1
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={availableWorlds < 1}
+                          onClick={() => allocateWorlds(p.id, 10)}
+                          className="h-7 text-[0.65rem]"
+                        >
+                          +10
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!hasWorldsToAllocate}
+                          onClick={() => allocateWorlds(p.id, availableWorlds)}
+                          className="h-7 text-[0.65rem]"
+                        >
+                          +Max
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!hasWorldsToDeallocate}
+                          onClick={() => deallocateWorlds(p.id, alloc)}
+                          className="h-7 text-[0.65rem]"
+                        >
+                          −All
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Buy Star speed-up — bridges L3 dividend economy → L2 progress. */}
+              <div className="mt-2 rounded-md border border-amber-400/30 bg-amber-500/5 p-2 flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-300 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[0.7rem] font-medium text-amber-200">Buy Star from Market</div>
+                  <div className="text-[0.6rem] text-muted-foreground leading-snug">
+                    {cheapestStar
+                      ? <>Spend Divinity to light the cheapest unlit constellation star — {cheapestStar.cost} Div.</>
+                      : "All constellation stars are lit."}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={!canBuyCheapestStar}
+                  onClick={() => buyStarFromMarket()}
+                  className="h-7 text-[0.65rem] shrink-0"
+                >
+                  {cheapestStar ? `Light (${cheapestStar.cost} Div)` : "None"}
+                </Button>
+              </div>
+            </section>
+
+            {/* Divine Market — the legacy resource-trading mini-game */}
             <section className="stat-card">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -368,10 +620,19 @@ export function TranscendenceModal() {
         )}
 
         <Separator className="my-2" />
-        <div className="text-[0.65rem] text-muted-foreground px-1">
-          <span className="text-amber-300">Divine Market</span> prices drift every 10s — buy low and sell high to multiply your Divinity.
-          Owning 100+ of any market resource grants a passive <span className="text-emerald-300">Divine-dend</span> of +1 Div/s.
-          Perform all 4 Blood Pacts to unlock Layer 4 (Genesis).
+        <div className="text-[0.65rem] text-muted-foreground px-1 space-y-0.5">
+          <div>
+            <span className="text-amber-300">Divine Investment Market</span> — allocate background worlds
+            across 5 portfolios. Each portfolio pays Divinity dividends = worlds × yield × peak
+            production × 1%. Riskier portfolios crash more often. Blood Pacts below act as margin calls
+            (sacrifice population for Divinity to cover a crash).
+          </div>
+          <div>
+            <span className="text-amber-300">Legacy Divine Market</span> prices drift every 10s — buy low
+            and sell high to multiply your Divinity. Owning 100+ of any market resource grants a passive
+            <span className="text-emerald-300"> Divine-dend</span> of +1 Div/s.
+          </div>
+          <div>Perform all 4 Blood Pacts to unlock Layer 4 (Genesis).</div>
         </div>
         <div className="flex justify-end pt-2">
           <Button variant="outline" onClick={() => setShow(false)}>Close</Button>

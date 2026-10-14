@@ -492,6 +492,22 @@ export interface GameState {
   marketCrashTimer: number;                    // seconds until next crash check
   marketCrashActive: boolean;
   marketCrashDuration: number;                 // seconds remaining of crash
+  // Layer 3 — DIVINE INVESTMENT MARKET (new design). Worlds (background
+  // simulations) can be allocated across 5 investment portfolios (Growth,
+  // Transcendence, Chaos, Stability Bonds, Old God Futures). Each portfolio
+  // pays Divinity dividends × its baseYield, but riskier portfolios may crash
+  // and consume a fraction of allocated worlds. See src/game/data/marketPortfolios.ts.
+  /** portfolioId → number of worlds currently allocated to that portfolio. */
+  portfolioAllocations: Record<string, number>;
+  /** portfolioId → seconds remaining before worlds can be deallocated
+   *  (Stability Bonds lock worlds for 120s on allocation). */
+  portfolioLockTimers: Record<string, number>;
+  /** portfolioId → current price (random walk, 50–200; starts at 100). Buy low,
+   *  sell high — the price is currently cosmetic (drives the sparkline + the
+   *  "cheap / expensive" hint on the card). */
+  portfolioPrices: Record<string, number>;
+  /** Lifetime Divinity earned from portfolio dividends (META — display only). */
+  portfolioDividendsEarned: number;
   // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems below; worldGrid
   // kept as an empty array for save-shape compat). worldGridSeeds also legacy.
   worldGrid: Array<string | null>;             // LEGACY — 20 cells; no longer used
@@ -624,6 +640,10 @@ export interface GameStore extends GameState {
   setShowGenesis: (v: boolean) => void;
   setPendingWorldConfig: (cfg: Partial<WorldConfig>) => void;
   authorWorld: () => void;
+  /** Scan an unexplored galaxy system (L4). Costs GALAXY_SCAN_COST Genesis Seeds; reveals bonus + rare resource. */
+  scanGalaxySystem: (systemId: string) => void;
+  /** Claim an explored-but-unclaimed galaxy system (L4). Cost scales 1.15× per existing claim; +10 worlds + bonuses. */
+  claimGalaxySystem: (systemId: string) => void;
 
   // Layer 5 — Apotheosis
   setShowApotheosis: (v: boolean) => void;
@@ -744,6 +764,18 @@ export interface GameStore extends GameState {
   marketBuyResource: (resourceId: string, qty: number) => void;
   marketSellResource: (resourceId: string, qty: number) => void;
   marketOffering: (resourceId: string, qty: number) => void; // spend resource → gain Divinity scaled by price
+
+  // Layer 3 — DIVINE INVESTMENT MARKET (new design). Allocates worlds (from
+  // the background-simulation pool) to one of the 5 portfolios in
+  // src/game/data/marketPortfolios.ts. Each portfolio pays Divinity dividends
+  // × its baseYield per tick; riskier portfolios may crash and consume a
+  // fraction of the allocated worlds. See store.ts `tick` for the dividend
+  // and crash math.
+  allocateWorlds: (portfolioId: string, count: number) => void;
+  deallocateWorlds: (portfolioId: string, count: number) => void;
+  /** Spend Divinity to light the cheapest affordable constellation star.
+   *  Bridges the L3 dividend economy back into L2 (speed-up shortcut). */
+  buyStarFromMarket: () => { constellationId: string; starId: string; cost: number } | null;
 
   // Layer 4 — Sacred Grid
   placeGridTile: (cellIndex: number, tileType: string) => void;

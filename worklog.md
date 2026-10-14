@@ -4195,3 +4195,316 @@ Task: Comprehensive code review — verify what's ACTUALLY implemented vs claime
 ## Honest Verdict
 
 The game is **mechanically playable end-to-end** — all 10 layers have working data, store actions, tick integration, and UI modals. The user can advance from Cell to Galactic, prestige into L1 trials, light stars on the L2 constellation map, trade on L3, author worlds on L4 (via the OLD Sacred Grid), attack rival galaxies on L5 with the cosmic map, defend rifts on L6, breed creatures and skirmish on L7, negotiate with minor gods on L8, fight Old Gods with HP bars on L9, and trigger Big Bangs to discover archetypes on L10. The "fun" rating is 🔥 for 7 of 10 layers and 😐/🪲 for L3/L4/L8. **The #1 thing needed for launch: build the L4 hex-grid galaxy claim UI and rewire the L4→L5 unlock to use `isGalaxyComplete(galaxySystems)` instead of `hasAuthoredWorld(authoredWorlds)`.** Without it, the L4 redesign is 200+ lines of dead data and the player's first introduction to "cosmic-scale" gameplay (the L4 hex map) is missing — they go from L3's flat market straight to L5's galaxy tabs without ever plotting on a hex grid.
+
+---
+
+## Task: FIX-AUTOBUYERS-TRIALS
+
+**Date**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+**Agent**: general-purpose sub-agent
+**Files touched**:
+- `src/game/state/store.ts`
+- `src/components/game/layout/Header.tsx`
+
+### Bugs fixed
+
+**1. Autobuyers not disabled during trials**
+- Added a single computed flag `trialAutobuyersBlocked` near the top of the auto-buyer section in `store.ts` tick (right after `let totalTechResearched = ...`):
+  ```ts
+  const trialAutobuyersBlocked =
+    !!(s.activeTrialRealm) &&
+    !(s.trialRealmsCompleted?.[s.activeTrialRealm] ?? false);
+  ```
+  Uses the actual state fields (`activeTrialRealm` + `trialRealmsCompleted`) since the spec's `s.activeTrial` / `s.trialAutobuyerUnlocked` don't exist in this codebase — `trialRealmsCompleted` is the per-realm completion record (the natural "trialAutobuyerUnlocked" equivalent).
+- Wrapped **all 10** enumerated auto-buyer blocks with `!trialAutobuyersBlocked &&` prepended to the existing `if` condition:
+  1. `auto_system_buyer` (L1+ base game, 8s timer)
+  2. `auto_tech_buyer` (L1+ base game, 12s timer)
+  3. `auto_evolver` (L1+ base game, 2s timer)
+  4. `auto_light_stars` (L3 constellation star, 20s timer)
+  5. `auto_claim_systems` (L5 rival/L6 new galaxy attack, 15s timer)
+  6. `auto_manage_heresy` (L7 Inquisition, 15s timer)
+  7. `auto_place_anchors` (L7 Reality Anchor, 60s timer)
+  8. `auto_negotiate` (L9 minor-god negotiation, 30s timer)
+  9. `auto_attack_old_gods` (L10 Old God battles, 10s timer)
+  10. `auto_author_universes` (L10 Genesis Engine relic rule reveal, 120s timer)
+- `auto_invest_market` and `ep_auto_converter` were intentionally NOT touched (not in the spec's enumerated list; the latter is an EP→PP converter, not an "autobuyer").
+
+**2. L5→L6 unlock uses wrong condition**
+- Replaced `hasEnactedThreeLaws`-only check with combined OR check:
+  ```ts
+  if (unlockedLayers.apotheosis && !unlockedLayers.singularity) {
+    const conqueredCount = countConqueredGalaxies(s.galaxyRivalSystems || {});
+    const threeLawsEnacted = hasEnactedThreeLaws(s.enactedDivineLaws || {});
+    if (conqueredCount >= GALAXIES_REQUIRED_FOR_L6 || threeLawsEnacted) {
+      unlockedLayers = { ...unlockedLayers, singularity: true };
+      setTimeout(() => get().addToLog(`3 galaxies conquered (or 3 divine laws enacted). Singularity layer unlocked.`), 0);
+    }
+  }
+  ```
+- `countConqueredGalaxies` was already imported (`store.ts:127`); called with `s.galaxyRivalSystems` (the `Record<string, RivalSystemState[]>` field the function expects — NOT `s.conqueredGalaxies` which is `Record<string, boolean>` and would be a TS type error).
+- Used existing `GALAXIES_REQUIRED_FOR_L6` constant (= 3) instead of bare `3` for consistency with the existing action-side unlock path (`store.ts:4617` in `attackUniversalGalaxy`).
+- `hasEnactedThreeLaws` retained as alternative path so existing saves that hit the laws-first route still unlock correctly.
+
+**3. Header.tsx still shows galacticWins chip**
+- Wrapped the Wins chip with the L2-unlock check:
+  ```tsx
+  {galacticWins > 0 && !unlockedLayers?.enlightenment && (
+    <HeaderStat label="Wins" value={formatNumber(galacticWins, 0)} color="text-violet-300" />
+  )}
+  ```
+- `unlockedLayers` was already subscribed in Header (line 28); no new hook needed. Now matches `DivineEnginePanel` which hides the same chip at L2+.
+
+### Verification
+
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing: 1 unused eslint-disable in `galaxies.ts`, 6 in `upload/logic.js` — none in touched files).
+- No tests written (per instructions).
+- Existing `attackUniversalGalaxy`-side L5→L6 unlock path at `store.ts:~4617` already used `countConqueredGalaxies(grs) >= GALAXIES_REQUIRED_FOR_L6`; the tick path is now consistent with it (both call sites use the same field + constant).
+
+### Notes for next task
+
+- The spec's suggested `s.activeTrial` / `s.trialAutobuyerUnlocked` field names don't exist in `types.ts`; the actual equivalents are `activeTrialRealm` / `trialRealmsCompleted`. If a future task references these names, map them accordingly.
+- `auto_invest_market` (L4+ market auto-sell, `store.ts:2453`) was intentionally NOT gated. If the spec intends "all auto-buyers" to include it, add `!trialAutobuyersBlocked &&` to its `if` condition too.
+
+---
+
+## Task L4-FIX-CRITICAL — L4 hex-grid galaxy claim system revival
+
+**Date:** Auto-appended by subagent (general-purpose)
+**Scope:** Revive the dead-code L4 galaxy hex-grid system (data exists, UI + actions missing).
+
+### Context
+`src/game/data/galaxyMap.ts` already ships 50 deterministic star systems (`GALAXY_SYSTEMS`) on a
+hex spiral, plus helpers (`makeInitialGalaxySystems`, `galaxyClaimCost`, `GALAXY_SCAN_COST`,
+`getGalaxySystemNeighbors`, `summarizeGalaxyBonuses`, `isGalaxyComplete`, `hexToPixel`,
+`hexPolygonPoints`) — but the L4 UI was still rendering the OLD 5×4 Sacred Grid, and the
+store had no `scanGalaxySystem` / `claimGalaxySystem` actions. L4→L5 unlock was still gated
+on `hasAuthoredWorld(...)` instead of galaxy completion.
+
+### Changes
+
+**1. `src/game/state/types.ts`** — added 2 new actions to the `GameStore` interface
+under "Layer 4 — Genesis":
+- `scanGalaxySystem(systemId: string) => void`
+- `claimGalaxySystem(systemId: string) => void`
+
+**2. `src/game/state/store.ts`**
+- Imported `GALAXY_SYSTEM_MAP`, `GALAXY_SCAN_COST`, `galaxyClaimCost` were already imported
+  (used by tick). Confirmed available in scope of new actions.
+- Added `scanGalaxySystem` action: L4-unlock guard → looks up system in
+  `GALAXY_SYSTEM_MAP` → returns if already explored/claimed → checks `GALAXY_SCAN_COST`
+  (5) Genesis Seeds → deducts, marks `explored = true` → logs
+  `📡 Scanned ${sys.name}. Bonus: ${type} +${pct}%. Rare: ${rare || "none"}.`.
+- Added `claimGalaxySystem` action: L4-unlock guard → looks up system → must be explored
+  and not claimed → cost = `galaxyClaimCost(claimedCount)` (10 × 1.15^n, ceil) → deducts
+  Genesis Seeds, marks `claimed = true` → logs
+  `⭐ Claimed ${sys.name}! +10 worlds. Bonus: ${type} +${pct}%.`.
+- Rewired the L4→L5 unlock check (was `hasAuthoredWorld(s.authoredWorlds || [])`):
+  now `isGalaxyComplete(s.galaxySystems || []) || hasAuthoredWorld(s.authoredWorlds || [])`.
+  The old condition is kept as a fallback for save compatibility. Unlock log message
+  differs based on which path triggered.
+
+**3. `src/components/game/modals/GenesisModal.tsx`** — full rewrite (replaced the
+Sacred Grid UI with the hex-grid galaxy map):
+- SVG hex grid renders all 50 systems from `GALAXY_SYSTEMS` using `hexToPixel` +
+  `hexPolygonPoints` (pointy-top, axial coords). ViewBox is computed dynamically
+  from the spiral extents.
+- 3 visual states per system:
+  - Unexplored (`?` glyph, dark hex) → click → `scanGalaxySystem(id)`.
+  - Explored unclaimed (dim hex with bonus icon + %) → click → `claimGalaxySystem(id)`.
+  - Claimed (bright cyan hex with name + bonus icon, ★ if synergy = 2+ claimed
+    neighbors).
+- Hover any hex → highlights its neighbors (`getGalaxySystemNeighbors`) with a
+  thicker stroke. Hovered hex gets a yellow stroke.
+- Connection lines drawn between adjacent claimed-system pairs (deduped).
+- shadcn `Tooltip` wraps every hex (via `TooltipTrigger asChild` on the SVG `<g>`)
+  showing: name, hex (q,r), bonus type+pct, rare resource if any, claim/scan cost,
+  claimed-neighbor count.
+- Sidebar (right column on lg+ screens, below on mobile) shows: galaxy progress
+  (X/50 + explored count + synergy count), Genesis Seeds, worlds contributed
+  (claimed × 10), active bonus summary (prod/cap/EP/pop using `summarizeGalaxyBonuses`),
+  rare resources collected (alloys/data counts), next scan/claim cost (with
+  red/green Badge color based on affordability), L5 unlock hint.
+- Mobile-responsive: SVG container has `overflow-x-auto` and `minWidth: 560` so
+  the spiral scrolls horizontally on narrow screens.
+- "Running in background" badge preserved via `<BackgroundLayerBadge layerId="genesis" />`.
+- Uses shadcn `Dialog`, `Button`, `Badge`, `Tooltip` + Lucide icons (`Egg`, `Lock`,
+  `Telescope`, `Star`, `Boxes`, `Database`, `Sparkles`, `Gauge`, `Package`, `Users`).
+
+### Part 3 verification — world count formula
+The tick at `store.ts:~2342` already includes the L4 contribution:
+```ts
+const claimedGalaxyCount = (s.galaxySystems || []).filter((g) => g.claimed).length;
+const l4Worlds = s.unlockedLayers?.genesis ? claimedGalaxyCount * 10 : 0;
+// → composed into: Math.min(worldCap, constellationWorlds + l4Worlds + l5Worlds + l6Worlds)
+```
+No change needed — Part 3 was already satisfied. Verified.
+
+### Lint
+`bun run lint` → **0 errors, 7 warnings** (all pre-existing in unrelated files
+`src/game/data/galaxies.ts:386` and `upload/logic.js`). No new warnings introduced
+by this task.
+
+### Files touched
+- `src/game/state/types.ts` (added 2 action signatures + JSDoc)
+- `src/game/state/store.ts` (added 2 actions; rewired L4→L5 unlock)
+- `src/components/game/modals/GenesisModal.tsx` (full rewrite)
+
+### Notes for next task
+- The OLD Sacred Grid UI (`worldGrid`, `worldGridSeeds`, `placeGridTile`,
+  `resetWorldGrid`, `disasterTimer`, `lastDisasterCell`, `lastDisasterAt`) is still
+  declared in `types.ts` and stubbed in `store.ts` for save-shape compatibility.
+  They are now truly dead (no UI references them after this redesign). If a future
+  task wants to fully purge them, it's safe to delete the type fields + action
+  stubs + initial-state defaults + `loadGame`/`hardReset` guards.
+- `authorWorld` action + `authoredWorlds` state remain for save compat (used as a
+  fallback unlock path). They are no longer surfaced in the L4 modal.
+- The shadcn `Tooltip` works fine on SVG `<g>` elements (React 19 + Radix Slot).
+  Pattern is reusable for future SVG-heavy modals.
+
+---
+
+## Task ID: L3-PORTFOLIO — Divine Investment Market (L3 redesign)
+
+### Summary
+Redesigned the L3 Divine Market as a **Divine Investment Market** tied to the
+background simulation. Worlds (background simulations) can be allocated across 5
+investment portfolios that pay Divinity dividends; riskier portfolios may crash
+per tick and consume a fraction of allocated worlds. Adds a "Buy Star" speed-up
+button that bridges L3 dividend economy → L2 constellation progress.
+
+### 5 Portfolios (see `src/game/data/marketPortfolios.ts`)
+| id                  | name                     | risk    | yield | crash chance | crash loss | lock |
+|---------------------|--------------------------|---------|-------|--------------|------------|------|
+| `growth`            | Growth Fund              | low     | +5%   | 0%           | 0%         | —    |
+| `transcendence`      | Transcendence Ventures   | medium  | +15%  | 10%          | −10%       | —    |
+| `chaos`             | Chaos Hedge              | high    | +40%  | 30%          | −30%       | —    |
+| `stability`         | Stability Bonds          | zero    | +2%   | 0%           | 0%         | 120s |
+| `old_god`           | Old God Futures          | extreme | +100% | 50%          | −100% (ALL)| —    |
+
+Each portfolio also has a random-walk price (50–200, starts at 100, ±1/tick) —
+currently cosmetic, drives the cheap/fair/expensive badge + sparkline bar.
+
+### Allocation system
+- **Available worlds** = `backgroundSimulations` (computed each tick from
+  constellation stars + L4/L5/L6 system claims) − `totalAllocatedWorlds`.
+- `allocateWorlds(portfolioId, count)` — moves worlds from the pool into a
+  portfolio (clamped to available). For Stability Bonds, locks the allocation
+  for `lockDuration` seconds (timer only refreshed when the existing timer is
+  already at 0, so topping up a locked portfolio doesn't extend the lock).
+- `deallocateWorlds(portfolioId, count)` — moves worlds back; **refused** while
+  a Stability Bonds lock timer is active. Logs a "🔒 locked" message.
+- Defensive tick logic: if `backgroundSimulations` shrinks below the total
+  allocated (e.g. player lost galaxies), each allocation is trimmed
+  proportionally so the totals stay valid.
+
+### Dividend formula (per portfolio, per tick)
+```
+dividends = allocatedWorlds × portfolio.baseYield × peakProductionRate × 0.01 × realDt
+```
+The `× 0.01` matches the existing 1%-of-peak-per-world background-simulation
+rule. Dividends are added to `divinity` and tracked separately in
+`portfolioDividendsEarned` (lifetime, META — display only).
+
+The UI preview in `TranscendenceModal.tsx` uses the same `portfolioDividendsPerSec`
+helper from `marketPortfolios.ts` so the live number matches the tick math exactly.
+
+### Crash mechanics (per portfolio, per tick)
+- Crash roll: `Math.random() < portfolio.crashChance` (only when
+  `peakProductionRate > 0`, so an idle portfolio producing nothing won't crash).
+- On crash: `worldsLost = max(1, floor(alloc × portfolio.crashLoss))`.
+  - Old God Futures: `crashLoss = 1.0` → loses ALL allocated worlds.
+  - Chaos Hedge: loses 30% (rounded down, min 1).
+  - Transcendence Ventures: loses 10% (rounded down, min 1).
+- Crash is logged via `setTimeout(() => get().addToLog(...), 0)` to avoid
+  `setState`-mid-`tick` (the tick uses a single batched `set()` at the end).
+- Existing **Blood Pacts** remain the L3 "margin call" mechanic — players can
+  sacrifice population for a one-time Divinity payout to cover a crash.
+
+### Price random walk (per portfolio, per tick)
+```
+drift = (Math.random() − 0.5) × 2          // ±1
+price = clamp(PORTFOLIO_PRICE_MIN=50, PORTFOLIO_PRICE_MAX=200, price + drift)
+```
+Cosmetic only — drives the cheap/fair/expensive label + the mini price-band bar
+on each portfolio card. The price is *not* used in the dividend formula (yields
+are fixed per portfolio). It can be wired into a future "buy/sell portfolio
+shares" feature without changing the data shape.
+
+### UI — `src/components/game/modals/TranscendenceModal.tsx`
+Inserted a new "Divine Investment Market" section ABOVE the existing (now
+labelled "legacy") Divine Market resource-trading section. The existing
+Offerings / Rituals / Scripts / Blood Pacts / Market Crash banner panels are
+all preserved unchanged.
+
+New section shows:
+- **Header badges**: total worlds (backgroundSimulations), free worlds, total
+  dividends/sec (live), lifetime dividends (META).
+- **5 portfolio cards**, each with:
+  - Icon, name, risk-level badge (color-coded), lock timer badge (Stability Bonds).
+  - Current price (50–200, color-coded cheap/fair/expensive), mini price-band bar.
+  - Yield %, worlds allocated, live dividends/sec.
+  - Crash warning badge for medium/high/extreme risk.
+  - Allocate buttons: `+1`, `+10` (clamped to available by the action),
+    `+Max` (all available), `−All` (deallocate all allocated).
+- **"Buy Star from Market" speed-up button** at the bottom — calls
+  `buyStarFromMarket()` which finds the cheapest affordable unlit constellation
+  star across all 88 constellations and illuminates it via the existing
+  `illuminateStar` action. Bridges L3 dividend economy → L2 progress.
+
+### State + migration (`src/game/state/types.ts`, `src/game/state/store.ts`)
+New `GameState` fields:
+- `portfolioAllocations: Record<string, number>` — portfolioId → worlds allocated
+- `portfolioLockTimers: Record<string, number>` — portfolioId → seconds remaining
+- `portfolioPrices: Record<string, number>` — portfolioId → current price
+- `portfolioDividendsEarned: number` — lifetime Divinity from portfolios
+
+New `GameStore` actions:
+- `allocateWorlds(portfolioId, count): void`
+- `deallocateWorlds(portfolioId, count): void`
+- `buyStarFromMarket(): { constellationId, starId, cost } | null`
+
+Migration block in the `persist` `merge` callback seeds defaults for existing
+saves (empty allocations / empty lock timers / prices init to 100 /
+dividendsEarned = 0). The tick's defensive loop also re-seeds any missing
+portfolio prices/allocation entries to 100/0 each tick, so a save that pre-dates
+the migration block still renders cleanly.
+
+### Files touched
+- **Created**: `src/game/data/marketPortfolios.ts` (read-only portfolio data +
+  helpers `portfolioDividendsPerSec`, `totalAllocatedWorlds`, `riskLabel`).
+- `src/game/state/types.ts` (4 new state fields, 3 new action signatures + JSDoc).
+- `src/game/state/store.ts` (new import block; new initial-state fields;
+  portfolio tick logic inserted after the background-simulation block; 4 new
+  state fields written to the tick's terminal `set()` call; 3 new actions
+  `allocateWorlds` / `deallocateWorlds` / `buyStarFromMarket`; migration block
+  in `merge` for the 4 new fields).
+- `src/components/game/modals/TranscendenceModal.tsx` (new imports for
+  `PORTFOLIOS` / `CONSTELLATIONS` / `starCost`; subscribed to 8 new state
+  slices; new derived computations (`availableWorlds`, `totalPortfolioDivsPerSec`,
+  `cheapestStar`, `portfolioPriceLabel`); new "Divine Investment Market"
+  `<section>` with 5 portfolio cards + Buy Star speed-up button; updated dialog
+  title + footer copy).
+
+### Lint / type check
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing in unrelated files
+  `src/game/data/galaxies.ts:386` and `upload/logic.js` — no new warnings).
+- `bunx eslint src/game/data/marketPortfolios.ts src/components/game/modals/TranscendenceModal.tsx src/game/state/types.ts src/game/state/store.ts` → **clean (0 problems)**.
+- `bunx tsc --noEmit` → no new errors introduced in any of my files (the
+  pre-existing errors in `ChallengeModal.tsx`, `CosmeticsModal.tsx`,
+  `DebugModal.tsx`, `VariantPicker.tsx`, `stages.ts`, etc. are unrelated to
+  this task).
+
+### Notes for next task
+- The OLD Divine Market mini-game (`marketPrices`, `priceHistory`,
+  `marketOwnedResources`, `marketTickTimer`, `marketCrashTimer`,
+  `marketCrashActive`, `marketCrashDuration` + the `marketBuyResource` /
+  `marketSellResource` / `marketOffering` actions) is preserved as **legacy**.
+  It still works (the legacy section is rendered below the new Investment
+  Market section with a "Legacy Divine Market" header). If a future task wants
+  to fully retire it, it's safe to delete the legacy state + actions + UI block.
+- The portfolio price random-walk is currently cosmetic. If you want prices to
+  actually matter (e.g. "buy low / sell high portfolio shares"), wire
+  `portfolioPrices` into a new pair of `buyPortfolioShares` / `sellPortfolioShares`
+  actions — the data shape already supports it.
+- `buyStarFromMarket` returns `null` cleanly when no affordable star exists (or
+  all stars are already lit), so the UI button can degrade gracefully.
