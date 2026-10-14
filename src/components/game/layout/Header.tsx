@@ -2,13 +2,12 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
-import { RITUALS, RITUAL_MAP } from "@/game/data/transcendence";
-import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
+import { RITUAL_MAP } from "@/game/data/transcendence";
 import { useActiveLayer, layerName, layerRank } from "@/game/state/layerHelpers";
 import { formatNumber, formatCompact, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Pause, Play, FastForward, Save, Settings, Store, Clock, Check, Skull, Crown, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, Layers } from "lucide-react";
+import { Pause, Play, FastForward, Save, Settings, Store, Clock, Check, Skull, Crown, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect } from "react";
 
@@ -30,11 +29,10 @@ export function Header() {
   const instability = useGameStore((s) => s.instability);
   const prestigePoints = useGameStore((s) => s.prestigePoints);
 
-  // QUICK WIN 6 — visual feedback for active effects
+  // QUICK WIN 6 — visual feedback for active ritual effects (Divine Combo + temporary rituals).
+  // Active-ability badges were removed along with the active-abilities system.
   const activeTemporaryRituals = useGameStore((s) => s.activeTemporaryRituals || {});
   const ritualComboTimer = useGameStore((s) => s.ritualComboTimer || 0);
-  const activeAbilityEffects = useGameStore((s) => s.activeAbilityEffects || {});
-  const activeAbilityCooldowns = useGameStore((s) => s.activeAbilityCooldowns || {});
 
   const setSpeed = useGameStore((s) => s.setSpeed);
   const togglePause = useGameStore((s) => s.togglePause);
@@ -402,42 +400,31 @@ export function Header() {
         </Button>
       </div>
 
-      {/* QUICK WIN 6 — Active effects feedback row (ritual, combo, ability effects, cooldowns) */}
+      {/* QUICK WIN 6 — Active effects feedback row (ritual + Divine Combo only;
+          active-ability badges were removed). */}
       <ActiveEffectsRow
         activeTemporaryRituals={activeTemporaryRituals}
         ritualComboTimer={ritualComboTimer}
-        activeAbilityEffects={activeAbilityEffects}
-        activeAbilityCooldowns={activeAbilityCooldowns}
       />
     </header>
   );
 }
 
 // QUICK WIN 6 — Active effects feedback row.
-// Shows: ritual active (glowing badge with name), Divine Combo (amber),
-// Surge/Overclock effect timers, and active-ability cooldown progress bars.
+// Shows: ritual active (glowing badge with name), Divine Combo (amber).
+// Active-ability badges were removed (active abilities cut from the game).
 function ActiveEffectsRow({
   activeTemporaryRituals,
   ritualComboTimer,
-  activeAbilityEffects,
-  activeAbilityCooldowns,
 }: {
   activeTemporaryRituals: Record<string, number>;
   ritualComboTimer: number;
-  activeAbilityEffects: Record<string, number>;
-  activeAbilityCooldowns: Record<string, number>;
 }) {
   // Active rituals (temporary only) — show name + remaining seconds
   const activeRitualEntries = Object.entries(activeTemporaryRituals).filter(([, t]) => t > 0);
-  const surgeActive = (activeAbilityEffects.surge || 0) > 0;
-  const overclockActive = (activeAbilityEffects.overclock || 0) > 0;
   const comboActive = ritualComboTimer > 0;
-  // Active cooldowns — show progress bars
-  const cooldownEntries = ACTIVE_ABILITIES
-    .map((ab) => ({ ab, cd: activeAbilityCooldowns[ab.id] || 0 }))
-    .filter((x) => x.cd > 0);
 
-  const hasAny = activeRitualEntries.length > 0 || surgeActive || overclockActive || comboActive || cooldownEntries.length > 0;
+  const hasAny = activeRitualEntries.length > 0 || comboActive;
   if (!hasAny) return null;
 
   return (
@@ -464,40 +451,6 @@ function ActiveEffectsRow({
           Combo! ×1.5 Production ({Math.ceil(ritualComboTimer)}s)
         </span>
       )}
-      {surgeActive && (
-        <span
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6rem] font-medium border border-rose-400/60 bg-rose-500/20 text-rose-200 ritual-glow"
-          title="Surge active: ×3 production"
-        >
-          <Zap className="w-2.5 h-2.5" />
-          Surge ×3 ({Math.ceil(activeAbilityEffects.surge)}s)
-        </span>
-      )}
-      {overclockActive && (
-        <span
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.6rem] font-medium border border-emerald-400/60 bg-emerald-500/20 text-emerald-200 ritual-glow"
-          title="Overclock active: ×2 all prestige bonuses"
-        >
-          <Circle className="w-2.5 h-2.5" />
-          Overclock ×2 ({Math.ceil(activeAbilityEffects.overclock)}s)
-        </span>
-      )}
-      {cooldownEntries.map(({ ab, cd }) => {
-        const pct = ((ab.cooldownSec - cd) / ab.cooldownSec) * 100;
-        return (
-          <span
-            key={ab.id}
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[0.6rem] font-medium border border-border/60 bg-muted/40 text-muted-foreground"
-            title={`${ab.name} cooldown`}
-          >
-            <span className="text-[0.6rem]">{ab.icon}</span>
-            <span className="relative inline-block w-12 h-1 rounded-full bg-muted/60 overflow-hidden">
-              <span className="absolute inset-y-0 left-0 bg-amber-400/70 transition-all" style={{ width: `${pct}%` }} />
-            </span>
-            <span className="tabular-nums">{Math.ceil(cd)}s</span>
-          </span>
-        );
-      })}
     </div>
   );
 }

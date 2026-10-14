@@ -294,7 +294,10 @@ import {
   STAGE_INDEX_TO_THEME,
   LAYER_ID_TO_THEME,
 } from "../data/themes";
-import { ACTIVE_ABILITIES, ACTIVE_ABILITY_MAP } from "../data/activeAbilities";
+// REMOVED — active abilities were cut from the game (Task REMOVE-ABILITIES-
+// REPLACE-CHALLENGES). The empty arrays/maps remain in activeAbilities.ts for
+// save-compat; the only remaining runtime references to activeAbilityCooldowns
+// / activeAbilityEffects are the tick-decay (which self-cleans old saves).
 // Legacy trialRealms module — exports empty stubs (mini-games removed in
 // CLEANUP-LEGACY). Kept as a no-op import for save-compat references.
 import { trialRealmRewardBonus } from "../data/trialRealms";
@@ -5399,83 +5402,12 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ===== QUICK WINS =====
-      // WIN 2 — useActiveAbility: triggers the active ability for a given prestige layer
-      useActiveAbility: (layerId) => {
-        const s = get();
-        const ability = ACTIVE_ABILITY_MAP[layerId];
-        if (!ability) return;
-        // Must have the layer unlocked
-        if (layerId !== "evolution") {
-          if (!s.unlockedLayers?.[layerId]) return;
-        } else {
-          // Layer 1 (Evolution) requires unlockedChallenges (first Galactic win) — keeps it as a meaningful perk
-          if (!s.unlockedChallenges) return;
-        }
-        // Check cooldown
-        const cooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        if ((cooldowns[ability.id] || 0) > 0) return;
-
-        // Apply effect
-        const patch: Partial<GameState> = {};
-        const effectsPatch: Record<string, number> = { ...(s.activeAbilityEffects || {}) };
-        switch (ability.effect.kind) {
-          case "instant_pop": {
-            const pop = s.population + (ability.effect.magnitude || 0);
-            patch.population = pop;
-            patch.maxPopulation = Math.max(s.maxPopulation || 0, pop);
-            break;
-          }
-          case "instant_divinity": {
-            patch.divinity = (s.divinity || 0) + (ability.effect.magnitude || 0);
-            break;
-          }
-          case "temp_surge": {
-            effectsPatch["surge"] = ability.effect.durationSec || 10;
-            break;
-          }
-          case "instant_genesis_seed": {
-            patch.genesisSeeds = (s.genesisSeeds || 0) + (ability.effect.magnitude || 1);
-            break;
-          }
-          case "reduce_heresy": {
-            // L5 redesign — convert up to N heretics across owned galaxies.
-            const ownedAb = ownedGalaxyIds(s.galaxyRivalSystems || {});
-            const gfAb = { ...(s.galaxyFollowerGrid || {}) };
-            const ghAb = { ...(s.galaxyHeresy || {}) };
-            const nConvert = Math.max(1, Math.ceil(((ability.effect.magnitude || 0) / 100) * 32));
-            let conv = 0;
-            for (const gid of ownedAb) {
-              const grid = (gfAb[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
-              for (let i = 0; i < grid.length && conv < nConvert; i++) {
-                if (grid[i].state === "heretical") {
-                  grid[i].state = "faithful";
-                  conv++;
-                }
-              }
-              gfAb[gid] = grid;
-              const hc = grid.filter((c) => c.state === "heretical").length;
-              ghAb[gid] = (hc / 32) * 100;
-              if (conv >= nConvert) break;
-            }
-            const newH = ownedAb.length > 0
-              ? ownedAb.reduce((sum, gid) => sum + (ghAb[gid] || 0), 0) / ownedAb.length
-              : 0;
-            patch.heresy = newH;
-            patch.galaxyFollowerGrid = gfAb;
-            patch.galaxyHeresy = ghAb;
-            break;
-          }
-          case "temp_overclock": {
-            effectsPatch["overclock"] = ability.effect.durationSec || 15;
-            break;
-          }
-        }
-        // Set cooldown
-        cooldowns[ability.id] = ability.cooldownSec;
-        patch.activeAbilityCooldowns = cooldowns;
-        patch.activeAbilityEffects = effectsPatch;
-        set(patch);
-        get().addToLog(`${ability.name} activated! (${ability.cooldownSec}s cooldown)`);
+      // WIN 2 — useActiveAbility: REMOVED — active abilities were cut from the game
+      // (Task REMOVE-ABILITIES-REPLACE-CHALLENGES). Signature kept as a no-op
+      // stub so old save migration code & type contract still type-check.
+      useActiveAbility: (_layerId) => {
+        // Intentional no-op. activeAbilityCooldowns / activeAbilityEffects
+        // remain in initial state for save-compat and decay via tick logic.
       },
 
       // WIN 5 — buyUniversalUpgrade: spends Prestige Points on universal upgrades

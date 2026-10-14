@@ -5,7 +5,7 @@ import { PRESTIGE_LAYERS, isLayerUnlocked, countChallengesCompleted, type Presti
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, ArrowRight } from "lucide-react";
+import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, ArrowRight } from "lucide-react";
 import { CHALLENGES, getMaxRepeats } from "@/game/data/challenges";
 import { countForesightNodes } from "@/game/data/foresight";
 import {
@@ -21,7 +21,6 @@ import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES, OUTPOST_RAID_COUNT_FOR_L8 } 
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
 import { OLD_GODS, ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS } from "@/game/data/infinity";
 import { ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
-import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
 import { RIFTS_REQUIRED_FOR_L7, ANCHORS_REQUIRED_FOR_L7 } from "@/game/data/universalMap";
 import { formatNumber } from "../shared/format";
 
@@ -150,9 +149,6 @@ export function PrestigeTab() {
   const echoes = useGameStore((s) => s.echoes);
   const testamentClauses = useGameStore((s) => s.testamentClauses);
 
-  // QUICK WIN 2 — Active abilities state
-  const activeAbilityCooldowns = useGameStore((s) => s.activeAbilityCooldowns || {});
-  const triggerActiveAbility = useGameStore((s) => s.useActiveAbility);
   // QUICK WIN 5 — Prestige Points (universal currency)
   const prestigePoints = useGameStore((s) => s.prestigePoints);
 
@@ -223,71 +219,6 @@ export function PrestigeTab() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* QUICK WIN 2 — Active Abilities (one per unlocked layer) */}
-      {unlockedChallenges && (
-        <Card className="glass-panel">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-300" />
-              Active Abilities
-            </CardTitle>
-            <CardDescription>
-              Click an ability to trigger its effect. Each ability then enters a cooldown. Earned from each unlocked prestige layer.
-              <span className="ml-2 text-amber-300/90 font-medium">Prestige Points: {formatNumber(prestigePoints, 0)}</span>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {ACTIVE_ABILITIES.map((ab) => {
-                // Layer 1 (Evolution) requires unlockedChallenges; others require unlockedLayers
-                const isUnlocked = ab.layerId === "evolution"
-                  ? !!unlockedChallenges
-                  : !!unlockedLayers?.[ab.layerId];
-                if (!isUnlocked) return null;
-                const cd = activeAbilityCooldowns[ab.id] || 0;
-                const onCooldown = cd > 0;
-                const pct = onCooldown ? ((ab.cooldownSec - cd) / ab.cooldownSec) * 100 : 100;
-                return (
-                  <div key={ab.id} className="stat-card p-2.5 flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg shrink-0">{ab.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate">{ab.name}</div>
-                        <div className="text-[0.6rem] text-muted-foreground truncate">{ab.layerId}</div>
-                      </div>
-                    </div>
-                    <p className="text-[0.65rem] text-muted-foreground leading-snug">{ab.desc}</p>
-                    {onCooldown ? (
-                      <div>
-                        <div className="flex items-center justify-between text-[0.6rem] text-amber-300/80 mb-0.5">
-                          <span>Cooldown</span>
-                          <span>{Math.ceil(cd)}s / {ab.cooldownSec}s</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                          <div className="h-full bg-amber-400/70 transition-all" style={{ width: `${pct}%` }} />
-                        </div>
-                        <Button size="sm" className="h-7 w-full mt-1.5" disabled>
-                          Cooldown…
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button size="sm" className="h-7 w-full mt-auto" onClick={() => triggerActiveAbility(ab.layerId)}>
-                        Activate
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {ACTIVE_ABILITIES.every((ab) => ab.layerId !== "evolution" && !unlockedLayers?.[ab.layerId]) && (
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Unlock prestige layers to gain active abilities.
-              </p>
-            )}
-          </CardContent>
-        </Card>
       )}
 
       {/* Header card */}

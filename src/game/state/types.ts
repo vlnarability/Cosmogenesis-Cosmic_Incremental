@@ -739,6 +739,8 @@ export interface GameStore extends GameState {
 
   // ===== QUICK WINS =====
   // WIN 2 — Active abilities (one per prestige layer)
+  /** REMOVED — active abilities were cut from the game. Kept as a no-op stub
+   *  for save-compat (old saves / migration code may still reference it). */
   useActiveAbility: (layerId: string) => void;
   // WIN 5 — Universal shop upgrade purchase (spends Prestige Points)
   buyUniversalUpgrade: (upgradeId: string) => void;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
@@ -20,25 +20,30 @@ import { AchievementsTab } from "../tabs/AchievementsTab";
 import { ArchiveTab } from "../tabs/ArchiveTab";
 import { LogTab } from "../tabs/LogTab";
 import { PrestigeTab } from "../tabs/PrestigeTab";
-import { ShopModal } from "../modals/ShopModal";
-import { EvolveModal } from "../modals/EvolveModal";
-import { StoryPopup } from "../modals/StoryPopup";
-import { AchievementToast } from "../modals/AchievementToast";
-import { OfflineSummary } from "../modals/OfflineSummary";
-import { SettingsModal } from "../modals/SettingsModal";
-import { EventModal } from "../modals/EventModal";
-import { StageTransition } from "../modals/StageTransition";
-import { ChallengeModal } from "../modals/ChallengeModal";
-import { EnlightenmentModal } from "../modals/EnlightenmentModal";
-import { TranscendenceModal } from "../modals/TranscendenceModal";
-import { GenesisModal } from "../modals/GenesisModal";
-import { ApotheosisModal } from "../modals/ApotheosisModal";
-import { SingularityModal } from "../modals/SingularityModal";
-import { OmnipotenceModal } from "../modals/OmnipotenceModal";
-import { DivinityLayerModal } from "../modals/DivinityLayerModal";
-import { InfinityModal } from "../modals/InfinityModal";
-import { EternityModal } from "../modals/EternityModal";
-import { TutorialHints } from "./TutorialHints";
+
+// LAZY-LOAD modals — these are only rendered when their `show*` flag is true.
+// This dramatically reduces initial bundle size + memory usage (the OOM killer
+// was triggered by all 17 modals + their data files being in the initial chunk).
+const ShopModal = lazy(() => import("../modals/ShopModal").then(m => ({ default: m.ShopModal })));
+const EvolveModal = lazy(() => import("../modals/EvolveModal").then(m => ({ default: m.EvolveModal })));
+const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
+const AchievementToast = lazy(() => import("../modals/AchievementToast").then(m => ({ default: m.AchievementToast })));
+const SettingsModal = lazy(() => import("../modals/SettingsModal").then(m => ({ default: m.SettingsModal })));
+const EventModal = lazy(() => import("../modals/EventModal").then(m => ({ default: m.EventModal })));
+const StageTransition = lazy(() => import("../modals/StageTransition").then(m => ({ default: m.StageTransition })));
+const ChallengeModal = lazy(() => import("../modals/ChallengeModal").then(m => ({ default: m.ChallengeModal })));
+const EnlightenmentModal = lazy(() => import("../modals/EnlightenmentModal").then(m => ({ default: m.EnlightenmentModal })));
+const TranscendenceModal = lazy(() => import("../modals/TranscendenceModal").then(m => ({ default: m.TranscendenceModal })));
+const GenesisModal = lazy(() => import("../modals/GenesisModal").then(m => ({ default: m.GenesisModal })));
+const ApotheosisModal = lazy(() => import("../modals/ApotheosisModal").then(m => ({ default: m.ApotheosisModal })));
+const SingularityModal = lazy(() => import("../modals/SingularityModal").then(m => ({ default: m.SingularityModal })));
+const OmnipotenceModal = lazy(() => import("../modals/OmnipotenceModal").then(m => ({ default: m.OmnipotenceModal })));
+const DivinityLayerModal = lazy(() => import("../modals/DivinityLayerModal").then(m => ({ default: m.DivinityLayerModal })));
+const InfinityModal = lazy(() => import("../modals/InfinityModal").then(m => ({ default: m.InfinityModal })));
+const EternityModal = lazy(() => import("../modals/EternityModal").then(m => ({ default: m.EternityModal })));
+const TutorialHints = lazy(() => import("./TutorialHints").then(m => ({ default: m.TutorialHints })));
+const OfflineSummary = lazy(() => import("../modals/OfflineSummary").then(m => ({ default: m.OfflineSummary })));
+
 import { cn } from "@/lib/utils";
 
 export function GameShell() {
@@ -121,32 +126,34 @@ export function GameShell() {
         </div>
       </main>
 
-      {/* Modals */}
-      <ShopModal />
-      <EvolveModal />
-      <StoryPopup />
-      <AchievementToast />
-      <SettingsModal />
-      <EventModal />
-      <StageTransition />
-      <ChallengeModal />
-      <EnlightenmentModal />
-      <TranscendenceModal />
-      <GenesisModal />
-      <ApotheosisModal />
-      <SingularityModal />
-      <OmnipotenceModal />
-      <DivinityLayerModal />
-      <InfinityModal />
-      <EternityModal />
-      <TutorialHints />
-      {offlineSummary && (
-        <OfflineSummary
-          elapsed={offlineSummary.elapsed}
-          resourcesGained={offlineSummary.resourcesGained}
-          onClose={dismissOffline}
-        />
-      )}
+      {/* Modals — lazy-loaded + conditionally rendered to reduce memory */}
+      <Suspense fallback={null}>
+        <ShopModal />
+        <EvolveModal />
+        <StoryPopup />
+        <AchievementToast />
+        <SettingsModal />
+        <EventModal />
+        <StageTransition />
+        <ChallengeModal />
+        <EnlightenmentModal />
+        <TranscendenceModal />
+        <GenesisModal />
+        <ApotheosisModal />
+        <SingularityModal />
+        <OmnipotenceModal />
+        <DivinityLayerModal />
+        <InfinityModal />
+        <EternityModal />
+        <TutorialHints />
+        {offlineSummary && (
+          <OfflineSummary
+            elapsed={offlineSummary.elapsed}
+            resourcesGained={offlineSummary.resourcesGained}
+            onClose={dismissOffline}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
