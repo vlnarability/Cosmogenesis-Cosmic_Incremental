@@ -3,14 +3,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { GameState, GameStore, StageId, TabId } from "./types";
-import { emptyResources, emptyCapacities, RESOURCE_MAP } from "../data/resources";
+import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES } from "../data/resources";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
 import { ACTION_MAP } from "../data/actions";
 import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
 import { TECH_MAP, TECHS } from "../data/techs";
 import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
 import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
-import { ARCHETYPE_MAP, dominantArchetype } from "../data/archetypes";
+import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -272,6 +272,60 @@ import {
 
 const STORAGE_KEY = "evolution_idle_v2";
 
+// ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+// Default mapping of action id → KeyboardEvent.key value. The
+// useKeyboardShortcuts hook reads from `state.keyboardShortcuts` at fire
+// time (so player can rebind in Settings → Shortcuts). Locked-layer
+// shortcuts (trials/constellations/.../genesis) are gated by the layer
+// being unlocked before firing — see the hook for the gate logic.
+//
+// Layer-action id → layerId mapping (used by the hook + the Settings UI):
+//   trials        → "challenges"        (L1; gate = unlockedChallenges)
+//   constellations → "enlightenment"    (L2)
+//   market         → "transcendence"     (L3)
+//   galaxy         → "genesis"           (L4)
+//   heresy         → "apotheosis"        (L5)
+//   universal      → "singularity"       (L6)
+//   creatures      → "omnipotence"      (L7)
+//   diplomacy      → "divinity"          (L8)
+//   war            → "infinity"          (L9)
+//   genesis        → "eternity"          (L10 — the Genesis Engine / Big Bang)
+export const DEFAULT_KEYBOARD_SHORTCUTS: Record<string, string> = {
+  pause: " ",
+  speed1: "1",
+  speed2: "2",
+  speed4: "4",
+  speed8: "8",
+  save: "s",
+  shop: "b",
+  prestige: "p",
+  trials: "t",
+  constellations: "c",
+  market: "m",
+  galaxy: "g",
+  heresy: "h",
+  universal: "u",
+  creatures: "l",
+  diplomacy: "d",
+  war: "f",
+  genesis: "e",
+  close: "Escape",
+};
+
+// Mapping of layer-action id → layer id (the unlock gate the hook checks).
+export const SHORTCUT_LAYER_GATE: Record<string, string> = {
+  trials: "challenges",          // special: gated by `unlockedChallenges`
+  constellations: "enlightenment",
+  market: "transcendence",
+  galaxy: "genesis",
+  heresy: "apotheosis",
+  universal: "singularity",
+  creatures: "omnipotence",
+  diplomacy: "divinity",
+  war: "infinity",
+  genesis: "eternity",
+};
+
 // ===== REBUILD: L1-6 helper factories =====
 function makeInitialFollowerGrid(): Array<{ state: string; type: string }> {
   // 8×4 = 32 cells. All start faithful.
@@ -349,6 +403,7 @@ function initialMetaState(): Partial<GameState> {
     storyAcknowledged: {},
     archive: [],
     archivedArchetypes: [],
+    revealedLineageArchetypes: {},
     unlockedLayers: { evolution: true, enlightenment: false, transcendence: false, genesis: false, apotheosis: false, singularity: false, omnipotence: false, divinity: false, infinity: false, eternity: false },
     achievements: {},
     newAchievements: [],
@@ -587,6 +642,11 @@ function initialMetaState(): Partial<GameState> {
     backgroundSimulations: 0,     // COMPUTED each tick: (3 + starsLit) × simMult (cached for display)
     divinityFromBackground: 0,    // lifetime Divinity from background sims (META, display only)
     epFromBackground: 0,          // lifetime EP from background sims (META, display only)
+
+    // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+    // Default rebindable shortcuts. See DEFAULT_KEYBOARD_SHORTCUTS above for
+    // the action-id → layer mapping + comments.
+    keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS },
   };
 }
 
@@ -729,9 +789,53 @@ export const useGameStore = create<GameStore>()(
 
         // Archetype bonus
         const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
-        const archAllMult = archetype?.bonus.allProductionMult || 0;
+        // ARCHETYPES-REWORK — extended archetype bonus fields.
+        // archAllMult is composed of:
+        //   - base allProductionMult (e.g. Humanoid +10%, Necroid Ascendant +20%)
+        //   - productionPerSystemAllMult × totalOwnedSystems (Fungoid network)
+        //   - productionInWarmStagesMult (Reptilian — Tribal+)
+        //   - productionWhenLowResourcesMult (Extremophile — when avg fill < 20%)
+        //   - productionWhenPlentifulMult (Extremophile debuff — when avg fill > 80%)
+        const totalOwnedSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+        let archAllMult = archetype?.bonus.allProductionMult || 0;
+        if (archetype?.bonus.productionPerSystemAllMult) {
+          archAllMult += archetype.bonus.productionPerSystemAllMult * totalOwnedSystems;
+        }
+        const curStageId = STAGES[s.stageIndex].id;
+        const isWarmStage = ["tribal", "civilization", "empire", "solar", "galactic"].includes(curStageId);
+        if (archetype?.bonus.productionInWarmStagesMult && isWarmStage) {
+          archAllMult += archetype.bonus.productionInWarmStagesMult;
+        }
+        // Extremophile conditional bonuses — based on average resource fill
+        // across all resources that have a capacity > 0.
+        if (archetype?.bonus.productionWhenLowResourcesMult || archetype?.bonus.productionWhenPlentifulMult) {
+          let capSum = 0;
+          let resSum = 0;
+          for (const [r, v] of Object.entries(s.resources)) {
+            const cap = s.capacities[r] || 0;
+            if (cap > 0) {
+              capSum += cap;
+              resSum += Math.max(0, v);
+            }
+          }
+          const fillRatio = capSum > 0 ? resSum / capSum : 1;
+          if (archetype.bonus.productionWhenLowResourcesMult && fillRatio < 0.20) {
+            archAllMult += archetype.bonus.productionWhenLowResourcesMult;
+          }
+          if (archetype.bonus.productionWhenPlentifulMult && fillRatio > 0.80) {
+            archAllMult += archetype.bonus.productionWhenPlentifulMult;
+          }
+        }
         const archPopMult = archetype?.bonus.populationGrowthMult || 0;
         const archCapMult = archetype?.bonus.capMult || 0;
+        const archMilitaryMult = archetype?.bonus.militaryPowerMult || 0;
+        const archDisabledFrac = archetype?.bonus.productionFromDisabledSystemsMult || 0;
+        const archMineralBonus = archetype?.bonus.productionFromMineralSystemsMult || 0;
+        const archPopImmortal = !!archetype?.bonus.populationImmortal;
+        const archPopGrowsNoFood = !!archetype?.bonus.popGrowsWithoutFood;
+        const archHappinessPerTick = archetype?.bonus.happinessPerTick || 0;
+        // Archetype system-cost multiplier (additive: +0.10 = +10% costs, -0.15 = -15%)
+        const archSystemCostMult = archetype?.bonus.systemCostMult || 0;
 
         const resources = { ...s.resources };
         let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
@@ -758,34 +862,59 @@ export const useGameStore = create<GameStore>()(
 
           // Check if system is manually disabled
           const manuallyEnabled = s.systemEnabled[sysId] !== false; // default true
-          if (!manuallyEnabled && !hasAutoBalancer) continue;
+          // ARCHETYPES-REWORK — Necroid grants partial production from disabled
+          // systems (productionFromDisabledSystemsMult). When active, disabled
+          // systems still produce at the fractional rate but consume no upkeep.
+          const isDisabledProducer = !manuallyEnabled && archDisabledFrac > 0;
+          if (!manuallyEnabled && !hasAutoBalancer && !isDisabledProducer) continue;
 
           // Cap-aware logic: if all output resources are at cap, idle the system
-          // (don't produce, don't consume upkeep — no waste)
-          const outputsCapped = Object.keys(sys.produces).length > 0 &&
-            Object.keys(sys.produces).every((r) => {
-              const cap = capacities[r] || 0;
-              return (resources[r] || 0) >= cap - 0.01;
-            });
+          // (don't produce, don't consume upkeep — no waste). Disabled producers
+          // (necroid) skip this check — they still produce even when capped, but
+          // only at the fractional rate.
+          if (!isDisabledProducer) {
+            const outputsCapped = Object.keys(sys.produces).length > 0 &&
+              Object.keys(sys.produces).every((r) => {
+                const cap = capacities[r] || 0;
+                return (resources[r] || 0) >= cap - 0.01;
+              });
 
-          if (outputsCapped) {
-            // System idles — no production, no upkeep
-            continue;
+            if (outputsCapped) {
+              // System idles — no production, no upkeep
+              continue;
+            }
           }
 
           const stageMult = sys.stage === STAGES[s.stageIndex].id ? 1 : 0.5;
-          const mult = autoMult * techMult * stageMult * (1 + archAllMult);
+          // ARCHETYPES-REWORK — disabled producers (necroid) get only the
+          // fractional production rate. They still benefit from archAllMult +
+          // stage scaling, but their effective count is multiplied by the
+          // fraction (e.g. 0.20 = 20% of normal output).
+          const disabledFrac = isDisabledProducer ? archDisabledFrac : 1;
+          const mult = autoMult * techMult * stageMult * (1 + archAllMult) * disabledFrac;
 
           // Per-resource archetype bonus
+          // ARCHETYPES-REWORK — military_power gets an additional multiplier
+          // from militaryPowerMult (Reptilian +15%, Toxoid +15%, etc.).
+          // Lithoid gets bonus production from stone/alloy-producing systems
+          // (productionFromMineralSystemsMult).
           const produces = sys.produces as Record<string, number>;
+          const sysIsMineral = !!(produces.stone || produces.alloys);
           for (const [r, v] of Object.entries(produces)) {
             const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-            const rate = v * count * mult * (1 + archResBonus);
+            let resourceBonus = archResBonus;
+            if (r === "military_power" && archMilitaryMult) {
+              resourceBonus += archMilitaryMult;
+            }
+            if (sysIsMineral && archMineralBonus && (r === "stone" || r === "alloys")) {
+              resourceBonus += archMineralBonus;
+            }
+            const rate = v * count * mult * (1 + resourceBonus);
             resources[r] = (resources[r] || 0) + rate * realDt;
             totalProductionRate += rate; // accumulate per-second rate (pre-cap-clamp)
           }
-          // Upkeep
-          if (sys.upkeep) {
+          // Upkeep — disabled producers (necroid) consume NO upkeep.
+          if (!isDisabledProducer && sys.upkeep) {
             const upkeep = sys.upkeep as Record<string, number>;
             for (const [r, v] of Object.entries(upkeep)) {
               resources[r] = (resources[r] || 0) - v * count * realDt;
@@ -808,6 +937,15 @@ export const useGameStore = create<GameStore>()(
         // Slow passive ATP for cell (keeps early game from stalling)
         if (STAGES[s.stageIndex].id === "cell") {
           resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.5 * realDt);
+        }
+
+        // ARCHETYPES-REWORK — archetype happiness drift (Fungoid -15% / Toxoid -10%).
+        // Applied as a per-second delta, capped by the happiness capacity floor/ceiling.
+        if (archHappinessPerTick !== 0) {
+          const cap = capacities.happiness || 100;
+          const cur = resources.happiness ?? 50;
+          const next = Math.max(0, Math.min(cap, cur + archHappinessPerTick * realDt));
+          resources.happiness = next;
         }
 
         // Population growth with progress bar
@@ -838,7 +976,9 @@ export const useGameStore = create<GameStore>()(
         popGrowthRate += systemPopGrowth;
 
         const curStage = STAGES[s.stageIndex];
-        if (["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
+        // ARCHETYPES-REWORK — Plantoid's popGrowsWithoutFood skips the
+        // food/water depletion check (photosynthesis feeds the pop).
+        if (!archPopGrowsNoFood && ["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
           const foodCap = capacities.food || 1;
           const waterCap = capacities.water || 1;
           const foodPct = (resources.food || 0) / foodCap;
@@ -898,11 +1038,13 @@ export const useGameStore = create<GameStore>()(
               if (sys.requiredTech && !technologies[sys.requiredTech]) return null;
               if (disableMilitary && sys.category === "Military") return null;
               const cost = systemCost(sys, owned, costReduction);
+              // ARCHETYPES-REWORK — apply archetype system-cost modifier (Humanoid +10% / Arthropoid -15%)
+              const archCostFactor = 1 + (archetype?.bonus.systemCostMult || 0);
               const scaledCost: Record<string, number> = {};
               let totalCost = 0;
               let canAfford = true;
               for (const [r, v] of Object.entries(cost)) {
-                const scaled = Math.ceil((v as number) * challengeCostMult);
+                const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
                 scaledCost[r] = scaled;
                 totalCost += scaled;
                 if ((resources[r] || 0) < scaled) canAfford = false;
@@ -1080,7 +1222,12 @@ export const useGameStore = create<GameStore>()(
         const isL2Plus = !!(s.unlockedLayers?.enlightenment);
         if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0 && !isL2Plus) {
           const stageId = STAGES[s.stageIndex].id;
-          const possible = eventsForStage(stageId, newTime);
+          // ARCHETYPES-REWORK — filter out events the locked archetype is
+          // immune to (Mammalian→cold, Fungoid/Toxoid→plague, Lithoid→disaster,
+          // Extremophile/Lithoid Titan→all). See isArchetypeImmuneToEvent.
+          const possible = eventsForStage(stageId, newTime).filter(
+            (ev) => !isArchetypeImmuneToEvent(s.lockedArchetype, ev.id)
+          );
           if (possible.length > 0) {
             const totalWeight = possible.reduce((sum, e) => sum + e.weight, 0);
             const roll = Math.random() * totalWeight;
@@ -2476,7 +2623,10 @@ export const useGameStore = create<GameStore>()(
         for (const [r, v] of Object.entries(action.produces)) {
           const cap = s.capacities[r] || 0;
           const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-          const totalArchMult = 1 + archResBonus + (archetype?.bonus.allProductionMult || 0);
+          // ARCHETYPES-REWORK — military_power gets additional bonus from
+          // militaryPowerMult (Reptilian +15%, Toxoid +15%, Molluscoid -10%, etc.)
+          const archMilBonus = r === "military_power" ? (archetype?.bonus.militaryPowerMult || 0) : 0;
+          const totalArchMult = 1 + archResBonus + archMilBonus + (archetype?.bonus.allProductionMult || 0);
           const amount = (v as number) * finalMult * totalArchMult;
           res[r] = Math.min(cap, (res[r] || 0) + amount);
         }
@@ -2525,6 +2675,13 @@ export const useGameStore = create<GameStore>()(
               constellationsStarted: s.constellationsStarted || {},
               constellationsCompleted: s.constellationsCompleted || {},
             }).costMult));
+        // ARCHETYPES-REWORK — locked archetype system-cost adjustment
+        // (Humanoid +10% / Arthropoid -15%). Applied as a multiplicative modifier
+        // on top of the challenge cost multiplier.
+        const archSysCostMult = s.lockedArchetype
+          ? (ARCHETYPE_MAP[s.lockedArchetype]?.bonus.systemCostMult || 0)
+          : 0;
+        const archCostFactor = 1 + archSysCostMult;
         let owned = s.ownedSystems[systemId] || 0;
         if (sys.maxOwned && owned >= sys.maxOwned) return;
 
@@ -2551,7 +2708,7 @@ export const useGameStore = create<GameStore>()(
           }
           let canAfford = true;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
             if ((res[r] || 0) < scaled) {
               canAfford = false;
               if (!missingResourceId) missingResourceId = r;
@@ -2560,7 +2717,7 @@ export const useGameStore = create<GameStore>()(
           }
           if (!canAfford) break;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
             res[r] -= scaled;
           }
           bought++;
@@ -2784,13 +2941,18 @@ export const useGameStore = create<GameStore>()(
 
         // Lock archetype when evolving from Creature → Tribal
         let lockedArchetype = s.lockedArchetype;
+        // ARCHETYPES-REWORK — track which archetypes have EVER been locked in
+        // (persists across prestiges). Drives the "???" reveal state on radar.
+        let revealedLineageArchetypes = { ...(s.revealedLineageArchetypes || {}) };
         if (stage.id === "creature" && !lockedArchetype) {
           const dom = dominantArchetype(s.archetypeAffinity);
           if (dom) {
             lockedArchetype = dom;
+            revealedLineageArchetypes[dom] = true;
             get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
           } else {
             lockedArchetype = "humanoid"; // default fallback
+            revealedLineageArchetypes["humanoid"] = true;
             get().addToLog(`Lineage locked: Humanoid (no drift).`);
           }
         }
@@ -2821,7 +2983,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // Check achievements after stage clear
-        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, fastestCellClear } as GameState;
+        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, revealedLineageArchetypes, fastestCellClear } as GameState;
         const achResult = checkAchievements(postEvolveState);
         const newAchievements = achResult.newOnes.length > 0
           ? [...(s.newAchievements || []), ...achResult.newOnes]
@@ -2836,6 +2998,7 @@ export const useGameStore = create<GameStore>()(
           stageClearCounts,
           fastestCellClear,
           lockedArchetype,
+          revealedLineageArchetypes,
           achievements: achResult.earned,
           newAchievements,
           activeStageTheme,
@@ -2877,6 +3040,15 @@ export const useGameStore = create<GameStore>()(
           fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult +
           hybridEp + allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
+
+        // ARCHETYPES-REWORK — locked archetype EP-from-prestige bonus
+        // (Necroid +50%, Necroid Ascendant +50%, etc.). Additive multiplier.
+        const archEpBonus = s.lockedArchetype
+          ? (ARCHETYPE_MAP[s.lockedArchetype]?.bonus.epFromPrestigeMult || 0)
+          : 0;
+        if (archEpBonus > 0) {
+          epEarned = Math.max(1, Math.floor(epEarned * (1 + archEpBonus)));
+        }
 
         // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
         let divinityGain = 0;
@@ -2975,6 +3147,9 @@ export const useGameStore = create<GameStore>()(
           epFromBackground: s.epFromBackground || 0,
           archive,
           archivedArchetypes,
+          // ARCHETYPES-REWORK — revealed lineage archetypes persist across
+          // prestiges (meta state — drives radar ??? reveal).
+          revealedLineageArchetypes: s.revealedLineageArchetypes || {},
           upgrades: s.upgrades,
           storyUnlocked: { ...s.storyUnlocked, god_opens_its_eyes: true },
           storyAcknowledged: s.storyAcknowledged,
@@ -5193,7 +5368,17 @@ export const useGameStore = create<GameStore>()(
         }
         let pop = s.population;
         if (choice.populationChange) {
-          pop = Math.max(0, pop + choice.populationChange);
+          // ARCHETYPES-REWORK — Necroid/Necroid Ascendant populationImmortal
+          // guards against event-driven decreases (population can still grow
+          // from positive events, but never falls).
+          const lockedArch = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+          const isImmortal = !!lockedArch?.bonus.populationImmortal;
+          if (isImmortal && choice.populationChange < 0) {
+            // Immortal — population never decreases from events.
+            get().addToLog(`${lockedArch?.name} immortality prevented ${choice.populationChange} population loss.`);
+          } else {
+            pop = Math.max(0, pop + choice.populationChange);
+          }
         }
         if (choice.happinessChange) {
           const cap = s.capacities.happiness || 100;
@@ -5374,6 +5559,128 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`DEBUG: Triggered event "${pick.name}".`);
       },
 
+      // ===== DEBUG-SHORTCUTS — additional debug actions =====
+      // +1000 of every primary resource (atp, glucose, proteins, lipids,
+      // elements, food, water, materials, organic_matter, knowledge, culture,
+      // wood, lumber, stone, clay, science, happiness, military_power,
+      // production, gold, influence, energy, alloys, data). Also bumps
+      // capacities so the grant isn't immediately clipped.
+      debugGrantResources: () => {
+        const s = get();
+        const resources = { ...(s.resources || {}) };
+        const capacities = { ...(s.capacities || {}) };
+        const DEBUG_GRANT_AMOUNT = 1000;
+        for (const r of RESOURCES) {
+          if (r.category !== "primary") continue;
+          resources[r.id] = (resources[r.id] || 0) + DEBUG_GRANT_AMOUNT;
+          // Lift the capacity floor so the grant isn't immediately lost.
+          if ((capacities[r.id] || 0) < resources[r.id]) {
+            capacities[r.id] = resources[r.id];
+          }
+        }
+        set({ resources, capacities });
+        get().addToLog(`DEBUG: +${DEBUG_GRANT_AMOUNT} of every primary resource granted.`);
+      },
+
+      // +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds,
+      // +100 Singularity Cores.
+      debugGrantCurrency: () => {
+        const s = get();
+        set({
+          evolutionPoints: (s.evolutionPoints || 0) + 1000,
+          prestigePoints: (s.prestigePoints || 0) + 1000,
+          divinity: (s.divinity || 0) + 1000,
+          faith: (s.faith || 0) + 100,
+          genesisSeeds: (s.genesisSeeds || 0) + 100,
+          singularityCores: (s.singularityCores || 0) + 100,
+        });
+        get().addToLog(
+          "DEBUG: +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores granted."
+        );
+      },
+
+      // Unlock the next locked layer. Walks the layer progression chain and
+      // opens the first one that isn't yet unlocked. If all 10 are open, logs.
+      debugCompleteLayer: () => {
+        const s = get();
+        const chain = [
+          { id: "enlightenment", label: "Enlightenment", gate: () => !!s.unlockedChallenges },
+          { id: "transcendence", label: "Transcendence", gate: () => !!s.unlockedLayers?.enlightenment },
+          { id: "genesis", label: "Genesis", gate: () => !!s.unlockedLayers?.transcendence },
+          { id: "apotheosis", label: "Apotheosis", gate: () => !!s.unlockedLayers?.genesis },
+          { id: "singularity", label: "Singularity", gate: () => !!s.unlockedLayers?.apotheosis },
+          { id: "omnipotence", label: "Omnipotence", gate: () => !!s.unlockedLayers?.singularity },
+          { id: "divinity", label: "Divinity", gate: () => !!s.unlockedLayers?.omnipotence },
+          { id: "infinity", label: "Infinity", gate: () => !!s.unlockedLayers?.divinity },
+          { id: "eternity", label: "Eternity", gate: () => !!s.unlockedLayers?.infinity },
+        ];
+        // L1 (Challenges) is its own thing — if not yet unlocked, unlock that.
+        if (!s.unlockedChallenges) {
+          // Challenges unlock after first Galactic win — simulate by granting 1 win.
+          set({
+            unlockedChallenges: true,
+            galacticWins: Math.max(s.galacticWins || 0, 1),
+          });
+          get().addToLog("DEBUG: Challenges layer (L1) unlocked.");
+          return;
+        }
+        for (const layer of chain) {
+          if (!s.unlockedLayers?.[layer.id as keyof typeof s.unlockedLayers]) {
+            // Seed starter relics on Eternity unlock (matches the tick's unlock path).
+            const relicBump =
+              layer.id === "eternity" && (s.divineRelics || []).length === 0
+                ? { divineRelics: [...(s.divineRelics || []), ...generateRelicReward(3)] }
+                : {};
+            set({
+              unlockedLayers: { ...s.unlockedLayers, [layer.id]: true },
+              ...relicBump,
+            });
+            get().addToLog(`DEBUG: ${layer.label} layer unlocked.`);
+            return;
+          }
+        }
+        get().addToLog("DEBUG: All layers already unlocked.");
+      },
+
+      // +1 cosmicBoonStacks (L10 ending currency — multiplies final score on
+      // "Explore another Dimension" resets).
+      debugGenerateBoon: () => {
+        const s = get();
+        set({ cosmicBoonStacks: (s.cosmicBoonStacks || 0) + 1 });
+        get().addToLog("DEBUG: +1 Cosmic Boon granted.");
+      },
+
+      // Immediately call triggerPrestige (the canonical prestige path).
+      debugForcePrestige: () => {
+        get().addToLog("DEBUG: Force prestige triggered.");
+        get().triggerPrestige();
+      },
+
+      // Toggle speed between 100× (for fast testing) and 1×.
+      debugToggle100x: () => {
+        const s = get();
+        const next = s.speed === 100 ? 1 : 100;
+        set({ speed: next });
+        get().addToLog(`DEBUG: Speed set to ${next}×.`);
+      },
+
+      // Rebind a keyboard shortcut by action id. The action id must exist
+      // in DEFAULT_KEYBOARD_SHORTCUTS (otherwise the bind is a no-op).
+      setKeyboardShortcut: (actionId, key) => {
+        const s = get();
+        const current = { ...(s.keyboardShortcuts || {}) };
+        if (!(actionId in DEFAULT_KEYBOARD_SHORTCUTS)) return;
+        // Strip any modifier prefixes — we don't support Ctrl+X etc. (yet).
+        current[actionId] = key;
+        set({ keyboardShortcuts: current });
+      },
+
+      // Reset all keyboard shortcuts to defaults.
+      resetKeyboardShortcuts: () => {
+        set({ keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS } });
+        get().addToLog("Keyboard shortcuts reset to defaults.");
+      },
+
       saveGame: () => {
         set({ lastSaved: Date.now() });
       },
@@ -5409,7 +5716,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 12,
+      version: 13,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -5563,6 +5870,19 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.divineRelics) persisted.divineRelics = [];
         if (!persisted.crucibleRelicIds) persisted.crucibleRelicIds = [];
         if (!persisted.discoveredArchetypes) persisted.discoveredArchetypes = {};
+        // ARCHETYPES-REWORK — revealedLineageArchetypes tracks which of the 13
+        // lineage archetypes the player has ever locked in. Persists across
+        // prestiges. Drives the radar's ??? reveal state.
+        // Migration: if a pre-rework save has `archivedArchetypes` (a list of
+        // previously-locked archetype ids), seed revealedLineageArchetypes from
+        // it so existing players don't lose visibility of archetypes they've
+        // already locked in past runs.
+        if (!persisted.revealedLineageArchetypes) {
+          const archived = Array.isArray(persisted.archivedArchetypes) ? persisted.archivedArchetypes : [];
+          persisted.revealedLineageArchetypes = Object.fromEntries(
+            archived.map((id: string) => [id, true])
+          );
+        }
         if (persisted.universeSimulating === undefined) persisted.universeSimulating = false;
         if (persisted.simulationStartTime === undefined) persisted.simulationStartTime = 0;
         if (persisted.lastSimulationResult === undefined) persisted.lastSimulationResult = null;
@@ -5790,6 +6110,19 @@ export const useGameStore = create<GameStore>()(
           persisted.showDivinityLayer = false;
           persisted.showInfinity = false;
           persisted.showEternity = false;
+        }
+
+        // v13 migration (DEBUG-SHORTCUTS): seed the new `keyboardShortcuts`
+        // field with defaults for older saves. Any custom binds merge over the
+        // defaults. Missing keys (e.g. a brand-new action added in a future
+        // patch) are filled in from DEFAULT_KEYBOARD_SHORTCUTS.
+        if (!persisted.keyboardShortcuts) {
+          persisted.keyboardShortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS };
+        } else {
+          persisted.keyboardShortcuts = {
+            ...DEFAULT_KEYBOARD_SHORTCUTS,
+            ...persisted.keyboardShortcuts,
+          };
         }
 
         return persisted;

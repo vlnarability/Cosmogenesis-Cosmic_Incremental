@@ -235,6 +235,14 @@ export interface GameState {
   storyAcknowledged: Record<string, boolean>;
   archive: ArchiveEntry[];
   archivedArchetypes: string[];
+  // ARCHETYPES-REWORK — which of the 13 lineage archetypes the player has
+  // EVER locked in (at Creature → Tribal evolution). Persists across
+  // prestiges. Drives the "???" reveal state on the ArchetypeRadar —
+  // undiscovered archetypes display as ??? until first lock-in.
+  //
+  // NOTE: distinct from `discoveredArchetypes` (Genesis Engine Layer-10
+  // procedural archetypes — keys are `arch_NNN`, not lineage ids).
+  revealedLineageArchetypes: Record<string, boolean>;
   unlockedLayers: Record<string, boolean>;
   achievements: Record<string, boolean>; // earned achievements
   newAchievements: string[]; // queue of newly-earned achievement IDs for toast
@@ -557,6 +565,15 @@ export interface GameState {
   backgroundSimulations: number;
   divinityFromBackground: number;
   epFromBackground: number;
+
+  // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+  // Maps a logical action id (e.g. "pause", "speed1", "shop", "genesis")
+  // → the keyboard key the player has bound to it. Keys are stored as the
+  // `KeyboardEvent.key` value (e.g. " " for space, "Escape" for Esc, "1"
+  // for the 1 key, "b" for B). The useKeyboardShortcuts hook reads from
+  // this map at fire-time and checks the action's layer-unlock gate.
+  // Default values live in `DEFAULT_KEYBOARD_SHORTCUTS` (store.ts).
+  keyboardShortcuts: Record<string, string>;
 }
 
 export interface GameStore extends GameState {
@@ -613,6 +630,23 @@ export interface GameStore extends GameState {
   debugFreeBuy: boolean;
   toggleDebugFreeBuy: () => void;
   triggerDebugEvent: (eventId: string | "random") => void;
+  // DEBUG-SHORTCUTS — additional debug actions for fast testing.
+  /** +1000 of every primary resource (atp/glucose/proteins/lipids/.../data). */
+  debugGrantResources: () => void;
+  /** +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores. */
+  debugGrantCurrency: () => void;
+  /** Unlock the next locked layer (find highest unlocked + 1). Logs "All layers already unlocked." if all 10 are open. */
+  debugCompleteLayer: () => void;
+  /** +1 cosmicBoonStacks (L10 ending currency). Logs "DEBUG: +1 Cosmic Boon granted." */
+  debugGenerateBoon: () => void;
+  /** Immediately call triggerPrestige(). */
+  debugForcePrestige: () => void;
+  /** Toggle game speed between 100× and 1×. */
+  debugToggle100x: () => void;
+  /** Rebind a keyboard shortcut by action id (e.g. "pause", "shop"). */
+  setKeyboardShortcut: (actionId: string, key: string) => void;
+  /** Reset all keyboard shortcuts to defaults. */
+  resetKeyboardShortcuts: () => void;
 
   // Layer 2 — Enlightenment (Foresight / Constellation Map)
   setShowEnlightenment: (v: boolean) => void;

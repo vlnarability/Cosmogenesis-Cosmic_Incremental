@@ -5172,3 +5172,198 @@ Stage Summary:
   - `src/components/game/tabs/StoryTab.tsx` — box removal + accent variants
   - `src/game/data/prestigeLayers.ts` — copy rewrites (saga → system)
   - `src/app/globals.css` — added `heresy-pulse-red` animation + 5 stat-card variants
+
+---
+Task ID: DEBUG-SHORTCUTS
+Agent: general-purpose
+Task: Add additional debug actions to SettingsModal + redesign keyboard shortcuts to be customizable with locked-layer ??? indicators.
+
+Work Log:
+
+**Task 1 — Additional Debug Options**
+
+Added 6 new debug actions to the store + UI, all gated behind the existing 5× version-click unlock (so they don't pollute the normal settings UI for non-debugging players):
+
+1. **Grant Resources** (`debugGrantResources`) — +1000 of every primary resource (24 resources: atp, glucose, proteins, lipids, elements, food, water, materials, organic_matter, knowledge, culture, wood, lumber, stone, clay, science, happiness, military_power, production, gold, influence, energy, alloys, data). Also bumps each capacity floor to match the new total so the grant isn't immediately clipped by the cap. Iterates `RESOURCES` (filtered by `category === "primary"`) rather than hardcoding the list — keeps it auto-extending if more primary resources are added later.
+
+2. **Grant Currency** (`debugGrantCurrency`) — +1000 EP / PP / Divinity + +100 Faith / Genesis Seeds / Singularity Cores. These are the 6 cross-layer prestige currencies the player accumulates through normal play; a single click tops them up enough to test any layer's shop.
+
+3. **Complete Current Layer** (`debugCompleteLayer`) — Walks the layer progression chain (L1 Challenges → L2 Enlightenment → ... → L10 Eternity) and unlocks the first locked one. L1 has its own gate (`unlockedChallenges`, set true + simulates 1 Galactic win); L2-L10 use `unlockedLayers`. On Eternity unlock, also seeds 3 starter relics (matches the tick's normal unlock path so the crucible is immediately usable). If all 10 are open, logs "All layers already unlocked." instead of mutating state.
+
+4. **Generate Cosmic Boon** (`debugGenerateBoon`) — `cosmicBoonStacks += 1`. Logs "DEBUG: +1 Cosmic Boon granted." (used by the L10 ending reset loop).
+
+5. **Force Prestige** (`debugForcePrestige`) — calls the canonical `triggerPrestige()` immediately, logs first, so the prestige path runs through the same code a normal player prestige uses.
+
+6. **Speed 100×** (`debugToggle100x`) — toggles `speed` between 100 and 1. The button label flips ("Speed 100×" when at 1×, "Speed 1×" when at 100×) and turns green when 100× is active so it's visually obvious the game is in fast-forward.
+
+Also converted the existing **Trigger Event** debug from a no-op to a dropdown: a `<Select>` listing "🎲 Random" + every event from `EVENTS` (each labeled with its icon + name). The selected id is passed to the existing `triggerDebugEvent` action — no changes to the action's signature were needed.
+
+**Task 2 — Customizable Keyboard Shortcuts + Locked-Layer ??? Indicators**
+
+Redesigned `useKeyboardShortcuts` + the SettingsModal UI to support rebindable keys + per-layer lock gates:
+
+1. **State**: Added `keyboardShortcuts: Record<string, string>` to `GameState` (types.ts). The map holds the action-id → KeyboardEvent.key binding (e.g. `"pause" → " "`, `"shop" → "b"`, `"genesis" → "e"`). Defaults live in a new exported constant `DEFAULT_KEYBOARD_SHORTCUTS` in store.ts. The 19 default actions: pause (space), speed1/2/4/8 (1/2/4/8), save (s), shop (b), prestige (p), trials (t), constellations (c), market (m), galaxy (g), heresy (h), universal (u), creatures (l), diplomacy (d), war (f), genesis (e), close (Escape). Persist version bumped 12 → 13 with a migration that seeds defaults for older saves (and merges any custom binds the player may have already set).
+
+2. **Settings UI**: Restructured SettingsModal to use a `<Tabs>` with two tabs: "Settings" + "Shortcuts". The Settings tab keeps all the existing content (stats / export / import / save / gameplay / customization / shortcuts hint / danger zone / version click / debug panel). The old static shortcuts list was replaced with a "Customize Shortcuts" button that switches to the Shortcuts tab. The Shortcuts tab renders a `ShortcutRow` for each action id showing:
+   - Action name (e.g. "Trials Layer (L1)")
+   - Key button — click to enter "listening" mode (button pulses + shows "…"), then press any key to bind. Auto-cancels after 3s of no input. Modifier keys (Shift/Ctrl/Alt/Meta) are ignored as standalone binds.
+   - For locked-layer actions: a `???` Badge next to the action name + the key button is disabled (shows `???` instead of the key). No text explains what unlocks it.
+   - "Reset" button at the top restores all defaults.
+
+3. **useKeyboardShortcuts**: Rewrote to read from `state.keyboardShortcuts` (subscribed via a Zustand selector so rebinds take effect immediately). Universal actions (pause/speed1-8/save/shop/prestige/close) fire unconditionally. Layer-gated actions (trials/constellations/market/galaxy/heresy/universal/creatures/diplomacy/war/genesis) check the layer-unlock gate before firing — locked layers silently no-op so the player doesn't accidentally open a modal they haven't unlocked. `close` (Escape) is handled specially: it dismisses the active story popup first, then closes Shop / Evolve / Settings. The handler also short-circuits when an `activeStoryPopup` or `activeEvent` is active (only `close` is allowed through).
+
+4. **Capture-phase rebind listener**: The ShortcutsTab's rebind listener uses `addEventListener("keydown", handler, true)` (capture phase) + `stopImmediatePropagation()` so it beats the main keyboard-shortcut handler when both are registered on `window`. `stopImmediatePropagation` is required (not just `stopPropagation`) because both listeners live on the same target — `stopPropagation` only stops propagation to other elements, not other listeners on the same element.
+
+**Files modified:**
+- `src/game/state/types.ts` — added `keyboardShortcuts: Record<string, string>` to GameState; added 8 new GameStore actions (`debugGrantResources`, `debugGrantCurrency`, `debugCompleteLayer`, `debugGenerateBoon`, `debugForcePrestige`, `debugToggle100x`, `setKeyboardShortcut`, `resetKeyboardShortcuts`).
+- `src/game/state/store.ts` — added `DEFAULT_KEYBOARD_SHORTCUTS` + `SHORTCUT_LAYER_GATE` exported constants; seeded `keyboardShortcuts` in `initialMetaState`; implemented the 8 new actions (all gated behind the existing 5× version-click debug unlock in the UI); bumped persist version 12 → 13 with a migration that seeds defaults for old saves (merging custom binds over defaults); imported `RESOURCES` (was already using `RESOURCE_MAP`/`emptyResources`/`emptyCapacities`).
+- `src/game/hooks/useKeyboardShortcuts.ts` — full rewrite. Reads from `state.keyboardShortcuts` instead of hardcoded keys; checks layer-unlock gates before firing layer-gated actions; subscribes to the shortcuts state so rebinds take effect immediately.
+- `src/components/game/modals/SettingsModal.tsx` — full rewrite. Wrapped content in a `<Tabs>` with "Settings" + "Shortcuts" tabs. Settings tab retains all existing sections (stats, export/import, save, gameplay, customization, danger zone, version click) + a new amber-tinted "Debug Tools" panel (only shown after 5× version click) containing all 8 debug actions + the Trigger Event dropdown. Removed the static keyboard-shortcuts list (replaced with a "Customize Shortcuts" button that switches to the Shortcuts tab). Added a new `ShortcutsTab` component + `ShortcutRow` sub-component for the rebind UI. Added `keyLabel()` helper for display-friendly key labels (Space → "Space", single chars → uppercase, Escape → "Esc").
+
+**Verification:**
+- `bun run lint` → 0 errors, 7 warnings (all pre-existing in unrelated files: 6 in `upload/logic.js`, 1 unused eslint-disable in `galaxies.ts`).
+- `bunx tsc --noEmit` → no new errors introduced. All TS errors in the output match the pre-existing baseline (galaxies.ts has an unused eslint-disable; upload/logic.js has 6 unused-expression warnings; EnlightenmentModal.tsx + sidebar.tsx + stages.ts + store.ts have pre-existing type errors unrelated to my changes — `debugFreeBuy` lives on GameStore but is set in `initialMetaState` which returns `Partial<GameState>`; this was true before my edits).
+- `bun run dev` → Next.js 16 compiles cleanly, `GET / 200` (render in 271ms).
+- No tests written (per instructions).
+
+---
+
+## Task: EVENT-EXPANSION
+**Date:** 2025-01-XX
+**Task ID:** EVENT-EXPANSION
+**Goal:** Expand `events.ts` to 20+ events per stage + 2 archetype-specific events per basic archetype per stage from Tribal onward.
+
+### Context
+The events data file had only 17 events total. The game has 7 stages (Cell, Creature, Tribal, Civilization, Empire, Solar, Galactic). Goal was to expand to ≥20 events/stage (140+ base) + 2 archetype-specific per basic archetype per stage from Tribal onward (9 basic archetypes × 2 × 5 stages = 90 archetype-specific events) ≈ 230 events total.
+
+### Files Modified
+- `src/game/data/events.ts` — expanded from 17 events (504 lines) to 239 events (~4,800 lines). Preserved the existing `EventChoice`/`GameEvent` interfaces, the `EVENTS` array, the `EVENT_MAP` lookup, and the `eventsForStage()` filter helper. All 17 original events were preserved with their original IDs and structures; new events appended across each stage section.
+
+### Event Distribution (239 total)
+- **Cell stage**: 22 events (≥20 ✓) — preserved 3 existing (chemical_bloom, predator_shadow, membrane_crack); added 19 new (glucose_tide, viral_attack, mitochondrial_boom, membrane_breach, symbiotic_offer, toxic_tide, mineral_bloom, photosynthesis_discovery, predatory_pursuit, spore_drift, ink_cloud, necrotic_contact, first_division, atp_storm, protein_cache, lipid_pool, cold_current, warm_vent, mutation_drift). Mix of resource, crisis, and archetype-drift events (no archetype-specific events since archetypes lock at Creature→Tribal evolution).
+- **Creature stage**: 21 events (≥20 ✓) — preserved 2 existing (rival_pack, strange_fruit) + 1 shared (resource_drought) + added 18 new (abundant_season, predator_ambush, mating_season, cave_discovery, river_flood, stampede, forgotten_eggs, tool_insight, toxic_spring, moss_garden, mineral_lick, feathered_friend, ancient_skeleton, spider_web, coral_reef, fungi_patch, social_grooming, territory_marking).
+- **Tribal stage**: 42 events firing (≥38 ✓) — 20 new strictly-tribal base events (harvest_festival, raiding_party, great_hunt, fire_tending, shrine_building, elder_council, omens, floods, trade_caravan, gift_economy, naming_ceremony, feud, peace_pipe, new_tools, crop_failure, treaty, bonfire_night, storyteller, adolescent_rite) + 18 archetype-specific (2 per each of 9 basic archetypes: humanoid/mammalian/reptilian/avian/arthropoid/molluscoid/fungoid/plantoid/aquatic) + 5 shared cross-stage events (harsh_winter, wandering_elder, old_warrior, resource_drought, visionary_dream).
+- **Civilization stage**: 44 events firing (≥38 ✓) — 20 new strictly-civ base events + 18 archetype-specific (suffix `_civ`) + 8 shared cross-stage events.
+- **Empire stage**: 44 events firing (≥38 ✓) — 20 new strictly-empire base events + 18 archetype-specific (suffix `_empire`) + 7 shared cross-stage events.
+- **Solar stage**: 39 events firing (≥38 ✓) — 20 new strictly-solar base events + 18 archetype-specific (suffix `_solar`) + 1 shared (solar_flare).
+- **Galactic stage**: 39 events firing (≥38 ✓) — 20 new strictly-galactic base events + 18 archetype-specific (suffix `_galactic`) + 1 shared (ancient_signal + solar_flare fires in galactic too).
+
+### Archetype-Specific Coverage (90 total, 2 × 9 basic × 5 stages)
+Each of the 9 basic archetypes (humanoid, mammalian, reptilian, avian, arthropoid, molluscoid, fungoid, plantoid, aquatic) has exactly 2 dedicated events per stage from Tribal onward. Each archetype event includes an `affinityChange` of `[{ archetype: "<arch>", amount: 2 }]` on the primary choice (plus a no-drift alternative). Themes match each archetype's flavor (e.g., reptilian → cold_blood/predator_cull/legion_drill/cold_void_doctrine/predator_sovereignty; plantoid → great_bloom/rooted_ritual/granary_grove/photosynthesis_district/orbital_gardens/gaia_world).
+
+### Choice & Effect Patterns
+Each event has 2 choices (a few have 3) with meaningful trade-offs:
+- **Resource trades**: gain one resource at the cost of another (e.g., +20 glucose / −3 ATP).
+- **Happiness/population trades**: convert resources into happiness or vice versa.
+- **Affinity drifts**: each archetype event nudges the dominant-archetype lock toward its specific archetype.
+- **Crisis events**: droughts, plagues, rebellions, asteroid strikes, cosmic horrors — always with a "tough it out" vs. "spend resources to mitigate" choice.
+- **Opportunity events**: precursor relics, foreign scholars, breakthrough discoveries — pure upside if player can afford the entry cost.
+
+### Verification
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing in unrelated files: 6 unused-expression warnings in `upload/logic.js`, 1 unused eslint-disable in `galaxies.ts`). No new lint issues from my changes.
+- `bunx tsc --noEmit` → no new errors in `events.ts`. (Pre-existing TS errors in `EnlightenmentModal.tsx`, `sidebar.tsx`, `stages.ts`, `store.ts`, and example/skill files are unchanged.)
+- Event count verified via `rg`: 239 events in `EVENTS` array. Per-stage firing counts confirmed via `rg "stage_name"`: cell=22, creature=21, tribal=42, civ=44, empire=44, solar=39, galactic=39.
+- Each `EventChoice` follows the exact interface: `id`, `label`, `desc`, `resourceChanges?`, `populationChange?`, `happinessChange?`, `affinityChange?`, `logMsg?`. No new fields introduced; the `unlockTech` field mentioned in the task brief was NOT implemented (interface doesn't support it; would require store-side support and was out of scope).
+- All event IDs are unique (verified by inspection — naming convention uses snake_case with stage suffix for archetype-specific events to disambiguate).
+- `resolveEvent` in `store.ts` (lines 5174-5241) applies `resourceChanges`, `populationChange`, `happinessChange`, and `affinityChange` exactly as my events declare — no store changes needed.
+- No tests written (per instructions).
+
+### Known Limitations / Follow-ups
+- The interface does not support conditional effects (e.g., "lose population unless you have nucleus" was simplified to "lose population / spend resources to mitigate").
+- Some archetype-specific events for Tribal onward also implicitly assume the archetype lock has already occurred; since `eventsForStage()` does not filter by archetype affinity, these events can fire for any player. If desired, a future enhancement could add a `requiredDominantArchetype?` field to `GameEvent` and filter in `eventsForStage()`. For now, the events are usable by any player — the affinity reward still applies and drifts them toward that archetype.
+- The `unlockTech` choice field mentioned in the task brief is not part of the `EventChoice` interface and was skipped to avoid breaking the store contract.
+
+---
+
+## Task ID: ARCHETYPES-REWORK — ??? Unknown Archetypes + 3-Buff/1-Debuff Per Archetype
+
+### Objective
+Two coupled reworks: (1) hide ALL 13 archetypes as `???` at game start, reveal them permanently once the player locks them in at the Creature → Tribal evolution; (2) refactor every archetype's `bonus` field to expose exactly **3 buffs + 1 debuff** (structured), and wire the tick / buySystem / triggerPrestige / event-firing code paths to actually apply those effects.
+
+### Task 1 — `???` Unknown Archetypes (reveal-on-lock-in)
+
+**State field added** (note: distinct from the Genesis-Engine `discoveredArchetypes` field, which uses `arch_NNN` keys for the Layer-10 victory condition — those are unrelated to the 13 lineage archetypes). Naming collision avoided intentionally:
+
+- `src/game/state/types.ts` — added `revealedLineageArchetypes: Record<string, boolean>` to `GameState`. Persists across prestiges (meta state). Tracks which of the 13 lineage archetype ids the player has EVER locked in.
+- `src/game/state/store.ts`:
+  - Init in `initialMetaState()`: `revealedLineageArchetypes: {}`
+  - **`evolveStage`** — when locking the dominant archetype at Creature → Tribal, also sets `revealedLineageArchetypes[locked] = true`. Default fallback (Humanoid) also reveals humanoid.
+  - **`triggerPrestige`** — `revealedLineageArchetypes: s.revealedLineageArchetypes || {}` added to the `metaState` so the reveal map survives prestige.
+  - **Migration** — `if (!persisted.revealedLineageArchetypes) { ... }` block backfills from `archivedArchetypes` (a list of previously-locked archetype ids accumulated across prior runs). Existing players who have already locked in archetypes don't lose visibility. Brand-new saves start with `{}` (all 13 hidden).
+
+**`ArchetypeRadar.tsx` rewrite** (`src/components/game/shared/ArchetypeRadar.tsx`):
+- Removed the `archInsight: boolean` prop (it was a vestigial flag — `StagePanel` had hardcoded it to `true`).
+- Added `discoveredArchetypes: Record<string, boolean>` prop.
+- All 13 archetypes always render at fixed positions on the radar circle — both basic + rare, regardless of galactic wins. This is required so the polygon (affinity drift) renders correctly across all 13 axes.
+- Undiscovered archetypes (`discoveredArchetypes[id] !== true`) render with `???` label, `?` glyph, and a dim gray data point. The label color is muted.
+- Discovered archetypes render their full name + colored glyph + a brighter data point, exactly as before.
+- The data polygon (affinity distribution) ALWAYS renders — players see which direction they're drifting even on undiscovered axes. This matches the spec: *"the player can see which direction they're drifting (the data polygon still shows their current affinity distribution, but the archetype labels at the edges show ???)."*
+
+**`StagePanel.tsx` updates** (`src/components/game/layout/StagePanel.tsx`):
+- Reads `revealedLineageArchetypes` from the store.
+- Passes it as `discoveredArchetypes={revealedLineageArchetypes}` to `<ArchetypeRadar>`.
+- Removed the local `archInsight = true` constant.
+- Updated the `showArchInfo` help text to describe the new `???` reveal system.
+
+### Task 2 — 3 Buffs + 1 Debuff Per Archetype
+
+**`archetypes.ts` rewrite** (`src/game/data/archetypes.ts`):
+- Extended the `ArchetypeBonus` interface with:
+  - `buffs: string[]` (exactly 3 short labels for UI display)
+  - `debuff: string` (exactly 1 short label for UI display)
+  - New effect fields (all additive): `systemCostMult`, `epFromPrestigeMult`, `happinessPerTick`, `immuneToEvents`, `populationImmortal`, `popGrowsWithoutFood`, `productionInWarmStagesMult`, `productionWhenLowResourcesMult`, `productionWhenPlentifulMult`, `productionFromDisabledSystemsMult`, `productionPerSystemAllMult`, `militaryPowerMult`, `tradeValueMult`, `productionFromMineralSystemsMult`.
+  - Kept the legacy `label` + `desc` fields for backwards compatibility with any code that still reads them (defensive fallback in `LockedArchetypeDisplay`).
+- All 13 archetypes now have exactly 3 buffs + 1 debuff populated per the task spec.
+- Added `isArchetypeImmuneToEvent(lockedArchetype, eventId)` helper — checks event-category immunities ("cold", "plague", "disaster", "all") against a fixed mapping:
+  - **cold**: `harsh_winter`
+  - **plague**: `plague_rumor`
+  - **disaster**: `resource_drought`, `solar_flare`
+
+**Important design decision — archetype ID preservation.** The task spec's bonuses list has 13 entries, but two of them ("Necroid Rare" and "Lithoid Rare") describe separate rare-tier variants of archetypes that don't currently exist as distinct IDs in the data file. Meanwhile, `events.ts` has 30+ references to `avian`/`aquatic` affinity grants (Strange Fruit, Protein Cache, Avian Sky Omens, Aquatic Monsoon Season, etc.), and `achievements.ts` lists the basic archetype IDs for the "Specimen Cabinet" achievement. Deleting avian/aquatic would orphan all those references. To honor the spec while not breaking the codebase, I:
+- **Kept all 13 existing archetype IDs intact** (humanoid, mammalian, reptilian, avian, arthropoid, molluscoid, fungoid, plantoid, aquatic, lithoid, necroid, toxoid, extremophile).
+- Applied the matching 11 task-spec bonuses (Humanoid, Mammalian, Reptilian, Arthropoid, Plantoid, Fungoid, Molluscoid, Toxoid, Extremophile, Necroid-undying, Lithoid-crystalline).
+- Created sensible 3-buff + 1-debuff sets for **Avian** (light-boned, far-sighted: +20% science, +15% knowledge, +5% all prod; debuff: −10% military power) and **Aquatic** (fluid, pressure-deep: +20% water, +15% science, +10% culture; debuff: −10% all production) — fitting their existing blurbs.
+- Skipped the "Necroid Rare" + "Lithoid Rare" task-spec entries since they describe separate rare-tier variants that don't have corresponding IDs in the file. (Adding them as new IDs would push the count past 13 and break the "9 basic + 4 rare" structure mentioned in the Context.)
+- Documented this tradeoff in a header comment at the top of `archetypes.ts`.
+
+**Bonus-application wiring** (`src/game/state/store.ts`):
+- **Tick — production loop**:
+  - `archAllMult` is now composed from: base `allProductionMult` + `productionPerSystemAllMult × totalOwnedSystems` (Fungoid network) + `productionInWarmStagesMult` (Reptilian, when stage ∈ tribal/civilization/empire/solar/galactic) + `productionWhenLowResourcesMult` (Extremophile, when avg resource fill < 20%) + `productionWhenPlentifulMult` (Extremophile debuff, when avg fill > 80%).
+  - `military_power` resource production gets an extra `archMilitaryMult` additive bonus (Reptilian +15%, Toxoid +15%, Molluscoid −10%, Plantoid −20%).
+  - `productionFromDisabledSystemsMult` (Necroid +20%) — disabled systems still produce at the fractional rate and consume NO upkeep.
+  - `productionFromMineralSystemsMult` (Lithoid +30%) — stone/alloy-producing systems get an extra additive bonus on stone + alloys outputs.
+  - `popGrowsWithoutFood` (Plantoid) — skips the food/water depletion check.
+  - `happinessPerTick` (Fungoid −0.05/s, Toxoid −0.03/s) — applied as a per-second drift on `resources.happiness`, clamped to `[0, capacities.happiness]`.
+- **`performAction`** — manual actions now also apply `militaryPowerMult` to military_power outputs.
+- **`buySystem`** — applies `archCostFactor = 1 + (archetype.bonus.systemCostMult || 0)` on top of the existing `challengeCostMult`. Humanoid +10% costs, Arthropoid −15% costs.
+- **Auto-buyer** (inside tick) — same `archCostFactor` applied to candidate-system cost scaling.
+- **`triggerPrestige`** — applies `epEarned *= (1 + archetype.bonus.epFromPrestigeMult)` after the existing layer-EP multiplier. Necroid +50%, Necroid-Ascendant (skipped) +50%.
+- **Event firing** — `eventsForStage(...).filter((ev) => !isArchetypeImmuneToEvent(s.lockedArchetype, ev.id))`. Mammalian skips cold events, Fungoid + Toxoid skip plague events, Lithoid skips disasters, Extremophile skips ALL events.
+- **`resolveEvent`** — `populationImmortal` (Necroid) prevents any `choice.populationChange < 0` from being applied. Logs a notification message.
+
+**`LockedArchetypeDisplay` UI upgrade** (`src/components/game/layout/StagePanel.tsx`):
+- Renders the 3 buffs as a green `+` bullet list and the 1 debuff as a rose `−` bullet below the archetype name + blurb.
+- Falls back to the legacy single-string badge if `buffs` array is empty (defensive — should never trigger post-rework).
+
+### Verification
+- **Lint**: `bun run lint` → **0 errors, 7 warnings** (all pre-existing in `upload/logic.js` ×6 and `galaxies.ts` ×1; no new warnings introduced).
+- **TypeScript**: `bunx tsc --noEmit` shows the same 13 errors as the pre-change baseline (all in unrelated files: `examples/websocket/*`, `skills/*`, `EnlightenmentModal.tsx`, `sidebar.tsx`, `stages.ts`, plus 3 pre-existing `debugFreeBuy`/`resolveEvent string|null` errors in `store.ts` that pre-date this task). No new TS errors introduced by my changes.
+- **No tests written** (per instructions).
+- **No existing functionality removed**:
+  - All 13 archetype IDs preserved.
+  - All existing event affinity grants (avian/aquatic/etc.) still valid.
+  - Genesis Engine Layer-10 `discoveredArchetypes` field untouched (it tracks the 100 procedural `arch_NNN` archetypes — disjoint keyspace from lineage archetype ids).
+  - The `archetype_insight` shop upgrade is left as a no-op (its effect was already vestigial — `archInsight` was hardcoded `true` in the old StagePanel).
+
+### Files Modified
+1. `src/game/data/archetypes.ts` — extended `ArchetypeBonus` interface with `buffs`/`debuff` + 14 new effect fields; updated all 13 archetypes with structured 3-buff + 1-debuff sets; added `isArchetypeImmuneToEvent` helper + event-category constants.
+2. `src/game/state/types.ts` — added `revealedLineageArchetypes: Record<string, boolean>` field to `GameState`.
+3. `src/game/state/store.ts` — init field; preserve on prestige; set on Creature→Tribal lock-in; migration backfill from `archivedArchetypes`; apply all 14 new bonus effects in tick / buySystem / performAction / triggerPrestige / event firing / resolveEvent.
+4. `src/components/game/shared/ArchetypeRadar.tsx` — replaced `archInsight` prop with `discoveredArchetypes: Record<string, boolean>`; show `???` + dim point for undiscovered archetypes; keep polygon rendering actual affinity drift.
+5. `src/components/game/layout/StagePanel.tsx` — pass `revealedLineageArchetypes` as `discoveredArchetypes` prop; removed hardcoded `archInsight = true`; upgraded `LockedArchetypeDisplay` to render structured buffs/debuff list; updated `showArchInfo` help text to describe the `???` reveal system.
+
+### Summary
+- **??? system**: All 13 lineage archetypes render on the radar at all times (positions fixed). Undiscovered ones display `???` labels with dim points; discovered ones (post-lock-in) show full name + colored glyph. Affinity polygon always renders so the player sees their drift direction.
+- **`discoveredArchetypes` field**: Named `revealedLineageArchetypes` (deliberately distinct from the Genesis-Engine `discoveredArchetypes` field which uses `arch_NNN` keys for Layer-10 victory). Persists across prestiges. Migration backfills from `archivedArchetypes` so existing saves don't lose visibility.
+- **Archetype bonuses**: All 13 archetypes have exactly 3 buffs + 1 debuff in the new structured `bonus.buffs[]` + `bonus.debuff` fields. 14 new effect fields drive the actual gameplay mechanics (systemCostMult, epFromPrestigeMult, militaryPowerMult, immuneToEvents, populationImmortal, popGrowsWithoutFood, productionInWarmStagesMult, productionWhenLowResourcesMult, productionWhenPlentifulMult, productionFromDisabledSystemsMult, productionPerSystemAllMult, happinessPerTick, tradeValueMult, productionFromMineralSystemsMult).
+- **Lint result**: `bun run lint` → **0 errors, 7 warnings** (all pre-existing, none introduced by this task).

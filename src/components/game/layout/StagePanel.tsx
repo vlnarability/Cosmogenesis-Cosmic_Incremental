@@ -23,6 +23,9 @@ export function StagePanel() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // ARCHETYPES-REWORK — which archetypes the player has EVER locked in.
+  // Persists across prestiges. Drives the ??? reveal state on the radar.
+  const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
   const galacticWins = useGameStore((s) => s.galacticWins);
   const totalRuns = useGameStore((s) => s.totalRuns);
 
@@ -45,7 +48,9 @@ export function StagePanel() {
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);
   const domArch = dominantArchetype(archetypeAffinity);
   const totalAffinity = Object.values(archetypeAffinity).reduce((a, b) => a + b, 0);
-  const archInsight = true; // always visible — players should see their drift building
+  // ARCHETYPES-REWORK — all 13 archetypes render on the radar; discovery
+  // (revealed via first lock-in) controls ??? vs. full label display.
+  // The player can always see their affinity polygon drift.
   const isLocked = !!lockedArchetype;
 
   return (
@@ -182,7 +187,8 @@ export function StagePanel() {
         {showArchInfo && (
           <div className="mb-2 text-xs text-muted-foreground bg-muted/30 border border-border rounded p-2 leading-relaxed">
             <p className="font-semibold text-foreground mb-1">Lineage & Archetypes</p>
-            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants a permanent bonus.</p>
+            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants 3 buffs + 1 debuff.</p>
+            <p className="mt-1">Undiscovered archetypes appear as <span className="text-foreground">???</span> on the radar. Lock one in once to reveal its name forever — even across resets.</p>
             <p className="mt-1">Choose your path deliberately — or let it emerge from how you play.</p>
           </div>
         )}
@@ -194,7 +200,7 @@ export function StagePanel() {
             <ArchetypeRadar
               affinity={archetypeAffinity}
               lockedArchetype={lockedArchetype}
-              archInsight={archInsight}
+              discoveredArchetypes={revealedLineageArchetypes}
               size={180}
             />
             {stageIndex < 1 && (
@@ -250,6 +256,11 @@ export function StagePanel() {
 function LockedArchetypeDisplay({ archId }: { archId: string }) {
   const arch = ARCHETYPE_MAP[archId];
   if (!arch) return null;
+  // ARCHETYPES-REWORK — show the 3 buffs + 1 debuff as structured lists.
+  // Falls back to the legacy single-label badge if buffs/debuff aren't
+  // populated (defensive — should always be populated post-rework).
+  const buffs = arch.bonus.buffs ?? [];
+  const debuff = arch.bonus.debuff;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -258,11 +269,29 @@ function LockedArchetypeDisplay({ archId }: { archId: string }) {
           <div className="text-sm font-bold" style={{ color: arch.color }}>{arch.name}</div>
           <div className="text-[0.65rem] text-muted-foreground">{arch.rarity} · locked</div>
         </div>
-        <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
-          {arch.bonus.label}
-        </Badge>
+        {buffs.length === 0 && (
+          <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
+            {arch.bonus.label}
+          </Badge>
+        )}
       </div>
       <p className="text-xs text-muted-foreground italic leading-snug">{arch.bonus.desc}</p>
+      {buffs.length > 0 && (
+        <div className="space-y-0.5 mt-1">
+          {buffs.map((b, i) => (
+            <div key={i} className="flex items-start gap-1 text-[0.65rem] text-emerald-300/90 leading-snug">
+              <span className="text-emerald-400 shrink-0">+</span>
+              <span>{b}</span>
+            </div>
+          ))}
+          {debuff && (
+            <div className="flex items-start gap-1 text-[0.65rem] text-rose-300/90 leading-snug mt-0.5">
+              <span className="text-rose-400 shrink-0">−</span>
+              <span>{debuff}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
