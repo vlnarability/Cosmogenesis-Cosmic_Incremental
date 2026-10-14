@@ -5,6 +5,7 @@ import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
 import { STAGES } from "@/game/data/stages";
+import { THEME_MAP } from "@/game/data/themes";
 import { Header } from "./Header";
 import { StagePanel } from "./StagePanel";
 import { DivineEnginePanel } from "./DivineEnginePanel";
@@ -80,11 +81,20 @@ export function GameShell() {
   const activeLayerTheme = useGameStore((s) => s.activeLayerTheme);
   const activeSpecialTheme = useGameStore((s) => s.activeSpecialTheme);
 
+  // ORGANELLES-THEMES — some special themes (e.g. mini-ai) carry an
+  // `extraClass` that opts into additional styling (glassmorphism, glow
+  // shadows, icon-in-box). Look it up via THEME_MAP when a special is on.
+  const activeSpecialDef = activeSpecialTheme
+    ? THEME_MAP[activeSpecialTheme]
+    : undefined;
+  const extraClass = activeSpecialDef?.extraClass || "";
+
   const themeClass = [
     activeSpecialTheme
       ? `theme-${activeSpecialTheme}`
       : `theme-${activeStageTheme}`,
     activeLayerTheme && !activeSpecialTheme ? `theme-${activeLayerTheme}` : "",
+    extraClass,
   ].filter(Boolean).join(" ");
 
   return (

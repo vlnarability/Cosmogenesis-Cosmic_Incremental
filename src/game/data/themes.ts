@@ -3,6 +3,7 @@
 // Stage themes (7) — unlocked when reaching each stage.
 // Layer overlay themes (10) — unlocked when each prestige layer unlocks.
 // Special themes (3) — unlocked by special conditions.
+// Mini themes (20) — ORGANELLES-THEMES: 7 base + 13 archetype.
 // ============================================================
 
 export interface ThemeDef {
@@ -40,6 +41,10 @@ export interface ThemeDef {
   bgGradient?: string;
   // Category — controls how the theme is layered on top of others
   kind: "stage" | "layer" | "special";
+  // ORGANELLES-THEMES — optional extra CSS class applied alongside the
+  // `theme-<id>` class. The "AI" mini-theme uses this to opt into extra
+  // glassmorphism / glow / icon-in-box styling.
+  extraClass?: string;
 }
 
 // ----------------------------------------------------------------
@@ -400,6 +405,586 @@ export const SPECIAL_THEMES: ThemeDef[] = [
 ];
 
 // ----------------------------------------------------------------
+// 20 MINI THEMES (ORGANELLES-THEMES)
+// 7 base + 13 archetype themes, unlocked by milestones / discoveries.
+// Each is a self-contained override with `kind: "special"` so it slots
+// into the same unlock pipeline as the other special themes.
+// ----------------------------------------------------------------
+
+export const MINI_THEMES: ThemeDef[] = [
+  // ===== 7 BASE MINI THEMES =====
+
+  // 1. mini-terminal — green CRT (overlaps with special-retro by intent,
+  //    but uses a punchier phosphor + scanline gradient). Unlock at 10
+  //    achievements.
+  {
+    id: "mini-terminal",
+    name: "Terminal Plus",
+    desc: "Phosphor-green CRT aesthetic with scanlines. Unlock 10 achievements.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.08 0.014 150)",
+      "--foreground": "oklch(0.84 0.16 150)",
+      "--card": "oklch(0.11 0.014 150)",
+      "--card-foreground": "oklch(0.84 0.16 150)",
+      "--popover": "oklch(0.12 0.014 150)",
+      "--popover-foreground": "oklch(0.84 0.16 150)",
+      "--primary": "oklch(0.80 0.18 150)",
+      "--primary-foreground": "oklch(0.08 0.02 150)",
+      "--secondary": "oklch(0.17 0.02 150)",
+      "--secondary-foreground": "oklch(0.82 0.14 150)",
+      "--muted": "oklch(0.15 0.014 150)",
+      "--muted-foreground": "oklch(0.55 0.10 150)",
+      "--accent": "oklch(0.74 0.15 150)",
+      "--accent-foreground": "oklch(0.08 0.02 150)",
+      "--border": "oklch(0.26 0.02 150)",
+      "--input": "oklch(0.20 0.015 150)",
+      "--ring": "oklch(0.64 0.15 150)",
+    },
+    bgGradient: "repeating-linear-gradient(0deg, rgba(0,255,120,0.04) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, #0a1a0a 0%, #000500 100%)",
+  },
+
+  // 2. mini-void — explicit alias of the existing Void special theme.
+  //    Listed so it shows up in the mini-themes column too. Points at the
+  //    same color set.
+  {
+    id: "mini-void",
+    name: "Void (Mini)",
+    desc: "Pure monochrome. Reach 1 Galactic win.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.06 0 0)",
+      "--foreground": "oklch(0.95 0 0)",
+      "--card": "oklch(0.10 0 0)",
+      "--card-foreground": "oklch(0.95 0 0)",
+      "--popover": "oklch(0.11 0 0)",
+      "--popover-foreground": "oklch(0.95 0 0)",
+      "--primary": "oklch(0.88 0 0)",
+      "--primary-foreground": "oklch(0.08 0 0)",
+      "--secondary": "oklch(0.16 0 0)",
+      "--secondary-foreground": "oklch(0.95 0 0)",
+      "--muted": "oklch(0.14 0 0)",
+      "--muted-foreground": "oklch(0.62 0 0)",
+      "--accent": "oklch(0.78 0 0)",
+      "--accent-foreground": "oklch(0.08 0 0)",
+      "--border": "oklch(0.22 0 0)",
+      "--input": "oklch(0.18 0 0)",
+      "--ring": "oklch(0.65 0 0)",
+    },
+    bgGradient: "radial-gradient(ellipse at center, #0a0a0a 0%, #000000 100%)",
+  },
+
+  // 3. mini-solar-flare — orange/red on dark. Unlock at 3 Galactic wins.
+  {
+    id: "mini-solar-flare",
+    name: "Solar Flare",
+    desc: "Burning orange on black. Reach 3 Galactic wins.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.10 0.03 35)",
+      "--foreground": "oklch(0.90 0.04 45)",
+      "--card": "oklch(0.14 0.035 35)",
+      "--card-foreground": "oklch(0.92 0.04 45)",
+      "--popover": "oklch(0.15 0.035 35)",
+      "--popover-foreground": "oklch(0.92 0.04 45)",
+      "--primary": "oklch(0.72 0.18 40)",
+      "--primary-foreground": "oklch(0.10 0.02 35)",
+      "--secondary": "oklch(0.18 0.04 35)",
+      "--secondary-foreground": "oklch(0.92 0.04 45)",
+      "--muted": "oklch(0.18 0.03 35)",
+      "--muted-foreground": "oklch(0.66 0.04 45)",
+      "--accent": "oklch(0.68 0.20 25)",
+      "--accent-foreground": "oklch(0.95 0.02 45)",
+      "--border": "oklch(0.26 0.04 35)",
+      "--input": "oklch(0.20 0.035 35)",
+      "--ring": "oklch(0.62 0.16 40)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #7c2d12 0%, #431407 40%, #0a0301 100%)",
+  },
+
+  // 4. mini-forest — green/brown on dark. Unlock at 5 Galactic wins.
+  {
+    id: "mini-forest",
+    name: "Deep Forest",
+    desc: "Verdant greens on loam brown. Reach 5 Galactic wins.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.11 0.025 150)",
+      "--foreground": "oklch(0.88 0.03 100)",
+      "--card": "oklch(0.15 0.028 150)",
+      "--card-foreground": "oklch(0.90 0.03 100)",
+      "--popover": "oklch(0.16 0.028 150)",
+      "--popover-foreground": "oklch(0.90 0.03 100)",
+      "--primary": "oklch(0.70 0.16 140)",
+      "--primary-foreground": "oklch(0.10 0.02 140)",
+      "--secondary": "oklch(0.18 0.03 80)",
+      "--secondary-foreground": "oklch(0.92 0.03 100)",
+      "--muted": "oklch(0.18 0.022 150)",
+      "--muted-foreground": "oklch(0.62 0.03 100)",
+      "--accent": "oklch(0.66 0.12 70)",
+      "--accent-foreground": "oklch(0.10 0.02 70)",
+      "--border": "oklch(0.25 0.025 150)",
+      "--input": "oklch(0.20 0.022 150)",
+      "--ring": "oklch(0.58 0.14 140)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #365314 0%, #1a2e05 40%, #0a0f02 100%)",
+  },
+
+  // 5. mini-ice — cyan/white on dark blue. Unlock at 10 Galactic wins.
+  {
+    id: "mini-ice",
+    name: "Glacial",
+    desc: "Cyan-white frost on deep navy. Reach 10 Galactic wins.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.12 0.025 230)",
+      "--foreground": "oklch(0.92 0.02 200)",
+      "--card": "oklch(0.16 0.028 230)",
+      "--card-foreground": "oklch(0.94 0.02 200)",
+      "--popover": "oklch(0.17 0.028 230)",
+      "--popover-foreground": "oklch(0.94 0.02 200)",
+      "--primary": "oklch(0.82 0.10 200)",
+      "--primary-foreground": "oklch(0.10 0.02 220)",
+      "--secondary": "oklch(0.20 0.025 220)",
+      "--secondary-foreground": "oklch(0.92 0.02 200)",
+      "--muted": "oklch(0.18 0.022 230)",
+      "--muted-foreground": "oklch(0.66 0.025 200)",
+      "--accent": "oklch(0.76 0.14 210)",
+      "--accent-foreground": "oklch(0.10 0.02 210)",
+      "--border": "oklch(0.28 0.03 220)",
+      "--input": "oklch(0.22 0.025 220)",
+      "--ring": "oklch(0.70 0.14 200)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #0c4a6e 0%, #082f49 50%, #020617 100%)",
+  },
+
+  // 6. mini-volcanic — red/black. Unlock at all 10 layers.
+  {
+    id: "mini-volcanic",
+    name: "Volcanic",
+    desc: "Ember red on basalt black. Unlock all 10 prestige layers.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.09 0.025 25)",
+      "--foreground": "oklch(0.86 0.04 35)",
+      "--card": "oklch(0.13 0.028 25)",
+      "--card-foreground": "oklch(0.88 0.04 35)",
+      "--popover": "oklch(0.14 0.028 25)",
+      "--popover-foreground": "oklch(0.88 0.04 35)",
+      "--primary": "oklch(0.62 0.22 25)",
+      "--primary-foreground": "oklch(0.95 0.02 35)",
+      "--secondary": "oklch(0.18 0.03 25)",
+      "--secondary-foreground": "oklch(0.88 0.04 35)",
+      "--muted": "oklch(0.16 0.025 25)",
+      "--muted-foreground": "oklch(0.60 0.035 35)",
+      "--accent": "oklch(0.72 0.18 50)",
+      "--accent-foreground": "oklch(0.10 0.02 35)",
+      "--border": "oklch(0.24 0.03 25)",
+      "--input": "oklch(0.20 0.025 25)",
+      "--ring": "oklch(0.58 0.18 25)",
+    },
+    bgGradient: "radial-gradient(ellipse at bottom, #7c1d1d 0%, #3b0a0a 40%, #050000 100%)",
+  },
+
+  // 7. mini-ai — MAXIMALLY AI-looking. Indigo gradients, glass blur,
+  //    glow shadows, low-contrast borders, icon-in-box, rainbow dots,
+  //    curly quotes, aspirational copy. Easter-egg unlock.
+  {
+    id: "mini-ai",
+    name: "\u201CIntelligence\u201D",
+    desc: "\u201CElevate your idle journey with a next-generation, deeply-integrated experience.\u201D An easter egg.",
+    kind: "special",
+    extraClass: "ai-cringe-mode",
+    vars: {
+      "--background": "oklch(0.13 0.045 280)",
+      "--foreground": "oklch(0.92 0.03 270)",
+      "--card": "oklch(0.17 0.05 275)",
+      "--card-foreground": "oklch(0.93 0.025 270)",
+      "--popover": "oklch(0.18 0.05 275)",
+      "--popover-foreground": "oklch(0.93 0.025 270)",
+      "--primary": "oklch(0.62 0.20 285)",
+      "--primary-foreground": "oklch(0.95 0.02 280)",
+      "--secondary": "oklch(0.20 0.045 270)",
+      "--secondary-foreground": "oklch(0.92 0.03 270)",
+      "--muted": "oklch(0.19 0.04 280)",
+      "--muted-foreground": "oklch(0.72 0.04 270)",
+      "--accent": "oklch(0.66 0.18 320)",
+      "--accent-foreground": "oklch(0.95 0.02 320)",
+      "--border": "oklch(0.28 0.025 275)",   // deliberately low-contrast
+      "--input": "oklch(0.22 0.045 280)",
+      "--ring": "oklch(0.66 0.18 285)",
+    },
+    bgGradient: "linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4c1d95 70%, #1e1b4b 100%)",
+  },
+
+  // ===== 13 ARCHETYPE MINI THEMES =====
+
+  // 8. arch-humanoid — warm amber/earth tones
+  {
+    id: "arch-humanoid",
+    name: "Humanoid",
+    desc: "Warm amber and earth tones. Unlock the Humanoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.13 0.025 65)",
+      "--foreground": "oklch(0.90 0.022 70)",
+      "--card": "oklch(0.17 0.028 65)",
+      "--card-foreground": "oklch(0.92 0.022 70)",
+      "--popover": "oklch(0.18 0.028 65)",
+      "--popover-foreground": "oklch(0.92 0.022 70)",
+      "--primary": "oklch(0.74 0.13 60)",
+      "--primary-foreground": "oklch(0.10 0.02 60)",
+      "--secondary": "oklch(0.20 0.028 55)",
+      "--secondary-foreground": "oklch(0.92 0.022 70)",
+      "--muted": "oklch(0.19 0.022 65)",
+      "--muted-foreground": "oklch(0.64 0.025 60)",
+      "--accent": "oklch(0.68 0.10 40)",
+      "--accent-foreground": "oklch(0.10 0.02 40)",
+      "--border": "oklch(0.27 0.025 65)",
+      "--input": "oklch(0.21 0.025 65)",
+      "--ring": "oklch(0.62 0.12 60)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #713f12 0%, #422006 40%, #1a1003 100%)",
+  },
+
+  // 9. arch-mammalian — warm browns + oranges
+  {
+    id: "arch-mammalian",
+    name: "Mammalian",
+    desc: "Warm browns and burnt orange. Unlock the Mammalian lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.13 0.028 45)",
+      "--foreground": "oklch(0.90 0.025 50)",
+      "--card": "oklch(0.17 0.03 45)",
+      "--card-foreground": "oklch(0.92 0.025 50)",
+      "--popover": "oklch(0.18 0.03 45)",
+      "--popover-foreground": "oklch(0.92 0.025 50)",
+      "--primary": "oklch(0.70 0.15 45)",
+      "--primary-foreground": "oklch(0.10 0.02 45)",
+      "--secondary": "oklch(0.20 0.03 40)",
+      "--secondary-foreground": "oklch(0.92 0.025 50)",
+      "--muted": "oklch(0.19 0.025 45)",
+      "--muted-foreground": "oklch(0.62 0.03 45)",
+      "--accent": "oklch(0.66 0.16 30)",
+      "--accent-foreground": "oklch(0.95 0.02 40)",
+      "--border": "oklch(0.27 0.028 45)",
+      "--input": "oklch(0.21 0.028 45)",
+      "--ring": "oklch(0.58 0.14 45)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #7c2d12 0%, #431407 40%, #1c0701 100%)",
+  },
+
+  // 10. arch-reptilian — greens + yellows
+  {
+    id: "arch-reptilian",
+    name: "Reptilian",
+    desc: "Basking greens and sun-yellow. Unlock the Reptilian lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.12 0.03 140)",
+      "--foreground": "oklch(0.90 0.03 95)",
+      "--card": "oklch(0.16 0.032 140)",
+      "--card-foreground": "oklch(0.92 0.03 95)",
+      "--popover": "oklch(0.17 0.032 140)",
+      "--popover-foreground": "oklch(0.92 0.03 95)",
+      "--primary": "oklch(0.70 0.16 135)",
+      "--primary-foreground": "oklch(0.10 0.02 135)",
+      "--secondary": "oklch(0.20 0.032 90)",
+      "--secondary-foreground": "oklch(0.92 0.03 95)",
+      "--muted": "oklch(0.18 0.028 140)",
+      "--muted-foreground": "oklch(0.62 0.03 95)",
+      "--accent": "oklch(0.78 0.16 90)",
+      "--accent-foreground": "oklch(0.10 0.02 90)",
+      "--border": "oklch(0.26 0.03 140)",
+      "--input": "oklch(0.20 0.028 140)",
+      "--ring": "oklch(0.58 0.14 135)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #365314 0%, #1a2e05 40%, #0a0f02 100%)",
+  },
+
+  // 11. arch-necroid — dark purple + sickly green
+  {
+    id: "arch-necroid",
+    name: "Necroid",
+    desc: "Bruise purple and sickly green. Unlock the Necroid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.10 0.04 295)",
+      "--foreground": "oklch(0.86 0.04 140)",
+      "--card": "oklch(0.14 0.045 295)",
+      "--card-foreground": "oklch(0.88 0.04 140)",
+      "--popover": "oklch(0.15 0.045 295)",
+      "--popover-foreground": "oklch(0.88 0.04 140)",
+      "--primary": "oklch(0.55 0.18 295)",
+      "--primary-foreground": "oklch(0.92 0.04 295)",
+      "--secondary": "oklch(0.18 0.035 280)",
+      "--secondary-foreground": "oklch(0.86 0.04 140)",
+      "--muted": "oklch(0.17 0.035 295)",
+      "--muted-foreground": "oklch(0.58 0.05 140)",
+      "--accent": "oklch(0.62 0.16 145)",
+      "--accent-foreground": "oklch(0.10 0.02 145)",
+      "--border": "oklch(0.24 0.04 295)",
+      "--input": "oklch(0.20 0.04 295)",
+      "--ring": "oklch(0.50 0.16 295)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #2e1065 0%, #1a0033 50%, #050008 100%)",
+  },
+
+  // 12. arch-arthropoid — amber + chitin brown
+  {
+    id: "arch-arthropoid",
+    name: "Arthropoid",
+    desc: "Amber shell over chitin brown. Unlock the Arthropoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.12 0.028 55)",
+      "--foreground": "oklch(0.88 0.028 65)",
+      "--card": "oklch(0.16 0.032 55)",
+      "--card-foreground": "oklch(0.90 0.028 65)",
+      "--popover": "oklch(0.17 0.032 55)",
+      "--popover-foreground": "oklch(0.90 0.028 65)",
+      "--primary": "oklch(0.72 0.15 55)",
+      "--primary-foreground": "oklch(0.10 0.02 55)",
+      "--secondary": "oklch(0.20 0.028 45)",
+      "--secondary-foreground": "oklch(0.90 0.028 65)",
+      "--muted": "oklch(0.18 0.025 55)",
+      "--muted-foreground": "oklch(0.62 0.028 60)",
+      "--accent": "oklch(0.62 0.14 35)",
+      "--accent-foreground": "oklch(0.95 0.02 45)",
+      "--border": "oklch(0.26 0.028 55)",
+      "--input": "oklch(0.20 0.025 55)",
+      "--ring": "oklch(0.60 0.14 55)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #5c2e0a 0%, #2c1605 40%, #0a0501 100%)",
+  },
+
+  // 13. arch-plantoid — emerald + leaf green
+  {
+    id: "arch-plantoid",
+    name: "Plantoid",
+    desc: "Emerald green on leafy dark. Unlock the Plantoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.11 0.03 155)",
+      "--foreground": "oklch(0.90 0.03 130)",
+      "--card": "oklch(0.15 0.032 155)",
+      "--card-foreground": "oklch(0.92 0.03 130)",
+      "--popover": "oklch(0.16 0.032 155)",
+      "--popover-foreground": "oklch(0.92 0.03 130)",
+      "--primary": "oklch(0.70 0.16 155)",
+      "--primary-foreground": "oklch(0.10 0.02 155)",
+      "--secondary": "oklch(0.20 0.03 140)",
+      "--secondary-foreground": "oklch(0.92 0.03 130)",
+      "--muted": "oklch(0.18 0.028 155)",
+      "--muted-foreground": "oklch(0.62 0.03 140)",
+      "--accent": "oklch(0.74 0.15 130)",
+      "--accent-foreground": "oklch(0.10 0.02 130)",
+      "--border": "oklch(0.26 0.028 155)",
+      "--input": "oklch(0.20 0.025 155)",
+      "--ring": "oklch(0.58 0.14 155)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #064e3b 0%, #022c22 40%, #001a10 100%)",
+  },
+
+  // 14. arch-fungoid — purple + spore violet
+  {
+    id: "arch-fungoid",
+    name: "Fungoid",
+    desc: "Muted purple with spore-violet accents. Unlock the Fungoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.11 0.032 310)",
+      "--foreground": "oklch(0.88 0.03 290)",
+      "--card": "oklch(0.15 0.035 310)",
+      "--card-foreground": "oklch(0.90 0.03 290)",
+      "--popover": "oklch(0.16 0.035 310)",
+      "--popover-foreground": "oklch(0.90 0.03 290)",
+      "--primary": "oklch(0.62 0.18 310)",
+      "--primary-foreground": "oklch(0.92 0.03 310)",
+      "--secondary": "oklch(0.20 0.032 300)",
+      "--secondary-foreground": "oklch(0.90 0.03 290)",
+      "--muted": "oklch(0.18 0.028 310)",
+      "--muted-foreground": "oklch(0.60 0.04 290)",
+      "--accent": "oklch(0.66 0.16 330)",
+      "--accent-foreground": "oklch(0.10 0.02 330)",
+      "--border": "oklch(0.26 0.03 310)",
+      "--input": "oklch(0.20 0.03 310)",
+      "--ring": "oklch(0.56 0.16 310)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #4a044e 0%, #2a0033 50%, #0a000d 100%)",
+  },
+
+  // 15. arch-molluscoid — teal + ocean blue
+  {
+    id: "arch-molluscoid",
+    name: "Molluscoid",
+    desc: "Teal-on-ocean blue. Unlock the Molluscoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.11 0.03 220)",
+      "--foreground": "oklch(0.90 0.025 190)",
+      "--card": "oklch(0.15 0.032 220)",
+      "--card-foreground": "oklch(0.92 0.025 190)",
+      "--popover": "oklch(0.16 0.032 220)",
+      "--popover-foreground": "oklch(0.92 0.025 190)",
+      "--primary": "oklch(0.68 0.14 190)",
+      "--primary-foreground": "oklch(0.10 0.02 200)",
+      "--secondary": "oklch(0.20 0.03 230)",
+      "--secondary-foreground": "oklch(0.92 0.025 190)",
+      "--muted": "oklch(0.18 0.028 220)",
+      "--muted-foreground": "oklch(0.62 0.025 200)",
+      "--accent": "oklch(0.66 0.16 240)",
+      "--accent-foreground": "oklch(0.92 0.02 240)",
+      "--border": "oklch(0.26 0.03 220)",
+      "--input": "oklch(0.20 0.028 220)",
+      "--ring": "oklch(0.56 0.14 190)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #0e7490 0%, #0c4a6e 40%, #020617 100%)",
+  },
+
+  // 16. arch-lithoid — stone gray + crystal cyan
+  {
+    id: "arch-lithoid",
+    name: "Lithoid",
+    desc: "Stone gray with crystal-cyan accents. Unlock the Lithoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.14 0.012 240)",
+      "--foreground": "oklch(0.86 0.025 200)",
+      "--card": "oklch(0.18 0.014 240)",
+      "--card-foreground": "oklch(0.88 0.025 200)",
+      "--popover": "oklch(0.19 0.014 240)",
+      "--popover-foreground": "oklch(0.88 0.025 200)",
+      "--primary": "oklch(0.66 0.10 240)",
+      "--primary-foreground": "oklch(0.95 0.02 240)",
+      "--secondary": "oklch(0.22 0.012 240)",
+      "--secondary-foreground": "oklch(0.88 0.025 200)",
+      "--muted": "oklch(0.20 0.012 240)",
+      "--muted-foreground": "oklch(0.62 0.025 200)",
+      "--accent": "oklch(0.74 0.14 195)",
+      "--accent-foreground": "oklch(0.10 0.02 200)",
+      "--border": "oklch(0.28 0.015 240)",
+      "--input": "oklch(0.22 0.012 240)",
+      "--ring": "oklch(0.58 0.12 195)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #475569 0%, #1e293b 50%, #020617 100%)",
+  },
+
+  // 17. arch-toxoid — toxic green + hazard yellow
+  {
+    id: "arch-toxoid",
+    name: "Toxoid",
+    desc: "Toxic green with hazard-yellow accents. Unlock the Toxoid lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.12 0.035 125)",
+      "--foreground": "oklch(0.90 0.04 95)",
+      "--card": "oklch(0.16 0.038 125)",
+      "--card-foreground": "oklch(0.92 0.04 95)",
+      "--popover": "oklch(0.17 0.038 125)",
+      "--popover-foreground": "oklch(0.92 0.04 95)",
+      "--primary": "oklch(0.74 0.20 125)",
+      "--primary-foreground": "oklch(0.10 0.02 125)",
+      "--secondary": "oklch(0.20 0.035 90)",
+      "--secondary-foreground": "oklch(0.92 0.04 95)",
+      "--muted": "oklch(0.18 0.03 125)",
+      "--muted-foreground": "oklch(0.62 0.04 95)",
+      "--accent": "oklch(0.82 0.18 95)",
+      "--accent-foreground": "oklch(0.10 0.02 95)",
+      "--border": "oklch(0.26 0.035 125)",
+      "--input": "oklch(0.20 0.032 125)",
+      "--ring": "oklch(0.62 0.18 125)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #3f6212 0%, #1a2e05 40%, #0a0f02 100%)",
+  },
+
+  // 18. arch-avian — sky blue + white
+  {
+    id: "arch-avian",
+    name: "Avian",
+    desc: "Sky-blue with bright white accents. Unlock the Avian lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.13 0.03 230)",
+      "--foreground": "oklch(0.92 0.015 220)",
+      "--card": "oklch(0.17 0.032 230)",
+      "--card-foreground": "oklch(0.94 0.015 220)",
+      "--popover": "oklch(0.18 0.032 230)",
+      "--popover-foreground": "oklch(0.94 0.015 220)",
+      "--primary": "oklch(0.72 0.13 230)",
+      "--primary-foreground": "oklch(0.10 0.02 230)",
+      "--secondary": "oklch(0.20 0.028 240)",
+      "--secondary-foreground": "oklch(0.94 0.015 220)",
+      "--muted": "oklch(0.18 0.025 230)",
+      "--muted-foreground": "oklch(0.66 0.022 220)",
+      "--accent": "oklch(0.90 0.02 220)",
+      "--accent-foreground": "oklch(0.10 0.02 220)",
+      "--border": "oklch(0.28 0.03 230)",
+      "--input": "oklch(0.20 0.028 230)",
+      "--ring": "oklch(0.62 0.12 230)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #0284c7 0%, #0369a1 40%, #0c4a6e 100%)",
+  },
+
+  // 19. arch-aquatic — deep blue + coral
+  {
+    id: "arch-aquatic",
+    name: "Aquatic",
+    desc: "Deep blue with coral accents. Unlock the Aquatic lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.10 0.035 245)",
+      "--foreground": "oklch(0.88 0.03 200)",
+      "--card": "oklch(0.14 0.038 245)",
+      "--card-foreground": "oklch(0.90 0.03 200)",
+      "--popover": "oklch(0.15 0.038 245)",
+      "--popover-foreground": "oklch(0.90 0.03 200)",
+      "--primary": "oklch(0.62 0.16 245)",
+      "--primary-foreground": "oklch(0.92 0.02 245)",
+      "--secondary": "oklch(0.18 0.035 220)",
+      "--secondary-foreground": "oklch(0.90 0.03 200)",
+      "--muted": "oklch(0.17 0.03 245)",
+      "--muted-foreground": "oklch(0.60 0.03 200)",
+      "--accent": "oklch(0.70 0.18 25)",
+      "--accent-foreground": "oklch(0.10 0.02 25)",
+      "--border": "oklch(0.24 0.035 245)",
+      "--input": "oklch(0.20 0.032 245)",
+      "--ring": "oklch(0.54 0.14 245)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #1e3a8a 0%, #172554 50%, #020617 100%)",
+  },
+
+  // 20. arch-extremophile — orange + volcanic red
+  {
+    id: "arch-extremophile",
+    name: "Extremophile",
+    desc: "Volcanic red on orange. Unlock the Extremophile lineage.",
+    kind: "special",
+    vars: {
+      "--background": "oklch(0.12 0.035 40)",
+      "--foreground": "oklch(0.90 0.035 30)",
+      "--card": "oklch(0.16 0.038 40)",
+      "--card-foreground": "oklch(0.92 0.035 30)",
+      "--popover": "oklch(0.17 0.038 40)",
+      "--popover-foreground": "oklch(0.92 0.035 30)",
+      "--primary": "oklch(0.74 0.18 50)",
+      "--primary-foreground": "oklch(0.10 0.02 50)",
+      "--secondary": "oklch(0.20 0.035 30)",
+      "--secondary-foreground": "oklch(0.92 0.035 30)",
+      "--muted": "oklch(0.18 0.03 40)",
+      "--muted-foreground": "oklch(0.62 0.035 30)",
+      "--accent": "oklch(0.60 0.22 20)",
+      "--accent-foreground": "oklch(0.95 0.02 40)",
+      "--border": "oklch(0.26 0.035 40)",
+      "--input": "oklch(0.20 0.032 40)",
+      "--ring": "oklch(0.58 0.18 30)",
+    },
+    bgGradient: "radial-gradient(ellipse at top, #9a3412 0%, #7c2d12 40%, #1c0701 100%)",
+  },
+];
+
+// ----------------------------------------------------------------
 // Aggregations & lookup
 // ----------------------------------------------------------------
 
@@ -407,6 +992,7 @@ export const ALL_THEMES: ThemeDef[] = [
   ...STAGE_THEMES,
   ...LAYER_THEMES,
   ...SPECIAL_THEMES,
+  ...MINI_THEMES,
 ];
 
 export const THEME_MAP: Record<string, ThemeDef> = Object.fromEntries(

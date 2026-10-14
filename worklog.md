@@ -5367,3 +5367,91 @@ Two coupled reworks: (1) hide ALL 13 archetypes as `???` at game start, reveal t
 - **`discoveredArchetypes` field**: Named `revealedLineageArchetypes` (deliberately distinct from the Genesis-Engine `discoveredArchetypes` field which uses `arch_NNN` keys for Layer-10 victory). Persists across prestiges. Migration backfills from `archivedArchetypes` so existing saves don't lose visibility.
 - **Archetype bonuses**: All 13 archetypes have exactly 3 buffs + 1 debuff in the new structured `bonus.buffs[]` + `bonus.debuff` fields. 14 new effect fields drive the actual gameplay mechanics (systemCostMult, epFromPrestigeMult, militaryPowerMult, immuneToEvents, populationImmortal, popGrowsWithoutFood, productionInWarmStagesMult, productionWhenLowResourcesMult, productionWhenPlentifulMult, productionFromDisabledSystemsMult, productionPerSystemAllMult, happinessPerTick, tradeValueMult, productionFromMineralSystemsMult).
 - **Lint result**: `bun run lint` → **0 errors, 7 warnings** (all pre-existing, none introduced by this task).
+
+---
+
+## Task ID: ORGANELLES-THEMES
+
+### Summary
+Two-part task: (1) expand the Cell-stage system list from 7 → 49 entries (42 new organelles), and (2) add 20 new mini-themes (7 base + 13 archetype) to the theme system with milestone/discovery-based unlocks.
+
+### Task 1 — 49 Cell-stage Organelles
+
+**File**: `src/game/data/systems.ts`
+
+Added 42 new `SystemDef` entries to the existing 7 (membrane_pump, ribosome, vacuole, mitochondria, organelle_forge, nucleus, mitochondrial_bloom), bringing the total to **49 Cell-stage systems**. All 49 use the existing `SystemDef` interface — no interface changes.
+
+Breakdown:
+- **6 universal (no drift)**: lysosome (proteins), peroxisome (ATP), centrosome (capacity), golgi_apparatus (lipids), endoplasmic_reticulum (proteins), contractile_vacuole (water).
+- **36 drift systems (9 archetypes × 4)**, each granting archetype affinity:
+  - Humanoid (4): neural_crest (+2), neural_plate (+1), notochord (+1), ganglion (+1)
+  - Mammalian (4): mammary_precursor (+2), hair_follicle (+1), warm_blood_valve (+1), mammary_gland (+1)
+  - Reptilian (4): scale_formation (+2), cold_blood_valve (+1), egg_shell_gland (+1), jacobsons_organ (+1)
+  - Necroid (4): necrotic_core (+2), death_receptor (+1), soul_membrane (+1), phylactery (+1)
+  - Arthropoid (4): chitin_synthesis (+2), compound_eye (+1), jointed_appendage (+1), spiracle (+1)
+  - Plantoid (4): cell_wall (+2), chloroplast (+1), root_hair (+1), photosynthetic_membrane (+1)
+  - Fungoid (4): hyphal_network (+2), spore_case (+1), mycorrhizal_bond (+1), chitin_wall (+1)
+  - Molluscoid (4): mantle_formation (+2), radula (+1), ink_sac (+1), chromatophore (+1)
+  - Lithoid (4): crystal_lattice (+2), mineral_shell (+1), silicon_metabolism (+1), tectonic_core (+1)
+
+Cost design: universal organelles cost 18–35 glucose + small protein/lipid; drift organelles cost 70–140 glucose + 25–70 proteins/lipids/ATP (substantially more than universal, per spec). All new systems use `costGrowth: 1.30–1.36` and `maxOwned: 25` (per spec).
+
+Design note: organelles are NOT locked. Players can buy any of the 49 at any time. Drift accumulates from each purchase via the existing `grantsAffinity` field. The archetype locks at Creature→Tribal based on the highest accumulated drift (existing logic in `store.ts:evolve()`).
+
+### Task 2 — 20 Mini Themes
+
+**Files**:
+- `src/game/data/themes.ts` — added `MINI_THEMES` array with 20 entries + extended `ThemeDef` interface with optional `extraClass?: string` field.
+- `src/app/globals.css` — added 20 new `.theme-<id>` CSS classes + the `.ai-cringe-mode` block for the AI easter-egg theme.
+- `src/game/state/store.ts` — extended the tick's theme-unlock block to handle all 20 new mini-theme unlock conditions.
+- `src/components/game/modals/SettingsModal.tsx` — added a 4th theme column ("Mini & Archetype") + updated grid layout to `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`.
+- `src/components/game/layout/GameShell.tsx` — applies the `extraClass` (e.g. `ai-cringe-mode`) to the root div alongside the `theme-<id>` class when a special theme is active.
+
+**7 Base Mini-Themes** (unlock by milestones):
+1. `mini-terminal` — phosphor-green CRT with scanline bg (10 achievements)
+2. `mini-void` — monochrome (1 Galactic win; mirrors special-void)
+3. `mini-solar-flare` — orange/red on dark (3 Galactic wins)
+4. `mini-forest` — green/brown on dark (5 Galactic wins)
+5. `mini-ice` — cyan/white on dark blue (10 Galactic wins)
+6. `mini-volcanic` — ember red on basalt black (all 10 layers unlocked)
+7. `mini-ai` — easter-egg unlock (10 Galactic wins AND all 10 layers — "you've done everything, time to elevate the UI itself")
+
+**13 Archetype Mini-Themes** (unlock when that archetype is first locked in):
+- `arch-humanoid`, `arch-mammalian`, `arch-reptilian`, `arch-necroid`, `arch-arthropoid`, `arch-plantoid`, `arch-fungoid`, `arch-molluscoid`, `arch-lithoid`, `arch-toxoid`, `arch-avian`, `arch-aquatic`, `arch-extremophile`. Each uses the existing `revealedLineageArchetypes` record (already set on Creature→Tribal lock-in) to flip its `unlockedThemes[themeId]` flag.
+
+Each theme has visually distinct oklch color palettes (background, foreground, card, primary, accent, border, ring, etc.) and a unique `bgGradient`.
+
+**AI theme (mini-ai) — hits every AI tell from the spec**:
+- Indigo-to-purple `bgGradient: linear-gradient(135deg, #1e1b4b → #312e81 → #4c1d95 → #1e1b4b)`.
+- Glassmorphism via `.ai-cringe-mode` selector: `backdrop-filter: blur(12px) saturate(1.1)` + translucent `background: color-mix(...)`.
+- Glow shadows on every card / button: triple-layered `box-shadow` using `color-mix(in oklch, var(--primary) ...)` for primary + accent + outline.
+- Monotonous low-contrast card borders: `--border: oklch(0.28 0.025 275)` (deliberately close to `--card` chroma).
+- Icon-in-box styling: `.ai-cringe-mode [class*="icon"], .ai-cringe-mode svg.lucide` — forces a 1.5rem × 1.5rem bordered rounded box with primary-tinted bg + accent glow.
+- Rainbow status dots: `.ai-cringe-mode .status-dot, .ai-cringe-mode .dot` use `conic-gradient(red→amber→yellow→green→blue→violet→red)` + `ai-rainbow-spin` 4s linear infinite animation.
+- Curly quotes: theme `name: "\u201CIntelligence\u201D"` + `desc: "\u201CElevate your idle journey with a next-generation, deeply-integrated experience.\u201D An easter egg."`.
+- Generic aspirational copy: same desc line.
+
+### Verification
+
+- **Lint**: `bun run lint` → **0 errors, 7 warnings** (all pre-existing in `upload/logic.js` ×6 and `galaxies.ts` ×1; none introduced by this task).
+- **TypeScript**: `bunx tsc --noEmit` shows the same 13 errors as the pre-change baseline (all in unrelated files: `examples/websocket/*`, `skills/*`, `EnlightenmentModal.tsx`, `sidebar.tsx`, `stages.ts`, plus 3 pre-existing `debugFreeBuy`/`resolveEvent string|null` errors in `store.ts` that pre-date this task). No new TS errors introduced by my changes.
+- **No tests written** (per instructions).
+- **No existing functionality removed**:
+  - All 7 existing Cell-stage systems preserved as-is (including `mitochondrial_bloom`).
+  - All 3 existing special themes (`special-void`, `special-retro`, `special-cosmic`) untouched.
+  - All 7 stage themes and 10 layer overlay themes untouched.
+  - `mini-void` is intentionally a separate theme ID from `special-void` (per spec: "already exists as special-void, keep it") — both coexist as separate unlock records.
+
+### Files Modified
+
+1. `src/game/data/systems.ts` — added 42 new `SystemDef` entries (6 universal + 36 drift). Cell-stage count: 7 → 49.
+2. `src/game/data/themes.ts` — added `MINI_THEMES` array (20 entries) + extended `ThemeDef` interface with `extraClass?: string`; merged into `ALL_THEMES`.
+3. `src/app/globals.css` — added 20 new `.theme-<id>` CSS rule blocks + `.ai-cringe-mode` styling block (glassmorphism, glow shadows, icon-in-box, rainbow dots) + `ai-rainbow-spin` keyframe.
+4. `src/game/state/store.ts` — extended the tick's theme-auto-unlock block (in `tick()`) with: 7 base mini-theme unlocks (galacticWins thresholds + allLayersUnlocked + achCount + mini-ai easter egg) + 13 archetype unlocks driven by `revealedLineageArchetypes`.
+5. `src/components/game/modals/SettingsModal.tsx` — added `MINI_THEMES` import + new "Mini & Archetype" `ThemeColumn` + changed grid from `grid-cols-3` to `grid-cols-2 lg:grid-cols-4`.
+6. `src/components/game/layout/GameShell.tsx` — imported `THEME_MAP`, looks up the active special theme's `extraClass` and appends it to the root div's `className`.
+
+### Summary
+- **Organelles added**: 42 (6 universal + 36 drift across 9 archetypes), bringing Cell-stage total to 49.
+- **Themes added**: 20 (7 base mini-themes + 13 archetype mini-themes), each with its own `.theme-<id>` CSS class.
+- **Lint result**: 0 errors, 7 warnings (all pre-existing).

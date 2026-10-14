@@ -3,7 +3,7 @@
 import { useGameStore, DEFAULT_KEYBOARD_SHORTCUTS, SHORTCUT_LAYER_GATE } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ACHIEVEMENTS } from "@/game/data/achievements";
-import { STAGE_THEMES, LAYER_THEMES, SPECIAL_THEMES } from "@/game/data/themes";
+import { STAGE_THEMES, LAYER_THEMES, SPECIAL_THEMES, MINI_THEMES } from "@/game/data/themes";
 import { EVENTS } from "@/game/data/events";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -431,7 +431,7 @@ export function SettingsModal() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-2">
                 {/* Stage themes */}
                 <ThemeColumn
                   title="Stage Theme"
@@ -455,6 +455,16 @@ export function SettingsModal() {
                 <ThemeColumn
                   title="Special"
                   themes={SPECIAL_THEMES}
+                  activeId={activeSpecialTheme}
+                  unlockedThemes={unlockedThemes}
+                  allowNone
+                  onSelect={(id) => setSpecialTheme(id)}
+                />
+
+                {/* Mini themes (ORGANELLES-THEMES) */}
+                <ThemeColumn
+                  title="Mini & Archetype"
+                  themes={MINI_THEMES}
                   activeId={activeSpecialTheme}
                   unlockedThemes={unlockedThemes}
                   allowNone

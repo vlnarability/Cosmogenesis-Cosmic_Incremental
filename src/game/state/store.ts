@@ -1730,6 +1730,81 @@ export const useGameStore = create<GameStore>()(
           unlockedThemes["special-cosmic"] = true;
           themesChanged = true;
         }
+
+        // ---- Mini themes (ORGANELLES-THEMES) ----
+        // 7 base mini-themes — unlock by milestones.
+        if (achCount >= 10 && !unlockedThemes["mini-terminal"]) {
+          unlockedThemes["mini-terminal"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 1 && !unlockedThemes["mini-void"]) {
+          unlockedThemes["mini-void"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 3 && !unlockedThemes["mini-solar-flare"]) {
+          unlockedThemes["mini-solar-flare"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 5 && !unlockedThemes["mini-forest"]) {
+          unlockedThemes["mini-forest"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 10 && !unlockedThemes["mini-ice"]) {
+          unlockedThemes["mini-ice"] = true;
+          themesChanged = true;
+        }
+        if (allLayersUnlocked && !unlockedThemes["mini-volcanic"]) {
+          unlockedThemes["mini-volcanic"] = true;
+          themesChanged = true;
+        }
+        // mini-ai — easter egg: unlock when BOTH 10 galactic wins AND all 10
+        // layers are unlocked. The joke is that you've done everything, so
+        // the only thing left to "elevate" is the UI itself.
+        if ((s.galacticWins || 0) >= 10 && allLayersUnlocked && !unlockedThemes["mini-ai"]) {
+          unlockedThemes["mini-ai"] = true;
+          themesChanged = true;
+        }
+        // 13 archetype mini-themes — unlock when that archetype is first
+        // locked in (revealedLineageArchetypes[archId] === true).
+        const revealedLineage = s.revealedLineageArchetypes || {};
+        const ARCHETYPE_THEME_IDS: Array<string> = [
+          "arch-humanoid",
+          "arch-mammalian",
+          "arch-reptilian",
+          "arch-necroid",
+          "arch-arthropoid",
+          "arch-plantoid",
+          "arch-fungoid",
+          "arch-molluscoid",
+          "arch-lithoid",
+          "arch-toxoid",
+          "arch-avian",
+          "arch-aquatic",
+          "arch-extremophile",
+        ];
+        const ARCHETYPE_KEYS: Array<string> = [
+          "humanoid",
+          "mammalian",
+          "reptilian",
+          "necroid",
+          "arthropoid",
+          "plantoid",
+          "fungoid",
+          "molluscoid",
+          "lithoid",
+          "toxoid",
+          "avian",
+          "aquatic",
+          "extremophile",
+        ];
+        for (let i = 0; i < ARCHETYPE_THEME_IDS.length; i++) {
+          const themeId = ARCHETYPE_THEME_IDS[i];
+          const archKey = ARCHETYPE_KEYS[i];
+          if (revealedLineage[archKey] && !unlockedThemes[themeId]) {
+            unlockedThemes[themeId] = true;
+            themesChanged = true;
+          }
+        }
         void themesChanged;
 
         // ---- Theme AUTO mode: re-derive the active stage/layer theme every tick ----
