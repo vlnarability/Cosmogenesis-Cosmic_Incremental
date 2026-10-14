@@ -19,8 +19,7 @@ import { BLOOD_PACTS } from "@/game/data/transcendence";
 import { DIVINE_LAWS } from "@/game/data/apotheosis";
 import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES, OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
-import { OLD_GODS, ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS } from "@/game/data/infinity";
-import { ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
+import { OLD_GODS } from "@/game/data/infinity";
 import { RIFTS_REQUIRED_FOR_L7, ANCHORS_REQUIRED_FOR_L7 } from "@/game/data/universalMap";
 import { formatNumber } from "../shared/format";
 
@@ -127,11 +126,9 @@ export function PrestigeTab() {
   const creatures = useGameStore((s) => s.creatures || []);
   const legions = useGameStore((s) => s.legions || []);
   const instability = useGameStore((s) => s.instability || 0);
-  const peakInstability = useGameStore((s) => s.peakInstability || 0);
   const raidsRepelled = useGameStore((s) => s.raidsRepelled || 0);
   const setShowOmnipotence = useGameStore((s) => s.setShowOmnipotence);
 
-  const prayer = useGameStore((s) => s.prayer);
   const godRelationships = useGameStore((s) => s.godRelationships || {});
   const alliances = useGameStore((s) => s.alliances || {});
   const setShowDivinityLayer = useGameStore((s) => s.setShowDivinityLayer);
@@ -144,10 +141,6 @@ export function PrestigeTab() {
   const chosenEnding = useGameStore((s) => s.chosenEnding);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
   const setShowEternity = useGameStore((s) => s.setShowEternity);
-
-  // Legacy state (kept for migration; unused by new logic)
-  const echoes = useGameStore((s) => s.echoes);
-  const testamentClauses = useGameStore((s) => s.testamentClauses);
 
   // QUICK WIN 5 — Prestige Points (universal currency)
   const prestigePoints = useGameStore((s) => s.prestigePoints);
@@ -191,17 +184,6 @@ export function PrestigeTab() {
   const godsAtThreshold = MINOR_GODS.filter((g) => (godRelationships[g.id] || 0) >= RELATIONSHIP_ALLIANCE_THRESHOLD).length;
   const oldGodsDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
   const archetypesDiscovered = Object.values(discoveredArchetypes).filter(Boolean).length;
-  // Legacy counts (kept for backwards compat — all 0 in new logic)
-  const hybridsCount = 0;
-  const channelsLeveled = 0;
-  const totalChannelLevels = 0;
-  const purchasedEchoCount = 0;
-  const resolvedForkCount = 0;
-  const debtTakenCount = 0;
-  const debtRepaidCount = 0;
-  const purchasedClauseCount = 0;
-  const canonCount = 0;
-  const weaveCount = 0;
 
   return (
     <div className="space-y-4">
@@ -469,7 +451,7 @@ export function PrestigeTab() {
             icon="⚛️"
             unlocked={!!unlockedLayers.omnipotence}
             unlockText={`${RIFTS_REQUIRED_FOR_L7} rifts closed + ${ANCHORS_REQUIRED_FOR_L7} anchors placed`}
-            currencyName={`Instability: ${instability.toFixed(1)}/100 (peak ${peakInstability.toFixed(1)})`}
+            currencyName={`Instability: ${instability.toFixed(1)}/100`}
             onView={() => setShowOmnipotence(true)}
             viewLabel="View Lab"
             viewIcon={<Atom className="w-3 h-3 mr-1" />}

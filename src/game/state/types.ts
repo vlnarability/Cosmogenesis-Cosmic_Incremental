@@ -325,14 +325,8 @@ export interface GameState {
 
   // Layer 6 — Singularity (Universal Map redesign — adds rifts + anchors).
   // Singularity Cores are the L6 currency (spent to close rifts + place
-  // reality anchors). Relics apply their bonus to the tick. Logic Cores +
-  // Dimension Engine were the OLD L6 design — these legacy fields are kept
-  // here for save-shape compat with pre-redesign store.ts code that still
-  // references them. They are no-ops.
+  // reality anchors). Relics apply their bonus to the tick.
   singularityCores: number; // currency for closing rifts + placing anchors
-  equippedRelics: Record<string, boolean>; // relicId -> equipped
-  activeLogicCores: Record<string, boolean>; // LEGACY — kept for compat; no-op
-  logicCoreTimers: Record<string, number>; // LEGACY — kept for compat; no-op
   showSingularity: boolean;
   // L6 Universal Map — 50 galaxies (10 L5 starter+rival + 40 NEW neutral).
   // Each NEW galaxy has 10-150 systems (totaling exactly 5,000). Each claimed
@@ -351,10 +345,8 @@ export interface GameState {
   anchorsPlaced: number;
 
   // Layer 7 — Omnipotence (Bio-engineering)
-  equippedHybrids: Record<string, boolean>; // LEGACY: kept for migration; unused by new logic
   activeOmnipotenceStance: string; // "contained" | "balanced" | "embraced"
   instability: number; // 0-100; at 100 creatures go rogue (lose a system, reset to 50)
-  peakInstability: number; // peak this run (for legacy unlock check)
   showOmnipotence: boolean;
   // NEW: Creature Lab
   creatures: Array<import("../data/omnipotence").Creature>;
@@ -372,10 +364,6 @@ export interface GameState {
   // GameState.autoTimers) — no separate field needed here.
 
   // Layer 8 — Divinity (the layer; not the resource) — Divine Alliance
-  prayer: number; // currency (preserved for legacy refs)
-  prayerChannelLevels: Record<string, number>; // LEGACY: kept for migration
-  activeDivineMask: string | null; // LEGACY: kept for migration
-  activeWorshipPolarity: string | null; // LEGACY: kept for migration
   showDivinityLayer: boolean;
   // NEW: Divine Alliance
   minorGods: Array<import("../data/divinity_layer").MinorGod>;
@@ -383,23 +371,12 @@ export interface GameState {
   alliances: Record<string, boolean>; // godId -> allied
 
   // Layer 9 — Infinity — Divine War
-  echoes: number; // LEGACY: kept for migration
-  purchasedEchoes: Record<string, boolean>; // LEGACY
-  resolvedForks: Record<string, string>; // LEGACY
-  takenFutureDebts: Record<string, boolean>; // LEGACY
-  repaidFutureDebts: Record<string, boolean>; // LEGACY
   showInfinity: boolean;
   // NEW: Divine War
   oldGodBattles: Record<string, import("../data/infinity").BattleState>;
   divineFragments: number;
 
   // Layer 10 — Eternity — Genesis Engine (crucible + divine relics + 100 archetypes)
-  // (Legacy fields kept as no-ops for migration: testamentClauses,
-  // purchasedTestamentClauses, activeCanonizations, activePermanenceWeaves.)
-  testamentClauses: number; // LEGACY: kept for migration
-  purchasedTestamentClauses: Record<string, boolean>; // LEGACY
-  activeCanonizations: Record<string, boolean>; // LEGACY
-  activePermanenceWeaves: Record<string, boolean>; // LEGACY
   chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
   cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
@@ -475,14 +452,9 @@ export interface GameState {
   };
 
   // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
-  // Layer 1 — Trial Realms (LEGACY — mini-games removed in CLEANUP-LEGACY).
-  // These state fields persist as no-op stubs for save-shape compat. The
-  // canonical L1 system is now `challenges.ts` (10 run-modifier challenges
-  // tracked via `activeChallenge` + `completedChallenges`).
-  activeTrialRealm: string | null;              // LEGACY — always null on new saves
-  trialRealmState: Record<string, any>;        // LEGACY — always {} on new saves
-  trialRealmsCompleted: Record<string, boolean>; // LEGACY — always {} on new saves
-  trialRealmBestTimes: Record<string, number>;  // LEGACY — always {} on new saves
+  // Layer 1 — Trial Realms were REMOVED in CLEANUP-LEGACY. The canonical L1
+  // system is now `challenges.ts` (10 run-modifier challenges tracked via
+  // `activeChallenge` + `completedChallenges`).
   // Layer 2 — Constellation Map: state fields live above (next to foresightNodes);
   // constellationRevealed, constellationStars, constellationProgress, constellationsStarted,
   // constellationsCompleted are declared alongside the other L2 fields.
@@ -511,22 +483,14 @@ export interface GameState {
   portfolioPrices: Record<string, number>;
   /** Lifetime Divinity earned from portfolio dividends (META — display only). */
   portfolioDividendsEarned: number;
-  // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems below; worldGrid
-  // kept as an empty array for save-shape compat). worldGridSeeds also legacy.
-  worldGrid: Array<string | null>;             // LEGACY — 20 cells; no longer used
-  worldGridSeeds: Array<string | null>;        // LEGACY — always empty
-  // FEATURE 4 — Natural Disasters (LEGACY — disaster logic removed in L4 redesign)
-  disasterTimer: number;                       // seconds until next disaster roll (legacy)
-  lastDisasterCell: number | null;             // last affected cell (legacy, unused)
-  lastDisasterAt: number;                      // game-time of last disaster (legacy, unused)
+  // Layer 4 — Sacred Grid was REMOVED in the L4 redesign (replaced by
+  // `galaxySystems` below). Natural Disasters were also removed.
   // Layer 4 — Galaxy Claim (the new L4 loop). 50 star systems on a hex spiral.
   // Each claimed system grants its bonus (production/cap/EP/pop), +10 worlds
   // to the Divine Engine, and adjacency synergy if 2+ neighbors are claimed.
   galaxySystems: GalaxySystemState[];
-  // Layer 5 — Heresy Web (8×4 = 32 follower cells) — LEGACY followerGrid is
-  // kept empty for save-shape compat; the new per-galaxy grids live in
-  // galaxyFollowerGrid below.
-  followerGrid: Array<{ state: string; type: string }>; // LEGACY — kept empty
+  // Layer 5 — Heresy Web (8×4 = 32 follower cells) — per-galaxy grids live in
+  // `galaxyFollowerGrid` below.
   heresySpreadTimer: number;                   // seconds until next spread tick (per-galaxy cycle)
   heresySeedTimer: number;                     // seconds until next auto-seed of a heretic (per-galaxy cycle)
   /** Per-galaxy threshold tracking. Keys are `${galaxyId}:${threshold}` (threshold ∈ {25,50,75}). */
@@ -545,17 +509,9 @@ export interface GameState {
   conqueredGalaxies: Record<string, boolean>;
   /** Currently selected galaxy tab in the Apotheosis modal (cosmetic; persisted). */
   selectedGalaxyId: string;
-  // Layer 6 — Dimension Engine (parallel dimensions)
-  dimensions: Array<{
-    id: number;
-    name: string;
-    speed: number;       // 1 | 0.5 | 0.25
-    pop: number;
-    stageIndex: number;
-    resources: number;   // abstract pooled resource
-    reachedGalactic: boolean;
-  }>;
-  dimensionRiftTimer: number;                  // seconds until next rift event
+  // Layer 6 — Dimension Engine was REMOVED in the Universal Map redesign.
+  // The canonical L6 state lives in `universalGalaxies` (built via
+  // makeInitialUniversalGalaxies() from the data layer).
 
   // ===== FEATURE ENHANCEMENTS (L7–L10) =====
   // FEATURE 7 — Mutations: creatures can mutate on creation (50% stronger, +20% instability)
@@ -564,10 +520,6 @@ export interface GameState {
   amplifiers: Array<{ id: number; godId: string }>;
   // FEATURE 9 — Temporal Storms (per-battle): shuffle timeline, delays/accelerates enemy attacks
   temporalStorms: Record<string, boolean>;     // oldGodId → storm active
-  // FEATURE 10 — Forbidden Words (paradox counter): LEGACY — Genesis Engine
-  // redesign removed the paradox mechanic. Field kept for save-shape compat;
-  // always 0 in new saves.
-  universeParadox: number;
 
   // ===== BACKGROUND-SIMULATION =====
   // The base game (Cell → Galactic) becomes abstracted and simulated in the
@@ -623,8 +575,6 @@ export interface GameStore extends GameState {
 
   // Layer 2 — Enlightenment (Foresight / Constellation Map)
   setShowEnlightenment: (v: boolean) => void;
-  /** LEGACY stub — old action, kept for compatibility. No-op in the new design. */
-  purchaseForesightNode: (nodeId: string) => void;
   setForesightRoute: (routeId: string | null) => void;
   /**
    * Layer 2 — Constellation Map: illuminate a single star within a constellation.
@@ -659,9 +609,6 @@ export interface GameStore extends GameState {
 
   // Layer 6 — Singularity (Universal Map redesign)
   setShowSingularity: (v: boolean) => void;
-  toggleRelicLoadout: (relicId: string) => void;
-  /** LEGACY — Logic Cores were deprecated in favor of Reality Anchors; kept as no-op stub. */
-  toggleLogicCore: (coreId: string) => void;
   /** Close an active rift — spend Singularity Cores (scales with severity). */
   closeRift: (riftId: string) => void;
   /** Place a Reality Anchor on a galaxy — spend Singularity Cores (scales with anchors placed). */
@@ -671,7 +618,6 @@ export interface GameStore extends GameState {
 
   // Layer 7 — Omnipotence (Bio-engineering)
   setShowOmnipotence: (v: boolean) => void;
-  toggleHybridLineage: (hybridId: string) => void; // LEGACY stub
   setOmnipotenceStance: (stanceId: string) => void;
   // NEW: Creature Lab actions
   setCreatureDesignDraft: (draft: { bodyType: string; diet: string; special: string; name: string } | null) => void;
@@ -688,9 +634,6 @@ export interface GameStore extends GameState {
 
   // Layer 8 — Divinity (layer) — Divine Alliance
   setShowDivinityLayer: (v: boolean) => void;
-  levelPrayerChannel: (channelId: string) => void; // LEGACY stub
-  setDivineMask: (maskId: string | null) => void; // LEGACY stub
-  setWorshipPolarity: (polarityId: string | null) => void; // LEGACY stub
   // NEW: Divine Alliance actions
   negotiateWithGod: (godId: string) => void;
   tradeWithGod: (godId: string) => void;
@@ -698,10 +641,6 @@ export interface GameStore extends GameState {
 
   // Layer 9 — Infinity — Divine War
   setShowInfinity: (v: boolean) => void;
-  purchaseEcho: (echoId: string) => void; // LEGACY stub
-  resolveFork: (forkId: string, branchId: string) => void; // LEGACY stub
-  takeFutureDebt: (debtId: string) => void; // LEGACY stub
-  repayFutureDebt: (debtId: string) => void; // LEGACY stub
   // NEW: Divine War actions
   startOldGodBattle: (oldGodId: string) => void;
   deployLegionToBattle: (oldGodId: string, legionId: string) => void;
@@ -710,13 +649,7 @@ export interface GameStore extends GameState {
 
   // Layer 10 — Eternity — Genesis Engine
   setShowEternity: (v: boolean) => void;
-  purchaseTestamentClause: (clauseId: string) => void; // LEGACY stub
-  toggleCanonization: (canonId: string) => void; // LEGACY stub
-  togglePermanenceWeave: (weaveId: string) => void; // LEGACY stub
   chooseEnding: (endingId: "preserve" | "reset") => void;
-  // LEGACY stubs (kept for save-compat — Genesis Engine redesign removed these)
-  setUniverseRule: (slotIndex: number, optionId: string) => void;
-  toggleKeptGod: (godId: string) => void;
   // NEW: Genesis Engine actions
   /** Add a relic to the crucible (max 5, no duplicates). Cannot be removed once added. */
   addRelicToCrucible: (relicId: string) => void;
@@ -738,37 +671,13 @@ export interface GameStore extends GameState {
   setThemeMode: (mode: "auto" | "custom") => void;
 
   // ===== QUICK WINS =====
-  // WIN 2 — Active abilities (one per prestige layer)
-  /** REMOVED — active abilities were cut from the game. Kept as a no-op stub
-   *  for save-compat (old saves / migration code may still reference it). */
-  useActiveAbility: (layerId: string) => void;
   // WIN 5 — Universal shop upgrade purchase (spends Prestige Points)
   buyUniversalUpgrade: (upgradeId: string) => void;
 
   // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
-  // Layer 1 — Trial Realms (LEGACY — mini-games removed in CLEANUP-LEGACY).
-  // These action signatures persist as no-op stubs for save-compat. Calling
-  // them does nothing. The canonical L1 system is now `challenges.ts` (10
-  // run-modifier challenges managed via setActiveChallenge / etc).
-  setActiveTrialRealm: (realmId: string | null) => void;
-  realmBreakthrough: () => void;             // LEGACY no-op
-  realmDiscontentAction: (action: "celebrate" | "tax" | "ignore") => void;
-  // LEGACY no-ops (formerly 7 newly playable realm actions)
-  realmFaminePump: (resourceId: "a" | "b" | "c") => void;
-  realmIgnoranceBuyNode: (nodeId: number) => void;
-  realmStagnationUpgrade: (stage: number) => void;
-  realmWeaknessPlaceTower: () => void;
-  realmPurityBuildSystem: () => void;
-  realmAsceticBuildSystem: (systemId: number) => void;
-
-  // Layer 2 — Constellation Map
-  /** LEGACY stub — old action signature, kept for compatibility. No-op. */
-  illuminateConstellationNode: (nodeId: string) => void;
-  // Legacy stubs (kept for save-compat — no-ops)
-  stargazeReveal: () => void;
-  supernovaIlluminate: (constellationId: string, starId: string) => void;
-  blackHoleReset: (constellationId: string) => void;
-  activateCosmicBridge: (fromConstellationId: string, toConstellationId: string) => void;
+  // Layer 1 — Trial Realms were REMOVED in CLEANUP-LEGACY. The canonical L1
+  // system is now `challenges.ts` (10 run-modifier challenges managed via
+  // setActiveChallenge / etc).
 
   // Layer 3 — Divine Market
   marketBuyResource: (resourceId: string, qty: number) => void;
@@ -787,10 +696,6 @@ export interface GameStore extends GameState {
    *  Bridges the L3 dividend economy back into L2 (speed-up shortcut). */
   buyStarFromMarket: () => { constellationId: string; starId: string; cost: number } | null;
 
-  // Layer 4 — Sacred Grid
-  placeGridTile: (cellIndex: number, tileType: string) => void;
-  resetWorldGrid: () => void;
-
   // Layer 5 — Heresy Web (Galactic Conquest redesign; per-galaxy)
   convertFollower: (galaxyId: string, cellIndex: number) => void;
   purgeFollower: (galaxyId: string, cellIndex: number) => void;
@@ -799,16 +704,6 @@ export interface GameStore extends GameState {
   attackGalaxy: (galaxyId: string) => void;
   /** Select a galaxy tab in the Apotheosis modal (cosmetic; persists). */
   setSelectedGalaxyId: (galaxyId: string) => void;
-
-  // Layer 6 — Dimension Engine (LEGACY — Dimension Engine was REMOVED in the
-  // Universal Map redesign. These action signatures are kept as no-op stubs
-  // for save-compat; calling them does nothing. Use `closeRift`,
-  // `placeRealityAnchor`, `attackUniversalGalaxy` instead.)
-  setDimensionSpeed: (dimId: number, speed: number) => void;
-  syncDimension: (fromId: number, toId: number) => void;
-  initDimensions: () => void;
-  // FEATURE 6 — Collapse two dimensions of the same stage into one (combined speed + resources)
-  collapseDimensions: (fromId: number, toId: number) => void;
 
   // ===== FEATURE ENHANCEMENTS =====
   // FEATURE 5 — Prophets (per-galaxy: place/remove on a galaxy's heresy grid)
@@ -819,9 +714,6 @@ export interface GameStore extends GameState {
   removeAmplifier: (godId: string) => void;
   // FEATURE 9 — Temporal Storms
   stabilizeTime: (oldGodId: string) => void;
-  // FEATURE 10 — Forbidden Words: LEGACY stub — Genesis Engine redesign removed
-  // the paradox mechanic. The action is kept for save-compat; calling it does nothing.
-  resolveParadox: () => void;
 
   // ===== BACKGROUND-SIMULATION =====
   // backgroundSimulations is now COMPUTED from (3 + starsLit) × simMult.

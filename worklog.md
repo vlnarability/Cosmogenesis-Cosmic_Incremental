@@ -5024,3 +5024,51 @@ Stage Summary:
 - Challenges are now the 10 correct trial modifiers.
 - OOM issue mitigated via lazy loading (modals load on-demand, not on initial page load).
 - Debug free-buy available for testing.
+
+---
+
+Task ID: REMOVE-LEGACY-STATE
+Agent: sub-agent (general-purpose)
+Task: Remove ALL legacy state fields + their store references + migration code (save compatibility does not matter)
+
+Work Log:
+- **types.ts** — Removed ~30 legacy GameState fields + ~30 legacy GameStore action signatures:
+  - L1 Trial Realm: activeTrialRealm, trialRealmState, trialRealmsCompleted, trialRealmBestTimes
+  - L4 Sacred Grid: worldGrid, worldGridSeeds, disasterTimer, lastDisasterCell, lastDisasterAt
+  - L5 Heresy Web: followerGrid (per-galaxy galaxyFollowerGrid is the canonical store)
+  - L6 Dimension Engine: dimensions, dimensionRiftTimer, dimensionEngineBonusClaimed, activeLogicCores, logicCoreTimers, equippedRelics
+  - L7 Omnipotence: equippedHybrids, peakInstability
+  - L8 Divinity: prayer, prayerChannelLevels, activeDivineMask, activeWorshipPolarity
+  - L9 Infinity: echoes, purchasedEchoes, resolvedForks, takenFutureDebts, repaidFutureDebts
+  - L10 Eternity: testamentClauses, purchasedTestamentClauses, activeCanonizations, activePermanenceWeaves, universeParadox
+  - KEPT cosmicBoonStacks (still used by EternityModal ending screen)
+  - Removed action signatures: purchaseForesightNode, toggleRelicLoadout, toggleLogicCore, toggleHybridLineage, levelPrayerChannel, setDivineMask, setWorshipPolarity, purchaseEcho, resolveFork, takeFutureDebt, repayFutureDebt, purchaseTestamentClause, toggleCanonization, togglePermanenceWeave, setUniverseRule, toggleKeptGod, useActiveAbility, setActiveTrialRealm, realmBreakthrough, realmDiscontentAction, realmFaminePump, realmIgnoranceBuyNode, realmStagnationUpgrade, realmWeaknessPlaceTower, realmPurityBuildSystem, realmAsceticBuildSystem, illuminateConstellationNode, stargazeReveal, supernovaIlluminate, blackHoleReset, activateCosmicBridge, placeGridTile, resetWorldGrid, setDimensionSpeed, syncDimension, initDimensions, collapseDimensions, resolveParadox, spawnBackgroundSimulation
+
+- **store.ts** — Removed all references:
+  - Imports: dropped trialRealmRewardBonus, logicCoreBonus, prayerChannelBonus, divineMaskBonus, worshipPolarityBonus, prayerRate, echoBonus, forkBonus, activeDebtBonus, testamentClauseBonus, canonizationBonus, permanenceWeaveBonus, universeSlotBonus, keptGodsBonus, isEternityComplete, ENDING_CHOICES, plus all unused constant imports (ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS, UNIVERSE_SLOTS, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES, etc.)
+  - initialMetaState: removed all legacy field initializers (kept cosmicBoonStacks)
+  - tick: removed `relics`, `chanBonus`, `maskBonus`, `polarityBonus`, `echoB`, `forkB`, `debtB`, `testB`, `canonB`, `weaveB`, `trialReward`, `lateBloomPopBonus`, `realmSwiftnessMult`, `peakInstability`, `prayer`, `prayerRate`, `followerGrid` local var, plus the LEGACY no-op blocks from layerProdBonus / layerCapBonus / layerPopBonus sums
+  - prestige reset: removed echoes/testamentClauses/equippedRelics/activeLogicCores/logicCoreTimers/equippedHybrids/peakInstability/prayer/prayerChannelLevels/activeDivineMask/activeWorshipPolarity/purchasedEchoes/resolvedForks/takenFutureDebts/repaidFutureDebts/purchasedTestamentClauses/activeCanonizations/activePermanenceWeaves/dimensionEngineBonusClaimed/followerGrid from the reset object
+  - EP bonus calculation: removed `relicEp`, `coreEp`, `chanEp`, `maskEp`, `polEp`, `echoEp`, `forkEp`, `debtEp`, `testEp`, `canonEp`, `weaveEp`, `universeEp`, `keptEp` (kept `hybridEp`, `allianceEp`, `fragmentEp`)
+  - Removed prestige echoes/testamentClauses gain logs + variables (echoGain, testamentGain)
+  - Removed ALL migration `if (persisted.X === undefined)` blocks for deleted fields
+  - Removed all legacy no-op action implementations
+  - debugUnlockAll: removed `prayer:` grant + updated log message
+  - tradeWithGod: narrowed `as "divinity" | "prayer" | "faith"` cast to `as "divinity" | "faith"`
+
+- **Data files cleaned**:
+  - singularity.ts: emptied (was only logicCoreBonus stub + LOGIC_CORES legacy data)
+  - trialRealms.ts: emptied (was only legacy stubs)
+  - infinity.ts: removed echoBonus, forkBonus, activeDebtBonus + ECHO_TYPES/ECHO_TYPE_MAP/FORK_SCENARIOS/FORK_SCENARIO_MAP/FUTURE_DEBT_TIERS/FUTURE_DEBT_TIER_MAP
+  - eternity.ts: removed testamentClauseBonus, canonizationBonus, permanenceWeaveBonus, universeSlotBonus, keptGodsBonus + UNIVERSE_SLOTS/UNIVERSE_SLOT_MAP/TESTAMENT_CLAUSES/TESTAMENT_CLAUSE_MAP/CANONIZATIONS/CANONIZATION_MAP/PERMANENCE_WEAVES/PERMANENCE_WEAVE_MAP/UniverseSlot/UniverseSlotId types (kept ENDING_CHOICES, ENDING_CHOICE_MAP, cosmicBoonBonus, isEternityComplete)
+  - divinity_layer.ts: removed worshipPolarityBonus, prayerChannelBonus, divineMaskBonus, prayerRate functions + updated 3 gods that previously demanded/rewarded "prayer" to use divinity/faith instead
+
+- **UI files**:
+  - PrestigeTab.tsx: removed `peakInstability`, `prayer`, `echoes`, `testamentClauses` selectors + the 10 dead "legacy count" variables (hybridsCount, channelsLeveled, etc.) + unused imports (ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS, ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES) + updated L7 currency display to drop peakInstability
+  - OmnipotenceModal.tsx: removed `peakInstability` selector + updated display label to "current" instead of "peak"
+  - DivinityLayerModal.tsx: removed `prayer` selector + RESOURCE_ICON entry + getResourceAmount branch + display label + updated unlock-text from "peak instability ≥ 80" to "repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids"
+
+Stage Summary:
+- 0 lint errors. 7 pre-existing warnings (6 in upload/logic.js, 1 in galaxies.ts unused eslint-disable) — confirmed present before this task.
+- No tests written (per instructions).
+- 10 files modified. ~948 lines deleted, ~77 lines added.

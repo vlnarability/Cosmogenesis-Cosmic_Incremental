@@ -40,7 +40,6 @@ export function OmnipotenceModal() {
   const legions = useGameStore((s) => s.legions || []);
   const activeStance = useGameStore((s) => s.activeOmnipotenceStance || "balanced");
   const instability = useGameStore((s) => s.instability || 0);
-  const peakInstability = useGameStore((s) => s.peakInstability || 0);
   const draft = useGameStore((s) => s.creatureDesignDraft);
   // L7 FIX Bug 1 — cost & capacity state for Create Creature button.
   // L10-GENESIS-ENGINE: capacity now scales with discovered archetypes
@@ -138,7 +137,7 @@ export function OmnipotenceModal() {
                   <AlertTriangle className="w-3 h-3" /> Genetic Instability (creatures go rogue at 100)
                 </div>
                 <div className="text-[0.65rem] text-rose-300/80">
-                  rate ×{stanceRateMult.toFixed(2)} · {rate.toFixed(3)}/s · peak {peakInstability.toFixed(1)}
+                  rate ×{stanceRateMult.toFixed(2)} · {rate.toFixed(3)}/s · current {instability.toFixed(1)}
                 </div>
               </div>
               <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">

@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { Lock, Handshake, CheckCircle2, Sparkles, Radio } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { formatNumber } from "../shared/format";
+import { OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 
 const PERSONALITY_COLORS: Record<string, string> = {
   warm: "text-amber-300 border-amber-400/40",
@@ -31,7 +32,6 @@ const PERSONALITY_COLORS: Record<string, string> = {
 
 const RESOURCE_ICON: Record<string, string> = {
   divinity: "💎",
-  prayer: "🕯️",
   faith: "✨",
 };
 
@@ -43,7 +43,6 @@ export function DivinityLayerModal() {
   const godRelationships = useGameStore((s) => s.godRelationships || {});
   const alliances = useGameStore((s) => s.alliances || {});
   const divinity = useGameStore((s) => s.divinity || 0);
-  const prayer = useGameStore((s) => s.prayer || 0);
   const faith = useGameStore((s) => s.faith || 0);
 
   const negotiateWithGod = useGameStore((s) => s.negotiateWithGod);
@@ -60,7 +59,6 @@ export function DivinityLayerModal() {
 
   const getResourceAmount = (res: string): number => {
     if (res === "divinity") return divinity;
-    if (res === "prayer") return prayer;
     if (res === "faith") return faith;
     return 0;
   };
@@ -88,7 +86,7 @@ export function DivinityLayerModal() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The Diplomacy Network is sealed.</p>
-            <p className="text-xs mt-1">Reach peak instability ≥ 80 (Layer 7 — Omnipotence) to unlock Divinity.</p>
+            <p className="text-xs mt-1">Repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids (Layer 7 — Omnipotence) to unlock Divinity.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -97,7 +95,7 @@ export function DivinityLayerModal() {
               <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
                 <span>{alliedCount}/6 alliances · {Object.keys(godRelationships).length} minor gods</span>
                 <span className="text-amber-300/80">
-                  💎 {formatNumber(divinity, 0)} · 🕯️ {formatNumber(prayer, 0)} · ✨ {formatNumber(faith, 0)}
+                  💎 {formatNumber(divinity, 0)} · ✨ {formatNumber(faith, 0)}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1">
