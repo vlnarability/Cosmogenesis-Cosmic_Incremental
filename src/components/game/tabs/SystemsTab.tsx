@@ -35,6 +35,7 @@ export function SystemsTab() {
   const systemEnabled = useGameStore((s) => s.systemEnabled);
   const technologies = useGameStore((s) => s.technologies);
   const upgrades = useGameStore((s) => s.upgrades);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
   const buySystem = useGameStore((s) => s.buySystem);
   const toggleSystem = useGameStore((s) => s.toggleSystem);
   const enableAllSystems = useGameStore((s) => s.enableAllSystems);
@@ -103,19 +104,6 @@ export function SystemsTab() {
               </CardDescription>
             </div>
             <div className="flex gap-1 shrink-0 items-center flex-wrap">
-              {/* "Show only current stage" toggle */}
-              {(hasLegacy || hasMiddle) && (
-                <Button
-                  size="sm"
-                  variant={onlyCurrent ? "default" : "outline"}
-                  className="h-7 text-xs"
-                  onClick={() => setOnlyCurrent((v) => !v)}
-                  title="Hide all legacy/past-stage systems"
-                >
-                  <Filter className="w-3 h-3 mr-1" />
-                  Current only
-                </Button>
-              )}
               {ownedCount > 0 && (
                 <>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => enableAllSystems(true)}>
@@ -131,7 +119,7 @@ export function SystemsTab() {
         </CardHeader>
       </Card>
 
-      {/* Current stage systems — always shown */}
+      {/* Current stage systems — always shown (old stages hidden) */}
       {currentSystems.length === 0 ? (
         <Card className="glass-panel">
           <CardContent className="py-8 text-center text-muted-foreground">
@@ -144,7 +132,7 @@ export function SystemsTab() {
           {currentSystems.map((sys) => {
             const owned = ownedSystems[sys.id] || 0;
             const cost = systemCost(sys, owned, costReduction);
-            const canAfford = Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+            const canAfford = debugFreeBuy || Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
             const atMax = sys.maxOwned ? owned >= sys.maxOwned : false;
             const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
             const enabled = systemEnabled[sys.id] !== false;
@@ -168,80 +156,6 @@ export function SystemsTab() {
           })}
         </div>
       )}
-
-      {/* Middle stages (between legacy cutoff and current) — open by default */}
-      {hasMiddle && !onlyCurrent && (
-        <Accordion type="multiple" defaultValue={middleStages.map((s) => `mid-${s.id}`)}>
-          {middleStages.map((st) => {
-            const sys = systemsForStage(st.id);
-            return (
-              <AccordionItem key={`mid-${st.id}`} value={`mid-${st.id}`} className="glass-panel rounded-lg px-3 mb-2 border-border/40">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-cyan-400" />
-                    <span className="text-sm font-semibold">{st.name} Systems</span>
-                    <Badge variant="outline" className="text-[0.6rem]">
-                      {sys.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{sys.length} owned
-                    </Badge>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <SystemsGrid systems={sys} />
-                </AccordionContent>
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
-      )}
-
-      {/* Legacy accordion — closed by default */}
-      {hasLegacy && !onlyCurrent && (
-        <Card className="glass-panel">
-          <CardHeader className="pb-2">
-            <Accordion type="single" collapsible value={legacyOpen ? "legacy" : ""} onValueChange={(v) => setLegacyOpen(v === "legacy")}>
-              <AccordionItem value="legacy" className="border-b-0">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <History className="w-4 h-4 text-amber-400/80" />
-                    <span className="text-sm font-semibold">
-                      Legacy Systems
-                    </span>
-                    <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
-                      {legacyStages.length} stages · {legacySystemsOwned}/{legacySystemsTotal} owned
-                    </Badge>
-                    {isL5Plus && (
-                      <span className="text-[0.6rem] text-muted-foreground">
-                        (Stages 1-{Math.min(5, stageIndex)} — collapsed for higher-layer play)
-                      </span>
-                    )}
-                    {isL2Plus && !isL5Plus && (
-                      <span className="text-[0.6rem] text-muted-foreground">
-                        (Stages 1-{Math.min(2, stageIndex)} — collapsed at Enlightenment+)
-                      </span>
-                    )}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-3 pt-2">
-                    {legacyStages.map((st) => {
-                      const sys = systemsForStage(st.id);
-                      return (
-                        <div key={st.id} className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wide">
-                            <span>{st.icon}</span>
-                            {st.name} ({sys.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{sys.length})
-                          </div>
-                          <SystemsGrid systems={sys} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </CardHeader>
-        </Card>
-      )}
     </div>
   );
 }
@@ -254,6 +168,7 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
   const systemEnabled = useGameStore((s) => s.systemEnabled);
   const technologies = useGameStore((s) => s.technologies);
   const upgrades = useGameStore((s) => s.upgrades);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
   const buySystem = useGameStore((s) => s.buySystem);
   const toggleSystem = useGameStore((s) => s.toggleSystem);
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
@@ -266,7 +181,7 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
       {systems.map((sys) => {
         const owned = ownedSystems[sys.id] || 0;
         const cost = systemCost(sys, owned, costReduction);
-        const canAfford = Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+        const canAfford = debugFreeBuy || Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
         const atMax = sys.maxOwned ? owned >= sys.maxOwned : false;
         const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
         const enabled = systemEnabled[sys.id] !== false;
