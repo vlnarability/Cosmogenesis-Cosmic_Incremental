@@ -14,6 +14,7 @@ import { CheckCircle2, Lock, GitBranch, History, Layers, Filter } from "lucide-r
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import type { TechDef } from "@/game/state/types";
+import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
 
 // Determine which stage indices are "legacy" (collapsed into the Legacy accordion).
 function legacyStageRange(stageIndex: number, isL2Plus: boolean, isL5Plus: boolean): { start: number; end: number } {
@@ -68,6 +69,8 @@ export function TechTab() {
 
   return (
     <div className="space-y-4">
+      {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
+      <PurchaseErrorBanner />
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -239,6 +242,9 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
 
   const owned = !!technologies[tech.id];
   const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
+  // P7 — canAfford is used to tint the button text red when the player can't
+  // afford. The click still fires and surfaces an inline "Not enough
+  // [resource]" error via the PurchaseErrorBanner.
   const canAfford = Object.entries(tech.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
 
   return (
@@ -332,7 +338,11 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           size="sm"
           variant={owned ? "outline" : "default"}
           className="h-7 ml-auto"
-          disabled={owned || !prereqMet || !canAfford}
+          // P7 — Keep the button ENABLED even when the player can't afford,
+          // so the click fires and the store surfaces the inline
+          // "Not enough [resource]" error. Disable only when owned (already
+          // researched) or when prereqs aren't met (the buy would no-op).
+          disabled={owned || !prereqMet}
           onClick={() => buyTech(tech.id)}
         >
           {owned ? "Researched" : !prereqMet ? "Locked" : "Research"}

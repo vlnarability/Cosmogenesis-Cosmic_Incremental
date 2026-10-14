@@ -5072,3 +5072,103 @@ Stage Summary:
 - 0 lint errors. 7 pre-existing warnings (6 in upload/logic.js, 1 in galaxies.ts unused eslint-disable) — confirmed present before this task.
 - No tests written (per instructions).
 - 10 files modified. ~948 lines deleted, ~77 lines added.
+
+---
+Task ID: UI-STREAMLINE-P2-P5
+Agent: main
+Task: Streamline UI to reduce clutter at L10 (all layers unlocked) and remove AI-generated visual tells.
+
+Work Log:
+
+**Task 1 — Header redesign "Command Bar" (P2):**
+- Rewrote `src/components/game/layout/Header.tsx` with 3-zone layout:
+  - **Left zone**: Logo + text label (single text label, not a button). At L1: "{Stage} Stage". At L2+: "Layer N — {LayerName}".
+  - **Center zone**: 1–3 key stats. L1: Population + Time. L2+: Worlds + Div/s (+ EP/s at L4+). Mobile shows only 1 stat.
+  - **Right zone**: Pause toggle + Speed cycle + Layers dropdown (desktop) + Gear menu.
+- All 10 layer buttons collapsed into a single "Layers" dropdown.
+- At L1–L3 the most-recently-unlocked 2 layers also show as standalone buttons (the player's immediate focus). At L4+ everything collapses into the dropdown.
+- On mobile, the Layers dropdown moves into the gear menu.
+- Gear menu contains: Prestige Roadmap, Shop, Save, Settings (+ Layers list on mobile).
+- Removed all individual EP/PP/Wins stat chips.
+- Removed the entire `ActiveEffectsRow` component (and its `RITUAL_MAP` import) — it was already gutted, now fully gone.
+- Removed the old "Lower Layers" dropdown logic.
+- Removed the `HeaderStat` tinted-box style — replaced with a borderless inline `Stat` component (icon + label + value, no background box).
+
+**Task 2 — DivineEnginePanel simplification (P3):**
+- Rewrote `src/components/game/layout/DivineEnginePanel.tsx` to a single focused readout:
+  - Big number: Worlds count (text-3xl).
+  - Medium: Divinity/sec (text-lg, amber).
+  - Small: EP/s (text-sm, emerald, only at L4+).
+  - Quiet footnote: Lifetime Divinity.
+- Quick-access buttons: current layer's modal button + next layer's modal button (locked state shows Lock icon + is disabled).
+- Formula hidden behind a `?` icon (HelpCircle) that opens a tooltip with the full formula.
+- Removed the cosmic visualization (rotating star rings + central core), the 5-stat-card grid, the progress bars, the "Want more worlds?" hint card, and the formula breakdown text.
+- Removed the gradient-text title (bg-clip-text cliché).
+
+**Task 3 — ResourceBar meta-currencies only (P4):**
+- Rewrote `src/components/game/layout/ResourceBar.tsx`:
+  - L1 (first playthrough): keeps stage-resource chip rendering (food/water/glucose/etc. matter).
+  - L2+: shows only meta-currency pills (max 5). Priority list: Divinity · EP · PP · Faith · Genesis Seeds. Only unlocked currencies are shown.
+  - Removed the "📚 N resources X% avg" summary chip (was confusing).
+  - Removed the archetype badge (already in PrestigeTab).
+  - Removed the L3+ "top 3 + expand" collapse mode (now superseded by L2+ meta-only).
+  - Removed the "🌌 Divine Engine" label text at L2+ (the Header already shows the active layer; bar doesn't need to repeat).
+  - Removed unused `ARCHETYPE_MAP`, `lockedArchetype`, `singularityCores`, `divineFragments`, `cosmicBoonStacks`, `useState`, `summaryExpanded`, `expanded`, `top3`, `summaryStats` selectors and helpers.
+
+**Task 4 — Kill AI visual tells (P5):**
+
+1. **Icon-in-box clichés**: Removed the tinted square wrappers from:
+   - `Header.tsx` (old `w-8 h-8 rounded-lg` around the logo stage icon) — replaced with inline emoji + text label.
+   - `StoryTab.tsx` (the `w-8 h-8 rounded-full bg-accent/20` BookOpen/Lock boxes) — replaced with bare inline Lucide icons.
+   - `AchievementsTab.tsx` (the `w-10 h-10 rounded bg-primary/15` achievement-icon boxes) — emoji now inline, with `stat-card-accent` left-border accent for earned cards. Lock icon moved inline.
+   - `PrestigeTab.tsx` (`LayerCard` + `LayerRow`'s `w-10 h-10 rounded-lg` emoji boxes with tinted background) — emoji moved inline next to the title, no box.
+
+2. **Rainbow status dots → border-left accent**:
+   - `ApotheosisModal.tsx`: replaced `severityBorderClass`'s full-border + animate-pulse + box-shadow cliché with a single left-border accent bar:
+     - Heresy < 25%: no accent
+     - 25–49%: `border-l-2 border-l-amber-400`
+     - 50–74%: `border-l-2 border-l-orange-500`
+     - 75–100%: `border-l-2 border-l-red-500 heresy-pulse-red` (subtle pulse only at the run-ending tier)
+   - Added `@keyframes heresy-pulse-red-keyframes` + `.heresy-pulse-red` to `globals.css`.
+   - Header's old pulsing-amber/rose status dots (L1 active-challenge, L5 heresy≥75, L7 instability≥75) — removed along with the `extra` field and `pulse` field on layer button defs (the entire layer-button decoration system is gone since the buttons are now in a dropdown).
+   - Header's old ritual/combo pulsing-violet dot in `ActiveEffectsRow` — gone with the row.
+
+3. **Emoji in layer button labels**: Removed emoji from layer button labels (the buttons now say "Trials", "Foresight", "Sacrifice", etc., not "👁️ Foresight"). Kept emoji for resources (🍬 glucose / 🌱 EP / 🥚 seed) since the task explicitly says they're clearer.
+
+4. **Curly quotes**: Verified none exist in any game data file or component (ripgrep for `\u201c\u201d\u2018\u2019` returned zero matches).
+
+5. **Generic aspirational copy** — rewrote vague copy to be concrete:
+   - `PrestigeTab.tsx` auto-running banner: "Your civilization runs itself now. Focus on your next trial." → "{N} wins · {M} runs auto-progressing" + factual description.
+   - `PrestigeTab.tsx` header card: "Each layer is a long saga of cosmic ascent..." → "10 layers. Each unlocks a new prestige currency and a new system."
+   - `PrestigeTab.tsx` roadmap card: "Ten ages... each layer unlocks a new prestige currency and a new saga." → "10 layers, each a different system. From the first spark to Eternity."
+   - `prestigeLayers.ts` file header comment: "Each layer is a long-form prestige: an entire saga..." → "Each layer is a discrete system that unlocks as the player progresses."
+   - `prestigeLayers.ts` L1 story: "Here the saga begins: ..." → factual statement.
+   - `prestigeLayers.ts` L4 story: "...the second saga begins." → "...the second age begins."
+
+6. **Monotonous card borders**: Added 5 new CSS variants to `globals.css` so cards don't all look identical:
+   - `.stat-card` (existing) — soft border + panel background.
+   - `.stat-card-accent` — left-accent border in `--primary` color.
+   - `.stat-card-accent-amber` — left-accent in amber (oklch 0.70 0.14 55).
+   - `.stat-card-accent-emerald` — left-accent in emerald.
+   - `.stat-card-accent-violet` — left-accent in violet.
+   - `.stat-card-plain` — no border, transparent background (text-block style).
+   - Applied in `StoryTab.tsx` (current entry = accent, others = plain), `AchievementsTab.tsx` (earned cards = accent, locked summary = default).
+
+7. **Gradient-text cliché removed**: Removed the `bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-300 bg-clip-text text-transparent` text from Header, ResourceBar, and DivineEnginePanel — all replaced with solid foreground color.
+
+Stage Summary:
+- **Lint**: `bun run lint` reports **0 errors, 7 warnings** (all pre-existing in unrelated files: 6 in `upload/logic.js`, 1 unused eslint-disable in `galaxies.ts`).
+- **TypeScript**: `bunx tsc --noEmit` shows no errors in any file I touched (only pre-existing errors in unrelated files like `EnlightenmentModal.tsx`, `sidebar.tsx`, `stages.ts`, `store.ts`).
+- **Dev server**: Next.js 16 compiles cleanly, page loads 200 OK.
+- **No tests written** (per instructions).
+- **No functionality removed**: every layer's modal is still accessible (via Layers dropdown or standalone button), all stat info still visible (now consolidated into DivineEnginePanel), all controls (pause/speed/save/settings/shop) still work.
+- **Files modified**:
+  - `src/components/game/layout/Header.tsx` — full rewrite
+  - `src/components/game/layout/DivineEnginePanel.tsx` — full rewrite
+  - `src/components/game/layout/ResourceBar.tsx` — full rewrite
+  - `src/components/game/modals/ApotheosisModal.tsx` — `severityBorderClass` refactor
+  - `src/components/game/tabs/PrestigeTab.tsx` — copy + LayerCard/LayerRow box removal
+  - `src/components/game/tabs/AchievementsTab.tsx` — box removal + accent variant
+  - `src/components/game/tabs/StoryTab.tsx` — box removal + accent variants
+  - `src/game/data/prestigeLayers.ts` — copy rewrites (saga → system)
+  - `src/app/globals.css` — added `heresy-pulse-red` animation + 5 stat-card variants

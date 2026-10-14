@@ -12,7 +12,7 @@ import {
   canFormAlliance,
   isDivinityComplete,
 } from "@/game/data/divinity_layer";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -35,9 +35,8 @@ const RESOURCE_ICON: Record<string, string> = {
   faith: "✨",
 };
 
-export function DivinityLayerModal() {
-  const show = useGameStore((s) => s.showDivinityLayer);
-  const setShow = useGameStore((s) => s.setShowDivinityLayer);
+export function DivinityLayerContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const minorGods = useGameStore((s) => s.minorGods || MINOR_GODS);
   const godRelationships = useGameStore((s) => s.godRelationships || {});
@@ -64,19 +63,18 @@ export function DivinityLayerModal() {
   };
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Handshake className="w-5 h-5" />
-            Layer 8 — Divinity (Divine Alliance)
-            <BackgroundLayerBadge layerId="divinity" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
-            <span>
-              Negotiate with minor gods, trade resources, and form alliances. 2+ alliances unlocks Divine War.
-            </span>
-            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Handshake className="w-5 h-5" />
+          Layer 8 — Divinity (Divine Alliance)
+          <BackgroundLayerBadge layerId="divinity" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between">
+          <span>
+            Negotiate with minor gods, trade resources, and form alliances. 2+ alliances unlocks Divine War.
+          </span>
+          <Badge variant="outline" className="text-amber-300 border-amber-400/40">
               {alliedCount}/{MINOR_GODS.length} alliances
             </Badge>
           </DialogDescription>
@@ -239,10 +237,9 @@ export function DivinityLayerModal() {
           Form 2+ alliances to unlock Layer 9 (Divine War). Allied gods grant passive bonuses and can be called into battle against the Old Gods.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 

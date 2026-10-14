@@ -13,7 +13,7 @@ import {
   summarizeGalaxyBonuses,
   type GalaxyBonusType,
 } from "@/game/data/galaxyMap";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 
 // Hex radius (SVG units). 22 keeps the 50-system spiral readable inside a
 // 520-ish-wide viewBox while still fitting on narrow phone screens (the
@@ -56,9 +57,8 @@ function bonusPct(value: number): string {
   return `+${Math.round(value * 100)}%`;
 }
 
-export function GenesisModal() {
-  const show = useGameStore((s) => s.showGenesis);
-  const setShow = useGameStore((s) => s.setShowGenesis);
+export function GenesisContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const galaxySystems = useGameStore((s) => s.galaxySystems || []);
@@ -139,23 +139,22 @@ export function GenesisModal() {
   }, [galaxySystems]);
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Egg className="w-5 h-5" />
-            Layer 4 — Genesis (Galaxy Claim)
-            <BackgroundLayerBadge layerId="genesis" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
-            <span>
-              Survey 50 star systems on a hex spiral. Scan the unknown, then claim with Genesis Seeds to grow the Divine Engine.
-            </span>
-            <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
-              {formatNumber(genesisSeeds, 0)} Seeds
-            </Badge>
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Egg className="w-5 h-5" />
+          Layer 4 — Genesis (Galaxy Claim)
+          <BackgroundLayerBadge layerId="genesis" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Survey 50 star systems on a hex spiral. Scan the unknown, then claim with Genesis Seeds to grow the Divine Engine.
+          </span>
+          <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
+            {formatNumber(genesisSeeds, 0)} Seeds
+          </Badge>
+        </DialogDescription>
+      </DialogHeader>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -165,6 +164,18 @@ export function GenesisModal() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+            {/* P7 — Empty state banner: shown when no systems claimed yet,
+                to guide the player toward their first scan + claim. */}
+            {claimedCount === 0 && (
+              <div className="lg:col-span-2">
+                <EmptyState
+                  compact
+                  icon={<Telescope className="w-6 h-6" />}
+                  title="No systems claimed yet."
+                  description="Scan a system to reveal its bonus, then claim it with Genesis Seeds. Click an unexplored hex (with a ?) to begin."
+                />
+              </div>
+            )}
             {/* Hex map */}
             <div className="stat-card overflow-x-auto">
               <svg
@@ -455,10 +466,9 @@ export function GenesisModal() {
           neighbors gain a <span className="text-amber-300">+50% synergy bonus</span>.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 

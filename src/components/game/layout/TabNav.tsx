@@ -56,9 +56,10 @@ export function TabNav() {
 
   const visibleTabs = ALL_TABS.filter((tab) => {
     if (hideBaseGameTabs) {
-      // At L2+, only keep: Codex, Awards, Archive, Prestige, Log.
-      // Hide: Actions, Systems, Tech, Production, Story.
-      return !["actions", "systems", "tech", "production", "story"].includes(tab.id);
+      // At L2+, keep: Story, Codex, Awards, Archive, Prestige, Log.
+      // Hide: Actions, Systems, Tech, Production (base game auto-runs).
+      // Story stays visible — new story points unlock at every layer.
+      return !["actions", "systems", "tech", "production"].includes(tab.id);
     }
     return true;
   });

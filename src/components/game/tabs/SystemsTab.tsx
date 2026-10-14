@@ -15,6 +15,7 @@ import { useState, useMemo } from "react";
 import { Lock, Power, PowerOff, AlertCircle, History, Layers, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SystemDef } from "@/game/state/types";
+import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
 
 // Determine which stage indices are "legacy" (collapsed by default into the Legacy accordion)
 // based on the player's current prestige layer.
@@ -86,6 +87,8 @@ export function SystemsTab() {
 
   return (
     <div className="space-y-4">
+      {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
+      <PurchaseErrorBanner />
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">

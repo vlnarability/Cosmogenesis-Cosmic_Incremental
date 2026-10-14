@@ -10,7 +10,7 @@ import {
   type ChallengeEffects,
 } from "@/game/data/challenges";
 import { STAGES, STAGE_IDS } from "@/game/data/stages";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -18,9 +18,8 @@ import { CheckCircle2, Lock, Trophy, Skull, Sparkles } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
-export function ChallengeModal() {
-  const showChallenges = useGameStore((s) => s.showChallenges);
-  const setShowChallenges = useGameStore((s) => s.setShowChallenges);
+export function ChallengeContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const activeChallenge = useGameStore((s) => s.activeChallenge);
   const completedChallenges = useGameStore((s) => s.completedChallenges || {});
@@ -38,30 +37,29 @@ export function ChallengeModal() {
   const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
 
   return (
-    <Dialog open={showChallenges} onOpenChange={setShowChallenges}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Skull className="w-5 h-5" />
-            Layer 1 — Trials
-            <BackgroundLayerBadge layerId="evolution" />
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center justify-between">
-              <span>
-                Run-modifier challenges — apply a debuff during a run, then earn a permanent mastery bonus on completion.
-              </span>
-              <div className="flex gap-1">
-                <Badge variant="outline" className="text-cyan-400 border-cyan-400/40">
-                  {totalCompleted}/{CHALLENGES.length} mastered
-                </Badge>
-                <Badge variant="outline" className="text-violet-400 border-violet-400/40">
-                  {totalRepeats} repeats
-                </Badge>
-              </div>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Skull className="w-5 h-5" />
+          Layer 1 — Trials
+          <BackgroundLayerBadge layerId="evolution" />
+        </DialogTitle>
+        <DialogDescription asChild>
+          <div className="flex items-center justify-between">
+            <span>
+              Run-modifier challenges — apply a debuff during a run, then earn a permanent mastery bonus on completion.
+            </span>
+            <div className="flex gap-1">
+              <Badge variant="outline" className="text-cyan-400 border-cyan-400/40">
+                {totalCompleted}/{CHALLENGES.length} mastered
+              </Badge>
+              <Badge variant="outline" className="text-violet-400 border-violet-400/40">
+                {totalRepeats} repeats
+              </Badge>
             </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </DialogDescription>
+      </DialogHeader>
 
         {!unlockedChallenges ? (
           <div className="text-center text-muted-foreground py-10">
@@ -157,10 +155,9 @@ export function ChallengeModal() {
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShowChallenges(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 

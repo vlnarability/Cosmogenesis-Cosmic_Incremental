@@ -407,6 +407,26 @@ export interface GameState {
   showShop: boolean;
   showEvolve: boolean;
   showSettings: boolean;
+  /**
+   * P6 — Modal Consolidation. Single source-of-truth for which layer modal
+   * is open. Holds the layer id ("enlightenment", "transcendence", ...,
+   * "eternity", "challenges") or null when closed. The LayerModal component
+   * renders the appropriate lazy-loaded content inside a single shared
+   * <Dialog> wrapper based on this value.
+   *
+   * The legacy per-layer `show*` booleans are still set in parallel for
+   * save-compat / any code that still reads them.
+   */
+  activeLayerModal: string | null;
+  /**
+   * P7 — Error states. When a purchase fails (buySystem / buyTech /
+   * buyUpgrade / buyUniversalUpgrade) due to insufficient resources, the
+   * store sets this field. UIs that show purchase buttons subscribe to it
+   * and surface the message inline (auto-fades after ~2s via the consumer
+   * hook). `ts` is the timestamp of the failure, used by consumers to
+   * retrigger their fade-out timer when the same message repeats.
+   */
+  lastPurchaseError: { message: string; ts: number } | null;
   activeStoryPopup: string | null;
   activeEvent: string | null; // ID of the currently-offered random event
   eventCooldown: number; // seconds until next event can fire
@@ -556,6 +576,25 @@ export interface GameStore extends GameState {
   setShowEvolve: (v: boolean) => void;
   setShowSettings: (v: boolean) => void;
   setShowChallenges: (v: boolean) => void;
+  /**
+   * P6 — Modal Consolidation. Opens the shared LayerModal showing the layer
+   * with the given id. Also sets the corresponding legacy `show*` flag for
+   * save-compat / any code that still reads `show*` directly.
+   *
+   * Accepted ids: "challenges", "enlightenment", "transcendence", "genesis",
+   * "apotheosis", "singularity", "omnipotence", "divinity", "infinity",
+   * "eternity". Unknown ids are ignored.
+   */
+  openLayerModal: (layerId: string) => void;
+  /** Closes the shared LayerModal. Clears `activeLayerModal` AND all legacy `show*` flags. */
+  closeLayerModal: () => void;
+  /**
+   * P7 — Sets the latest purchase-error message. Called by buySystem /
+   * buyTech / buyUpgrade / buyUniversalUpgrade when the player can't afford
+   * the item. UIs subscribe to `lastPurchaseError` and show the message
+   * inline for ~2 seconds (then fade).
+   */
+  notifyPurchaseError: (message: string) => void;
   setActiveChallenge: (challengeId: string | null) => void;
   dismissTutorial: () => void;
   resolveEvent: (eventId: string, choiceId: string) => void;

@@ -24,6 +24,13 @@ import { PrestigeTab } from "../tabs/PrestigeTab";
 // LAZY-LOAD modals — these are only rendered when their `show*` flag is true.
 // This dramatically reduces initial bundle size + memory usage (the OOM killer
 // was triggered by all 17 modals + their data files being in the initial chunk).
+//
+// P6 — MODAL CONSOLIDATION: The 10 layer modals (Challenge, Enlightenment,
+// Transcendence, Genesis, Apotheosis, Singularity, Omnipotence, DivinityLayer,
+// Infinity, Eternity) are no longer rendered individually here. They are
+// consolidated into a single <LayerModal /> that switches content based on
+// the `activeLayerModal` state field. LayerModal lazy-loads each layer's
+// content separately (so memory optimization is preserved).
 const ShopModal = lazy(() => import("../modals/ShopModal").then(m => ({ default: m.ShopModal })));
 const EvolveModal = lazy(() => import("../modals/EvolveModal").then(m => ({ default: m.EvolveModal })));
 const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
@@ -31,16 +38,7 @@ const AchievementToast = lazy(() => import("../modals/AchievementToast").then(m 
 const SettingsModal = lazy(() => import("../modals/SettingsModal").then(m => ({ default: m.SettingsModal })));
 const EventModal = lazy(() => import("../modals/EventModal").then(m => ({ default: m.EventModal })));
 const StageTransition = lazy(() => import("../modals/StageTransition").then(m => ({ default: m.StageTransition })));
-const ChallengeModal = lazy(() => import("../modals/ChallengeModal").then(m => ({ default: m.ChallengeModal })));
-const EnlightenmentModal = lazy(() => import("../modals/EnlightenmentModal").then(m => ({ default: m.EnlightenmentModal })));
-const TranscendenceModal = lazy(() => import("../modals/TranscendenceModal").then(m => ({ default: m.TranscendenceModal })));
-const GenesisModal = lazy(() => import("../modals/GenesisModal").then(m => ({ default: m.GenesisModal })));
-const ApotheosisModal = lazy(() => import("../modals/ApotheosisModal").then(m => ({ default: m.ApotheosisModal })));
-const SingularityModal = lazy(() => import("../modals/SingularityModal").then(m => ({ default: m.SingularityModal })));
-const OmnipotenceModal = lazy(() => import("../modals/OmnipotenceModal").then(m => ({ default: m.OmnipotenceModal })));
-const DivinityLayerModal = lazy(() => import("../modals/DivinityLayerModal").then(m => ({ default: m.DivinityLayerModal })));
-const InfinityModal = lazy(() => import("../modals/InfinityModal").then(m => ({ default: m.InfinityModal })));
-const EternityModal = lazy(() => import("../modals/EternityModal").then(m => ({ default: m.EternityModal })));
+const LayerModal = lazy(() => import("../modals/LayerModal").then(m => ({ default: m.LayerModal })));
 const TutorialHints = lazy(() => import("./TutorialHints").then(m => ({ default: m.TutorialHints })));
 const OfflineSummary = lazy(() => import("../modals/OfflineSummary").then(m => ({ default: m.OfflineSummary })));
 
@@ -69,7 +67,7 @@ export function GameShell() {
     // Only redirect on the TRANSITION from L1 → L2 (when showDivineEngine flips true),
     // or if the saved tab is a hidden base-game tab at L2+.
     // Don't redirect on every render — that would trap the player on prestige.
-    const hiddenTabs = ["actions", "systems", "tech", "production", "story"];
+    const hiddenTabs = ["actions", "systems", "tech", "production"];
     if (showDivineEngine && hiddenTabs.includes(currentTab)) {
       setTab("prestige");
     }
@@ -127,7 +125,9 @@ export function GameShell() {
       </main>
 
       {/* Modals — lazy-loaded + conditionally rendered to reduce memory */}
-      <Suspense fallback={null}>
+      {/* P7 — Loading state: show a centered spinner instead of `null` while
+          modal chunks are lazy-loading. */}
+      <Suspense fallback={<ModalLoadingFallback />}>
         <ShopModal />
         <EvolveModal />
         <StoryPopup />
@@ -135,16 +135,9 @@ export function GameShell() {
         <SettingsModal />
         <EventModal />
         <StageTransition />
-        <ChallengeModal />
-        <EnlightenmentModal />
-        <TranscendenceModal />
-        <GenesisModal />
-        <ApotheosisModal />
-        <SingularityModal />
-        <OmnipotenceModal />
-        <DivinityLayerModal />
-        <InfinityModal />
-        <EternityModal />
+        {/* P6 — Consolidated layer modal. Renders the active layer's content
+            inside a single shared <Dialog> wrapper based on `activeLayerModal`. */}
+        <LayerModal />
         <TutorialHints />
         {offlineSummary && (
           <OfflineSummary
@@ -154,6 +147,15 @@ export function GameShell() {
           />
         )}
       </Suspense>
+    </div>
+  );
+}
+
+// P7 — Loading state for lazy-loaded modals. Centered, non-blocking, subtle.
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none" aria-hidden>
+      <div className="animate-spin text-3xl select-none opacity-70">⏳</div>
     </div>
   );
 }

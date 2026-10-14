@@ -24,25 +24,32 @@ import {
   heresySeverity,
   type HeresySeverity,
 } from "@/game/data/galaxies";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Crown, CheckCircle2, Flame, AlertTriangle, RotateCcw, Sparkles, Swords, Trophy } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 
 const GRID_COLS = 8;
 const GRID_ROWS = 4;
 const GRID_SIZE = GRID_COLS * GRID_ROWS; // 32
 
-/** Tailwind classes for each heresy severity tier (used on galaxy list borders). */
+/**
+ * Left-border accent classes for each heresy severity tier.
+ * Replaces the old pulsing-border + box-shadow cliché with a single
+ * functional left-accent bar — calm cards have no accent; severity
+ * grows through amber → orange → red (with a subtle pulse only at the
+ * run-ending red tier).
+ */
 function severityBorderClass(sev: HeresySeverity): string {
   switch (sev) {
-    case "red": return "border-rose-500/80 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.4)]";
-    case "orange": return "border-orange-500/80 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.35)]";
-    case "yellow": return "border-yellow-500/80 animate-pulse shadow-[0_0_8px_rgba(234,179,8,0.3)]";
-    default: return "border-border/40";
+    case "red":    return "border-l-2 border-l-red-500 heresy-pulse-red";
+    case "orange": return "border-l-2 border-l-orange-500";
+    case "yellow": return "border-l-2 border-l-amber-400";
+    default:       return "";
   }
 }
 
@@ -55,9 +62,8 @@ function severityTextClass(sev: HeresySeverity): string {
   }
 }
 
-export function ApotheosisModal() {
-  const show = useGameStore((s) => s.showApotheosis);
-  const setShow = useGameStore((s) => s.setShowApotheosis);
+export function ApotheosisContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const faith = useGameStore((s) => s.faith);
   const divinity = useGameStore((s) => s.divinity);
@@ -136,26 +142,25 @@ export function ApotheosisModal() {
           : "Default: spreads to one random adjacent cell";
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Crown className="w-5 h-5" />
-            Layer 5 — Apotheosis (Galactic Conquest)
-            <BackgroundLayerBadge layerId="apotheosis" />
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span>
-                Conquer 3 rival galaxies to unlock Layer 6. Each claimed rival system grants +18 worlds.
-              </span>
-              <div className="flex gap-1 flex-wrap">
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">
-                  {formatNumber(faith, 0)} Faith
-                </Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
-                  <Trophy className="w-3 h-3 mr-1" />{conqueredCount}/{GALAXIES_REQUIRED_FOR_L6} Conquered
-                </Badge>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Crown className="w-5 h-5" />
+          Layer 5 — Apotheosis (Galactic Conquest)
+          <BackgroundLayerBadge layerId="apotheosis" />
+        </DialogTitle>
+        <DialogDescription asChild>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span>
+              Conquer 3 rival galaxies to unlock Layer 6. Each claimed rival system grants +18 worlds.
+            </span>
+            <div className="flex gap-1 flex-wrap">
+              <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+                {formatNumber(faith, 0)} Faith
+              </Badge>
+              <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
+                <Trophy className="w-3 h-3 mr-1" />{conqueredCount}/{GALAXIES_REQUIRED_FOR_L6} Conquered
+              </Badge>
                 <Badge variant="outline" className="text-sky-300 border-sky-400/40">
                   {claimedRivalSystems}/{TOTAL_RIVAL_SYSTEMS} Rival Systems
                 </Badge>
@@ -178,6 +183,16 @@ export function ApotheosisModal() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* P7 — Empty state banner: shown when no rival galaxies have
+                been conquered yet, to point the player at the attack CTA. */}
+            {conqueredCount === 0 && claimedRivalSystems === 0 && (
+              <EmptyState
+                compact
+                icon={<Swords className="w-6 h-6" />}
+                title="No galaxies conquered yet."
+                description="Attack a rival galaxy to claim your first system. Select a galaxy from the list, then use the Attack button on the main panel."
+              />
+            )}
             {/* Galaxy list sidebar + main panel */}
             <section className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-3">
               {/* Sidebar: Galaxy list */}
@@ -570,9 +585,8 @@ export function ApotheosisModal() {
           <span className="text-rose-300">Galactic Conquest</span> is the new L5 loop. Attack rival galaxies (each system = +18 worlds), manage per-galaxy heresy webs, conquer 3 galaxies to unlock Layer 6 (Singularity).
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }

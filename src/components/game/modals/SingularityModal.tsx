@@ -23,7 +23,7 @@ import {
   totalUniversalSystemsClaimed,
   type UniversalGalaxy,
 } from "@/game/data/universalMap";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -32,13 +32,13 @@ import {
 } from "lucide-react";
 import { formatNumber, formatCompact } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 
 // SVG viewport for the universal map (galaxy pos is in 0-100 units).
 const MAP_SIZE = 100;
 
-export function SingularityModal() {
-  const show = useGameStore((s) => s.showSingularity);
-  const setShow = useGameStore((s) => s.setShowSingularity);
+export function SingularityContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const singularityCores = useGameStore((s) => s.singularityCores);
   const faith = useGameStore((s) => s.faith);
@@ -107,23 +107,22 @@ export function SingularityModal() {
   };
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Orbit className="w-5 h-5 text-cyan-300" />
-            Layer 6 — Singularity (Universal Map)
-            <BackgroundLayerBadge layerId="singularity" />
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span>
-                Defend the 50-galaxy universe from Old-God rifts. Close rifts (Singularity Cores),
-                place Reality Anchors (Singularity Cores) to immunize galaxies, and conquer
-                neutral galaxies (Faith) for <span className="text-cyan-300">+198 worlds</span> each.
-              </span>
-              <div className="flex gap-1 flex-wrap">
-                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Orbit className="w-5 h-5 text-cyan-300" />
+          Layer 6 — Singularity (Universal Map)
+          <BackgroundLayerBadge layerId="singularity" />
+        </DialogTitle>
+        <DialogDescription asChild>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span>
+              Defend the 50-galaxy universe from Old-God rifts. Close rifts (Singularity Cores),
+              place Reality Anchors (Singularity Cores) to immunize galaxies, and conquer
+              neutral galaxies (Faith) for <span className="text-cyan-300">+198 worlds</span> each.
+            </span>
+            <div className="flex gap-1 flex-wrap">
+              <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
                   <Sparkles className="w-3 h-3 mr-0.5" /> {formatNumber(singularityCores, 0)} Cores
                 </Badge>
                 <Badge variant="outline" className={l6Complete ? "text-emerald-300 border-emerald-400/40" : "text-amber-300 border-amber-400/40"}>
@@ -145,6 +144,18 @@ export function SingularityModal() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
+            {/* P7 — Empty state banner: shown when player hasn't closed any
+                rifts yet, to point them at the rift-closing mechanic. */}
+            {riftsClosed === 0 && (
+              <div className="lg:col-span-2">
+                <EmptyState
+                  compact
+                  icon={<Shield className="w-6 h-6" />}
+                  title="No rifts closed yet."
+                  description="Close your first rift to defend reality. When a rift spawns on the map, click it to spend Singularity Cores and seal it."
+                />
+              </div>
+            )}
             {/* ===== UNIVERSAL MAP (SVG) ===== */}
             <section className="stat-card p-2">
               <div className="flex items-center justify-between mb-2">
@@ -509,9 +520,8 @@ export function SingularityModal() {
           <span className="text-cyan-300">Universal Map</span> — defend 50 galaxies from Old-God rifts. Close rifts for Singularity Cores, place Reality Anchors to immunize galaxies in a {ANCHOR_RADIUS}-unit radius, and conquer new neutral galaxies (Faith) for +198 worlds each. Close {RIFTS_REQUIRED_FOR_L7} rifts + place {ANCHORS_REQUIRED_FOR_L7} anchors to unlock Layer 7 (Omnipotence).
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }

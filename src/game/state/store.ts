@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { GameState, GameStore, StageId, TabId } from "./types";
-import { emptyResources, emptyCapacities } from "../data/resources";
+import { emptyResources, emptyCapacities, RESOURCE_MAP } from "../data/resources";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
 import { ACTION_MAP } from "../data/actions";
 import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
@@ -481,6 +481,13 @@ function initialMetaState(): Partial<GameState> {
     showShop: false,
     showEvolve: false,
     showSettings: false,
+    // P6 — Modal Consolidation: single source-of-truth for which layer modal
+    // is open. Per-layer `show*` flags are mirrored in openLayerModal() for
+    // save-compat with old code that reads them directly.
+    activeLayerModal: null,
+    // P7 — Error states: latest purchase-error message + timestamp. UIs
+    // subscribe and surface this inline (auto-fade via consumer hook).
+    lastPurchaseError: null,
     activeStoryPopup: "first_spark",
     activeEvent: null,
     eventCooldown: 60, // first event can fire after 60s
@@ -2504,6 +2511,9 @@ export const useGameStore = create<GameStore>()(
         const archetypeAffinity = { ...s.archetypeAffinity };
 
         let bought = 0;
+        // P7 — Track the first resource we couldn't afford, so we can surface
+        // an inline "Not enough [resource]" error in the UI when bought === 0.
+        let missingResourceId: string | null = null;
         for (let i = 0; i < qty; i++) {
           if (sys.maxOwned && owned + bought >= sys.maxOwned) break;
           if (challengeDebuff.maxSystems !== undefined) {
@@ -2521,6 +2531,7 @@ export const useGameStore = create<GameStore>()(
             const scaled = Math.ceil((v as number) * challengeCostMult);
             if ((res[r] || 0) < scaled) {
               canAfford = false;
+              if (!missingResourceId) missingResourceId = r;
               break;
             }
           }
@@ -2532,6 +2543,13 @@ export const useGameStore = create<GameStore>()(
           bought++;
         }
 
+        // P7 — Error state: if we couldn't afford any (and weren't blocked by
+        // max-owned / trial cap), surface the first missing resource name.
+        if (bought === 0 && missingResourceId) {
+          const friendlyName = RESOURCE_MAP[missingResourceId]?.name
+            || missingResourceId.replace(/_/g, " ");
+          get().notifyPurchaseError(`Not enough ${friendlyName}`);
+        }
         if (bought === 0) return;
 
         ownedSystems[systemId] = owned + bought;
@@ -2624,9 +2642,19 @@ export const useGameStore = create<GameStore>()(
             }).costMult)));
         // DEBUG: Free Buy — skip cost check + deduction
         if (!s.debugFreeBuy) {
+          let missingTechResource: string | null = null;
           for (const [r, v] of Object.entries(tech.cost)) {
             const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
-            if ((res[r] || 0) < scaled) return;
+            if ((res[r] || 0) < scaled) {
+              if (!missingTechResource) missingTechResource = r;
+            }
+          }
+          if (missingTechResource) {
+            // P7 — Error state: surface the first missing resource.
+            const friendlyName = RESOURCE_MAP[missingTechResource]?.name
+              || missingTechResource.replace(/_/g, " ");
+            get().notifyPurchaseError(`Not enough ${friendlyName}`);
+            return;
           }
           for (const [r, v] of Object.entries(tech.cost)) {
             const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
@@ -2660,7 +2688,11 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if (!s.debugFreeBuy && s.evolutionPoints < cost) return;
+        if (!s.debugFreeBuy && s.evolutionPoints < cost) {
+          // P7 — Error state: surface insufficient Evolution Points.
+          get().notifyPurchaseError("Not enough Evolution Points");
+          return;
+        }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
           evolutionPoints: s.debugFreeBuy ? s.evolutionPoints : s.evolutionPoints - cost,
@@ -3107,6 +3139,20 @@ export const useGameStore = create<GameStore>()(
           paused: s.paused,
           showShop: false,
           showEvolve: false,
+          // P6 — close the consolidated layer modal on prestige.
+          activeLayerModal: null,
+          // P7 — clear any purchase error banner on prestige.
+          lastPurchaseError: null,
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
           activeStoryPopup: s.totalRuns === 0 ? "god_opens_its_eyes" : null,
           hasSeenIntro: true,
           lastSaved: Date.now(),
@@ -3148,6 +3194,65 @@ export const useGameStore = create<GameStore>()(
       setShowDivinityLayer: (v) => set({ showDivinityLayer: v }),
       setShowInfinity: (v) => set({ showInfinity: v }),
       setShowEternity: (v) => set({ showEternity: v }),
+
+      // ---- P6: Modal Consolidation ----
+      // openLayerModal(layerId) sets `activeLayerModal` to the requested layer id
+      // AND mirrors it into the corresponding legacy `show*` flag so any code
+      // that still reads `show*` directly continues to work.
+      openLayerModal: (layerId) => {
+        const showFlagMap: Record<string, keyof GameState> = {
+          challenges: "showChallenges",
+          enlightenment: "showEnlightenment",
+          transcendence: "showTranscendence",
+          genesis: "showGenesis",
+          apotheosis: "showApotheosis",
+          singularity: "showSingularity",
+          omnipotence: "showOmnipotence",
+          divinity: "showDivinityLayer",
+          infinity: "showInfinity",
+          eternity: "showEternity",
+        };
+        const flagKey = showFlagMap[layerId];
+        if (!flagKey) return; // unknown id — ignore
+        // Close ALL legacy flags first, then open just the requested one. This
+        // guarantees only one layer modal is ever open at a time.
+        const patch: Partial<GameState> = {
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
+          activeLayerModal: layerId,
+        };
+        (patch as Record<string, unknown>)[flagKey] = true;
+        set(patch);
+      },
+      closeLayerModal: () =>
+        set({
+          activeLayerModal: null,
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
+        }),
+
+      // ---- P7: Error states ----
+      // notifyPurchaseError(message) sets the latest purchase-failure message.
+      // UIs (ShopModal / SystemsTab / TechTab) subscribe to `lastPurchaseError`
+      // and surface the message inline for ~2 seconds (then fade locally).
+      notifyPurchaseError: (message) =>
+        set({ lastPurchaseError: { message, ts: Date.now() } }),
 
       // ---- Layer 1: Challenges ----
       // Activating a challenge records the current repeat level (= completed count).
@@ -5027,7 +5132,11 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if ((s.prestigePoints || 0) < cost) return;
+        if ((s.prestigePoints || 0) < cost) {
+          // P7 — Error state: surface insufficient Prestige Points.
+          get().notifyPurchaseError("Not enough Prestige Points");
+          return;
+        }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
           prestigePoints: (s.prestigePoints || 0) - cost,
@@ -5596,6 +5705,42 @@ export const useGameStore = create<GameStore>()(
         if (persisted.epFromBackground === undefined) persisted.epFromBackground = 0;
         // backgroundSimulations field kept for display-cache compat; recomputed each tick.
         if (persisted.backgroundSimulations === undefined) persisted.backgroundSimulations = 0;
+
+        // P6 — Modal Consolidation migration. Older saves don't have the
+        // `activeLayerModal` field; default it to null (closed). Also force
+        // any stale `show*` flags false on load so a reloaded save doesn't
+        // immediately open a layer modal the player didn't intend to open.
+        if (persisted.activeLayerModal === undefined) persisted.activeLayerModal = null;
+        // P7 — Error states migration: initialize the new field for older saves.
+        if (persisted.lastPurchaseError === undefined) persisted.lastPurchaseError = null;
+        // If a save somehow has multiple show* flags true, just clear them all
+        // — the consolidated LayerModal will reopen the right one when the
+        // player clicks a layer button.
+        const anyLayerModalOpen =
+          !!persisted.showChallenges ||
+          !!persisted.showEnlightenment ||
+          !!persisted.showTranscendence ||
+          !!persisted.showGenesis ||
+          !!persisted.showApotheosis ||
+          !!persisted.showSingularity ||
+          !!persisted.showOmnipotence ||
+          !!persisted.showDivinityLayer ||
+          !!persisted.showInfinity ||
+          !!persisted.showEternity;
+        if (anyLayerModalOpen) {
+          // Don't auto-open on reload — reset to closed state.
+          persisted.activeLayerModal = null;
+          persisted.showChallenges = false;
+          persisted.showEnlightenment = false;
+          persisted.showTranscendence = false;
+          persisted.showGenesis = false;
+          persisted.showApotheosis = false;
+          persisted.showSingularity = false;
+          persisted.showOmnipotence = false;
+          persisted.showDivinityLayer = false;
+          persisted.showInfinity = false;
+          persisted.showEternity = false;
+        }
 
         return persisted;
       },

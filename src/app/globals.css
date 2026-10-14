@@ -146,28 +146,17 @@
 }
 
 /* ============================================================
-   GLASS / PANEL — less frosted, more "stamped card"
+   GLASS / PANEL — solid panels, no blur (removed AI-tell glassmorphism)
    ============================================================ */
 
 .glass-panel {
-  background: oklch(0.16 0.018 260 / 0.85);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid oklch(0.26 0.015 260 / 0.7);
-  /* subtle top highlight line — like paper edge */
-  box-shadow:
-    inset 0 1px 0 0 oklch(0.35 0.02 260 / 0.15),
-    0 1px 2px oklch(0 0 0 / 0.2);
+  background: oklch(0.16 0.018 260 / 0.95);
+  border: 1px solid oklch(0.28 0.015 260 / 0.8);
 }
 
 .glass-strong {
-  background: oklch(0.15 0.02 260 / 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid oklch(0.28 0.015 260 / 0.8);
-  box-shadow:
-    inset 0 1px 0 0 oklch(0.38 0.02 260 / 0.2),
-    0 4px 24px oklch(0 0 0 / 0.4);
+  background: oklch(0.13 0.02 260 / 0.98);
+  border: 1px solid oklch(0.30 0.015 260 / 0.85);
 }
 
 /* ============================================================
@@ -370,8 +359,7 @@
 .story-popup-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(0.05 0.01 260 / 0.5);
-  backdrop-filter: blur(2px);
+  background: oklch(0.05 0.01 260 / 0.7);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -612,7 +600,44 @@
   right: 0;
   bottom: 0;
   z-index: 30;
-  backdrop-filter: blur(8px);
+}
+
+/* ============================================================
+   HERESY SEVERITY ACCENT — left-border bar (replaces rainbow dots)
+   The bar is a single border-left on a card; calm cards have no
+   accent. Only the run-ending red tier gets a subtle pulse.
+   ============================================================ */
+
+@keyframes heresy-pulse-red-keyframes {
+  0%, 100% { border-left-color: oklch(0.55 0.20 25); }
+  50%      { border-left-color: oklch(0.70 0.22 25); }
+}
+.heresy-pulse-red {
+  animation: heresy-pulse-red-keyframes 1.6s ease-in-out infinite;
+}
+
+/* ============================================================
+   STAT CARD VARIANTS — vary the borders so cards don't look identical.
+   Some get a left-accent border, some are borderless text blocks.
+   The base `.stat-card` keeps a soft border + panel background.
+   ============================================================ */
+
+.stat-card-accent {
+  border-left: 2px solid var(--primary);
+}
+.stat-card-accent-amber {
+  border-left: 2px solid oklch(0.70 0.14 55);
+}
+.stat-card-accent-emerald {
+  border-left: 2px solid oklch(0.68 0.14 155);
+}
+.stat-card-accent-violet {
+  border-left: 2px solid oklch(0.65 0.14 295);
+}
+.stat-card-plain {
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0;
 }
 
 /* ============================================================

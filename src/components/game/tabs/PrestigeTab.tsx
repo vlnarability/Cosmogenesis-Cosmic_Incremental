@@ -5,7 +5,7 @@ import { PRESTIGE_LAYERS, isLayerUnlocked, countChallengesCompleted, type Presti
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, ArrowRight } from "lucide-react";
+import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, ArrowRight, RefreshCw } from "lucide-react";
 import { CHALLENGES, getMaxRepeats } from "@/game/data/challenges";
 import { countForesightNodes } from "@/game/data/foresight";
 import {
@@ -90,7 +90,10 @@ export function PrestigeTab() {
   const completedChallenges = useGameStore((s) => s.completedChallenges || {});
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const upgrades = useGameStore((s) => s.upgrades);
-  const setShowChallenges = useGameStore((s) => s.setShowChallenges);
+  // P6 — Modal Consolidation: replaced per-layer setShow* setters with the
+  // single openLayerModal(layerId) action. The LayerModal component reads
+  // `activeLayerModal` to decide which layer's content to render.
+  const openLayerModal = useGameStore((s) => s.openLayerModal);
   const setShowShop = useGameStore((s) => s.setShowShop);
 
   // Layer 2-6 state
@@ -102,45 +105,36 @@ export function PrestigeTab() {
   const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
   const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
   const activeForesightRoute = useGameStore((s) => s.activeForesightRoute);
-  const setShowEnlightenment = useGameStore((s) => s.setShowEnlightenment);
 
   const bloodPactsUsed = useGameStore((s) => s.bloodPactsUsed || {});
-  const setShowTranscendence = useGameStore((s) => s.setShowTranscendence);
 
   const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
-  const setShowGenesis = useGameStore((s) => s.setShowGenesis);
 
   const faith = useGameStore((s) => s.faith);
   const heresy = useGameStore((s) => s.heresy);
   const enactedDivineLaws = useGameStore((s) => s.enactedDivineLaws || {});
-  const setShowApotheosis = useGameStore((s) => s.setShowApotheosis);
 
   const singularityCores = useGameStore((s) => s.singularityCores);
   // L6 Universal Map progression — rifts closed + anchors placed (lifetime).
   const riftsClosed = useGameStore((s) => s.riftsClosed || 0);
   const anchorsPlaced = useGameStore((s) => s.anchorsPlaced || 0);
-  const setShowSingularity = useGameStore((s) => s.setShowSingularity);
 
   // Layer 7-10 state (new narrative)
   const creatures = useGameStore((s) => s.creatures || []);
   const legions = useGameStore((s) => s.legions || []);
   const instability = useGameStore((s) => s.instability || 0);
   const raidsRepelled = useGameStore((s) => s.raidsRepelled || 0);
-  const setShowOmnipotence = useGameStore((s) => s.setShowOmnipotence);
 
   const godRelationships = useGameStore((s) => s.godRelationships || {});
   const alliances = useGameStore((s) => s.alliances || {});
-  const setShowDivinityLayer = useGameStore((s) => s.setShowDivinityLayer);
 
   const divineFragments = useGameStore((s) => s.divineFragments || 0);
   const oldGodBattles = useGameStore((s) => s.oldGodBattles || {});
-  const setShowInfinity = useGameStore((s) => s.setShowInfinity);
 
   const discoveredArchetypes = useGameStore((s) => s.discoveredArchetypes || {});
   const chosenEnding = useGameStore((s) => s.chosenEnding);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
-  const setShowEternity = useGameStore((s) => s.setShowEternity);
 
   // QUICK WIN 5 — Prestige Points (universal currency)
   const prestigePoints = useGameStore((s) => s.prestigePoints);
@@ -189,15 +183,15 @@ export function PrestigeTab() {
     <div className="space-y-4">
       {/* Auto-running banner — shown when the player owns any auto-buyer upgrade */}
       {(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
-        <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-3 flex items-start gap-3">
-          <div className="text-2xl shrink-0">🌌</div>
+        <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-3 flex items-start gap-3 stat-card-accent-emerald">
+          <RefreshCw className="w-4 h-4 text-emerald-300 mt-0.5 shrink-0 animate-spin" style={{ animationDuration: "4s" }} aria-hidden />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-emerald-300">
-              Your civilization runs itself now. Focus on your next trial.
+              {galacticWins} {galacticWins === 1 ? "win" : "wins"} · {totalRuns} {totalRuns === 1 ? "run" : "runs"} auto-progressing
             </div>
             <div className="text-xs text-emerald-200/80 mt-0.5 leading-relaxed">
-              The base game (Cell → Galactic) auto-progresses via your purchased auto-buyer upgrades.
-              Prestige speed bonus scales with each run (+50% per run). Direct your attention to the prestige layers below.
+              The base game (Cell → Galactic) auto-runs via your purchased auto-buyer upgrades.
+              Each run adds +50% prestige speed bonus. Focus on the prestige layers below.
             </div>
           </div>
         </div>
@@ -211,7 +205,7 @@ export function PrestigeTab() {
             The Ten Ages of Becoming
           </CardTitle>
           <CardDescription>
-            Each layer is a long saga of cosmic ascent. Layer 1 (Evolution) is the base game; later layers unlock as you prove your lineage.
+            10 layers. Each unlocks a new prestige currency and a new system. Layer 1 (Evolution) is the base game; later layers unlock as you prove your lineage.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -250,7 +244,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedChallenges}
             unlockText="First Galactic win"
             currencyName="Evolution Points"
-            onView={() => setShowChallenges(true)}
+            onView={() => openLayerModal("challenges")}
             viewLabel="View Trials"
           >
             <ProgressRow label="Trials mastered" value={challengesCompletedCount} max={CHALLENGES.length} />
@@ -297,7 +291,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.enlightenment}
             unlockText="3 trials mastered"
             currencyName={`Divinity: ${formatNumber(divinity, 0)}`}
-            onView={() => setShowEnlightenment(true)}
+            onView={() => openLayerModal("enlightenment")}
             viewLabel="View Foresight"
             viewIcon={<Eye className="w-3 h-3 mr-1" />}
           >
@@ -330,7 +324,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.transcendence}
             unlockText="10 Foresight nodes purchased"
             currencyName={`Divinity: ${formatNumber(divinity, 0)}`}
-            onView={() => setShowTranscendence(true)}
+            onView={() => openLayerModal("transcendence")}
             viewLabel="View Sacrifice"
             viewIcon={<Triangle className="w-3 h-3 mr-1" />}
           >
@@ -361,7 +355,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.genesis}
             unlockText="All 4 Blood Pacts performed"
             currencyName={`Genesis Seeds: ${formatNumber(genesisSeeds, 0)}`}
-            onView={() => setShowGenesis(true)}
+            onView={() => openLayerModal("genesis")}
             viewLabel="View Genesis"
             viewIcon={<Egg className="w-3 h-3 mr-1" />}
           >
@@ -392,7 +386,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.apotheosis}
             unlockText="Author 1 Genesis world"
             currencyName={`Faith: ${formatNumber(faith, 0)} · Heresy: ${heresy.toFixed(0)}/75`}
-            onView={() => setShowApotheosis(true)}
+            onView={() => openLayerModal("apotheosis")}
             viewLabel="View Divine"
             viewIcon={<Sparkles className="w-3 h-3 mr-1" />}
           >
@@ -423,7 +417,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.singularity}
             unlockText="Enact 3+ Divine Laws"
             currencyName={`Singularity Cores: ${formatNumber(singularityCores, 0)}`}
-            onView={() => setShowSingularity(true)}
+            onView={() => openLayerModal("singularity")}
             viewLabel="View System"
             viewIcon={<Circle className="w-3 h-3 mr-1" />}
           >
@@ -452,7 +446,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.omnipotence}
             unlockText={`${RIFTS_REQUIRED_FOR_L7} rifts closed + ${ANCHORS_REQUIRED_FOR_L7} anchors placed`}
             currencyName={`Instability: ${instability.toFixed(1)}/100`}
-            onView={() => setShowOmnipotence(true)}
+            onView={() => openLayerModal("omnipotence")}
             viewLabel="View Lab"
             viewIcon={<Atom className="w-3 h-3 mr-1" />}
           >
@@ -485,7 +479,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.divinity}
             unlockText={`${OUTPOST_RAID_COUNT_FOR_L8} outpost raids repelled`}
             currencyName={`Alliances: ${alliedCount}/${MINOR_GODS.length}`}
-            onView={() => setShowDivinityLayer(true)}
+            onView={() => openLayerModal("divinity")}
             viewLabel="View Diplomacy"
             viewIcon={<Church className="w-3 h-3 mr-1" />}
           >
@@ -517,7 +511,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.infinity}
             unlockText="2+ alliances formed"
             currencyName={`Divine Fragments: ${divineFragments}`}
-            onView={() => setShowInfinity(true)}
+            onView={() => openLayerModal("infinity")}
             viewLabel="View Battles"
             viewIcon={<InfinityIcon className="w-3 h-3 mr-1" />}
           >
@@ -548,7 +542,7 @@ export function PrestigeTab() {
             unlocked={!!unlockedLayers.eternity}
             unlockText="All 3 Old Gods defeated"
             currencyName={`Archetypes: ${archetypesDiscovered}/100 · Boons: ${cosmicBoonStacks}`}
-            onView={() => setShowEternity(true)}
+            onView={() => openLayerModal("eternity")}
             viewLabel="View Genesis Engine"
             viewIcon={<Star className="w-3 h-3 mr-1" />}
           >
@@ -570,7 +564,7 @@ export function PrestigeTab() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Prestige Roadmap (Long-term)</CardTitle>
           <CardDescription>
-            Ten ages, from the first spark to Eternity. Each layer unlocks a new prestige currency and a new saga.
+            10 layers, each a different system. From the first spark to Eternity.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -633,14 +627,9 @@ function LayerCard({
   return (
     <div className={`stat-card p-3 ${unlocked ? "" : "opacity-70"}`}>
       <div className="flex items-start gap-3">
-        <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0 ${unlocked ? "" : "grayscale"}`}
-          style={{ background: unlocked ? "rgba(252, 211, 77, 0.1)" : "rgba(115, 115, 115, 0.05)" }}
-        >
-          {unlocked ? icon : <Lock className="w-4 h-4 text-muted-foreground" />}
-        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base shrink-0" aria-hidden>{unlocked ? icon : null}</span>
             <span className="text-sm font-semibold">
               <span className="text-muted-foreground mr-1">#{order}</span>
               {name}
@@ -649,7 +638,10 @@ function LayerCard({
             {unlocked ? (
               <Badge className="text-[0.6rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">Unlocked</Badge>
             ) : (
-              <Badge variant="outline" className="text-[0.6rem] text-muted-foreground">{unlockText}</Badge>
+              <Badge variant="outline" className="text-[0.6rem] text-muted-foreground flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" />
+                {unlockText}
+              </Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground italic mt-0.5">{tagline}</p>
@@ -690,14 +682,9 @@ function LayerRow({
 }) {
   return (
     <div className={`relative flex items-start gap-3 p-3 rounded-lg border ${unlocked ? "border-border bg-muted/20" : "border-border/40 opacity-60"}`}>
-      <div
-        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0 ${unlocked ? "" : "grayscale"}`}
-        style={{ background: unlocked ? "rgba(252, 211, 77, 0.1)" : "rgba(115, 115, 115, 0.05)" }}
-      >
-        {unlocked ? layer.icon : <Lock className="w-4 h-4 text-muted-foreground" />}
-      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-base shrink-0" aria-hidden>{unlocked ? layer.icon : null}</span>
           <span className="text-sm font-semibold">
             <span className="text-muted-foreground mr-1">#{layer.order}</span>
             {layer.name}
@@ -706,7 +693,10 @@ function LayerRow({
           {unlocked ? (
             <Badge className="text-[0.6rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">Unlocked</Badge>
           ) : (
-            <Badge variant="outline" className="text-[0.6rem] text-muted-foreground">{formatUnlock(layer)}</Badge>
+            <Badge variant="outline" className="text-[0.6rem] text-muted-foreground flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5" />
+              {formatUnlock(layer)}
+            </Badge>
           )}
         </div>
         <p className="text-xs text-muted-foreground italic mt-0.5">{layer.tagline}</p>

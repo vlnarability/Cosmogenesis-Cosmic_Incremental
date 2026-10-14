@@ -22,7 +22,7 @@ import {
   starCost,
   type ConstellationState,
 } from "@/game/data/constellations";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -40,9 +40,8 @@ const MARKET_LABELS: Record<string, { icon: string; color: string }> = {
   energy: { icon: "⚡", color: "text-violet-300" },
 };
 
-export function TranscendenceModal() {
-  const show = useGameStore((s) => s.showTranscendence);
-  const setShow = useGameStore((s) => s.setShowTranscendence);
+export function TranscendenceContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity);
   const population = useGameStore((s) => s.population);
@@ -174,16 +173,15 @@ export function TranscendenceModal() {
   }
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Triangle className="w-5 h-5" />
-            Layer 3 — Transcendence (Divine Investment Market)
-            <BackgroundLayerBadge layerId="transcendence" />
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center justify-between">
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Triangle className="w-5 h-5" />
+          Layer 3 — Transcendence (Divine Investment Market)
+          <BackgroundLayerBadge layerId="transcendence" />
+        </DialogTitle>
+        <DialogDescription asChild>
+          <div className="flex items-center justify-between">
             <span>
               Allocate background worlds to investment portfolios for Divinity dividends. All 4 Blood Pacts unlock Genesis.
             </span>
@@ -635,9 +633,8 @@ export function TranscendenceModal() {
           <div>Perform all 4 Blood Pacts to unlock Layer 4 (Genesis).</div>
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
