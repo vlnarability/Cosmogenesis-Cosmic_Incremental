@@ -4508,3 +4508,24 @@ the migration block still renders cleanly.
   actions — the data shape already supports it.
 - `buyStarFromMarket` returns `null` cleanly when no affordable star exists (or
   all stars are already lit), so the UI button can degrade gracefully.
+
+---
+Task ID: CRITICAL-FIXES-FINAL
+Agent: main
+Task: Fix all critical gaps found by comprehensive review + formatCompact runtime error
+
+Work Log:
+- **formatCompact error FIXED**: Header.tsx was importing `formatNumber` + `formatTime` but using `formatCompact`. Added `formatCompact` to the import. This was causing a runtime crash on every page load.
+- **L4 hex-grid galaxy claim WIRED**: scanGalaxySystem + claimGalaxySystem actions implemented. GenesisModal fully redesigned with SVG hex grid (50 systems, click to scan/claim, hover highlights neighbors, connection lines between claimed systems, ★ synergy markers). L4→L5 unlock now checks `isGalaxyComplete() || hasAuthoredWorld()`.
+- **L3 Divine Investment Market IMPLEMENTED**: 5 portfolios (Growth Fund, Transcendence Ventures, Chaos Hedge, Stability Bonds, Old God Futures). Allocate worlds from the background sim pool. Dividends = `allocatedWorlds × baseYield × peakProductionRate × 0.01`. Crash mechanics per portfolio (Old God Futures = 50% chance to lose ALL). Buy-star-from-market speed-up button. Prices random-walk 50-200.
+- **Autobuyers gated during trials**: All 10 autobuyers now check `trialAutobuyersBlocked` flag. If an active trial hasn't been completed once, autobuyers are disabled.
+- **L5→L6 unlock FIXED**: Now checks `countConqueredGalaxies >= 3 || hasEnactedThreeLaws` (was only the latter).
+- **Header galacticWins hidden**: Chip now hidden at L2+ (matches DivineEnginePanel).
+
+Stage Summary:
+- All critical gaps from the comprehensive review are now FIXED.
+- L4 is no longer dead code — the hex-grid galaxy claim is fully playable.
+- L3 is now the investment portfolio system (sims → portfolios → dividends).
+- Trials now properly disable autobuyers.
+- 0 lint errors. Dev server HTTP 200. Game renders without the formatCompact crash.
+- Pushed to GitHub (commit 6955c74).
