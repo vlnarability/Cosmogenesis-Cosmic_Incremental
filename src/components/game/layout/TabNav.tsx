@@ -4,6 +4,7 @@ import { useGameStore } from "@/game/state/store";
 import { useActiveLayer } from "@/game/state/layerHelpers";
 import type { TabId } from "@/game/state/types";
 import { cn } from "@/lib/utils";
+import { formatCompact } from "../shared/format";
 import {
   Hand,
   Building2,
@@ -100,7 +101,7 @@ export function TabNav() {
               style={{ color: "rgb(252 211 77)" }}
             >
               <Store className="w-4 h-4" />
-              <span>Shop · {evolutionPoints} EP</span>
+              <span>Shop · {formatCompact(evolutionPoints)} EP</span>
             </button>
           )}
         </div>

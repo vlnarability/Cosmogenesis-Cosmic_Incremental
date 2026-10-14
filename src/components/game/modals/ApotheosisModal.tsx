@@ -454,12 +454,12 @@ export function ApotheosisModal() {
             <div className="stat-card">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> Avg Heresy (run ends at 100) · gain rate ×{hRateMult.toFixed(2)}
+                  <AlertTriangle className="w-3 h-3" /> Avg Heresy (run ends at 75) · gain rate ×{hRateMult.toFixed(2)}
                 </div>
                 <div className="text-[0.65rem] text-muted-foreground">{heresy.toFixed(1)} global</div>
               </div>
               <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">
-                <div className={`h-full transition-all ${heresy >= 75 ? "bg-rose-500" : "bg-rose-400/70"}`} style={{ width: `${Math.min(100, heresy)}%` }} />
+                <div className={`h-full transition-all ${heresy >= 75 ? "bg-rose-500" : "bg-rose-400/70"}`} style={{ width: `${Math.min(75, heresy) / 75 * 100}%` }} />
               </div>
               <div className="text-[0.6rem] text-muted-foreground mt-1">
                 Enacted {enactedCount} laws. Active bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% prod, +{(lawBonus.capMult * 100).toFixed(0)}% cap, +{(lawBonus.epMult * 100).toFixed(0)}% EP, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% pop

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
@@ -54,14 +54,21 @@ export function GameShell() {
   const showDivineEngine = !!(unlockedLayers?.enlightenment);
   const setTab = useGameStore((s) => s.setTab);
 
-  // AUTO-REDIRECT: At L2+, if the current tab is a hidden base-game tab
-  // (actions/systems/tech/production/story), redirect to "prestige" so the
+  // AUTO-REDIRECT (one-time): At L2+, if the current tab is a hidden base-game tab
+  // (actions/systems/tech/production/story), redirect to "prestige" ONCE so the
   // player never sees the Cell Actions / Manual Action section.
-  // This was the cause of the "can't leave the Actions tab" bug.
+  // This runs only when transitioning into L2 (not on every render) to avoid
+  // the "keeps resetting to prestige" bug.
+  const prevShowDivineEngine = useRef(showDivineEngine);
   useEffect(() => {
-    if (showDivineEngine && ["actions", "systems", "tech", "production", "story"].includes(currentTab)) {
+    // Only redirect on the TRANSITION from L1 → L2 (when showDivineEngine flips true),
+    // or if the saved tab is a hidden base-game tab at L2+.
+    // Don't redirect on every render — that would trap the player on prestige.
+    const hiddenTabs = ["actions", "systems", "tech", "production", "story"];
+    if (showDivineEngine && hiddenTabs.includes(currentTab)) {
       setTab("prestige");
     }
+    prevShowDivineEngine.current = showDivineEngine;
   }, [showDivineEngine, currentTab, setTab]);
 
   // Theme state — apply CSS classes to the root div.

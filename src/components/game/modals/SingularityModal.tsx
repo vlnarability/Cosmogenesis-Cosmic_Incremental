@@ -3,10 +3,6 @@
 import { useState, useMemo } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
-  RELIC_LOADOUTS,
-  relicBonus,
-} from "@/game/data/singularity";
-import {
   UNIVERSAL_GALAXIES,
   UNIVERSAL_GALAXY_MAP,
   TOTAL_UNIVERSAL_GALAXIES,
@@ -46,7 +42,6 @@ export function SingularityModal() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const singularityCores = useGameStore((s) => s.singularityCores);
   const faith = useGameStore((s) => s.faith);
-  const equippedRelics = useGameStore((s) => s.equippedRelics || {});
 
   // L6 Universal Map runtime state
   const universalGalaxies = useGameStore((s) => s.universalGalaxies || []);
@@ -57,7 +52,6 @@ export function SingularityModal() {
   const riftSpawnTimer = useGameStore((s) => s.riftSpawnTimer || 0);
 
   // Actions
-  const toggleRelicLoadout = useGameStore((s) => s.toggleRelicLoadout);
   const closeRift = useGameStore((s) => s.closeRift);
   const placeRealityAnchor = useGameStore((s) => s.placeRealityAnchor);
   const attackUniversalGalaxy = useGameStore((s) => s.attackUniversalGalaxy);
@@ -66,8 +60,6 @@ export function SingularityModal() {
   const [selectedGalaxyId, setSelectedGalaxyId] = useState<string | null>(null);
 
   const isUnlocked = !!unlockedLayers.singularity;
-  const rb = relicBonus(equippedRelics);
-  const equippedCount = RELIC_LOADOUTS.filter((r) => equippedRelics[r.id]).length;
 
   // Build lookup maps for fast access in the SVG layer.
   const stateById = useMemo(() => {
@@ -494,60 +486,27 @@ export function SingularityModal() {
                 </div>
               </div>
 
-              {/* Active relic bonuses */}
+              {/* L6 progression summary */}
               <div className="stat-card">
                 <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
-                  Active bonuses: {equippedCount} relic(s) equipped
+                  L6 progression
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(rb.productionMult * 100).toFixed(0)}% prod</Badge>
-                  <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(rb.capMult * 100).toFixed(0)}% cap</Badge>
-                  <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(rb.epMult * 100).toFixed(0)}% EP</Badge>
-                  <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(rb.popGrowthMult * 100).toFixed(0)}% pop</Badge>
+                  <Badge variant="outline" className="text-red-300 border-red-400/40">{rifts.length} active rift(s)</Badge>
+                  <Badge variant="outline" className="text-blue-300 border-blue-400/40">{realityAnchors.length} anchor(s) placed</Badge>
+                  <Badge variant="outline" className="text-amber-300 border-amber-400/40">{formatNumber(singularityCores, 0)} Singularity Cores</Badge>
+                </div>
+                <div className="text-[0.6rem] text-muted-foreground mt-1.5 leading-snug">
+                  Close rifts (Singularity Cores) and place Reality Anchors (Singularity Cores) to stabilize the universe. Anchored galaxies are immune to rift corruption.
                 </div>
               </div>
             </aside>
           </div>
         )}
 
-        {/* Relic Loadouts — kept from the original design */}
-        {isUnlocked && (
-          <section className="mt-2">
-            <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
-              Relic Loadouts (each has upside + downside)
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {RELIC_LOADOUTS.map((r) => {
-                const equipped = !!equippedRelics[r.id];
-                return (
-                  <div key={r.id} className={`stat-card flex items-center gap-3 py-2 ${equipped ? "border-amber-400/60" : ""}`}>
-                    <span className="text-xl shrink-0">{r.icon}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">{r.name}</span>
-                        {equipped && (
-                          <Badge className="text-[0.6rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
-                            <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> Equipped
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-[0.65rem] text-emerald-300/80 leading-snug">▲ {r.upside}</div>
-                      <div className="text-[0.65rem] text-rose-300/80 leading-snug">▼ {r.downside}</div>
-                    </div>
-                    <Button size="sm" variant={equipped ? "outline" : "default"} className="h-7" onClick={() => toggleRelicLoadout(r.id)}>
-                      {equipped ? "Unequip" : "Equip"}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
           <span className="text-cyan-300">Universal Map</span> — defend 50 galaxies from Old-God rifts. Close rifts for Singularity Cores, place Reality Anchors to immunize galaxies in a {ANCHOR_RADIUS}-unit radius, and conquer new neutral galaxies (Faith) for +198 worlds each. Close {RIFTS_REQUIRED_FOR_L7} rifts + place {ANCHORS_REQUIRED_FOR_L7} anchors to unlock Layer 7 (Omnipotence).
-          Relics persist across prestige.
         </div>
         <div className="flex justify-end pt-2">
           <Button variant="outline" onClick={() => setShow(false)}>Close</Button>

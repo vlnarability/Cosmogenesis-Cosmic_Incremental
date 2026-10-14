@@ -24,6 +24,8 @@ export function SettingsModal() {
   const hardReset = useGameStore((s) => s.hardReset);
   const saveGame = useGameStore((s) => s.saveGame);
   const debugUnlockAll = useGameStore((s) => s.debugUnlockAll);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+  const toggleDebugFreeBuy = useGameStore((s) => s.toggleDebugFreeBuy);
   const eventFrequency = useGameStore((s) => s.eventFrequency || "normal");
   const setEventFrequency = useGameStore((s) => s.setEventFrequency);
 
@@ -468,16 +470,33 @@ export function SettingsModal() {
 
         <div className="flex justify-end pt-2 items-center gap-2">
           {debugUnlocked && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleDebugUnlock}
-              className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
-              title="Testing only: unlock all prestige layers + grant resources"
-            >
-              <Bug className="w-3 h-3 mr-1" />
-              Debug: Unlock All Layers
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDebugUnlock}
+                className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
+                title="Testing only: unlock all prestige layers + grant resources"
+              >
+                <Bug className="w-3 h-3 mr-1" />
+                Debug: Unlock All Layers
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={toggleDebugFreeBuy}
+                className={cn(
+                  "h-8",
+                  debugFreeBuy
+                    ? "border-emerald-500/60 text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20"
+                    : "border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
+                )}
+                title="Testing only: all purchases cost 0 resources"
+              >
+                <Bug className="w-3 h-3 mr-1" />
+                {debugFreeBuy ? "Free Buy: ON" : "Free Buy: OFF"}
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={() => setShowSettings(false)}>Close</Button>
         </div>

@@ -144,9 +144,6 @@ import {
   type RivalSystemState,
 } from "../data/galaxies";
 import {
-  RELIC_LOADOUTS,
-  RELIC_LOADOUT_MAP,
-  relicBonus,
   logicCoreBonus,
 } from "../data/singularity";
 import {
@@ -298,51 +295,9 @@ import {
   LAYER_ID_TO_THEME,
 } from "../data/themes";
 import { ACTIVE_ABILITIES, ACTIVE_ABILITY_MAP } from "../data/activeAbilities";
-import {
-  TRIAL_REALMS,
-  TRIAL_REALM_MAP,
-  PLAYABLE_REALM_IDS,
-  makeDefaultRealmState,
-  REALM_GROWTH_BREAKS_GOAL,
-  REALM_GROWTH_PASSIVE_FILL_PER_SEC,
-  REALM_DISCONTENT_HAPPINESS_THRESHOLD,
-  REALM_DISCONTENT_SURVIVE_SECONDS,
-  REALM_DISCONTENT_GOLD_GOAL,
-  REALM_SWIFTNESS_TIME_LIMIT,
-  // TRIALS-7 — newly playable realm constants
-  REALM_FAMINE_SURVIVE_SECONDS,
-  REALM_FAMINE_THRESHOLD,
-  REALM_FAMINE_DECAY_PER_SEC,
-  REALM_FAMINE_FLOW_PER_SEC,
-  REALM_FAMINE_PUMP_FROM,
-  REALM_FAMINE_PUMP_TO,
-  REALM_IGNORANCE_NODE_COUNT,
-  REALM_IGNORANCE_BUDGET,
-  REALM_IGNORANCE_NODE_COSTS,
-  REALM_STAGNATION_STAGE_COUNT,
-  REALM_STAGNATION_GOODS_GOAL,
-  REALM_STAGNATION_UPGRADE_BASE_COST,
-  REALM_STAGNATION_RATE_DIVISOR,
-  REALM_WEAKNESS_WAVE_COUNT,
-  REALM_WEAKNESS_WAVE_DURATION,
-  REALM_WEAKNESS_ENEMY_BASE,
-  REALM_WEAKNESS_ENEMY_PER_WAVE,
-  REALM_WEAKNESS_TOWER_KILL_RATE,
-  REALM_WEAKNESS_TOWER_COST,
-  REALM_WEAKNESS_WAVE_REWARD,
-  REALM_WEAKNESS_LEAK_DAMAGE,
-  REALM_LATE_BLOOM_POP_GOAL,
-  REALM_LATE_BLOOM_PROD_COEFF,
-  REALM_LATE_BLOOM_COST_PER_POP,
-  REALM_PURITY_POOL_CAP,
-  REALM_PURITY_SYSTEMS_GOAL,
-  REALM_PURITY_BUILD_COST,
-  REALM_PURITY_DRAIN_PER_SYSTEM,
-  REALM_ASCETIC_STAGES,
-  REALM_ASCETIC_SYSTEM_COSTS,
-  REALM_ASCETIC_BASE_RATE,
-  trialRealmRewardBonus,
-} from "../data/trialRealms";
+// Legacy trialRealms module — exports empty stubs (mini-games removed in
+// CLEANUP-LEGACY). Kept as a no-op import for save-compat references.
+import { trialRealmRewardBonus } from "../data/trialRealms";
 
 const STORAGE_KEY = "evolution_idle_v2";
 
@@ -381,7 +336,9 @@ function highestUnlockedLayerThemeId(unlockedLayers: Record<string, boolean>): s
 }
 
 // New layer-progression gates: per-layer "completion metric" → unlocks the next layer.
-// L1 → L2: 5+ trial realms completed (was: 3 challenges completed)
+// L1 → L2: 3+ distinct challenges completed OR 5+ total challenge repeats.
+// (Legacy trialRealm mini-games removed in CLEANUP-LEGACY — the trialRealms*
+// state fields persist as no-op stubs for save-compat.)
 export const TRIAL_REALMS_REQUIRED_FOR_LAYER_2 = 5;
 
 function initialRunState(): Partial<GameState> {
@@ -586,6 +543,7 @@ function initialMetaState(): Partial<GameState> {
     tutorialActive: true,
     tutorialDismissed: false,
     eventFrequency: "normal",
+    debugFreeBuy: false,
 
     // Theme customization (Part 1)
     activeStageTheme: "stage-cell",
@@ -756,7 +714,9 @@ export const useGameStore = create<GameStore>()(
         const dLaw = divineLawBonus(s.enactedDivineLaws || {});
         const wMode = worshipModeBonus(s.activeWorshipMode);
         const hResp = heresyResponseProductionMult(s.activeHeresyResponse);
-        const relics = relicBonus(s.equippedRelics || {});
+        // L6 — Relic Loadouts were REMOVED in CLEANUP-LEGACY (replaced by the
+        // Universal Map rift/anchor system). The `relics` bonus is always zero.
+        const relics = { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0 };
         // L6 — Logic Cores were REMOVED in the Universal Map redesign. The
         // production/cap/EP bonuses they used to grant are no longer applied.
         // Layer 7 — Omnipotence (creatures + legions + stance)
@@ -796,11 +756,12 @@ export const useGameStore = create<GameStore>()(
         const galaxySummary = summarizeGalaxyBonuses(s.galaxySystems || []);
         // (Legacy Sacred Grid tile bonuses removed in L4 redesign.)
 
-        // TRIALS-7 — Layer 1 trial realm rewards (permanent bonuses from completed realms)
+        // TRIALS-7 — Layer 1 trial realm rewards (legacy — mini-games removed in
+        // CLEANUP-LEGACY; trialRealmRewardBonus now returns all-zeros).
         const trialReward = trialRealmRewardBonus(s.trialRealmsCompleted || {});
-        // Late Bloom: +25% pop growth only when current population < 50
-        const lateBloomPopBonus =
-          (s.trialRealmsCompleted?.realm_late_bloom && s.population < 50) ? 0.25 : 0;
+        // Late Bloom: legacy reward from removed mini-game — always 0 now.
+        const lateBloomPopBonus = 0;
+        void trialReward; void lateBloomPopBonus; // no-op stubs (legacy compat)
 
         const layerProdBonus =
           constB.productionMult +
@@ -852,9 +813,8 @@ export const useGameStore = create<GameStore>()(
         // Surge multiplies total production output (after layer bonus & miracle)
         const surgeMult = surgeActive ? 3 : 1;
         const divineComboMult = divineComboActive ? 1.5 : 1;
-        // REBUILD L1 — Realm of Swiftness: 5× production while realm is active
-        const realmSwiftnessActive = s.activeTrialRealm === "realm_swiftness";
-        const realmSwiftnessMult = realmSwiftnessActive ? 5 : 1;
+        // Legacy Realm of Swiftness multiplier (mini-game removed in CLEANUP-LEGACY) — always 1.
+        const realmSwiftnessMult = 1;
         autoMult *= (1 + layerProdBonusApplied) * (miracleDouble ? 2 : 1) * surgeMult * divineComboMult * universalBoostMult * realmSwiftnessMult;
 
         const techMult = techMultiplier(s, "production");
@@ -1014,14 +974,11 @@ export const useGameStore = create<GameStore>()(
         let technologies = s.technologies;
         let totalTechResearched = s.totalTechResearched || 0;
 
-        // FIX-AUTOBUYERS-TRIALS — Autobuyers must NOT run during an active trial
-        // realm (L1 mini-game) unless the player has already completed that
-        // realm at least once. `trialRealmsCompleted` gates the unlock per-realm
-        // (the per-realm completion record is the source of truth — once a
-        // realm has been beaten, its autobuyer exemption is permanent).
-        const trialAutobuyersBlocked =
-          !!(s.activeTrialRealm) &&
-          !(s.trialRealmsCompleted?.[s.activeTrialRealm] ?? false);
+        // FIX-AUTOBUYERS-TRIALS — Legacy: autobuyers used to be blocked during
+        // an active trial realm. The trialRealm mini-games were removed in
+        // CLEANUP-LEGACY, so `activeTrialRealm` is always null on new saves.
+        // We keep this as a constant `false` for clarity / future re-enablement.
+        const trialAutobuyersBlocked = false;
 
         // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
         // Player MUST purchase the auto_system_buyer shop upgrade (8 EP) to enable.
@@ -1261,14 +1218,14 @@ export const useGameStore = create<GameStore>()(
               activeChallenge = null;
               // QUICK WIN 5 — +1 Prestige Point for completing a trial
               prestigePoints += 1;
-              // Enlightenment unlocks at 3 challenges completed (not 10)
+              // L1→L2 gate: 3+ distinct challenges completed OR 5+ total challenge
+              // repeats. (Legacy trialRealm mini-games removed in CLEANUP-LEGACY.)
               const totalChallengesCompleted = countChallengesCompleted(completedChallenges);
-              // NEW L1→L2 gate: 5+ trial realms completed OR 3+ old challenges completed (either works)
-              const trialRealmsCompletedCount = Object.values(s.trialRealmsCompleted || {}).filter(Boolean).length;
+              const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
               if (!unlockedLayers.enlightenment &&
-                  (totalChallengesCompleted >= 3 || trialRealmsCompletedCount >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2)) {
+                  (totalChallengesCompleted >= 3 || totalRepeats >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2)) {
                 unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialRealmsCompletedCount}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms, or 3+ old challenges). Enlightenment layer unlocked.`), 0);
+                setTimeout(() => get().addToLog(`Trial progress threshold reached (${totalChallengesCompleted}/3 distinct trials, or ${totalRepeats}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} total repeats). Enlightenment layer unlocked.`), 0);
               }
               // Defer log so we don't race with set()
               setTimeout(() => get().addToLog(`Trial complete: ${chName} (repeat ${completedCount}). Mastery bonus made permanent. (+1 Prestige Point)`), 0);
@@ -1498,10 +1455,10 @@ export const useGameStore = create<GameStore>()(
         // Layer 5 — Faith generation (Apotheosis). Per-galaxy heresy accrual is
         // now derived from each owned galaxy's heresy grid (handled in the
         // per-galaxy L5 tick block further below). Global `heresy` is the
-        // average of `galaxyHeresy` across owned galaxies; the run-ender at
-        // heresy ≥ 100 is retained but is effectively unreachable now (a
-        // galaxy hitting 75 resets to 50), so the L5 loop is no longer a
-        // run-ender — it's a system-loss loop.
+        // average of `galaxyHeresy` across owned galaxies. CLEANUP-LEGACY:
+        // the run-ender now triggers at heresy ≥ 75 (the per-galaxy "red"
+        // threshold), since per-galaxy heresy resets at 75 (one-time per
+        // threshold per galaxy) and the old ≥ 100 check was effectively dead.
         if (unlockedLayers.apotheosis) {
           faith += wMode.faithPerSec * realDt;
         }
@@ -1729,283 +1686,6 @@ export const useGameStore = create<GameStore>()(
           if (activeSpecialTheme !== null) activeSpecialTheme = null; // auto mode never uses special
         }
 
-        // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS — tick processing =====
-        // Layer 1 — Trial Realms: progress the active realm's mini-game
-        let activeTrialRealm = s.activeTrialRealm;
-        // FEATURE 1 — capture the original realm ID for safe indexing (activeTrialRealm may be reassigned to null on auto-close)
-        const tickRealmId = s.activeTrialRealm;
-        let trialRealmState = { ...(s.trialRealmState || {}) };
-        let trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-        // FEATURE 1 — local best-time leaderboard (no login required)
-        let trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-        if (activeTrialRealm && PLAYABLE_REALM_IDS.includes(activeTrialRealm)) {
-          const st = { ...(trialRealmState[activeTrialRealm] || makeDefaultRealmState(activeTrialRealm)) };
-          // Ensure startedAt is set (migration safety)
-          if (!st.startedAt) st.startedAt = newTime - realDt;
-          switch (activeTrialRealm) {
-            case "realm_growth": {
-              st.energy = Math.min(100, (st.energy || 0) + REALM_GROWTH_PASSIVE_FILL_PER_SEC * realDt);
-              break;
-            }
-            case "realm_discontent": {
-              // Happiness oscillates as a sine wave centered on 50, amplitude 35, period 12s
-              st.timer = (st.timer || 0) + realDt;
-              const phase = (st.timer / 12) * Math.PI * 2;
-              const target = 50 + Math.sin(phase) * 35;
-              // Drift toward target slowly
-              st.happiness = (st.happiness || 50) + (target - (st.happiness || 50)) * 0.1 * realDt;
-              st.happiness = Math.max(0, Math.min(100, st.happiness));
-              // Survival timer only progresses while happiness is above the threshold
-              st.survivedTime = (st.survivedTime || 0) + ((st.happiness || 0) >= REALM_DISCONTENT_HAPPINESS_THRESHOLD ? realDt : 0);
-              if ((st.happiness || 0) < REALM_DISCONTENT_HAPPINESS_THRESHOLD) {
-                st.happinessBelowThreshold = true;
-              }
-              // Check completion: survived ≥ 90s AND gold ≥ 200
-              if ((st.survivedTime || 0) >= REALM_DISCONTENT_SURVIVE_SECONDS && (st.gold || 0) >= REALM_DISCONTENT_GOLD_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                // FEATURE 1 — record best time
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                // Check L2 unlock after trial completion
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Discontent conquered! Permanent reward granted."), 0);
-              }
-              break;
-            }
-            case "realm_swiftness": {
-              st.timeLeft = Math.max(0, (st.timeLeft || REALM_SWIFTNESS_TIME_LIMIT) - realDt);
-              if (st.timeLeft <= 0 && !st.completed) {
-                // Time expired; failed unless we already reached Galactic
-                if (!st.reachedGalactic) {
-                  setTimeout(() => get().addToLog("Realm of Swiftness: time expired — run failed."), 0);
-                  activeTrialRealm = null;
-                }
-              }
-              if (s.stageIndex >= STAGES.length - 1) {
-                st.reachedGalactic = true;
-                if (!st.completed) {
-                  st.completed = true;
-                  trialRealmsCompleted[tickRealmId!] = true;
-                  // FEATURE 1 — record best time (faster = better)
-                  const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                  const prevBest = trialRealmBestTimes[tickRealmId!];
-                  if (prevBest === undefined || completionTime < prevBest) {
-                    trialRealmBestTimes[tickRealmId!] = completionTime;
-                  }
-                  // Check L2 unlock after trial completion
-                  const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                  if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                    unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                    setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                  }
-                  setTimeout(() => get().addToLog("Realm of Swiftness conquered! +15% all production speed."), 0);
-                }
-              }
-              break;
-            }
-            // TRIALS-7 — 7 newly playable realm tick cases
-            case "realm_famine": {
-              // Each resource decays slowly. Player pumps forward (A→B→C→A) to
-              // refill whichever is low. Survival timer only progresses while
-              // all three are at/above REALM_FAMINE_THRESHOLD.
-              st.timer = (st.timer || 0) + realDt;
-              const decay = REALM_FAMINE_DECAY_PER_SEC * realDt;
-              st.a = Math.max(0, Math.min(100, (st.a || 0) - decay));
-              st.b = Math.max(0, Math.min(100, (st.b || 0) - decay));
-              st.c = Math.max(0, Math.min(100, (st.c || 0) - decay));
-              // Survival timer only progresses while all three are at/above the threshold
-              const allAbove =
-                (st.a || 0) >= REALM_FAMINE_THRESHOLD &&
-                (st.b || 0) >= REALM_FAMINE_THRESHOLD &&
-                (st.c || 0) >= REALM_FAMINE_THRESHOLD;
-              st.survivedTime = (st.survivedTime || 0) + (allAbove ? realDt : 0);
-              if ((st.survivedTime || 0) >= REALM_FAMINE_SURVIVE_SECONDS && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Famine conquered! +15% food & water production permanently."), 0);
-              }
-              break;
-            }
-            case "realm_ignorance": {
-              // Passive tick — no time pressure; completion handled by buy-node action.
-              // No-op: progress happens when player clicks "Unlock" on each tech node.
-              break;
-            }
-            case "realm_stagnation": {
-              // Production rate = (lvl1 × lvl2 × lvl3 × lvl4) / 16 per sec
-              const lv = st.levels || [1, 1, 1, 1];
-              const rate = (lv[0] * lv[1] * lv[2] * lv[3]) / REALM_STAGNATION_RATE_DIVISOR;
-              st.goods = (st.goods || 0) + rate * realDt;
-              st.produced = (st.produced || 0) + rate * realDt;
-              if ((st.produced || 0) >= REALM_STAGNATION_GOODS_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Stagnation conquered! +10% production at every stage permanently."), 0);
-              }
-              break;
-            }
-            case "realm_weakness": {
-              // Auto-start first wave
-              if ((st.wave || 0) === 0) {
-                st.wave = 1;
-                st.enemies = REALM_WEAKNESS_ENEMY_BASE + 1 * REALM_WEAKNESS_ENEMY_PER_WAVE;
-                st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
-              }
-              if ((st.wave || 0) > 0 && !st.completed && !st.failed) {
-                // Towers kill enemies at REALM_WEAKNESS_TOWER_KILL_RATE per tower per sec
-                const kills = (st.towers || 0) * REALM_WEAKNESS_TOWER_KILL_RATE * realDt;
-                st.enemies = Math.max(0, (st.enemies || 0) - kills);
-                st.waveTimer = Math.max(0, (st.waveTimer || 0) - realDt);
-                if ((st.waveTimer || 0) <= 0) {
-                  // Wave ends — leftover enemies damage the base
-                  const leak = Math.floor(st.enemies || 0);
-                  if (leak > 0) {
-                    st.baseHp = Math.max(0, (st.baseHp || 100) - leak * REALM_WEAKNESS_LEAK_DAMAGE);
-                  }
-                  if ((st.baseHp || 0) <= 0) {
-                    st.failed = true;
-                    setTimeout(() => get().addToLog("Realm of Weakness: base destroyed — realm failed."), 0);
-                    activeTrialRealm = null;
-                    break;
-                  }
-                  // Reward & advance wave
-                  st.military = (st.military || 0) + REALM_WEAKNESS_WAVE_REWARD;
-                  st.wave = (st.wave || 0) + 1;
-                  if ((st.wave || 0) > REALM_WEAKNESS_WAVE_COUNT) {
-                    st.completed = true;
-                    trialRealmsCompleted[tickRealmId!] = true;
-                    const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                    const prevBest = trialRealmBestTimes[tickRealmId!];
-                    if (prevBest === undefined || completionTime < prevBest) {
-                      trialRealmBestTimes[tickRealmId!] = completionTime;
-                    }
-                    const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                    if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                      unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                      setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                    }
-                    setTimeout(() => get().addToLog("Realm of Weakness conquered! +15% military power permanently."), 0);
-                  } else {
-                    // Start next wave (uses new st.wave value)
-                    st.enemies = REALM_WEAKNESS_ENEMY_BASE + (st.wave || 1) * REALM_WEAKNESS_ENEMY_PER_WAVE;
-                    st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
-                  }
-                }
-              }
-              break;
-            }
-            case "realm_late_bloom": {
-              // Geometric growth: food rate = pop² × coeff; cost per pop = pop × COST_PER_POP
-              const pop = Math.max(1, st.pop || 1);
-              const rate = pop * pop * REALM_LATE_BLOOM_PROD_COEFF;
-              st.food = (st.food || 0) + rate * realDt;
-              let guard = 0;
-              while ((st.food || 0) >= pop * REALM_LATE_BLOOM_COST_PER_POP && (st.pop || 0) < REALM_LATE_BLOOM_POP_GOAL && guard < 1000) {
-                st.food = (st.food || 0) - pop * REALM_LATE_BLOOM_COST_PER_POP;
-                st.pop = (st.pop || 1) + 1;
-                guard++;
-              }
-              if ((st.pop || 0) >= REALM_LATE_BLOOM_POP_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Late Bloom conquered! +25% population growth on slow starts (under 50 pop)."), 0);
-              }
-              break;
-            }
-            case "realm_purity": {
-              // Each built system drains the pool passively
-              const drain = (st.systemsBuilt || 0) * REALM_PURITY_DRAIN_PER_SYSTEM * realDt;
-              st.pool = Math.max(0, (st.pool || 0) - drain);
-              if ((st.pool || 0) <= 0 && !st.completed && !st.failed) {
-                st.failed = true;
-                setTimeout(() => get().addToLog("Realm of Purity: shared pool exhausted — realm failed."), 0);
-                activeTrialRealm = null;
-              }
-              if ((st.systemsBuilt || 0) >= REALM_PURITY_SYSTEMS_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Purity conquered! +5% production (scaling reward) permanently."), 0);
-              }
-              break;
-            }
-            case "realm_ascetic": {
-              // Essence accumulates passively: rate = BASE_RATE + stage
-              const rate = REALM_ASCETIC_BASE_RATE + (st.stage || 0);
-              st.essence = (st.essence || 0) + rate * realDt;
-              // Completion handled by build-system action (each purchase advances the stage)
-              if ((st.stage || 0) >= REALM_ASCETIC_STAGES && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of the Ascetic conquered! +12% production with constraints lifted."), 0);
-              }
-              break;
-            }
-          }
-          // Auto-close realm if completed (Growth handled in the breakthrough action)
-          if (st.completed && activeTrialRealm !== "realm_growth") {
-            activeTrialRealm = null;
-          }
-          if (tickRealmId) trialRealmState[tickRealmId] = st;
-        }
-
         // Layer 3 — Divine Market: random-walk prices every 10s
         let marketPrices = { ...(s.marketPrices || {}) };
         let priceHistory = { ...(s.priceHistory || {}) };
@@ -2068,44 +1748,13 @@ export const useGameStore = create<GameStore>()(
           if (dividends > 0) divinity += dividends * realDt;
         }
 
-        // Layer 4 — FEATURE 4 — Natural Disasters: every ~90s, 15% chance to destroy a random tile (not protected by a Mountain neighbor)
-        let worldGrid = s.worldGrid ? s.worldGrid.slice() : Array(20).fill(null);
-        let worldGridSeeds = s.worldGridSeeds ? s.worldGridSeeds.slice() : Array(20).fill(null);
-        let disasterTimer = Math.max(0, (s.disasterTimer || 90) - realDt);
-        let lastDisasterCell = s.lastDisasterCell ?? null;
-        let lastDisasterAt = s.lastDisasterAt || 0;
-        if (unlockedLayers.genesis && disasterTimer <= 0) {
-          disasterTimer = 90;
-          // LAYER UPGRADE — disaster_shield: -25% per level (max 4 → 0% chance)
-          const dsLvl = (s.upgrades?.disaster_shield as number) || 0;
-          const disasterChance = Math.max(0, 0.15 * (1 - 0.25 * dsLvl));
-          // Roll disaster chance to destroy a random filled tile (excluding mountain-adjacent)
-          if (Math.random() < disasterChance) {
-            // Build list of vulnerable cells: filled tiles NOT adjacent to a Mountain
-            const vulnerable: number[] = [];
-            for (let i = 0; i < worldGrid.length; i++) {
-              if (worldGrid[i] === null) continue;
-              if (worldGrid[i] === "mountain") continue; // mountains are sturdy
-              const row = Math.floor(i / 5);
-              const col = i % 5;
-              const neighbors = [
-                col > 0 ? i - 1 : -1,
-                col < 4 ? i + 1 : -1,
-                row > 0 ? i - 5 : -1,
-                row < 3 ? i + 5 : -1,
-              ].filter((n) => n >= 0);
-              const protectedByMountain = neighbors.some((n) => worldGrid[n] === "mountain");
-              if (!protectedByMountain) vulnerable.push(i);
-            }
-            if (vulnerable.length > 0) {
-              const target = vulnerable[Math.floor(Math.random() * vulnerable.length)];
-              worldGrid[target] = null;
-              lastDisasterCell = target;
-              lastDisasterAt = newTime;
-              setTimeout(() => get().addToLog(`🌋 Disaster! Tile on cell ${target + 1} was destroyed. Rebuild it (costs a tile from your supply).`), 0);
-            }
-          }
-        }
+        // Layer 4 — Sacred Grid / Natural Disasters — REMOVED in CLEANUP-LEGACY.
+        // The old Sacred Grid (worldGrid + worldGridSeeds + disasterTimer +
+        // lastDisasterCell + lastDisasterAt) was replaced by the Galaxy Claim
+        // system (`galaxySystems` + `scanGalaxySystem` + `claimGalaxySystem`).
+        // The legacy state fields are kept as no-op stubs (empty arrays / 0 /
+        // null) for save-shape compat. The `disaster_shield` shop upgrade is
+        // also legacy (it no longer affects anything).
 
         // ===== Layer 5 — Heresy Web (Galactic Conquest redesign) =====
         // Per-galaxy 8×4 heresy grid. Loop through ALL owned galaxies (starter
@@ -2292,11 +1941,17 @@ export const useGameStore = create<GameStore>()(
           ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
           : 0;
         heresy = newHeresy;
-        // Run-ender: if average heresy is 100 (all owned galaxies maxed), trigger prestige.
-        if (heresy >= 100) {
-          heresy = 100;
+        // Run-ender: if AVERAGE galaxy heresy reaches 75 (the per-galaxy "red"
+        // threshold), the god is cast down. CLEANUP-LEGACY: previously this
+        // checked heresy >= 100, but per-galaxy heresy resets at 75 (one-time
+        // per threshold), so the average can briefly hit 75 but the global
+        // value was effectively unreachable. Triggering at 75 is the meaningful
+        // "your flock has abandoned you" condition (matching the L5 heresy
+        // threshold seeding where 75 = "red" / 3 systems lost).
+        if (heresy >= 75) {
+          heresy = 75;
           setTimeout(() => {
-            get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
+            get().addToLog("Heresy has reached 75 (average across owned galaxies). The god is cast down — the run ends in ruin.");
             get().triggerPrestige();
           }, 0);
         }
@@ -2316,9 +1971,10 @@ export const useGameStore = create<GameStore>()(
         //     galaxy (preferring unanchored ones). Reset timer to 30-60s (random).
         //   • Each open rift spreads corruption: +5% heresy to a random
         //     non-anchored galaxy. Anchored galaxies are immune.
-        //   • When a galaxy's heresy reaches 100, apply the L5 heresy loss
-        //     rules (handled in the L5 tick above — universal galaxies inherit
-        //     the same loss-count formula via heresyLossCount).
+        //   • Per-galaxy heresy thresholds (25/50/75) are handled in the L5
+        //     tick above (universal galaxies inherit the same loss-count
+        //     formula via heresyLossCount). The run-ender triggers when
+        //     AVERAGE galaxy heresy hits 75 (see L5 block above).
         let universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({ ...g }));
         let rifts = (s.rifts || []).map((r) => ({ ...r }));
         let realityAnchors = (s.realityAnchors || []).map((a) => ({ ...a }));
@@ -2827,11 +2483,10 @@ export const useGameStore = create<GameStore>()(
           ritualComboTimer,
           layerEventTimers,
           prestigePoints,
-          // REBUILD L1-6 — runtime state for the new mini-games
-          activeTrialRealm,
-          trialRealmState,
-          trialRealmsCompleted,
-          trialRealmBestTimes,
+          // REBUILD L1-6 — runtime state for the layer mini-games
+          // (Legacy trialRealm* state fields removed in CLEANUP-LEGACY — no
+          // longer mutated by the tick. Kept in initialMetaState + persist
+          // migration for save-shape compat.)
           marketPrices,
           priceHistory,
           marketOwnedResources,
@@ -2845,12 +2500,16 @@ export const useGameStore = create<GameStore>()(
           portfolioLockTimers,
           portfolioPrices,
           portfolioDividendsEarned,
-          // FEATURE 4 — Natural Disasters
-          worldGrid,
-          worldGridSeeds,
-          disasterTimer,
-          lastDisasterCell,
-          lastDisasterAt,
+          // LEGACY: worldGrid + worldGridSeeds + disasterTimer + lastDisasterCell +
+          // lastDisasterAt kept as no-op state for save-shape compat. The Sacred
+          // Grid disaster logic was REMOVED in CLEANUP-LEGACY (replaced by the
+          // L4 Galaxy Claim system). We pass through the existing values
+          // unchanged so old saves don't lose their (now-unused) grid contents.
+          worldGrid: s.worldGrid,
+          worldGridSeeds: s.worldGridSeeds,
+          disasterTimer: s.disasterTimer,
+          lastDisasterCell: s.lastDisasterCell,
+          lastDisasterAt: s.lastDisasterAt,
           followerGrid,
           heresySpreadTimer,
           heresySeedTimer,
@@ -2991,6 +2650,11 @@ export const useGameStore = create<GameStore>()(
             if (totalSystems + bought >= challengeDebuff.maxSystems) break;
           }
           const cost = systemCost(sys, owned + bought, costReduction);
+          // DEBUG: Free Buy — skip affordability check + cost deduction
+          if (s.debugFreeBuy) {
+            bought++;
+            continue;
+          }
           let canAfford = true;
           for (const [r, v] of Object.entries(cost)) {
             const scaled = Math.ceil((v as number) * challengeCostMult);
@@ -3097,13 +2761,16 @@ export const useGameStore = create<GameStore>()(
               constellationsStarted: s.constellationsStarted || {},
               constellationsCompleted: s.constellationsCompleted || {},
             }).costMult)));
-        for (const [r, v] of Object.entries(tech.cost)) {
-          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
-          if ((res[r] || 0) < scaled) return;
-        }
-        for (const [r, v] of Object.entries(tech.cost)) {
-          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
-          res[r] -= scaled;
+        // DEBUG: Free Buy — skip cost check + deduction
+        if (!s.debugFreeBuy) {
+          for (const [r, v] of Object.entries(tech.cost)) {
+            const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+            if ((res[r] || 0) < scaled) return;
+          }
+          for (const [r, v] of Object.entries(tech.cost)) {
+            const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+            res[r] -= scaled;
+          }
         }
         const technologies = { ...s.technologies, [techId]: true };
         const archetypeAffinity = { ...s.archetypeAffinity };
@@ -3124,19 +2791,21 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         const up = UPGRADE_MAP[upgradeId];
         if (!up) return;
-        if (up.requiresWins && s.galacticWins < up.requiresWins) return;
-        // Layer-specific upgrades require their layer to be unlocked
-        if (up.requiresLayer && !s.unlockedLayers?.[up.requiresLayer]) return;
+        if (!s.debugFreeBuy) {
+          if (up.requiresWins && s.galacticWins < up.requiresWins) return;
+          // Layer-specific upgrades require their layer to be unlocked
+          if (up.requiresLayer && !s.unlockedLayers?.[up.requiresLayer]) return;
+        }
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if (s.evolutionPoints < cost) return;
+        if (!s.debugFreeBuy && s.evolutionPoints < cost) return;
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          evolutionPoints: s.evolutionPoints - cost,
+          evolutionPoints: s.debugFreeBuy ? s.evolutionPoints : s.evolutionPoints - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).${s.debugFreeBuy ? " (DEBUG: free)" : ""}`);
       },
 
       evolveStage: () => {
@@ -3284,7 +2953,8 @@ export const useGameStore = create<GameStore>()(
         const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
         const wEp = worldEpMultiplier(s.authoredWorlds || []);
         const dl = divineLawBonus(s.enactedDivineLaws || {});
-        const relicEp = relicBonus(s.equippedRelics || {}).epMult;
+        // L6 — Relic Loadouts were REMOVED in CLEANUP-LEGACY. EP bonus is always 0.
+        const relicEp = 0;
         const coreEp = logicCoreBonus(s.activeLogicCores || {}).epMult;
         // Layers 7-10 EP bonus
         const hybridEp = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance).epMult;
@@ -3516,7 +3186,10 @@ export const useGameStore = create<GameStore>()(
           prophets: [], // remove all placed prophets on prestige
           prophetConvertTimer: 10,
 
-          // Layer 6 — Singularity (persist relics + cores + universal map; reset rifts per-run)
+          // Layer 6 — Singularity (persist cores + universal map; reset rifts per-run).
+          // LEGACY: `equippedRelics` is kept as an empty record for save-compat —
+          // Relic Loadouts were REMOVED in CLEANUP-LEGACY (replaced by the
+          // Universal Map rift/anchor system). It is no longer applied to tick math.
           singularityCores: (s.singularityCores || 0) + singularityCoreGain,
           equippedRelics: s.equippedRelics || {},
           activeLogicCores: s.activeLogicCores || {},
@@ -4028,37 +3701,12 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 6 — SINGULARITY ============
-      toggleRelicLoadout: (relicId) => {
-        const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        const relic = RELIC_LOADOUT_MAP[relicId];
-        if (!relic) return;
-        const equippedRelics = { ...(s.equippedRelics || {}) };
-        // Omega shard is exclusive — equipping it unequips everything else
-        if (relicId === "relic_omega") {
-          if (equippedRelics[relicId]) {
-            delete equippedRelics[relicId];
-          } else {
-            for (const k of Object.keys(equippedRelics)) delete equippedRelics[k];
-            equippedRelics[relicId] = true;
-          }
-        } else {
-          // Equipping another relic unequips omega if it's active
-          if (equippedRelics.relic_omega) delete equippedRelics.relic_omega;
-          if (equippedRelics[relicId]) {
-            delete equippedRelics[relicId];
-          } else {
-            equippedRelics[relicId] = true;
-          }
-        }
-        set({ equippedRelics });
-        // QUICK WIN 5 — +1 Prestige Point when binding (equipping) a relic (not on unequip)
-        if (equippedRelics[relicId]) {
-          set({ prestigePoints: (get().prestigePoints || 0) + 1 });
-          get().addToLog(`${relic.name} equipped. (+1 PP)`);
-        } else {
-          get().addToLog(`${relic.name} unequipped.`);
-        }
+      toggleRelicLoadout: (_relicId) => {
+        // LEGACY no-op — Relic Loadouts were REMOVED in CLEANUP-LEGACY (replaced
+        // by the Universal Map rift/anchor system). Kept as a no-op stub for
+        // save-compat (any persisted UI hooks that still call it silently do
+        // nothing). The canonical L6 mechanics are closeRift + placeRealityAnchor.
+        void _relicId;
       },
 
       toggleLogicCore: (coreId) => {
@@ -4199,275 +3847,27 @@ export const useGameStore = create<GameStore>()(
         );
       },
 
-      // ============ REBUILD L1-6 — NEW MINI-GAME ACTIONS ============
-      // ---- Layer 1 — Trial Realms ----
-      setActiveTrialRealm: (realmId) => {
-        const s = get();
-        if (realmId === null) {
-          set({ activeTrialRealm: null });
-          return;
-        }
-        if (!TRIAL_REALM_MAP[realmId]) return;
-        const realmState = { ...(s.trialRealmState || {}) };
-        if (!realmState[realmId]) {
-          realmState[realmId] = makeDefaultRealmState(realmId);
-        }
-        // FEATURE 1 — record realm start time for leaderboard tracking
-        if (!realmState[realmId].startedAt) {
-          realmState[realmId].startedAt = s.time || 0;
-        }
-        set({ activeTrialRealm: realmId, trialRealmState: realmState });
+      // ============ REBUILD L1-6 — LEGACY MINI-GAME ACTION STUBS ============
+      // Layer 1 — Trial Realm mini-games were removed in CLEANUP-LEGACY. The
+      // action signatures remain as no-op stubs for save-compat (any old UI
+      // hooks or persisted callbacks that still call them silently do
+      // nothing). The canonical L1 system is now `challenges.ts` (10
+      // run-modifier challenges managed via setActiveChallenge / etc).
+      setActiveTrialRealm: (_realmId) => {
+        // No-op — trial realm mini-games removed in CLEANUP-LEGACY.
+        // Passing `null` (closing an active realm) is also a no-op since no
+        // realm can be active anymore.
+        void _realmId;
       },
+      realmBreakthrough: () => { /* no-op — legacy Realm of Growth */ },
+      realmDiscontentAction: (_action) => { /* no-op — legacy Realm of Discontent */ void _action; },
+      realmFaminePump: (_resourceId) => { /* no-op — legacy Realm of Famine */ void _resourceId; },
+      realmIgnoranceBuyNode: (_nodeId) => { /* no-op — legacy Realm of Ignorance */ void _nodeId; },
+      realmStagnationUpgrade: (_stage) => { /* no-op — legacy Realm of Stagnation */ void _stage; },
+      realmWeaknessPlaceTower: () => { /* no-op — legacy Realm of Weakness */ },
+      realmPurityBuildSystem: () => { /* no-op — legacy Realm of Purity */ },
+      realmAsceticBuildSystem: (_systemId) => { /* no-op — legacy Realm of the Ascetic */ void _systemId; },
 
-      realmBreakthrough: () => {
-        const s = get();
-        const realmId = s.activeTrialRealm;
-        if (realmId !== "realm_growth") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_growth || makeDefaultRealmState("realm_growth")) };
-        if ((st.energy || 0) < 100) return;
-        st.energy = 0;
-        st.breaks = (st.breaks || 0) + 1;
-        st.breakCostMult = (st.breakCostMult || 1) * 1.2;
-        // Population gain +50% of current population
-        const popGain = Math.max(2, Math.floor(s.population * 0.5));
-        const newPop = s.population + popGain;
-        const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-        // FEATURE 1 — local leaderboard
-        const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-        if (st.breaks >= REALM_GROWTH_BREAKS_GOAL) {
-          st.completed = true;
-          trialRealmsCompleted.realm_growth = true;
-          // Record best time (only if faster than previous)
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_growth;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_growth = completionTime;
-          }
-          setTimeout(() => get().addToLog(`Realm of Growth conquered! 10 Break-Throughs performed. +10% population growth permanently.`), 0);
-        }
-        rs.realm_growth = st;
-        set({
-          population: newPop,
-          maxPopulation: Math.max(s.maxPopulation || 0, newPop),
-          trialRealmState: rs,
-          trialRealmsCompleted,
-          trialRealmBestTimes,
-          activeTrialRealm: st.completed ? null : s.activeTrialRealm,
-        });
-        get().addToLog(`🌱 Break-Through #${st.breaks}! +${popGain} population.`);
-      },
-
-      realmDiscontentAction: (action) => {
-        const s = get();
-        const realmId = s.activeTrialRealm;
-        if (realmId !== "realm_discontent") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_discontent || makeDefaultRealmState("realm_discontent")) };
-        const resources = { ...s.resources };
-        switch (action) {
-          case "celebrate":
-            st.happiness = Math.min(100, (st.happiness || 50) + 20);
-            resources.gold = Math.max(0, (resources.gold || 0) - 10);
-            break;
-          case "tax":
-            st.gold = (st.gold || 0) + 20;
-            resources.gold = (resources.gold || 0) + 20;
-            st.happiness = Math.max(0, (st.happiness || 50) - 15);
-            break;
-          case "ignore":
-            st.happiness = Math.min(100, (st.happiness || 50) + 5);
-            st.gold = (st.gold || 0) + 5;
-            resources.gold = (resources.gold || 0) + 5;
-            break;
-        }
-        rs.realm_discontent = st;
-        set({ trialRealmState: rs, resources });
-      },
-
-      // TRIALS-7 — newly playable realm actions
-      realmFaminePump: (resourceId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_famine") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_famine || makeDefaultRealmState("realm_famine")) };
-        if (st.completed || st.failed) return;
-        // resourceId is the SOURCE of the pump (forward direction A→B, B→C, C→A).
-        // Source loses REALM_FAMINE_PUMP_FROM, target gains REALM_FAMINE_PUMP_TO.
-        const next: "a" | "b" | "c" = resourceId === "a" ? "b" : resourceId === "b" ? "c" : "a";
-        if ((st[resourceId] || 0) < REALM_FAMINE_PUMP_FROM) return; // not enough to pump
-        st[resourceId] = Math.max(0, (st[resourceId] || 0) - REALM_FAMINE_PUMP_FROM);
-        st[next] = Math.min(100, (st[next] || 0) + REALM_FAMINE_PUMP_TO);
-        rs.realm_famine = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmIgnoranceBuyNode: (nodeId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_ignorance") return;
-        if (nodeId < 0 || nodeId >= REALM_IGNORANCE_NODE_COUNT) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_ignorance || makeDefaultRealmState("realm_ignorance")) };
-        if (st.completed) return;
-        const unlocked: boolean[] = [...(st.unlocked || Array(REALM_IGNORANCE_NODE_COUNT).fill(false))];
-        if (unlocked[nodeId]) return;
-        // Must unlock nodes in chain order (0 → 1 → 2 → ... → 9)
-        if (nodeId > 0 && !unlocked[nodeId - 1]) return;
-        const cost = REALM_IGNORANCE_NODE_COSTS[nodeId];
-        if ((st.science || 0) < cost) return;
-        st.science = (st.science || 0) - cost;
-        unlocked[nodeId] = true;
-        st.unlocked = unlocked;
-        st.unlockedCount = unlocked.filter(Boolean).length;
-        // Final node reached → completed
-        if (nodeId === REALM_IGNORANCE_NODE_COUNT - 1) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_ignorance = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_ignorance;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_ignorance = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of Ignorance conquered! +20% science production permanently."), 0);
-          rs.realm_ignorance = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_ignorance = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmStagnationUpgrade: (stage) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_stagnation") return;
-        if (stage < 0 || stage >= REALM_STAGNATION_STAGE_COUNT) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_stagnation || makeDefaultRealmState("realm_stagnation")) };
-        if (st.completed) return;
-        const levels = [...(st.levels || [1, 1, 1, 1])];
-        const cost = REALM_STAGNATION_UPGRADE_BASE_COST * levels[stage];
-        if ((st.goods || 0) < cost) return;
-        st.goods = (st.goods || 0) - cost;
-        levels[stage] = levels[stage] + 1;
-        st.levels = levels;
-        rs.realm_stagnation = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmWeaknessPlaceTower: () => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_weakness") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_weakness || makeDefaultRealmState("realm_weakness")) };
-        if (st.completed || st.failed) return;
-        if ((st.military || 0) < REALM_WEAKNESS_TOWER_COST) return;
-        st.military = (st.military || 0) - REALM_WEAKNESS_TOWER_COST;
-        st.towers = (st.towers || 0) + 1;
-        rs.realm_weakness = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmPurityBuildSystem: () => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_purity") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_purity || makeDefaultRealmState("realm_purity")) };
-        if (st.completed || st.failed) return;
-        if ((st.pool || 0) < REALM_PURITY_BUILD_COST) return;
-        st.pool = (st.pool || 0) - REALM_PURITY_BUILD_COST;
-        st.systemsBuilt = (st.systemsBuilt || 0) + 1;
-        // Completion handled in tick to record best time, but we can short-circuit here too
-        if ((st.systemsBuilt || 0) >= REALM_PURITY_SYSTEMS_GOAL && !st.completed) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_purity = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_purity;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_purity = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of Purity conquered! +5% production (scaling reward) permanently."), 0);
-          rs.realm_purity = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_purity = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmAsceticBuildSystem: (systemId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_ascetic") return;
-        if (systemId < 0 || systemId >= REALM_ASCETIC_STAGES) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_ascetic || makeDefaultRealmState("realm_ascetic")) };
-        if (st.completed) return;
-        const systems: boolean[] = [...(st.systems || Array(REALM_ASCETIC_STAGES).fill(false))];
-        if (systems[systemId]) return;
-        const cost = REALM_ASCETIC_SYSTEM_COSTS[systemId];
-        if ((st.essence || 0) < cost) return;
-        st.essence = (st.essence || 0) - cost;
-        systems[systemId] = true;
-        st.systems = systems;
-        st.stage = (st.stage || 0) + 1;
-        // Completion when stage reaches 7 (handled in tick too — but short-circuit here)
-        if ((st.stage || 0) >= REALM_ASCETIC_STAGES && !st.completed) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_ascetic = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_ascetic;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_ascetic = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of the Ascetic conquered! +12% production with constraints lifted."), 0);
-          rs.realm_ascetic = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_ascetic = st;
-        set({ trialRealmState: rs });
-      },
 
       // ---- Layer 2 — Constellation Map (new design) ----
       /**
@@ -4711,36 +4111,18 @@ export const useGameStore = create<GameStore>()(
         return { constellationId: best.cId, starId: best.sId, cost: best.cost };
       },
 
-      // ---- Layer 4 — Sacred Grid ----
-      placeGridTile: (cellIndex, tileType) => {
-        const s = get();
-        if (!s.unlockedLayers?.genesis) return;
-        if (cellIndex < 0 || cellIndex >= 20) return;
-        const grid = (s.worldGrid || Array(20).fill(null)).slice();
-        if (grid[cellIndex] !== null) return;
-        grid[cellIndex] = tileType;
-        // Reveal dormant seeds on adjacent empty cells (1 in 3 chance of a seed appearing)
-        const seeds = (s.worldGridSeeds || Array(20).fill(null)).slice();
-        const row = Math.floor(cellIndex / 5);
-        const col = cellIndex % 5;
-        const neighborIdx = [
-          col > 0 ? cellIndex - 1 : -1,
-          col < 4 ? cellIndex + 1 : -1,
-          row > 0 ? cellIndex - 5 : -1,
-          row < 3 ? cellIndex + 5 : -1,
-        ].filter((i) => i >= 0 && grid[i] === null && !seeds[i]);
-        for (const ni of neighborIdx) {
-          if (Math.random() < 0.33) seeds[ni] = "seed_dormant";
-        }
-        set({ worldGrid: grid, worldGridSeeds: seeds });
-        get().addToLog(`🗺️ Placed ${tileType} tile on cell ${cellIndex + 1}.`);
+      // ---- Layer 4 — Sacred Grid (LEGACY no-op stubs — REMOVED in CLEANUP-LEGACY) ----
+      // The old Sacred Grid was replaced by the Galaxy Claim system
+      // (`scanGalaxySystem` + `claimGalaxySystem` further below). These action
+      // signatures are kept as no-op stubs for save-compat (any old UI hooks
+      // that still call them silently do nothing).
+      placeGridTile: (_cellIndex, _tileType) => {
+        // No-op — Sacred Grid removed in CLEANUP-LEGACY. Use claimGalaxySystem.
+        void _cellIndex; void _tileType;
       },
 
       resetWorldGrid: () => {
-        const s = get();
-        if (!s.unlockedLayers?.genesis) return;
-        set({ worldGrid: Array(20).fill(null), worldGridSeeds: Array(20).fill(null) });
-        get().addToLog("🗺️ Sacred Grid reset.");
+        // No-op — Sacred Grid removed in CLEANUP-LEGACY. Use resetGalaxyMap.
       },
 
       // ---- Layer 4 — Galaxy Claim (L4 redesign) ----
@@ -6284,6 +5666,14 @@ export const useGameStore = create<GameStore>()(
           peakProductionRate: Math.max(s.peakProductionRate || 0, 100),
         });
         get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +5000 Divinity, +200 Prayer, +200 Faith granted. 3 starter relics seeded.");
+      },
+
+      // DEBUG: Free Buy — when enabled, all purchases cost 0 resources.
+      toggleDebugFreeBuy: () => {
+        const s = get();
+        const next = !s.debugFreeBuy;
+        set({ debugFreeBuy: next });
+        get().addToLog(next ? "DEBUG: Free Buy ENABLED — all purchases cost 0." : "DEBUG: Free Buy disabled.");
       },
 
       saveGame: () => {

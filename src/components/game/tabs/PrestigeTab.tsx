@@ -17,11 +17,12 @@ import {
 } from "@/game/data/constellations";
 import { BLOOD_PACTS } from "@/game/data/transcendence";
 import { DIVINE_LAWS } from "@/game/data/apotheosis";
-import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES } from "@/game/data/omnipotence";
+import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES, OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
 import { OLD_GODS, ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS } from "@/game/data/infinity";
 import { ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
 import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
+import { RIFTS_REQUIRED_FOR_L7, ANCHORS_REQUIRED_FOR_L7 } from "@/game/data/universalMap";
 import { formatNumber } from "../shared/format";
 
 // ===== Part 6 — Layer-progress helpers =====
@@ -118,8 +119,9 @@ export function PrestigeTab() {
   const setShowApotheosis = useGameStore((s) => s.setShowApotheosis);
 
   const singularityCores = useGameStore((s) => s.singularityCores);
-  const equippedRelics = useGameStore((s) => s.equippedRelics || {});
-  const activeLogicCores = useGameStore((s) => s.activeLogicCores || {});
+  // L6 Universal Map progression — rifts closed + anchors placed (lifetime).
+  const riftsClosed = useGameStore((s) => s.riftsClosed || 0);
+  const anchorsPlaced = useGameStore((s) => s.anchorsPlaced || 0);
   const setShowSingularity = useGameStore((s) => s.setShowSingularity);
 
   // Layer 7-10 state (new narrative)
@@ -127,6 +129,7 @@ export function PrestigeTab() {
   const legions = useGameStore((s) => s.legions || []);
   const instability = useGameStore((s) => s.instability || 0);
   const peakInstability = useGameStore((s) => s.peakInstability || 0);
+  const raidsRepelled = useGameStore((s) => s.raidsRepelled || 0);
   const setShowOmnipotence = useGameStore((s) => s.setShowOmnipotence);
 
   const prayer = useGameStore((s) => s.prayer);
@@ -147,10 +150,6 @@ export function PrestigeTab() {
   const echoes = useGameStore((s) => s.echoes);
   const testamentClauses = useGameStore((s) => s.testamentClauses);
 
-  // Part 6 — trial realms completed count (for L1→L2 progress)
-  const trialRealmsCompleted = useGameStore((s) => s.trialRealmsCompleted || {});
-  const trialRealmsCompletedCount = Object.values(trialRealmsCompleted).filter(Boolean).length;
-
   // QUICK WIN 2 — Active abilities state
   const activeAbilityCooldowns = useGameStore((s) => s.activeAbilityCooldowns || {});
   const triggerActiveAbility = useGameStore((s) => s.useActiveAbility);
@@ -161,6 +160,15 @@ export function PrestigeTab() {
   const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
   const hasMastery = (upgrades["challenge_mastery"] || 0) > 0;
   const maxRepeats = getMaxRepeats(hasMastery);
+
+  // Part 6 — L1→L2 progress: 3+ distinct challenges OR 5+ total challenge
+  // repeats. (Legacy trialRealm mini-games removed in CLEANUP-LEGACY.)
+  const l1ProgressCurrent = Math.max(
+    Math.min(3, challengesCompletedCount),
+    totalRepeats >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2
+      ? TRIAL_REALMS_REQUIRED_FOR_LAYER_2
+      : Math.ceil(challengesCompletedCount * TRIAL_REALMS_REQUIRED_FOR_LAYER_2 / 3),
+  );
 
   const foresightCount = countForesightNodes(foresightNodes);
   // L2 — Constellation Map counts
@@ -175,8 +183,11 @@ export function PrestigeTab() {
   const constellationsStartedCount = Object.values(constellationsStarted).filter(Boolean).length;
   const pactsUsedCount = BLOOD_PACTS.filter((p) => bloodPactsUsed[p.id]).length;
   const lawsEnactedCount = DIVINE_LAWS.filter((l) => enactedDivineLaws[l.id]).length;
-  const relicsCount = Object.values(equippedRelics).filter(Boolean).length;
-  const coresCount = Object.values(activeLogicCores).filter(Boolean).length;
+  // L6 Universal Map progress counts (rifts closed + anchors placed — both
+  // lifetime counters that persist across prestiges). Used by the L6→L7
+  // progress metric in the Singularity card.
+  const l6RiftsClosedCount = riftsClosed;
+  const l6AnchorsPlacedCount = anchorsPlaced;
   // NEW: Layer 7-10 derived counts
   const creaturesCount = creatures.length;
   const legionsCount = legions.length;
@@ -355,9 +366,9 @@ export function PrestigeTab() {
                 currentLayerName: "Evolution",
                 nextLayerName: "Enlightenment",
                 nextLayerKey: "enlightenment",
-                current: Math.max(trialRealmsCompletedCount, challengesCompletedCount >= 3 ? TRIAL_REALMS_REQUIRED_FOR_LAYER_2 : Math.ceil(challengesCompletedCount * TRIAL_REALMS_REQUIRED_FOR_LAYER_2 / 3)),
+                current: l1ProgressCurrent,
                 max: TRIAL_REALMS_REQUIRED_FOR_LAYER_2,
-                metricLabel: `${trialRealmsCompletedCount}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} trial realms · or ${challengesCompletedCount}/3 challenges`,
+                metricLabel: `${challengesCompletedCount}/3 distinct trials · or ${totalRepeats}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} total repeats`,
               }}
               currentLayerUnlocked={!!unlockedChallenges}
               nextLayerUnlocked={!!unlockedLayers?.enlightenment}
@@ -467,14 +478,14 @@ export function PrestigeTab() {
             icon="👑"
             unlocked={!!unlockedLayers.apotheosis}
             unlockText="Author 1 Genesis world"
-            currencyName={`Faith: ${formatNumber(faith, 0)} · Heresy: ${heresy.toFixed(0)}/100`}
+            currencyName={`Faith: ${formatNumber(faith, 0)} · Heresy: ${heresy.toFixed(0)}/75`}
             onView={() => setShowApotheosis(true)}
             viewLabel="View Divine"
             viewIcon={<Sparkles className="w-3 h-3 mr-1" />}
           >
             <ProgressRow label="Divine Laws enacted (toward Singularity)" value={lawsEnactedCount} max={DIVINE_LAWS.length} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Watch heresy — at 100 the run ends.
+              Watch heresy — at average 75 across owned galaxies, the run ends.
             </div>
             <LayerNextProgress
               progress={{
@@ -503,16 +514,16 @@ export function PrestigeTab() {
             viewLabel="View System"
             viewIcon={<Circle className="w-3 h-3 mr-1" />}
           >
-            <ProgressRow label="Relics equipped" value={relicsCount} max={8} />
-            <ProgressRow label="Logic Cores active" value={coresCount} max={6} />
+            <ProgressRow label="Rifts closed (lifetime)" value={l6RiftsClosedCount} max={RIFTS_REQUIRED_FOR_L7} />
+            <ProgressRow label="Reality Anchors placed (lifetime)" value={l6AnchorsPlacedCount} max={ANCHORS_REQUIRED_FOR_L7} />
             <LayerNextProgress
               progress={{
                 currentLayerName: "Singularity",
                 nextLayerName: "Omnipotence",
                 nextLayerKey: "omnipotence",
-                current: coresCount,
-                max: 3,
-                metricLabel: "Logic cores active (3 needed)",
+                current: Math.min(l6RiftsClosedCount, RIFTS_REQUIRED_FOR_L7) + Math.min(l6AnchorsPlacedCount, ANCHORS_REQUIRED_FOR_L7),
+                max: RIFTS_REQUIRED_FOR_L7 + ANCHORS_REQUIRED_FOR_L7,
+                metricLabel: `${l6RiftsClosedCount}/${RIFTS_REQUIRED_FOR_L7} rifts closed + ${l6AnchorsPlacedCount}/${ANCHORS_REQUIRED_FOR_L7} anchors placed`,
               }}
               currentLayerUnlocked={!!unlockedLayers?.singularity}
               nextLayerUnlocked={!!unlockedLayers?.omnipotence}
@@ -526,7 +537,7 @@ export function PrestigeTab() {
             tagline="Create life; forge legions"
             icon="⚛️"
             unlocked={!!unlockedLayers.omnipotence}
-            unlockText="3+ Logic Cores active"
+            unlockText={`${RIFTS_REQUIRED_FOR_L7} rifts closed + ${ANCHORS_REQUIRED_FOR_L7} anchors placed`}
             currencyName={`Instability: ${instability.toFixed(1)}/100 (peak ${peakInstability.toFixed(1)})`}
             onView={() => setShowOmnipotence(true)}
             viewLabel="View Lab"
@@ -534,17 +545,18 @@ export function PrestigeTab() {
           >
             <ProgressRow label="Creatures designed" value={creaturesCount} max={20} />
             <ProgressRow label="Legions formed" value={legionsCount} max={5} />
+            <ProgressRow label="Outpost raids repelled" value={raidsRepelled} max={OUTPOST_RAID_COUNT_FOR_L8} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Design creatures → combine into Legions. At instability 100, they go rogue. Peak ≥ 80 unlocks Divinity.
+              Design creatures → combine into Legions → repel outpost raids. At instability 100, legions go rogue. Repel {OUTPOST_RAID_COUNT_FOR_L8} raids to unlock Divinity.
             </div>
             <LayerNextProgress
               progress={{
                 currentLayerName: "Omnipotence",
                 nextLayerName: "Divinity",
                 nextLayerKey: "divinity",
-                current: Math.min(80, Math.round(peakInstability)),
-                max: 80,
-                metricLabel: "Peak instability (80 needed)",
+                current: Math.min(OUTPOST_RAID_COUNT_FOR_L8, raidsRepelled),
+                max: OUTPOST_RAID_COUNT_FOR_L8,
+                metricLabel: `Outpost raids repelled (${OUTPOST_RAID_COUNT_FOR_L8} needed)`,
               }}
               currentLayerUnlocked={!!unlockedLayers?.omnipotence}
               nextLayerUnlocked={!!unlockedLayers?.divinity}
@@ -558,7 +570,7 @@ export function PrestigeTab() {
             tagline="Alliances with minor gods"
             icon="⛪"
             unlocked={!!unlockedLayers.divinity}
-            unlockText="Peak instability ≥ 80"
+            unlockText={`${OUTPOST_RAID_COUNT_FOR_L8} outpost raids repelled`}
             currencyName={`Alliances: ${alliedCount}/${MINOR_GODS.length}`}
             onView={() => setShowDivinityLayer(true)}
             viewLabel="View Diplomacy"

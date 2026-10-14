@@ -475,11 +475,14 @@ export interface GameState {
   };
 
   // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
-  // Layer 1 — Trial Realms (mini-games)
-  activeTrialRealm: string | null;              // currently open realm id
-  trialRealmState: Record<string, any>;        // per-realm runtime state
-  trialRealmsCompleted: Record<string, boolean>;
-  trialRealmBestTimes: Record<string, number>; // realmId → best completion time (seconds) — LOCAL leaderboard (no login)
+  // Layer 1 — Trial Realms (LEGACY — mini-games removed in CLEANUP-LEGACY).
+  // These state fields persist as no-op stubs for save-shape compat. The
+  // canonical L1 system is now `challenges.ts` (10 run-modifier challenges
+  // tracked via `activeChallenge` + `completedChallenges`).
+  activeTrialRealm: string | null;              // LEGACY — always null on new saves
+  trialRealmState: Record<string, any>;        // LEGACY — always {} on new saves
+  trialRealmsCompleted: Record<string, boolean>; // LEGACY — always {} on new saves
+  trialRealmBestTimes: Record<string, number>;  // LEGACY — always {} on new saves
   // Layer 2 — Constellation Map: state fields live above (next to foresightNodes);
   // constellationRevealed, constellationStars, constellationProgress, constellationsStarted,
   // constellationsCompleted are declared alongside the other L2 fields.
@@ -615,6 +618,8 @@ export interface GameStore extends GameState {
   importSave: (data: string) => boolean;
   addToLog: (msg: string) => void;
   debugUnlockAll: () => void;
+  debugFreeBuy: boolean;
+  toggleDebugFreeBuy: () => void;
 
   // Layer 2 — Enlightenment (Foresight / Constellation Map)
   setShowEnlightenment: (v: boolean) => void;
@@ -739,17 +744,20 @@ export interface GameStore extends GameState {
   buyUniversalUpgrade: (upgradeId: string) => void;
 
   // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
-  // Layer 1 — Trial Realms
+  // Layer 1 — Trial Realms (LEGACY — mini-games removed in CLEANUP-LEGACY).
+  // These action signatures persist as no-op stubs for save-compat. Calling
+  // them does nothing. The canonical L1 system is now `challenges.ts` (10
+  // run-modifier challenges managed via setActiveChallenge / etc).
   setActiveTrialRealm: (realmId: string | null) => void;
-  realmBreakthrough: () => void;             // Realm of Growth click
+  realmBreakthrough: () => void;             // LEGACY no-op
   realmDiscontentAction: (action: "celebrate" | "tax" | "ignore") => void;
-  // TRIALS-7 — 7 newly playable realms
-  realmFaminePump: (resourceId: "a" | "b" | "c") => void;          // Realm of Famine — push converter forward
-  realmIgnoranceBuyNode: (nodeId: number) => void;                 // Realm of Ignorance — unlock a tech node
-  realmStagnationUpgrade: (stage: number) => void;                 // Realm of Stagnation — upgrade a stage
-  realmWeaknessPlaceTower: () => void;                             // Realm of Weakness — buy a tower
-  realmPurityBuildSystem: () => void;                              // Realm of Purity — build a system
-  realmAsceticBuildSystem: (systemId: number) => void;            // Realm of the Ascetic — build one of 7 unique systems
+  // LEGACY no-ops (formerly 7 newly playable realm actions)
+  realmFaminePump: (resourceId: "a" | "b" | "c") => void;
+  realmIgnoranceBuyNode: (nodeId: number) => void;
+  realmStagnationUpgrade: (stage: number) => void;
+  realmWeaknessPlaceTower: () => void;
+  realmPurityBuildSystem: () => void;
+  realmAsceticBuildSystem: (systemId: number) => void;
 
   // Layer 2 — Constellation Map
   /** LEGACY stub — old action signature, kept for compatibility. No-op. */
