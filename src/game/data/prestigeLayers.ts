@@ -1,7 +1,7 @@
 import type { StageId } from "../state/types";
 
 // Prestige layers — the ten "ages" of cosmic becoming.
-// Each layer is a long-form prestige: an entire saga the player can ascend through.
+// Each layer is a discrete system that unlocks as the player progresses.
 // Layer 1 (Evolution) is the base game; later layers unlock progressively.
 
 export type PrestigeLayerId =
@@ -42,7 +42,7 @@ export const PRESTIGE_LAYERS: PrestigeLayer[] = [
     tagline: "The first spark learns to climb",
     story:
       "From a single cell to a galactic god — the slow climb of life that learned to remember. " +
-      "Here the saga begins: clear stages, earn Evolution Points, and prove your lineage deserves to ascend.",
+      "Clear stages, earn Evolution Points, and prove your lineage deserves to ascend.",
     unlockCondition: { type: "default" },
     currencyName: "Evolution Points",
   },
@@ -78,7 +78,7 @@ export const PRESTIGE_LAYERS: PrestigeLayer[] = [
     tagline: "The first truth is remembered",
     story:
       "Trials are the door, and the door opens only to those who refused the easy road. " +
-      "After three challenges mastered, the Enlightened gaze turns inward — and the second saga begins.",
+      "After three challenges mastered, the Enlightened gaze turns inward — and the second age begins.",
     unlockCondition: { type: "challengesCompleted", value: 3 },
     currencyName: "Enlightenment",
   },

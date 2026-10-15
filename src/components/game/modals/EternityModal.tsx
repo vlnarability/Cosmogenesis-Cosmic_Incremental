@@ -21,7 +21,7 @@ import {
   computeCrucibleRules,
   type DivineRelic,
 } from "@/game/data/genesisEngine";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Lock, Sparkles, CheckCircle2, Star, RefreshCw, AlertTriangle, Atom, Eye, Plus } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 import { formatNumber, formatTime } from "../shared/format";
 
 // ----- helpers -----
@@ -58,9 +59,8 @@ function amountLabel(amt: number): string {
 
 // ----- main component -----
 
-export function EternityModal() {
-  const show = useGameStore((s) => s.showEternity);
-  const setShow = useGameStore((s) => s.setShowEternity);
+export function EternityContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity || 0);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
@@ -104,7 +104,8 @@ export function EternityModal() {
   );
 
   const simElapsed = universeSimulating ? Math.min(BIG_BANG_DURATION_SEC, time - simulationStartTime) : 0;
-  const simProgressPct = universeSimulating ? Math.min(100, (simElapsed / BIG_BANG_DURATION_SEC) * 100) : 0;
+  // P7 — simProgressPct removed; Big Bang now shows a skeleton screen instead
+  // of a progress bar. simElapsed is still used for the seconds-remaining count.
   const simRemainingSec = universeSimulating ? Math.max(0, BIG_BANG_DURATION_SEC - simElapsed) : 0;
 
   // Ending confirmation dialog
@@ -142,33 +143,32 @@ export function EternityModal() {
   }, [discoveredCount, allDiscovered]);
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Star className="w-5 h-5" />
-            Layer 10 — Eternity (Genesis Engine)
-            <BackgroundLayerBadge layerId="eternity" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
-            <span>
-              Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-violet-300 border-violet-400/40">
-                ✨ {formatNumber(divinity, 0)} Divinity
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Star className="w-5 h-5" />
+          Layer 10 — Eternity (Genesis Engine)
+          <BackgroundLayerBadge layerId="eternity" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+              ✨ {formatNumber(divinity, 0)} Divinity
+            </Badge>
+            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+              🌟 {discoveredCount}/{ARCHETYPE_COUNT}
+            </Badge>
+            {cosmicBoonStacks > 0 && (
+              <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
+                🌠 {cosmicBoonStacks} Boon{cosmicBoonStacks !== 1 ? "s" : ""}
               </Badge>
-              <Badge variant="outline" className="text-amber-300 border-amber-400/40">
-                🌟 {discoveredCount}/{ARCHETYPE_COUNT}
-              </Badge>
-              {cosmicBoonStacks > 0 && (
-                <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
-                  🌠 {cosmicBoonStacks} Boon{cosmicBoonStacks !== 1 ? "s" : ""}
-                </Badge>
-              )}
-            </div>
-          </DialogDescription>
-        </DialogHeader>
+            )}
+          </div>
+        </DialogDescription>
+      </DialogHeader>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -194,7 +194,7 @@ export function EternityModal() {
             <p className="text-xs mt-1 text-muted-foreground">
               {ENDING_CHOICES.find((e) => e.id === chosenEnding)?.desc}
             </p>
-            <Button variant="outline" className="mt-4" onClick={() => setShow(false)}>Close</Button>
+            <Button variant="outline" className="mt-4" onClick={() => closeLayerModal()}>Close</Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -209,12 +209,21 @@ export function EternityModal() {
                 </span>
               </div>
               {divineRelics.length === 0 ? (
-                <div className="text-center text-muted-foreground py-4 text-sm">
-                  No relics yet. Trigger your first Big Bang with a starter relic to gain more.
+                // P7 — Empty state: no relics yet. Use the shared EmptyState
+                // component for consistent styling. The StarterRelicHint below
+                // points the player at the Big Bang button (which grants the
+                // first relic without needing a prior simulation).
+                <>
+                  <EmptyState
+                    compact
+                    icon={<Atom className="w-6 h-6" />}
+                    title="No relics yet."
+                    description="Complete a universe simulation (Big Bang) to earn relics. Use the starter relic below to trigger your first Big Bang."
+                  />
                   <div className="mt-2">
                     <StarterRelicHint />
                   </div>
-                </div>
+                </>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                   {divineRelics.map((r) => {
@@ -374,16 +383,32 @@ export function EternityModal() {
               {/* Big Bang button */}
               <div className="mt-2">
                 {universeSimulating ? (
-                  <div className="stat-card p-2">
-                    <div className="flex items-center justify-between text-[0.7rem] mb-1">
-                      <span className="text-amber-200 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 animate-pulse" /> Simulating the cosmos...
+                  // P7 — Loading state: skeleton screen during the 30-second
+                  // Big Bang simulation. Show pulsing placeholder relic slots
+                  // (instead of just a progress bar) + a "Simulating universe..."
+                  // status line. Keep the seconds-remaining indicator so the
+                  // player knows roughly how long is left.
+                  <div className="stat-card p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[0.7rem]">
+                      <span className="text-amber-200 flex items-center gap-1 animate-pulse">
+                        <Sparkles className="w-3 h-3" /> Simulating universe…
                       </span>
                       <span className="font-mono text-amber-300">{simRemainingSec.toFixed(0)}s</span>
                     </div>
-                    <Progress value={simProgressPct} className="h-2 bg-slate-800/60" />
-                    <div className="text-[0.6rem] text-muted-foreground mt-1 text-center">
-                      The crucible blazes — reality crystallizes...
+                    {/* Pulsing placeholder cards — match the relic grid layout
+                        so the layout doesn't shift when the result returns. */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="h-12 rounded-md border border-amber-400/20 bg-amber-500/5 animate-pulse"
+                          style={{ animationDelay: `${i * 150}ms` }}
+                          aria-hidden
+                        />
+                      ))}
+                    </div>
+                    <div className="text-[0.6rem] text-muted-foreground text-center">
+                      The crucible blazes — reality crystallizes…
                     </div>
                   </div>
                 ) : (
@@ -502,35 +527,34 @@ export function EternityModal() {
           Discover all {ARCHETYPE_COUNT} archetypes to unlock the ending screen. Each archetype grants +1% production.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
 
-      {/* Ending-screen confirmation dialog */}
-      <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingEnding === "preserve" ? "Continue in this Realm?" : "Explore another Dimension?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingEnding === "preserve"
-                ? "Continue playing with all bonuses intact. The Genesis Engine remains open for further experiments."
-                : "Reset the universe and begin a new dimension. You keep all discovered archetypes and gain a permanent Cosmic Boon stack (+10% all production). This cannot be undone."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmEnding}
-              className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
-            >
-              {pendingEnding === "preserve" ? "Continue" : "Reset"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Dialog>
+        {/* Ending-screen confirmation dialog */}
+        <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingEnding === "preserve" ? "Continue in this Realm?" : "Explore another Dimension?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingEnding === "preserve"
+                  ? "Continue playing with all bonuses intact. The Genesis Engine remains open for further experiments."
+                  : "Reset the universe and begin a new dimension. You keep all discovered archetypes and gain a permanent Cosmic Boon stack (+10% all production). This cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmEnding}
+                className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
+              >
+                {pendingEnding === "preserve" ? "Continue" : "Reset"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+    </>
   );
 }
 

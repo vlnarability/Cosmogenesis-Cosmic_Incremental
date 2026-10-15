@@ -14,6 +14,7 @@ import { CheckCircle2, Lock, GitBranch, History, Layers, Filter } from "lucide-r
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import type { TechDef } from "@/game/state/types";
+import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
 
 // Determine which stage indices are "legacy" (collapsed into the Legacy accordion).
 function legacyStageRange(stageIndex: number, isL2Plus: boolean, isL5Plus: boolean): { start: number; end: number } {
@@ -68,6 +69,8 @@ export function TechTab() {
 
   return (
     <div className="space-y-4">
+      {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
+      <PurchaseErrorBanner />
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -106,82 +109,6 @@ export function TechTab() {
         </Card>
       ) : (
         <BranchList branches={currentBranches} />
-      )}
-
-      {/* Middle stages (between legacy and current) — open by default */}
-      {hasMiddle && !onlyCurrent && (
-        <Accordion type="multiple" defaultValue={middleStages.map((s) => `mid-${s.id}`)}>
-          {middleStages.map((st) => {
-            const techs = techsForStage(st.id);
-            const branches = groupByBranch(techs);
-            return (
-              <AccordionItem key={`mid-${st.id}`} value={`mid-${st.id}`} className="glass-panel rounded-lg px-3 mb-2 border-border/40">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-cyan-400" />
-                    <span className="text-sm font-semibold">{st.name} Technology</span>
-                    <Badge variant="outline" className="text-[0.6rem]">
-                      {techs.filter((t) => technologies[t.id]).length}/{techs.length} researched
-                    </Badge>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <BranchList branches={branches} />
-                </AccordionContent>
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
-      )}
-
-      {/* Legacy accordion — closed by default */}
-      {hasLegacy && !onlyCurrent && (
-        <Card className="glass-panel">
-          <CardHeader className="pb-2">
-            <Accordion type="single" collapsible value={legacyOpen ? "legacy" : ""} onValueChange={(v) => setLegacyOpen(v === "legacy")}>
-              <AccordionItem value="legacy" className="border-b-0">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <History className="w-4 h-4 text-amber-400/80" />
-                    <span className="text-sm font-semibold">
-                      Legacy Technology
-                    </span>
-                    <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
-                      {legacyStages.length} stages · {legacyTechsResearched}/{legacyTechsTotal} researched
-                    </Badge>
-                    {isL5Plus && (
-                      <span className="text-[0.6rem] text-muted-foreground">
-                        (Stages 1-{Math.min(5, stageIndex)} — collapsed for higher-layer play)
-                      </span>
-                    )}
-                    {isL2Plus && !isL5Plus && (
-                      <span className="text-[0.6rem] text-muted-foreground">
-                        (Stages 1-{Math.min(2, stageIndex)} — collapsed at Enlightenment+)
-                      </span>
-                    )}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-3 pt-2">
-                    {legacyStages.map((st) => {
-                      const techs = techsForStage(st.id);
-                      const branches = groupByBranch(techs);
-                      return (
-                        <div key={st.id} className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wide">
-                            <span>{st.icon}</span>
-                            {st.name} ({techs.filter((t) => technologies[t.id]).length}/{techs.length})
-                          </div>
-                          <BranchList branches={branches} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </CardHeader>
-        </Card>
       )}
     </div>
   );
@@ -236,10 +163,14 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
   const resources = useGameStore((s) => s.resources);
   const technologies = useGameStore((s) => s.technologies);
   const buyTech = useGameStore((s) => s.buyTech);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
 
   const owned = !!technologies[tech.id];
   const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
-  const canAfford = Object.entries(tech.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+  // P7 — canAfford is used to tint the button text red when the player can't
+  // afford. The click still fires and surfaces an inline "Not enough
+  // [resource]" error via the PurchaseErrorBanner.
+  const canAfford = debugFreeBuy || Object.entries(tech.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
 
   return (
     <div className={`stat-card transition-opacity ${owned ? "opacity-60" : !prereqMet ? "opacity-50" : ""}`}>
@@ -332,7 +263,11 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           size="sm"
           variant={owned ? "outline" : "default"}
           className="h-7 ml-auto"
-          disabled={owned || !prereqMet || !canAfford}
+          // P7 — Keep the button ENABLED even when the player can't afford,
+          // so the click fires and the store surfaces the inline
+          // "Not enough [resource]" error. Disable only when owned (already
+          // researched) or when prereqs aren't met (the buy would no-op).
+          disabled={owned || !prereqMet}
           onClick={() => buyTech(tech.id)}
         >
           {owned ? "Researched" : !prereqMet ? "Locked" : "Research"}

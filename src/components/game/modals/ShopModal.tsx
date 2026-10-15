@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Store, Lock, CheckCircle2, Sparkles, Layers, Star, Egg, Triangle, Circle, Atom, Church, Infinity as InfinityIcon } from "lucide-react";
 import { formatNumber } from "../shared/format";
+import { EmptyState } from "../shared/EmptyState";
+import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
 
 // Display names for layer ids used by `unlockedLayers` in the store.
 // Used for the "Requires: <Layer>" lock badge on layer-specific upgrades,
@@ -145,6 +147,8 @@ export function ShopModal() {
               </div>
             </DialogDescription>
           </DialogHeader>
+          {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
+          <PurchaseErrorBanner />
           <FlatUpgradeList
             isVisible={isVisible}
             upgrades={upgrades}
@@ -213,6 +217,10 @@ export function ShopModal() {
 
           {/* Tab contents — each scrollable. */}
           <div className="flex-1 overflow-y-auto pr-1 pt-2">
+            {/* P7 — Inline purchase error banner (auto-fades after 2s via
+                usePurchaseError hook). Shows the latest failure message from
+                buyUpgrade / buyUniversalUpgrade. */}
+            <PurchaseErrorBanner />
             {visibleTabs.map((tab) => {
               const list = UPGRADES.filter((u) => tabFilter(tab, u) && isVisible(u));
               const isMain = tab.id === "main";
@@ -256,12 +264,14 @@ export function ShopModal() {
                       </div>
                     )}
 
-                    {/* Empty-state — tab has no upgrades yet (rare; would mean layer
-                        unlocked but no layer-specific upgrades defined). */}
+                    {/* P7 — Empty state: layer tab has no upgrades available yet. */}
                     {list.length === 0 && (
-                      <div className="text-xs text-muted-foreground px-1 py-4">
-                        No upgrades available in this tab yet.
-                      </div>
+                      <EmptyState
+                        compact
+                        icon={<Store className="w-6 h-6" />}
+                        title="No upgrades available for this layer yet."
+                        description="This layer is unlocked, but no layer-specific upgrades have been defined for it. Check back later."
+                      />
                     )}
 
                     {/* Upgrade grid — 1 col mobile, 2 col sm+. */}

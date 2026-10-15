@@ -1,0 +1,894 @@
+     1→@import "tailwindcss";
+     2→@import "tw-animate-css";
+     3→
+     4→@custom-variant dark (&:is(.dark *));
+     5→
+     6→@theme inline {
+     7→  --color-background: var(--background);
+     8→  --color-foreground: var(--foreground);
+     9→  --font-sans: var(--font-geist-sans);
+    10→  --font-mono: var(--font-geist-mono);
+    11→  --color-sidebar-ring: var(--sidebar-ring);
+    12→  --color-sidebar-border: var(--sidebar-border);
+    13→  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    14→  --color-sidebar-accent: var(--sidebar-accent);
+    15→  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    16→  --color-sidebar-primary: var(--sidebar-primary);
+    17→  --color-sidebar-foreground: var(--sidebar-foreground);
+    18→  --color-sidebar: var(--sidebar);
+    19→  --color-chart-5: var(--chart-5);
+    20→  --color-chart-4: var(--chart-4);
+    21→  --color-chart-3: var(--chart-3);
+    22→  --color-chart-2: var(--chart-2);
+    23→  --color-chart-1: var(--chart-1);
+    24→  --color-ring: var(--ring);
+    25→  --color-input: var(--input);
+    26→  --color-border: var(--border);
+    27→  --color-destructive: var(--destructive);
+    28→  --color-accent-foreground: var(--accent-foreground);
+    29→  --color-accent: var(--accent);
+    30→  --color-muted-foreground: var(--muted-foreground);
+    31→  --color-muted: var(--muted);
+    32→  --color-secondary-foreground: var(--secondary-foreground);
+    33→  --color-secondary: var(--secondary);
+    34→  --color-primary-foreground: var(--primary-foreground);
+    35→  --color-primary: var(--primary);
+    36→  --color-popover-foreground: var(--popover-foreground);
+    37→  --color-popover: var(--popover);
+    38→  --color-card-foreground: var(--card-foreground);
+    39→  --color-card: var(--card);
+    40→  --radius-sm: calc(var(--radius) - 4px);
+    41→  --radius-md: calc(var(--radius) - 2px);
+    42→  --radius-lg: var(--radius);
+    43→  --radius-xl: calc(var(--radius) + 4px);
+    44→}
+    45→
+    46→/* ============================================================
+    47→   EVOLUTION IDLE — THEME TOKENS
+    48→   Aesthetic: "specimen journal in a dark archive"
+    49→   Warm amber ink on deep ink-blue paper. Not a generic
+    50→   purple-gradient "cosmic dashboard." Think field notes
+    51→   left by a god who is also a naturalist.
+    52→   ============================================================ */
+    53→
+    54→:root, .dark {
+    55→  --radius: 0.375rem; /* tighter, more technical feel */
+    56→
+    57→  /* Paper & ink */
+    58→  --background: oklch(0.14 0.015 260);       /* deep ink blue-black, not pure black */
+    59→  --foreground: oklch(0.88 0.012 80);       /* warm off-white, like aged paper */
+    60→  --card: oklch(0.17 0.018 260);            /* slightly lifted panel */
+    61→  --card-foreground: oklch(0.90 0.012 80);
+    62→  --popover: oklch(0.18 0.02 260);
+    63→  --popover-foreground: oklch(0.92 0.012 80);
+    64→
+    65→  /* Single accent: burnt amber/sienna — distinctive, not cyan/violet */
+    66→  --primary: oklch(0.68 0.14 55);           /* amber */
+    67→  --primary-foreground: oklch(0.12 0.02 60);
+    68→  --secondary: oklch(0.24 0.015 260);
+    69→  --secondary-foreground: oklch(0.90 0.012 80);
+    70→  --muted: oklch(0.21 0.012 260);
+    71→  --muted-foreground: oklch(0.62 0.015 260);
+    72→  --accent: oklch(0.62 0.10 285);           /* muted plum for secondary accent */
+    73→  --accent-foreground: oklch(0.95 0.01 80);
+    74→
+    75→  --destructive: oklch(0.60 0.19 25);
+    76→  --border: oklch(0.28 0.015 260);
+    77→  --input: oklch(0.22 0.015 260);
+    78→  --ring: oklch(0.55 0.12 55);
+    79→
+    80→  --chart-1: oklch(0.68 0.14 55);   /* amber */
+    81→  --chart-2: oklch(0.62 0.10 150);  /* sage */
+    82→  --chart-3: oklch(0.65 0.12 285);  /* plum */
+    83→  --chart-4: oklch(0.60 0.10 200);  /* steel */
+    84→  --chart-5: oklch(0.70 0.15 15);   /* terracotta */
+    85→
+    86→  --sidebar: oklch(0.16 0.015 260);
+    87→  --sidebar-foreground: oklch(0.90 0.012 80);
+    88→  --sidebar-primary: oklch(0.68 0.14 55);
+    89→  --sidebar-primary-foreground: oklch(0.12 0.02 60);
+    90→  --sidebar-accent: oklch(0.24 0.015 260);
+    91→  --sidebar-accent-foreground: oklch(0.95 0.01 80);
+    92→  --sidebar-border: oklch(0.28 0.015 260);
+    93→  --sidebar-ring: oklch(0.55 0.12 55);
+    94→}
+    95→
+    96→@layer base {
+    97→  * {
+    98→    @apply border-border outline-ring/50;
+    99→  }
+   100→  html, body {
+   101→    @apply bg-background text-foreground;
+   102→    min-height: 100vh;
+   103→  }
+   104→  body {
+   105→    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+   106→    /* Subtle paper-grain texture via SVG noise — NOT a gradient */
+   107→    background-image:
+   108→      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.85 0 0 0 0 0.7 0 0 0 0.018 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+   109→  }
+   110→}
+   111→
+   112→/* ============================================================
+   113→   BACKGROUND LAYERS — three fixed layers, no radial gradients
+   114→   Layer 1: deep base color
+   115→   Layer 2: faint dot-grid (technical paper)
+   116→   Layer 3: vignette (focus toward center)
+   117→   ============================================================ */
+   118→
+   119→.bg-layer-1 {
+   120→  position: fixed;
+   121→  inset: 0;
+   122→  z-index: -3;
+   123→  background: var(--background);
+   124→}
+   125→
+   126→.bg-layer-2 {
+   127→  position: fixed;
+   128→  inset: 0;
+   129→  z-index: -2;
+   130→  /* Hairline dot grid — like graph paper, not stars */
+   131→  background-image:
+   132→    radial-gradient(circle, oklch(0.35 0.015 260 / 0.4) 0.5px, transparent 0.5px);
+   133→  background-size: 28px 28px;
+   134→  background-position: 0 0;
+   135→  opacity: 0.5;
+   136→  mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 85%, transparent 100%);
+   137→  -webkit-mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 85%, transparent 100%);
+   138→}
+   139→
+   140→.bg-vignette {
+   141→  position: fixed;
+   142→  inset: 0;
+   143→  z-index: -1;
+   144→  pointer-events: none;
+   145→  background: radial-gradient(ellipse at center, transparent 50%, oklch(0.08 0.02 260 / 0.5) 100%);
+   146→}
+   147→
+   148→/* ============================================================
+   149→   GLASS / PANEL — solid panels, no blur (removed AI-tell glassmorphism)
+   150→   ============================================================ */
+   151→
+   152→.glass-panel {
+   153→  background: oklch(0.16 0.018 260 / 0.95);
+   154→  border: 1px solid oklch(0.28 0.015 260 / 0.8);
+   155→}
+   156→
+   157→.glass-strong {
+   158→  background: oklch(0.13 0.02 260 / 0.98);
+   159→  border: 1px solid oklch(0.30 0.015 260 / 0.85);
+   160→}
+   161→
+   162→/* ============================================================
+   163→   RESOURCE CHIPS — compact data readouts, monospace numbers
+   164→   ============================================================ */
+   165→
+   166→.res-chip {
+   167→  display: inline-flex;
+   168→  align-items: center;
+   169→  gap: 0.3rem;
+   170→  padding: 0.2rem 0.5rem;
+   171→  border-radius: 0.25rem;
+   172→  background: oklch(0.19 0.015 260 / 0.7);
+   173→  border: 1px solid oklch(0.28 0.015 260 / 0.6);
+   174→  font-variant-numeric: tabular-nums;
+   175→  transition: border-color 0.2s ease, background 0.2s ease;
+   176→  font-size: 0.75rem;
+   177→  line-height: 1.2;
+   178→  position: relative;
+   179→  overflow: hidden;
+   180→}
+   181→.res-chip:hover {
+   182→  background: oklch(0.22 0.02 260 / 0.8);
+   183→  border-color: oklch(0.40 0.03 260);
+   184→}
+   185→
+   186→/* ============================================================
+   187→   STAT CARD — technical sub-panel
+   188→   ============================================================ */
+   189→
+   190→.stat-card {
+   191→  background: oklch(0.18 0.015 260 / 0.6);
+   192→  border: 1px solid oklch(0.26 0.015 260 / 0.5);
+   193→  border-radius: var(--radius);
+   194→  padding: 0.65rem;
+   195→  transition: border-color 0.2s ease;
+   196→}
+   197→.stat-card:hover {
+   198→  border-color: oklch(0.34 0.02 260);
+   199→}
+   200→
+   201→/* ============================================================
+   202→   STAGE PLATE — like a specimen label, not a glowing portal
+   203→   ============================================================ */
+   204→
+   205→.stage-plate {
+   206→  width: 100%;
+   207→  border-radius: var(--radius);
+   208→  position: relative;
+   209→  overflow: hidden;
+   210→  border: 1px solid oklch(0.30 0.04 260 / 0.6);
+   211→  /* corner ticks — like a framing mark on a specimen card */
+   212→}
+   213→.stage-plate::before,
+   214→.stage-plate::after {
+   215→  content: "";
+   216→  position: absolute;
+   217→  width: 10px;
+   218→  height: 10px;
+   219→  border: 1px solid oklch(0.50 0.05 260 / 0.4);
+   220→}
+   221→.stage-plate::before {
+   222→  top: 6px;
+   223→  left: 6px;
+   224→  border-right: none;
+   225→  border-bottom: none;
+   226→}
+   227→.stage-plate::after {
+   228→  bottom: 6px;
+   229→  right: 6px;
+   230→  border-left: none;
+   231→  border-top: none;
+   232→}
+   233→
+   234→/* ============================================================
+   235→   TAB NAV — underline style, not pill
+   236→   ============================================================ */
+   237→
+   238→.tab-btn {
+   239→  position: relative;
+   240→  padding: 0.45rem 0.75rem;
+   241→  font-size: 0.8rem;
+   242→  font-weight: 500;
+   243→  color: var(--muted-foreground);
+   244→  transition: color 0.15s ease, background 0.15s ease;
+   245→  white-space: nowrap;
+   246→  display: inline-flex;
+   247→  align-items: center;
+   248→  gap: 0.35rem;
+   249→  border-radius: 0.25rem;
+   250→}
+   251→.tab-btn:hover {
+   252→  color: var(--foreground);
+   253→  background: oklch(0.22 0.015 260 / 0.5);
+   254→}
+   255→.tab-btn.active {
+   256→  color: var(--foreground);
+   257→  background: oklch(0.24 0.02 260 / 0.6);
+   258→  /* bottom border accent — single line, not glow */
+   259→  box-shadow: inset 0 -2px 0 0 var(--primary);
+   260→}
+   261→
+   262→/* ============================================================
+   263→   ACTION BUTTON — tactile, not glassy
+   264→   ============================================================ */
+   265→
+   266→.action-btn {
+   267→  display: flex;
+   268→  flex-direction: column;
+   269→  align-items: center;
+   270→  gap: 0.2rem;
+   271→  padding: 0.65rem 0.4rem;
+   272→  border-radius: var(--radius);
+   273→  background: oklch(0.20 0.015 260 / 0.7);
+   274→  border: 1px solid oklch(0.28 0.015 260 / 0.6);
+   275→  transition: all 0.12s ease;
+   276→  min-height: 72px;
+   277→  cursor: pointer;
+   278→  text-align: center;
+   279→  /* inner top highlight — stamped feel */
+   280→  box-shadow: inset 0 1px 0 0 oklch(0.32 0.02 260 / 0.15);
+   281→}
+   282→.action-btn:hover:not(:disabled) {
+   283→  background: oklch(0.24 0.02 260 / 0.8);
+   284→  border-color: var(--primary);
+   285→  transform: translateY(-1px);
+   286→}
+   287→.action-btn:active:not(:disabled) {
+   288→  transform: translateY(0);
+   289→  box-shadow: inset 0 1px 3px oklch(0 0 0 / 0.3);
+   290→}
+   291→.action-btn:disabled {
+   292→  opacity: 0.4;
+   293→  cursor: not-allowed;
+   294→}
+   295→.action-btn .icon {
+   296→  font-size: 1.4rem;
+   297→  line-height: 1;
+   298→}
+   299→.action-btn .label {
+   300→  font-size: 0.7rem;
+   301→  font-weight: 600;
+   302→  line-height: 1.1;
+   303→}
+   304→.action-btn .cost {
+   305→  font-size: 0.6rem;
+   306→  color: var(--muted-foreground);
+   307→  font-variant-numeric: tabular-nums;
+   308→  line-height: 1.2;
+   309→}
+   310→
+   311→/* ============================================================
+   312→   CAP PULSE — only when truly near cap
+   313→   ============================================================ */
+   314→
+   315→@keyframes cap-warn {
+   316→  0%, 100% { border-color: oklch(0.65 0.14 55 / 0.5); }
+   317→  50% { border-color: oklch(0.65 0.14 55 / 1); }
+   318→}
+   319→.chip-near-cap {
+   320→  animation: cap-warn 1.8s ease-in-out infinite;
+   321→}
+   322→
+   323→/* ============================================================
+   324→   SCROLLBARS — thin, technical
+   325→   ============================================================ */
+   326→
+   327→::-webkit-scrollbar { width: 8px; height: 8px; }
+   328→::-webkit-scrollbar-track { background: transparent; }
+   329→::-webkit-scrollbar-thumb {
+   330→  background: oklch(0.32 0.015 260);
+   331→  border-radius: 4px;
+   332→}
+   333→::-webkit-scrollbar-thumb:hover { background: oklch(0.42 0.02 260); }
+   334→
+   335→.no-scrollbar::-webkit-scrollbar { display: none; }
+   336→.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+   337→
+   338→/* ============================================================
+   339→   PROGRESS BAR — flat fill, no shimmer
+   340→   ============================================================ */
+   341→
+   342→.bar-track {
+   343→  height: 6px;
+   344→  border-radius: 3px;
+   345→  background: oklch(0.22 0.015 260);
+   346→  overflow: hidden;
+   347→}
+   348→.bar-fill {
+   349→  height: 100%;
+   350→  border-radius: 3px;
+   351→  background: var(--primary);
+   352→  transition: width 0.3s ease;
+   353→}
+   354→
+   355→/* ============================================================
+   356→   STORY POPUP — like a journal page, not a floating card
+   357→   ============================================================ */
+   358→
+   359→.story-popup-overlay {
+   360→  position: fixed;
+   361→  inset: 0;
+   362→  background: oklch(0.05 0.01 260 / 0.7);
+   363→  z-index: 50;
+   364→  display: flex;
+   365→  align-items: center;
+   366→  justify-content: center;
+   367→  padding: 1rem;
+   368→  animation: fadeIn 0.25s ease;
+   369→}
+   370→@keyframes fadeIn {
+   371→  from { opacity: 0; }
+   372→  to { opacity: 1; }
+   373→}
+   374→@keyframes slideUp {
+   375→  from { opacity: 0; transform: translateY(16px); }
+   376→  to { opacity: 1; transform: translateY(0); }
+   377→}
+   378→.story-popup-card {
+   379→  max-width: 32rem;
+   380→  width: 100%;
+   381→  animation: slideUp 0.3s ease;
+   382→}
+   383→
+   384→/* ============================================================
+   385→   FLOATING ACTION FEEDBACK
+   386→   ============================================================ */
+   387→
+   388→@keyframes floatUp {
+   389→  0% {
+   390→    opacity: 1;
+   391→    transform: translateY(0) scale(0.8);
+   392→  }
+   393→  20% {
+   394→    opacity: 1;
+   395→    transform: translateY(-8px) scale(1.1);
+   396→  }
+   397→  100% {
+   398→    opacity: 0;
+   399→    transform: translateY(-40px) scale(1);
+   400→  }
+   401→}
+   402→
+   403→/* ============================================================
+   404→   EVOLVE BUTTON — pulsing glow when ready
+   405→   ============================================================ */
+   406→
+   407→.evolve-ready {
+   408→  animation: evolve-pulse 1.5s ease-in-out infinite;
+   409→  box-shadow: 0 0 0 0 var(--primary);
+   410→}
+   411→
+   412→@keyframes evolve-pulse {
+   413→  0%, 100% {
+   414→    box-shadow: 0 0 12px 0 oklch(0.68 0.14 55 / 0.4), 0 0 0 0 oklch(0.68 0.14 55 / 0.3);
+   415→    transform: scale(1);
+   416→  }
+   417→  50% {
+   418→    box-shadow: 0 0 24px 4px oklch(0.68 0.14 55 / 0.6), 0 0 0 6px oklch(0.68 0.14 55 / 0);
+   419→    transform: scale(1.02);
+   420→  }
+   421→}
+   422→
+   423→/* ============================================================
+   424→   PROGRESS BAR — subtle pulse when near complete
+   425→   ============================================================ */
+   426→
+   427→.bar-near-complete {
+   428→  animation: bar-pulse 1.2s ease-in-out infinite;
+   429→}
+   430→
+   431→@keyframes bar-pulse {
+   432→  0%, 100% { opacity: 1; }
+   433→  50% { opacity: 0.7; }
+   434→}
+   435→
+   436→/* ============================================================
+   437→   BUTTON PRESS RIPPLE
+   438→   ============================================================ */
+   439→
+   440→.action-btn:active:not(:disabled) {
+   441→  transform: scale(0.96);
+   442→  box-shadow: inset 0 2px 6px oklch(0 0 0 / 0.4);
+   443→}
+   444→
+   445→/* ============================================================
+   446→   AUTO-SAVE INDICATOR
+   447→   ============================================================ */
+   448→
+   449→.save-indicator {
+   450→  animation: save-flash 0.6s ease;
+   451→}
+   452→
+   453→@keyframes save-flash {
+   454→  0% { opacity: 0; transform: scale(0.8); }
+   455→  30% { opacity: 1; transform: scale(1.1); }
+   456→  100% { opacity: 0; transform: scale(1); }
+   457→}
+   458→
+   459→/* ============================================================
+   460→   QUICK WIN 6 — Ritual / Combo / Ability glow
+   461→   Subtle pulsing aura for active-effect badges in the header.
+   462→   ============================================================ */
+   463→
+   464→.ritual-glow {
+   465→  animation: ritual-glow 2.2s ease-in-out infinite;
+   466→  box-shadow: 0 0 6px 0 currentColor;
+   467→}
+   468→
+   469→@keyframes ritual-glow {
+   470→  0%, 100% { box-shadow: 0 0 4px 0 currentColor; opacity: 0.92; }
+   471→  50% { box-shadow: 0 0 9px 1px currentColor; opacity: 1; }
+   472→}
+   473→
+   474→/* ============================================================
+   475→   FEATURE ENHANCEMENTS — layer-specific visual effects
+   476→   Subtle (300–500ms) one-shot animations keyed off React state.
+   477→   ============================================================ */
+   478→
+   479→/* FEATURE 2 — Supernova flash: brief bright burst on illuminated nodes */
+   480→@keyframes supernova-flash {
+   481→  0%   { box-shadow: 0 0 0px 0 rgba(251, 191, 36, 0.95); filter: brightness(1); }
+   482→  35%  { box-shadow: 0 0 22px 4px rgba(251, 191, 36, 0.95); filter: brightness(2.2); }
+   483→  100% { box-shadow: 0 0 0px 0 rgba(251, 191, 36, 0); filter: brightness(1); }
+   484→}
+   485→.supernova-flash {
+   486→  animation: supernova-flash 450ms ease-out;
+   487→}
+   488→
+   489→/* FEATURE 2 — Black Hole collapse: scale & fade into a dark point */
+   490→@keyframes black-hole-collapse {
+   491→  0%   { transform: scale(1); opacity: 1; filter: brightness(1); }
+   492→  40%  { transform: scale(0.6) rotate(8deg); opacity: 0.8; filter: brightness(0.4) blur(1px); }
+   493→  100% { transform: scale(0.05) rotate(180deg); opacity: 0; filter: brightness(0) blur(3px); }
+   494→}
+   495→.black-hole-collapse {
+   496→  animation: black-hole-collapse 500ms ease-in forwards;
+   497→}
+   498→
+   499→/* FEATURE 4 — Disaster flash: brief red shake on the destroyed tile */
+   500→@keyframes disaster-flash {
+   501→  0%   { background-color: rgba(220, 38, 38, 0); transform: translate(0, 0); }
+   502→  20%  { background-color: rgba(220, 38, 38, 0.6); transform: translate(-2px, 1px); }
+   503→  40%  { background-color: rgba(220, 38, 38, 0.85); transform: translate(2px, -1px); }
+   504→  60%  { background-color: rgba(220, 38, 38, 0.6); transform: translate(-1px, 2px); }
+   505→  100% { background-color: rgba(220, 38, 38, 0); transform: translate(0, 0); }
+   506→}
+   507→.disaster-flash {
+   508→  animation: disaster-flash 400ms ease-out;
+   509→}
+   510→
+   511→/* FEATURE 5 — Prophet golden glow: subtle pulsing aura on prophet cells */
+   512→@keyframes prophet-glow {
+   513→  0%, 100% { box-shadow: 0 0 4px 0 rgba(250, 204, 21, 0.6); }
+   514→  50%      { box-shadow: 0 0 10px 2px rgba(250, 204, 21, 0.95); }
+   515→}
+   516→.prophet-glow {
+   517→  animation: prophet-glow 1.8s ease-in-out infinite;
+   518→}
+   519→
+   520→/* FEATURE 7 — Mutation purple aura: subtle pulsing violet ring */
+   521→@keyframes mutation-aura {
+   522→  0%, 100% { box-shadow: 0 0 3px 0 rgba(168, 85, 247, 0.5); }
+   523→  50%      { box-shadow: 0 0 9px 2px rgba(168, 85, 247, 0.9); }
+   524→}
+   525→.mutation-aura {
+   526→  animation: mutation-aura 2s ease-in-out infinite;
+   527→}
+   528→
+   529→/* FEATURE 8 — Amplifier glow: pulsing connector line between gods */
+   530→@keyframes amplifier-pulse {
+   531→  0%, 100% { box-shadow: 0 0 4px 0 rgba(56, 189, 248, 0.4); opacity: 0.8; }
+   532→  50%      { box-shadow: 0 0 10px 2px rgba(56, 189, 248, 0.95); opacity: 1; }
+   533→}
+   534→.amplifier-pulse {
+   535→  animation: amplifier-pulse 1.5s ease-in-out infinite;
+   536→}
+   537→
+   538→/* FEATURE 9 — Temporal Storm overlay: blue/purple shimmer over battle card */
+   539→@keyframes temporal-storm-overlay {
+   540→  0%, 100% { background: radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.18), transparent 60%); }
+   541→  50%      { background: radial-gradient(circle at 70% 70%, rgba(168, 85, 247, 0.25), transparent 60%); }
+   542→}
+   543→.temporal-storm-overlay {
+   544→  animation: temporal-storm-overlay 2.2s ease-in-out infinite;
+   545→}
+   546→
+   547→/* FEATURE 10 — Forbidden option pulse: red warning border */
+   548→@keyframes forbidden-pulse {
+   549→  0%, 100% { border-color: rgba(220, 38, 38, 0.5); }
+   550→  50%      { border-color: rgba(220, 38, 38, 1); }
+   551→}
+   552→.forbidden-pulse {
+   553→  animation: forbidden-pulse 1.4s ease-in-out infinite;
+   554→}
+   555→
+   556→/* ============================================================
+   557→   LAYER 6 — UNIVERSAL MAP (Singularity Modal)
+   558→   Red pulsing rift overlays + blue glowing anchor rings on the
+   559→   50-galaxy SVG map. Animations run on the SVG <circle> elements.
+   560→   ============================================================ */
+   561→
+   562→/* Red rift pulse — tight, urgent heartbeat on rift-afflicted galaxies */
+   563→@keyframes singularity-rift-pulse {
+   564→  0%, 100% { stroke-opacity: 1; transform: scale(1); }
+   565→  50%      { stroke-opacity: 0.35; transform: scale(1.25); }
+   566→}
+   567→.singularity-rift-pulse {
+   568→  animation: singularity-rift-pulse 1.1s ease-in-out infinite;
+   569→  transform-origin: center;
+   570→  transform-box: fill-box;
+   571→}
+   572→
+   573→/* Outer red halo — slower, more diffuse — radiates corruption */
+   574→@keyframes singularity-rift-pulse-outer {
+   575→  0%, 100% { stroke-opacity: 0.4; transform: scale(1); }
+   576→  50%      { stroke-opacity: 0.05; transform: scale(1.6); }
+   577→}
+   578→.singularity-rift-pulse-outer {
+   579→  animation: singularity-rift-pulse-outer 1.7s ease-in-out infinite;
+   580→  transform-origin: center;
+   581→  transform-box: fill-box;
+   582→}
+   583→
+   584→/* Blue anchor glow — gentle breathing ring around anchored galaxies */
+   585→@keyframes singularity-anchor-glow {
+   586→  0%, 100% { stroke-opacity: 0.5; }
+   587→  50%      { stroke-opacity: 1; }
+   588→}
+   589→.singularity-anchor-glow {
+   590→  animation: singularity-anchor-glow 2.6s ease-in-out infinite;
+   591→}
+   592→
+   593→/* ============================================================
+   594→   STICKY FOOTER (mobile)
+   595→   ============================================================ */
+   596→
+   597→.sticky-footer {
+   598→  position: fixed;
+   599→  left: 0;
+   600→  right: 0;
+   601→  bottom: 0;
+   602→  z-index: 30;
+   603→}
+   604→
+   605→/* ============================================================
+   606→   RESPONSIVE HELPERS
+   607→   ============================================================ */
+   608→
+   609→@media (max-width: 768px) {
+   610→  .desktop-only { display: none !important; }
+   611→}
+   612→@media (min-width: 769px) {
+   613→  .mobile-only { display: none !important; }
+   614→}
+   615→
+   616→/* ============================================================
+   617→   TYPOGRAPHY HELPERS — mono for numbers
+   618→   ============================================================ */
+   619→
+   620→.tabular-nums {
+   621→  font-variant-numeric: tabular-nums;
+   622→  font-family: var(--font-geist-mono), ui-monospace, monospace;
+   623→  letter-spacing: -0.02em;
+   624→}
+   625→
+   626→/* Headings use a slightly tighter tracking for a more designed feel */
+   627→h1, h2, h3 {
+   628→  letter-spacing: -0.015em;
+   629→}
+   630→
+   631→/* ============================================================
+   632→   THEME SYSTEM — stage / layer overlay / special
+   633→   Each class overrides the key CSS variables for that theme.
+   634→   Apply by combining on the root div: `theme-stage-creature` +
+   635→   optional `theme-layer-evolution` overlay. Special themes
+   636→   override everything when active.
+   637→   ============================================================ */
+   638→
+   639→/* ---------- STAGE THEMES (7) ---------- */
+   640→
+   641→.theme-stage-cell {
+   642→  --background: oklch(0.14 0.015 260);
+   643→  --foreground: oklch(0.88 0.012 80);
+   644→  --card: oklch(0.17 0.018 260);
+   645→  --card-foreground: oklch(0.90 0.012 80);
+   646→  --primary: oklch(0.70 0.14 195);
+   647→  --primary-foreground: oklch(0.10 0.02 200);
+   648→  --accent: oklch(0.65 0.12 200);
+   649→  --accent-foreground: oklch(0.10 0.02 200);
+   650→  --border: oklch(0.28 0.015 260);
+   651→  --muted: oklch(0.21 0.012 260);
+   652→  --muted-foreground: oklch(0.62 0.015 260);
+   653→  --ring: oklch(0.55 0.12 195);
+   654→}
+   655→
+   656→.theme-stage-creature {
+   657→  --background: oklch(0.12 0.02 150);
+   658→  --foreground: oklch(0.88 0.02 120);
+   659→  --card: oklch(0.15 0.025 150);
+   660→  --card-foreground: oklch(0.90 0.02 120);
+   661→  --primary: oklch(0.68 0.15 120);
+   662→  --primary-foreground: oklch(0.10 0.02 120);
+   663→  --accent: oklch(0.65 0.10 60);
+   664→  --accent-foreground: oklch(0.10 0.02 60);
+   665→  --border: oklch(0.25 0.02 150);
+   666→  --muted: oklch(0.20 0.018 150);
+   667→  --muted-foreground: oklch(0.62 0.02 150);
+   668→  --ring: oklch(0.55 0.12 120);
+   669→}
+   670→
+   671→.theme-stage-tribal {
+   672→  --background: oklch(0.13 0.025 40);
+   673→  --foreground: oklch(0.88 0.02 50);
+   674→  --card: oklch(0.16 0.03 40);
+   675→  --card-foreground: oklch(0.90 0.02 50);
+   676→  --primary: oklch(0.68 0.16 45);
+   677→  --primary-foreground: oklch(0.10 0.02 40);
+   678→  --accent: oklch(0.62 0.18 25);
+   679→  --accent-foreground: oklch(0.95 0.01 50);
+   680→  --border: oklch(0.26 0.025 40);
+   681→  --muted: oklch(0.20 0.022 40);
+   682→  --muted-foreground: oklch(0.62 0.025 40);
+   683→  --ring: oklch(0.55 0.14 45);
+   684→}
+   685→
+   686→.theme-stage-civilization {
+   687→  --background: oklch(0.13 0.018 70);
+   688→  --foreground: oklch(0.90 0.015 80);
+   689→  --card: oklch(0.16 0.02 70);
+   690→  --card-foreground: oklch(0.92 0.015 80);
+   691→  --primary: oklch(0.78 0.14 80);
+   692→  --primary-foreground: oklch(0.12 0.02 70);
+   693→  --accent: oklch(0.70 0.10 50);
+   694→  --accent-foreground: oklch(0.12 0.02 70);
+   695→  --border: oklch(0.27 0.02 70);
+   696→  --muted: oklch(0.20 0.018 70);
+   697→  --muted-foreground: oklch(0.62 0.02 70);
+   698→  --ring: oklch(0.62 0.12 80);
+   699→}
+   700→
+   701→.theme-stage-empire {
+   702→  --background: oklch(0.13 0.018 270);
+   703→  --foreground: oklch(0.88 0.012 70);
+   704→  --card: oklch(0.16 0.02 270);
+   705→  --card-foreground: oklch(0.90 0.012 70);
+   706→  --primary: oklch(0.62 0.18 25);
+   707→  --primary-foreground: oklch(0.95 0.01 70);
+   708→  --accent: oklch(0.65 0.10 250);
+   709→  --accent-foreground: oklch(0.12 0.02 250);
+   710→  --border: oklch(0.27 0.02 270);
+   711→  --muted: oklch(0.20 0.018 270);
+   712→  --muted-foreground: oklch(0.62 0.015 270);
+   713→  --ring: oklch(0.55 0.14 25);
+   714→}
+   715→
+   716→.theme-stage-solar {
+   717→  --background: oklch(0.10 0.025 280);
+   718→  --foreground: oklch(0.88 0.02 250);
+   719→  --card: oklch(0.13 0.03 280);
+   720→  --card-foreground: oklch(0.90 0.02 250);
+   721→  --primary: oklch(0.65 0.16 280);
+   722→  --primary-foreground: oklch(0.10 0.02 280);
+   723→  --accent: oklch(0.65 0.14 230);
+   724→  --accent-foreground: oklch(0.10 0.02 230);
+   725→  --border: oklch(0.24 0.025 280);
+   726→  --muted: oklch(0.18 0.022 280);
+   727→  --muted-foreground: oklch(0.60 0.02 280);
+   728→  --ring: oklch(0.55 0.14 280);
+   729→}
+   730→
+   731→.theme-stage-galactic {
+   732→  --background: oklch(0.08 0.03 300);
+   733→  --foreground: oklch(0.92 0.02 280);
+   734→  --card: oklch(0.12 0.035 300);
+   735→  --card-foreground: oklch(0.92 0.02 280);
+   736→  --primary: oklch(0.70 0.18 320);
+   737→  --primary-foreground: oklch(0.10 0.02 300);
+   738→  --accent: oklch(0.70 0.18 200);
+   739→  --accent-foreground: oklch(0.10 0.02 200);
+   740→  --border: oklch(0.24 0.03 300);
+   741→  --muted: oklch(0.18 0.025 300);
+   742→  --muted-foreground: oklch(0.62 0.025 300);
+   743→  --ring: oklch(0.60 0.16 320);
+   744→}
+   745→
+   746→/* ---------- LAYER OVERLAY THEMES (10) — subtle: primary/accent/ring only ---------- */
+   747→
+   748→.theme-layer-evolution {
+   749→  --primary: oklch(0.72 0.15 55);
+   750→  --accent: oklch(0.68 0.12 55);
+   751→  --ring: oklch(0.60 0.12 55);
+   752→}
+   753→
+   754→.theme-layer-enlightenment {
+   755→  --primary: oklch(0.70 0.15 285);
+   756→  --accent: oklch(0.66 0.13 285);
+   757→  --ring: oklch(0.58 0.13 285);
+   758→}
+   759→
+   760→.theme-layer-transcendence {
+   761→  --primary: oklch(0.68 0.16 15);
+   762→  --accent: oklch(0.64 0.14 15);
+   763→  --ring: oklch(0.58 0.14 15);
+   764→}
+   765→
+   766→.theme-layer-genesis {
+   767→  --primary: oklch(0.72 0.15 195);
+   768→  --accent: oklch(0.68 0.13 195);
+   769→  --ring: oklch(0.58 0.13 195);
+   770→}
+   771→
+   772→.theme-layer-apotheosis {
+   773→  --primary: oklch(0.80 0.14 80);
+   774→  --accent: oklch(0.72 0.12 70);
+   775→  --ring: oklch(0.65 0.12 80);
+   776→}
+   777→
+   778→.theme-layer-singularity {
+   779→  --primary: oklch(0.72 0.16 165);
+   780→  --accent: oklch(0.66 0.14 165);
+   781→  --ring: oklch(0.58 0.14 165);
+   782→}
+   783→
+   784→.theme-layer-omnipotence {
+   785→  --primary: oklch(0.72 0.16 55);
+   786→  --accent: oklch(0.66 0.14 35);
+   787→  --ring: oklch(0.58 0.14 55);
+   788→}
+   789→
+   790→.theme-layer-divinity {
+   791→  --primary: oklch(0.74 0.16 5);
+   792→  --accent: oklch(0.68 0.14 15);
+   793→  --ring: oklch(0.60 0.14 5);
+   794→}
+   795→
+   796→.theme-layer-infinity {
+   797→  --primary: oklch(0.72 0.14 180);
+   798→  --accent: oklch(0.66 0.12 180);
+   799→  --ring: oklch(0.58 0.13 180);
+   800→}
+   801→
+   802→.theme-layer-eternity {
+   803→  --primary: oklch(0.92 0.04 80);
+   804→  --primary-foreground: oklch(0.15 0.02 80);
+   805→  --accent: oklch(0.85 0.08 80);
+   806→  --ring: oklch(0.78 0.10 80);
+   807→}
+   808→
+   809→/* ---------- SPECIAL THEMES (3) — full overrides ---------- */
+   810→
+   811→.theme-special-void {
+   812→  --background: oklch(0.06 0 0);
+   813→  --foreground: oklch(0.95 0 0);
+   814→  --card: oklch(0.10 0 0);
+   815→  --card-foreground: oklch(0.95 0 0);
+   816→  --popover: oklch(0.11 0 0);
+   817→  --popover-foreground: oklch(0.95 0 0);
+   818→  --primary: oklch(0.88 0 0);
+   819→  --primary-foreground: oklch(0.08 0 0);
+   820→  --secondary: oklch(0.16 0 0);
+   821→  --secondary-foreground: oklch(0.95 0 0);
+   822→  --muted: oklch(0.14 0 0);
+   823→  --muted-foreground: oklch(0.62 0 0);
+   824→  --accent: oklch(0.78 0 0);
+   825→  --accent-foreground: oklch(0.08 0 0);
+   826→  --border: oklch(0.22 0 0);
+   827→  --input: oklch(0.18 0 0);
+   828→  --ring: oklch(0.65 0 0);
+   829→  --destructive: oklch(0.60 0 0);
+   830→  --chart-1: oklch(0.85 0 0);
+   831→  --chart-2: oklch(0.65 0 0);
+   832→  --chart-3: oklch(0.55 0 0);
+   833→  --chart-4: oklch(0.45 0 0);
+   834→  --chart-5: oklch(0.75 0 0);
+   835→}
+   836→
+   837→.theme-special-retro {
+   838→  --background: oklch(0.10 0.012 150);
+   839→  --foreground: oklch(0.86 0.14 150);
+   840→  --card: oklch(0.12 0.012 150);
+   841→  --card-foreground: oklch(0.86 0.14 150);
+   842→  --popover: oklch(0.13 0.012 150);
+   843→  --popover-foreground: oklch(0.86 0.14 150);
+   844→  --primary: oklch(0.78 0.17 150);
+   845→  --primary-foreground: oklch(0.08 0.02 150);
+   846→  --secondary: oklch(0.18 0.015 150);
+   847→  --secondary-foreground: oklch(0.80 0.12 150);
+   848→  --muted: oklch(0.16 0.012 150);
+   849→  --muted-foreground: oklch(0.55 0.10 150);
+   850→  --accent: oklch(0.72 0.13 150);
+   851→  --accent-foreground: oklch(0.08 0.02 150);
+   852→  --border: oklch(0.24 0.015 150);
+   853→  --input: oklch(0.18 0.012 150);
+   854→  --ring: oklch(0.62 0.14 150);
+   855→  --destructive: oklch(0.65 0.16 25);
+   856→}
+   857→
+   858→/* Cosmic Prism — animated rainbow shimmer */
+   859→.theme-special-cosmic {
+   860→  --background: oklch(0.10 0.04 300);
+   861→  --foreground: oklch(0.92 0.04 280);
+   862→  --card: oklch(0.14 0.045 300);
+   863→  --card-foreground: oklch(0.92 0.04 280);
+   864→  --popover: oklch(0.15 0.045 300);
+   865→  --popover-foreground: oklch(0.92 0.04 280);
+   866→  --primary: oklch(0.72 0.18 320);
+   867→  --primary-foreground: oklch(0.10 0.02 300);
+   868→  --secondary: oklch(0.18 0.04 280);
+   869→  --secondary-foreground: oklch(0.92 0.04 280);
+   870→  --muted: oklch(0.18 0.035 300);
+   871→  --muted-foreground: oklch(0.66 0.04 280);
+   872→  --accent: oklch(0.72 0.18 195);
+   873→  --accent-foreground: oklch(0.10 0.02 200);
+   874→  --border: oklch(0.26 0.04 300);
+   875→  --input: oklch(0.20 0.04 300);
+   876→  --ring: oklch(0.62 0.16 320);
+   877→  animation: cosmic-prism-shift 12s linear infinite;
+   878→}
+   879→
+   880→@keyframes cosmic-prism-shift {
+   881→  0%   { --primary: oklch(0.72 0.18 320);  --accent: oklch(0.72 0.18 195); }
+   882→  25%  { --primary: oklch(0.72 0.18 195);  --accent: oklch(0.72 0.18 60); }
+   883→  50%  { --primary: oklch(0.72 0.18 60);   --accent: oklch(0.72 0.18 320); }
+   884→  75%  { --primary: oklch(0.72 0.18 280);  --accent: oklch(0.72 0.18 165); }
+   885→  100% { --primary: oklch(0.72 0.18 320);  --accent: oklch(0.72 0.18 195); }
+   886→}
+   887→
+   888→/* ============================================================
+   889→   Removed old classes that are no longer used
+   890→   (cosmic-bg, cosmic-stars, stage-portal, stage-glow, shimmer,
+   891→    pulse-glow, num-pop, buy-btn) — replaced with cleaner versions
+   892→   ============================================================
+   893→*/
+   894→

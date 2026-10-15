@@ -4,6 +4,7 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
 import { formatNumber } from "../shared/format";
+import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,9 @@ export function StagePanel() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // ARCHETYPES-REWORK — which archetypes the player has EVER locked in.
+  // Persists across prestiges. Drives the ??? reveal state on the radar.
+  const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
   const galacticWins = useGameStore((s) => s.galacticWins);
   const totalRuns = useGameStore((s) => s.totalRuns);
 
@@ -44,7 +48,9 @@ export function StagePanel() {
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);
   const domArch = dominantArchetype(archetypeAffinity);
   const totalAffinity = Object.values(archetypeAffinity).reduce((a, b) => a + b, 0);
-  const archInsight = true; // always visible — players should see their drift building
+  // ARCHETYPES-REWORK — all 13 archetypes render on the radar; discovery
+  // (revealed via first lock-in) controls ??? vs. full label display.
+  // The player can always see their affinity polygon drift.
   const isLocked = !!lockedArchetype;
 
   return (
@@ -181,53 +187,30 @@ export function StagePanel() {
         {showArchInfo && (
           <div className="mb-2 text-xs text-muted-foreground bg-muted/30 border border-border rounded p-2 leading-relaxed">
             <p className="font-semibold text-foreground mb-1">Lineage & Archetypes</p>
-            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants a permanent bonus.</p>
+            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants 3 buffs + 1 debuff.</p>
+            <p className="mt-1">Undiscovered archetypes appear as <span className="text-foreground">???</span> on the radar. Lock one in once to reveal its name forever — even across resets.</p>
             <p className="mt-1">Choose your path deliberately — or let it emerge from how you play.</p>
           </div>
         )}
 
         {isLocked ? (
           <LockedArchetypeDisplay archId={lockedArchetype!} />
-        ) : hasAffinity && archInsight ? (
-          <div className="space-y-1.5">
-            {ARCHETYPES
-              .filter((a) => (archetypeAffinity[a.id] || 0) > 0)
-              .sort((a, b) => (archetypeAffinity[b.id] || 0) - (archetypeAffinity[a.id] || 0))
-              .map((a) => {
-                const v = archetypeAffinity[a.id] || 0;
-                const pct = totalAffinity > 0 ? (v / totalAffinity) * 100 : 0;
-                const isDom = a.id === domArch;
-                return (
-                  <div key={a.id} className="flex items-center gap-2">
-                    <span
-                      className="text-xs font-mono w-5 text-center"
-                      style={{ color: a.color }}
-                    >
-                      {a.glyph}
-                    </span>
-                    <span className={`text-xs w-20 shrink-0 ${isDom ? "font-bold" : ""}`} style={{ color: isDom ? a.color : undefined }}>
-                      {a.name}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                      <div
-                        className="h-full transition-all"
-                        style={{ width: `${pct}%`, background: a.color }}
-                      />
-                    </div>
-                    <span className="text-[0.65rem] text-muted-foreground w-8 text-right tabular-nums">
-                      {v.toFixed(0)}
-                    </span>
-                  </div>
-                );
-              })}
+        ) : hasAffinity ? (
+          <div className="space-y-2">
+            <ArchetypeRadar
+              affinity={archetypeAffinity}
+              lockedArchetype={lockedArchetype}
+              discoveredArchetypes={revealedLineageArchetypes}
+              size={180}
+            />
             {stageIndex < 1 && (
-              <p className="text-[0.65rem] text-muted-foreground italic mt-1">
+              <p className="text-[0.65rem] text-muted-foreground italic text-center">
                 Lineage locks at Creature → Tribal evolution
               </p>
             )}
-            {stageIndex >= 1 && (
-              <p className="text-[0.65rem] text-amber-400 italic mt-1">
-                Will lock as {ARCHETYPE_MAP[domArch!]?.name} on evolution
+            {stageIndex >= 1 && domArch && (
+              <p className="text-[0.65rem] text-amber-400 italic text-center">
+                Will lock as {ARCHETYPE_MAP[domArch]?.name} on evolution
               </p>
             )}
           </div>
@@ -273,6 +256,11 @@ export function StagePanel() {
 function LockedArchetypeDisplay({ archId }: { archId: string }) {
   const arch = ARCHETYPE_MAP[archId];
   if (!arch) return null;
+  // ARCHETYPES-REWORK — show the 3 buffs + 1 debuff as structured lists.
+  // Falls back to the legacy single-label badge if buffs/debuff aren't
+  // populated (defensive — should always be populated post-rework).
+  const buffs = arch.bonus.buffs ?? [];
+  const debuff = arch.bonus.debuff;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -281,11 +269,29 @@ function LockedArchetypeDisplay({ archId }: { archId: string }) {
           <div className="text-sm font-bold" style={{ color: arch.color }}>{arch.name}</div>
           <div className="text-[0.65rem] text-muted-foreground">{arch.rarity} · locked</div>
         </div>
-        <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
-          {arch.bonus.label}
-        </Badge>
+        {buffs.length === 0 && (
+          <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
+            {arch.bonus.label}
+          </Badge>
+        )}
       </div>
       <p className="text-xs text-muted-foreground italic leading-snug">{arch.bonus.desc}</p>
+      {buffs.length > 0 && (
+        <div className="space-y-0.5 mt-1">
+          {buffs.map((b, i) => (
+            <div key={i} className="flex items-start gap-1 text-[0.65rem] text-emerald-300/90 leading-snug">
+              <span className="text-emerald-400 shrink-0">+</span>
+              <span>{b}</span>
+            </div>
+          ))}
+          {debuff && (
+            <div className="flex items-start gap-1 text-[0.65rem] text-rose-300/90 leading-snug mt-0.5">
+              <span className="text-rose-400 shrink-0">−</span>
+              <span>{debuff}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -48,18 +48,14 @@ export function StoryTab() {
               return (
                 <div
                   key={entry.id}
-                  className={`stat-card transition-all ${!unlocked ? "opacity-50" : isCurrent ? "ring-1 ring-accent" : ""}`}
+                  className={`stat-card transition-all ${!unlocked ? "opacity-50 stat-card-plain" : isCurrent ? "stat-card-accent ring-1 ring-accent" : "stat-card-plain"}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="shrink-0">
+                    <div className="shrink-0 mt-0.5">
                       {unlocked ? (
-                        <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                          <BookOpen className="w-4 h-4 text-accent" />
-                        </div>
+                        <BookOpen className="w-4 h-4 text-accent" aria-hidden />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-muted/40 flex items-center justify-center">
-                          <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                        </div>
+                        <Lock className="w-3.5 h-3.5 text-muted-foreground" aria-hidden />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">

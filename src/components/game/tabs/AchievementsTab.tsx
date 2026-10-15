@@ -138,8 +138,8 @@ function AchievementsContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {/* Earned achievements — full cards */}
         {filtered.filter((ach) => achievements[ach.id] || ach.check(ctx)).map((ach) => (
-          <div key={ach.id} className="stat-card flex items-start gap-3 transition-all">
-            <div className="w-10 h-10 rounded flex items-center justify-center text-xl shrink-0 bg-primary/15 border border-primary/40">
+          <div key={ach.id} className="stat-card stat-card-accent flex items-start gap-3 transition-all">
+            <div className="text-2xl shrink-0 leading-none mt-0.5" aria-hidden>
               {ach.icon}
             </div>
             <div className="min-w-0 flex-1">
@@ -164,9 +164,7 @@ function AchievementsContent() {
           if (locked.length === 0) return null;
           return (
             <div className="stat-card flex items-center gap-3 col-span-full border-dashed opacity-70">
-              <div className="w-10 h-10 rounded flex items-center justify-center shrink-0 bg-muted/40 border border-border">
-                <Lock className="w-4 h-4 text-muted-foreground" />
-              </div>
+              <Lock className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold text-muted-foreground">
                   {locked.length} locked {locked.length === 1 ? "achievement" : "achievements"}

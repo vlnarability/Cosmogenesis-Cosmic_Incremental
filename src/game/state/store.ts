@@ -3,14 +3,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { GameState, GameStore, StageId, TabId } from "./types";
-import { emptyResources, emptyCapacities } from "../data/resources";
+import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES } from "../data/resources";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
 import { ACTION_MAP } from "../data/actions";
 import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
 import { TECH_MAP, TECHS } from "../data/techs";
 import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
 import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
-import { ARCHETYPE_MAP, dominantArchetype } from "../data/archetypes";
+import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -74,6 +74,16 @@ import {
   allBloodPactsUsed,
 } from "../data/transcendence";
 import {
+  PORTFOLIOS,
+  PORTFOLIO_MAP,
+  PORTFOLIO_PRICE_MIN,
+  PORTFOLIO_PRICE_MAX,
+  PORTFOLIO_PRICE_START,
+  PORTFOLIO_PRICE_DRIFT,
+  portfolioDividendsPerSec,
+  totalAllocatedWorlds,
+} from "../data/marketPortfolios";
+import {
   CRADLE_WORLDS,
   PRIME_CONDITIONS,
   SACRED_GEOGRAPHIES,
@@ -133,12 +143,6 @@ import {
   ownedGalaxyIds,
   type RivalSystemState,
 } from "../data/galaxies";
-import {
-  RELIC_LOADOUTS,
-  RELIC_LOADOUT_MAP,
-  relicBonus,
-  logicCoreBonus,
-} from "../data/singularity";
 import {
   UNIVERSAL_GALAXIES,
   UNIVERSAL_GALAXY_MAP,
@@ -218,50 +222,22 @@ import {
   allianceBonus,
   canFormAlliance,
   isDivinityComplete,
-  prayerChannelBonus,
-  divineMaskBonus,
-  worshipPolarityBonus,
-  prayerRate,
   type MinorGod,
 } from "../data/divinity_layer";
 import {
   OLD_GODS,
   OLD_GOD_MAP,
-  ECHO_TYPES,
-  ECHO_TYPE_MAP,
-  FORK_SCENARIOS,
-  FORK_SCENARIO_MAP,
-  FUTURE_DEBT_TIERS,
-  FUTURE_DEBT_TIER_MAP,
   makeInitialBattleState,
   divineFragmentBonus,
   computePlayerAttack,
   computeBossAttack,
   phaseForHp,
-  echoBonus,
-  forkBonus,
-  activeDebtBonus,
   isInfinityComplete,
   type BattleState,
 } from "../data/infinity";
 import {
-  UNIVERSE_SLOTS,
-  UNIVERSE_SLOT_MAP,
-  TESTAMENT_CLAUSES,
-  TESTAMENT_CLAUSE_MAP,
-  CANONIZATIONS,
-  CANONIZATION_MAP,
-  PERMANENCE_WEAVES,
-  PERMANENCE_WEAVE_MAP,
-  ENDING_CHOICES,
   ENDING_CHOICE_MAP,
-  universeSlotBonus,
-  keptGodsBonus,
-  testamentClauseBonus,
-  canonizationBonus,
-  permanenceWeaveBonus,
   cosmicBoonBonus,
-  isEternityComplete,
 } from "../data/eternity";
 import {
   UNIVERSE_RULES,
@@ -287,54 +263,68 @@ import {
   STAGE_INDEX_TO_THEME,
   LAYER_ID_TO_THEME,
 } from "../data/themes";
-import { ACTIVE_ABILITIES, ACTIVE_ABILITY_MAP } from "../data/activeAbilities";
-import {
-  TRIAL_REALMS,
-  TRIAL_REALM_MAP,
-  PLAYABLE_REALM_IDS,
-  makeDefaultRealmState,
-  REALM_GROWTH_BREAKS_GOAL,
-  REALM_GROWTH_PASSIVE_FILL_PER_SEC,
-  REALM_DISCONTENT_HAPPINESS_THRESHOLD,
-  REALM_DISCONTENT_SURVIVE_SECONDS,
-  REALM_DISCONTENT_GOLD_GOAL,
-  REALM_SWIFTNESS_TIME_LIMIT,
-  // TRIALS-7 — newly playable realm constants
-  REALM_FAMINE_SURVIVE_SECONDS,
-  REALM_FAMINE_THRESHOLD,
-  REALM_FAMINE_DECAY_PER_SEC,
-  REALM_FAMINE_FLOW_PER_SEC,
-  REALM_FAMINE_PUMP_FROM,
-  REALM_FAMINE_PUMP_TO,
-  REALM_IGNORANCE_NODE_COUNT,
-  REALM_IGNORANCE_BUDGET,
-  REALM_IGNORANCE_NODE_COSTS,
-  REALM_STAGNATION_STAGE_COUNT,
-  REALM_STAGNATION_GOODS_GOAL,
-  REALM_STAGNATION_UPGRADE_BASE_COST,
-  REALM_STAGNATION_RATE_DIVISOR,
-  REALM_WEAKNESS_WAVE_COUNT,
-  REALM_WEAKNESS_WAVE_DURATION,
-  REALM_WEAKNESS_ENEMY_BASE,
-  REALM_WEAKNESS_ENEMY_PER_WAVE,
-  REALM_WEAKNESS_TOWER_KILL_RATE,
-  REALM_WEAKNESS_TOWER_COST,
-  REALM_WEAKNESS_WAVE_REWARD,
-  REALM_WEAKNESS_LEAK_DAMAGE,
-  REALM_LATE_BLOOM_POP_GOAL,
-  REALM_LATE_BLOOM_PROD_COEFF,
-  REALM_LATE_BLOOM_COST_PER_POP,
-  REALM_PURITY_POOL_CAP,
-  REALM_PURITY_SYSTEMS_GOAL,
-  REALM_PURITY_BUILD_COST,
-  REALM_PURITY_DRAIN_PER_SYSTEM,
-  REALM_ASCETIC_STAGES,
-  REALM_ASCETIC_SYSTEM_COSTS,
-  REALM_ASCETIC_BASE_RATE,
-  trialRealmRewardBonus,
-} from "../data/trialRealms";
+// REMOVED — active abilities were cut from the game (Task REMOVE-ABILITIES-
+// REPLACE-CHALLENGES). The empty arrays/maps remain in activeAbilities.ts for
+// save-compat; the only remaining runtime references to activeAbilityCooldowns
+// / activeAbilityEffects are the tick-decay (which self-cleans old saves).
+// Legacy trialRealms module — REMOVED in CLEANUP-LEGACY. The canonical L1
+// system lives in `challenges.ts`.
 
 const STORAGE_KEY = "evolution_idle_v2";
+
+// ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+// Default mapping of action id → KeyboardEvent.key value. The
+// useKeyboardShortcuts hook reads from `state.keyboardShortcuts` at fire
+// time (so player can rebind in Settings → Shortcuts). Locked-layer
+// shortcuts (trials/constellations/.../genesis) are gated by the layer
+// being unlocked before firing — see the hook for the gate logic.
+//
+// Layer-action id → layerId mapping (used by the hook + the Settings UI):
+//   trials        → "challenges"        (L1; gate = unlockedChallenges)
+//   constellations → "enlightenment"    (L2)
+//   market         → "transcendence"     (L3)
+//   galaxy         → "genesis"           (L4)
+//   heresy         → "apotheosis"        (L5)
+//   universal      → "singularity"       (L6)
+//   creatures      → "omnipotence"      (L7)
+//   diplomacy      → "divinity"          (L8)
+//   war            → "infinity"          (L9)
+//   genesis        → "eternity"          (L10 — the Genesis Engine / Big Bang)
+export const DEFAULT_KEYBOARD_SHORTCUTS: Record<string, string> = {
+  pause: " ",
+  speed1: "1",
+  speed2: "2",
+  speed4: "4",
+  speed8: "8",
+  save: "s",
+  shop: "b",
+  prestige: "p",
+  trials: "t",
+  constellations: "c",
+  market: "m",
+  galaxy: "g",
+  heresy: "h",
+  universal: "u",
+  creatures: "l",
+  diplomacy: "d",
+  war: "f",
+  genesis: "e",
+  close: "Escape",
+};
+
+// Mapping of layer-action id → layer id (the unlock gate the hook checks).
+export const SHORTCUT_LAYER_GATE: Record<string, string> = {
+  trials: "challenges",          // special: gated by `unlockedChallenges`
+  constellations: "enlightenment",
+  market: "transcendence",
+  galaxy: "genesis",
+  heresy: "apotheosis",
+  universal: "singularity",
+  creatures: "omnipotence",
+  diplomacy: "divinity",
+  war: "infinity",
+  genesis: "eternity",
+};
 
 // ===== REBUILD: L1-6 helper factories =====
 function makeInitialFollowerGrid(): Array<{ state: string; type: string }> {
@@ -343,8 +333,7 @@ function makeInitialFollowerGrid(): Array<{ state: string; type: string }> {
 }
 
 // (Legacy) makeInitialDimensions — REMOVED in the Universal Map redesign.
-// The `dimensions` array is kept as an empty stub for save-shape compat; the
-// canonical L6 state lives in `universalGalaxies` (built via
+// The canonical L6 state lives in `universalGalaxies` (built via
 // makeInitialUniversalGalaxies() from the data layer).
 
 // Returns the layer overlay theme id for the highest unlocked layer (used by auto theme mode).
@@ -371,7 +360,7 @@ function highestUnlockedLayerThemeId(unlockedLayers: Record<string, boolean>): s
 }
 
 // New layer-progression gates: per-layer "completion metric" → unlocks the next layer.
-// L1 → L2: 5+ trial realms completed (was: 3 challenges completed)
+// L1 → L2: 3+ distinct challenges completed OR 5+ total challenge repeats.
 export const TRIAL_REALMS_REQUIRED_FOR_LAYER_2 = 5;
 
 function initialRunState(): Partial<GameState> {
@@ -414,6 +403,7 @@ function initialMetaState(): Partial<GameState> {
     storyAcknowledged: {},
     archive: [],
     archivedArchetypes: [],
+    revealedLineageArchetypes: {},
     unlockedLayers: { evolution: true, enlightenment: false, transcendence: false, genesis: false, apotheosis: false, singularity: false, omnipotence: false, divinity: false, infinity: false, eternity: false },
     achievements: {},
     newAchievements: [],
@@ -483,7 +473,6 @@ function initialMetaState(): Partial<GameState> {
 
     // Layer 6 — Singularity (Universal Map redesign — replaces Dimension Engine + Logic Cores)
     singularityCores: 0,
-    equippedRelics: {},
     showSingularity: false,
     // L6 Universal Map — 50 galaxies (10 L5 starter+rival + 40 NEW neutral).
     // `universalGalaxies` + `realityAnchors` persist across prestiges (anchors
@@ -495,16 +484,10 @@ function initialMetaState(): Partial<GameState> {
     riftSpawnTimer: 45,
     riftsClosed: 0,
     anchorsPlaced: 0,
-    // LEGACY: dimensions + dimensionRiftTimer (Dimension Engine) — kept as
-    // empty stubs for save-shape compat. No longer used by the L6 redesign.
-    dimensions: [],
-    dimensionRiftTimer: 0,
 
     // Layer 7 — Omnipotence (Bio-engineering)
-    equippedHybrids: {},
     activeOmnipotenceStance: "balanced",
     instability: 0,
-    peakInstability: 0,
     showOmnipotence: false,
     // NEW: Creature Lab
     creatures: [],
@@ -523,10 +506,6 @@ function initialMetaState(): Partial<GameState> {
     // and operates on per-galaxy `galaxyFollowerGrid`.
 
     // Layer 8 — Divinity (the layer; not the resource) — Divine Alliance
-    prayer: 0,
-    prayerChannelLevels: {},
-    activeDivineMask: null,
-    activeWorshipPolarity: null,
     showDivinityLayer: false,
     // NEW: Divine Alliance — initialize the 6 minor god NPCs and relationships
     minorGods: MINOR_GODS.map((g) => ({ ...g })),
@@ -534,21 +513,12 @@ function initialMetaState(): Partial<GameState> {
     alliances: {},
 
     // Layer 9 — Infinity — Divine War
-    echoes: 0,
-    purchasedEchoes: {},
-    resolvedForks: {},
-    takenFutureDebts: {},
-    repaidFutureDebts: {},
     showInfinity: false,
     // NEW: Divine War — battle state for each Old God
     oldGodBattles: Object.fromEntries(OLD_GODS.map((g) => [g.id, makeInitialBattleState(g.id)])),
     divineFragments: 0,
 
     // Layer 10 — Eternity — Genesis Engine (crucible + divine relics + 100 archetypes)
-    testamentClauses: 0,
-    purchasedTestamentClauses: {},
-    activeCanonizations: {},
-    activePermanenceWeaves: {},
     chosenEnding: null,
     cosmicBoonStacks: 0,
     showEternity: false,
@@ -566,8 +536,16 @@ function initialMetaState(): Partial<GameState> {
     showShop: false,
     showEvolve: false,
     showSettings: false,
+    // P6 — Modal Consolidation: single source-of-truth for which layer modal
+    // is open. Per-layer `show*` flags are mirrored in openLayerModal() for
+    // save-compat with old code that reads them directly.
+    activeLayerModal: null,
+    // P7 — Error states: latest purchase-error message + timestamp. UIs
+    // subscribe and surface this inline (auto-fade via consumer hook).
+    lastPurchaseError: null,
     activeStoryPopup: "first_spark",
     activeEvent: null,
+    eventTimer: 0, // 60s countdown — auto-resolves with default choice when it hits 0
     eventCooldown: 60, // first event can fire after 60s
     eventHistory: [],
     hasSeenIntro: false,
@@ -576,6 +554,7 @@ function initialMetaState(): Partial<GameState> {
     tutorialActive: true,
     tutorialDismissed: false,
     eventFrequency: "normal",
+    debugFreeBuy: false,
 
     // Theme customization (Part 1)
     activeStageTheme: "stage-cell",
@@ -599,11 +578,8 @@ function initialMetaState(): Partial<GameState> {
     layerEventTimers: { trial_of_fortune: 0, vision: 0, divine_whim: 0, heresy_surge: 0 },
 
     // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
-    // Layer 1 — Trial Realms
-    activeTrialRealm: null,
-    trialRealmState: {},
-    trialRealmsCompleted: {},
-    trialRealmBestTimes: {}, // FEATURE 1 — local leaderboard (no login)
+    // Layer 1 — Trial Realms were REMOVED in CLEANUP-LEGACY. The canonical L1
+    // system lives in `challenges.ts` (10 run-modifier challenges).
     // Layer 2 — Constellation Map: state fields declared above alongside
     // the other L2 fields. (constellationNodes / constellationRevealed
     // are kept as empty legacy compat records.)
@@ -616,19 +592,24 @@ function initialMetaState(): Partial<GameState> {
     marketCrashTimer: 120,
     marketCrashActive: false,
     marketCrashDuration: 0,
-    // Layer 4 — Sacred Grid (LEGACY — replaced by galaxySystems in the L4 redesign).
-    // `worldGrid` + `worldGridSeeds` kept as empty arrays for save-shape compat.
-    worldGrid: Array(20).fill(null),
-    worldGridSeeds: Array(20).fill(null),
-    // FEATURE 4 — Natural Disasters (LEGACY — disaster logic removed in L4 redesign)
-    disasterTimer: 90,
-    lastDisasterCell: null,
-    lastDisasterAt: 0,
+    // Layer 3 — DIVINE INVESTMENT MARKET (new design). Worlds (background sims)
+    // allocated to the 5 portfolios in src/game/data/marketPortfolios.ts.
+    // Each portfolio pays dividends × baseYield × peakProductionRate × 0.01 per
+    // sec; riskier portfolios may crash & consume worlds. See the portfolio tick
+    // block below + the `allocateWorlds` / `deallocateWorlds` / `buyStarFromMarket`
+    // actions.
+    portfolioAllocations: {},
+    portfolioLockTimers: {},
+    portfolioPrices: Object.fromEntries(
+      PORTFOLIOS.map((p) => [p.id, PORTFOLIO_PRICE_START])
+    ),
+    portfolioDividendsEarned: 0,
+    // Layer 4 — Sacred Grid was REMOVED in the L4 redesign (replaced by
+    // `galaxySystems` below). Natural Disasters were also removed.
     // Layer 4 — Galaxy Claim: 50 star systems on a hex spiral (all unclaimed
     // at fresh-start; the explored flags come from the galaxyMap data).
     galaxySystems: makeInitialGalaxySystems(),
-    // Layer 5 — Heresy Web (8×4 = 32 follower cells)
-    followerGrid: makeInitialFollowerGrid(),
+    // Layer 5 — Heresy Web (8×4 = 32 follower cells) — per-galaxy grids in `galaxyFollowerGrid`.
     heresySpreadTimer: 10,
     heresySeedTimer: 30,            // seed first heretic after 30s if grid is all-faithful
     heresyThresholdsSeeded: {},     // tracks 25/50/75 threshold seeding (per-galaxy, key `${gid}:${threshold}`)
@@ -648,17 +629,12 @@ function initialMetaState(): Partial<GameState> {
     conqueredGalaxies: {},
     // Currently selected galaxy tab in the Apotheosis modal (cosmetic; persisted).
     selectedGalaxyId: STARTER_GALAXY_ID,
-    // (Layer 6 — Dimension Engine removed. The new L6 state lives above next
-    // to the other L6 fields: universalGalaxies, rifts, realityAnchors,
-    // riftSpawnTimer, riftsClosed, anchorsPlaced.)
 
     // ===== FEATURE ENHANCEMENTS (L7–L10) =====
     // FEATURE 8 — Amplifiers (max 3 at a time)
     amplifiers: [],
     // FEATURE 9 — Temporal Storms (per-battle)
     temporalStorms: {},
-    // FEATURE 10 — Forbidden Words (paradox counter)
-    universeParadox: 0,
 
     // ===== BACKGROUND-SIMULATION =====
     // Base game abstracted into passive Divinity generation after first prestige.
@@ -666,6 +642,11 @@ function initialMetaState(): Partial<GameState> {
     backgroundSimulations: 0,     // COMPUTED each tick: (3 + starsLit) × simMult (cached for display)
     divinityFromBackground: 0,    // lifetime Divinity from background sims (META, display only)
     epFromBackground: 0,          // lifetime EP from background sims (META, display only)
+
+    // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+    // Default rebindable shortcuts. See DEFAULT_KEYBOARD_SHORTCUTS above for
+    // the action-id → layer mapping + comments.
+    keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS },
   };
 }
 
@@ -734,28 +715,12 @@ export const useGameStore = create<GameStore>()(
         const dLaw = divineLawBonus(s.enactedDivineLaws || {});
         const wMode = worshipModeBonus(s.activeWorshipMode);
         const hResp = heresyResponseProductionMult(s.activeHeresyResponse);
-        const relics = relicBonus(s.equippedRelics || {});
-        // L6 — Logic Cores were REMOVED in the Universal Map redesign. The
-        // production/cap/EP bonuses they used to grant are no longer applied.
         // Layer 7 — Omnipotence (creatures + legions + stance)
         const hybrids = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance);
         // Layer 8 — Divinity (alliances with minor gods)
-        const chanBonus = prayerChannelBonus(s.prayerChannelLevels || {});
-        const maskBonus = divineMaskBonus(s.activeDivineMask);
-        const polarityBonus = worshipPolarityBonus(s.activeWorshipPolarity);
         const allianceB = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS);
         // Layer 9 — Infinity (divine fragments — permanent power boost per Old God defeated)
-        const echoB = echoBonus(s.purchasedEchoes || {});
-        const forkB = forkBonus(s.resolvedForks || {});
-        const debtB = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {});
         const fragmentB = divineFragmentBonus(s.divineFragments || 0);
-        // Layer 10 — Eternity — Genesis Engine
-        // Legacy bonuses (testament clauses / canonizations / weaves / universe slots /
-        // kept gods) all return 0 in the new design — they are kept as no-op shims.
-        const testB = testamentClauseBonus(s.purchasedTestamentClauses || {});
-        const canonB = canonizationBonus(s.activeCanonizations || {});
-        const weaveB = permanenceWeaveBonus(s.activePermanenceWeaves || {});
-        void testB; void canonB; void weaveB; // no-ops in the new design
         // NEW: Genesis Engine — archetype bonus (+1% production per discovered archetype)
         const archetypeB = archetypeBonus(s.discoveredArchetypes || {});
         // LAYER UPGRADE — universe_foundation (now "Crucible Mastery"):
@@ -772,46 +737,29 @@ export const useGameStore = create<GameStore>()(
         // tracked for the sidebar display but don't apply a direct tick bonus
         // (their boost is implicit: they sit on systems with stronger bonuses).
         const galaxySummary = summarizeGalaxyBonuses(s.galaxySystems || []);
-        // (Legacy Sacred Grid tile bonuses removed in L4 redesign.)
-
-        // TRIALS-7 — Layer 1 trial realm rewards (permanent bonuses from completed realms)
-        const trialReward = trialRealmRewardBonus(s.trialRealmsCompleted || {});
-        // Late Bloom: +25% pop growth only when current population < 50
-        const lateBloomPopBonus =
-          (s.trialRealmsCompleted?.realm_late_bloom && s.population < 50) ? 0.25 : 0;
 
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult + ritualProd +
           wProd + dLaw.productionMult + wMode.productionMult + hResp +
-          relics.productionMult +
-          hybrids.productionMult + chanBonus.productionMult + maskBonus.productionMult +
-          polarityBonus.productionMult + allianceB.productionMult +
-          echoB.productionMult + forkB.productionMult + debtB.productionMult +
+          hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
-          galaxySummary.productionMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
-          trialReward.prodMult;
+          galaxySummary.productionMult;  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult + ritualCap + wCap +
-          dLaw.capMult + relics.capMult +
-          hybrids.capMult + chanBonus.capMult + maskBonus.capMult +
-          polarityBonus.capMult + allianceB.capMult +
-          echoB.capMult + forkB.capMult + debtB.capMult +
+          dLaw.capMult +
+          hybrids.capMult + allianceB.capMult +
           fragmentB.capMult +
-          galaxySummary.capMult +  // L4 Galaxy Claim capacity bonuses
-          trialReward.capMult;
+          galaxySummary.capMult;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult + ritualPop + wPop +
-          dLaw.popGrowthMult + relics.popGrowthMult +
-          hybrids.popGrowthMult + chanBonus.popGrowthMult + maskBonus.popGrowthMult +
-          polarityBonus.popGrowthMult + allianceB.popGrowthMult +
-          echoB.popGrowthMult + forkB.popGrowthMult + debtB.popGrowthMult +
+          dLaw.popGrowthMult +
+          hybrids.popGrowthMult + allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
-          galaxySummary.popGrowthMult +  // L4 Galaxy Claim pop-growth bonuses
-          trialReward.popMult + lateBloomPopBonus;
+          galaxySummary.popGrowthMult;  // L4 Galaxy Claim pop-growth bonuses
 
         // QUICK WIN 2 — Active abilities: Surge (×3 prod) + Overclock (×2 layer bonuses)
         const surgeActive = (s.activeAbilityEffects?.surge || 0) > 0;
@@ -825,15 +773,12 @@ export const useGameStore = create<GameStore>()(
         // Miracle: double production (one-shot temporary effect)
         const miracleDouble = (s.miracleTimers?.mir_genesis || 0) > 0;
 
-        // Apply: overclock multiplies layer bonuses (foresight, ritual, relics, etc.) by 2
+        // Apply: overclock multiplies layer bonuses (foresight, ritual, etc.) by 2
         const layerProdBonusApplied = layerProdBonus * (overclockActive ? 2 : 1);
         // Surge multiplies total production output (after layer bonus & miracle)
         const surgeMult = surgeActive ? 3 : 1;
         const divineComboMult = divineComboActive ? 1.5 : 1;
-        // REBUILD L1 — Realm of Swiftness: 5× production while realm is active
-        const realmSwiftnessActive = s.activeTrialRealm === "realm_swiftness";
-        const realmSwiftnessMult = realmSwiftnessActive ? 5 : 1;
-        autoMult *= (1 + layerProdBonusApplied) * (miracleDouble ? 2 : 1) * surgeMult * divineComboMult * universalBoostMult * realmSwiftnessMult;
+        autoMult *= (1 + layerProdBonusApplied) * (miracleDouble ? 2 : 1) * surgeMult * divineComboMult * universalBoostMult;
 
         const techMult = techMultiplier(s, "production");
         const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
@@ -844,9 +789,53 @@ export const useGameStore = create<GameStore>()(
 
         // Archetype bonus
         const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
-        const archAllMult = archetype?.bonus.allProductionMult || 0;
+        // ARCHETYPES-REWORK — extended archetype bonus fields.
+        // archAllMult is composed of:
+        //   - base allProductionMult (e.g. Humanoid +10%, Necroid Ascendant +20%)
+        //   - productionPerSystemAllMult × totalOwnedSystems (Fungoid network)
+        //   - productionInWarmStagesMult (Reptilian — Tribal+)
+        //   - productionWhenLowResourcesMult (Extremophile — when avg fill < 20%)
+        //   - productionWhenPlentifulMult (Extremophile debuff — when avg fill > 80%)
+        const totalOwnedSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+        let archAllMult = archetype?.bonus.allProductionMult || 0;
+        if (archetype?.bonus.productionPerSystemAllMult) {
+          archAllMult += archetype.bonus.productionPerSystemAllMult * totalOwnedSystems;
+        }
+        const curStageId = STAGES[s.stageIndex].id;
+        const isWarmStage = ["tribal", "civilization", "empire", "solar", "galactic"].includes(curStageId);
+        if (archetype?.bonus.productionInWarmStagesMult && isWarmStage) {
+          archAllMult += archetype.bonus.productionInWarmStagesMult;
+        }
+        // Extremophile conditional bonuses — based on average resource fill
+        // across all resources that have a capacity > 0.
+        if (archetype?.bonus.productionWhenLowResourcesMult || archetype?.bonus.productionWhenPlentifulMult) {
+          let capSum = 0;
+          let resSum = 0;
+          for (const [r, v] of Object.entries(s.resources)) {
+            const cap = s.capacities[r] || 0;
+            if (cap > 0) {
+              capSum += cap;
+              resSum += Math.max(0, v);
+            }
+          }
+          const fillRatio = capSum > 0 ? resSum / capSum : 1;
+          if (archetype.bonus.productionWhenLowResourcesMult && fillRatio < 0.20) {
+            archAllMult += archetype.bonus.productionWhenLowResourcesMult;
+          }
+          if (archetype.bonus.productionWhenPlentifulMult && fillRatio > 0.80) {
+            archAllMult += archetype.bonus.productionWhenPlentifulMult;
+          }
+        }
         const archPopMult = archetype?.bonus.populationGrowthMult || 0;
         const archCapMult = archetype?.bonus.capMult || 0;
+        const archMilitaryMult = archetype?.bonus.militaryPowerMult || 0;
+        const archDisabledFrac = archetype?.bonus.productionFromDisabledSystemsMult || 0;
+        const archMineralBonus = archetype?.bonus.productionFromMineralSystemsMult || 0;
+        const archPopImmortal = !!archetype?.bonus.populationImmortal;
+        const archPopGrowsNoFood = !!archetype?.bonus.popGrowsWithoutFood;
+        const archHappinessPerTick = archetype?.bonus.happinessPerTick || 0;
+        // Archetype system-cost multiplier (additive: +0.10 = +10% costs, -0.15 = -15%)
+        const archSystemCostMult = archetype?.bonus.systemCostMult || 0;
 
         const resources = { ...s.resources };
         let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
@@ -873,34 +862,59 @@ export const useGameStore = create<GameStore>()(
 
           // Check if system is manually disabled
           const manuallyEnabled = s.systemEnabled[sysId] !== false; // default true
-          if (!manuallyEnabled && !hasAutoBalancer) continue;
+          // ARCHETYPES-REWORK — Necroid grants partial production from disabled
+          // systems (productionFromDisabledSystemsMult). When active, disabled
+          // systems still produce at the fractional rate but consume no upkeep.
+          const isDisabledProducer = !manuallyEnabled && archDisabledFrac > 0;
+          if (!manuallyEnabled && !hasAutoBalancer && !isDisabledProducer) continue;
 
           // Cap-aware logic: if all output resources are at cap, idle the system
-          // (don't produce, don't consume upkeep — no waste)
-          const outputsCapped = Object.keys(sys.produces).length > 0 &&
-            Object.keys(sys.produces).every((r) => {
-              const cap = capacities[r] || 0;
-              return (resources[r] || 0) >= cap - 0.01;
-            });
+          // (don't produce, don't consume upkeep — no waste). Disabled producers
+          // (necroid) skip this check — they still produce even when capped, but
+          // only at the fractional rate.
+          if (!isDisabledProducer) {
+            const outputsCapped = Object.keys(sys.produces).length > 0 &&
+              Object.keys(sys.produces).every((r) => {
+                const cap = capacities[r] || 0;
+                return (resources[r] || 0) >= cap - 0.01;
+              });
 
-          if (outputsCapped) {
-            // System idles — no production, no upkeep
-            continue;
+            if (outputsCapped) {
+              // System idles — no production, no upkeep
+              continue;
+            }
           }
 
           const stageMult = sys.stage === STAGES[s.stageIndex].id ? 1 : 0.5;
-          const mult = autoMult * techMult * stageMult * (1 + archAllMult);
+          // ARCHETYPES-REWORK — disabled producers (necroid) get only the
+          // fractional production rate. They still benefit from archAllMult +
+          // stage scaling, but their effective count is multiplied by the
+          // fraction (e.g. 0.20 = 20% of normal output).
+          const disabledFrac = isDisabledProducer ? archDisabledFrac : 1;
+          const mult = autoMult * techMult * stageMult * (1 + archAllMult) * disabledFrac;
 
           // Per-resource archetype bonus
+          // ARCHETYPES-REWORK — military_power gets an additional multiplier
+          // from militaryPowerMult (Reptilian +15%, Toxoid +15%, etc.).
+          // Lithoid gets bonus production from stone/alloy-producing systems
+          // (productionFromMineralSystemsMult).
           const produces = sys.produces as Record<string, number>;
+          const sysIsMineral = !!(produces.stone || produces.alloys);
           for (const [r, v] of Object.entries(produces)) {
             const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-            const rate = v * count * mult * (1 + archResBonus);
+            let resourceBonus = archResBonus;
+            if (r === "military_power" && archMilitaryMult) {
+              resourceBonus += archMilitaryMult;
+            }
+            if (sysIsMineral && archMineralBonus && (r === "stone" || r === "alloys")) {
+              resourceBonus += archMineralBonus;
+            }
+            const rate = v * count * mult * (1 + resourceBonus);
             resources[r] = (resources[r] || 0) + rate * realDt;
             totalProductionRate += rate; // accumulate per-second rate (pre-cap-clamp)
           }
-          // Upkeep
-          if (sys.upkeep) {
+          // Upkeep — disabled producers (necroid) consume NO upkeep.
+          if (!isDisabledProducer && sys.upkeep) {
             const upkeep = sys.upkeep as Record<string, number>;
             for (const [r, v] of Object.entries(upkeep)) {
               resources[r] = (resources[r] || 0) - v * count * realDt;
@@ -923,6 +937,15 @@ export const useGameStore = create<GameStore>()(
         // Slow passive ATP for cell (keeps early game from stalling)
         if (STAGES[s.stageIndex].id === "cell") {
           resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.5 * realDt);
+        }
+
+        // ARCHETYPES-REWORK — archetype happiness drift (Fungoid -15% / Toxoid -10%).
+        // Applied as a per-second delta, capped by the happiness capacity floor/ceiling.
+        if (archHappinessPerTick !== 0) {
+          const cap = capacities.happiness || 100;
+          const cur = resources.happiness ?? 50;
+          const next = Math.max(0, Math.min(cap, cur + archHappinessPerTick * realDt));
+          resources.happiness = next;
         }
 
         // Population growth with progress bar
@@ -953,7 +976,9 @@ export const useGameStore = create<GameStore>()(
         popGrowthRate += systemPopGrowth;
 
         const curStage = STAGES[s.stageIndex];
-        if (["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
+        // ARCHETYPES-REWORK — Plantoid's popGrowsWithoutFood skips the
+        // food/water depletion check (photosynthesis feeds the pop).
+        if (!archPopGrowsNoFood && ["creature", "tribal", "civilization", "empire"].includes(curStage.id)) {
           const foodCap = capacities.food || 1;
           const waterCap = capacities.water || 1;
           const foodPct = (resources.food || 0) / foodCap;
@@ -992,11 +1017,14 @@ export const useGameStore = create<GameStore>()(
         let technologies = s.technologies;
         let totalTechResearched = s.totalTechResearched || 0;
 
+        // Auto-buyers always run (trial realm mini-games were removed in CLEANUP-LEGACY).
+        const trialAutobuyersBlocked = false;
+
         // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
         // Player MUST purchase the auto_system_buyer shop upgrade (8 EP) to enable.
         const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0;
         const systemBuyerInterval = 8;
-        if (hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
+        if (!trialAutobuyersBlocked && hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
           const maxSystemsCap = challengeDebuff.maxSystems ?? Infinity;
@@ -1010,11 +1038,13 @@ export const useGameStore = create<GameStore>()(
               if (sys.requiredTech && !technologies[sys.requiredTech]) return null;
               if (disableMilitary && sys.category === "Military") return null;
               const cost = systemCost(sys, owned, costReduction);
+              // ARCHETYPES-REWORK — apply archetype system-cost modifier (Humanoid +10% / Arthropoid -15%)
+              const archCostFactor = 1 + (archetype?.bonus.systemCostMult || 0);
               const scaledCost: Record<string, number> = {};
               let totalCost = 0;
               let canAfford = true;
               for (const [r, v] of Object.entries(cost)) {
-                const scaled = Math.ceil((v as number) * challengeCostMult);
+                const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
                 scaledCost[r] = scaled;
                 totalCost += scaled;
                 if ((resources[r] || 0) < scaled) canAfford = false;
@@ -1053,7 +1083,7 @@ export const useGameStore = create<GameStore>()(
         // Player MUST purchase the auto_tech_buyer shop upgrade (10 EP) to enable.
         const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0;
         const techBuyerInterval = 12;
-        if (hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
+        if (!trialAutobuyersBlocked && hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const disableTech = !!challengeDebuff.disableTech;
           const disableMilitary = !!challengeDebuff.disableMilitary;
@@ -1110,7 +1140,7 @@ export const useGameStore = create<GameStore>()(
         // Threshold scales with level: 1.2, 1.4, 1.6, 1.8, 2.0, 2.2 (auto-evolves EARLIER as level rises).
         const autoEvolveLvl = s.upgrades["auto_evolver"] || 0;
         const hasAutoEvolver = autoEvolveLvl > 0;
-        if (hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
+        if (!trialAutobuyersBlocked && hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
           autoTimers.evolve = newTime;
           const stage = STAGES[s.stageIndex];
           const next = nextStage(stage.id);
@@ -1164,15 +1194,40 @@ export const useGameStore = create<GameStore>()(
         // Random event firing — only if no popup/modal is active, and not blocked by challenge.
         // LAYER FILTER: At L2+ (enlightenment unlocked), the base game runs in the background
         // and cell-galactic events no longer fire — the player is focused on the divine layers.
+        // EVENT TIMEOUT: If an event is active and the player doesn't choose within 60s,
+        // auto-resolve with the default (first) choice.
         let activeEvent = s.activeEvent;
         let eventCooldown = (s.eventCooldown || 0) - realDt;
         if (eventCooldown < 0) eventCooldown = 0;
+        let eventTimer = s.eventTimer || 0;
+        // Countdown active event timer — auto-resolve at 0
+        if (activeEvent) {
+          eventTimer -= realDt;
+          if (eventTimer <= 0) {
+            // Auto-resolve with the default (first) choice
+            const evDef = EVENT_MAP[activeEvent];
+            if (evDef && evDef.choices.length > 0) {
+              const defaultChoice = evDef.choices[0];
+              setTimeout(() => {
+                get().resolveEvent(activeEvent, defaultChoice.id);
+                get().addToLog(`Event "${evDef.name}" auto-resolved with default choice: ${defaultChoice.label}.`);
+              }, 0);
+            }
+            activeEvent = null;
+            eventTimer = 0;
+          }
+        }
         const eventFreq = s.eventFrequency || "normal";
         const eventsAllowed = !challengeDebuff.disableEvents;
         const isL2Plus = !!(s.unlockedLayers?.enlightenment);
         if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0 && !isL2Plus) {
           const stageId = STAGES[s.stageIndex].id;
-          const possible = eventsForStage(stageId, newTime);
+          // ARCHETYPES-REWORK — filter out events the locked archetype is
+          // immune to (Mammalian→cold, Fungoid/Toxoid→plague, Lithoid→disaster,
+          // Extremophile/Lithoid Titan→all). See isArchetypeImmuneToEvent.
+          const possible = eventsForStage(stageId, newTime).filter(
+            (ev) => !isArchetypeImmuneToEvent(s.lockedArchetype, ev.id)
+          );
           if (possible.length > 0) {
             const totalWeight = possible.reduce((sum, e) => sum + e.weight, 0);
             const roll = Math.random() * totalWeight;
@@ -1181,6 +1236,7 @@ export const useGameStore = create<GameStore>()(
               cum += ev.weight;
               if (roll < cum) {
                 activeEvent = ev.id;
+                eventTimer = 60; // 60s to choose, else auto-resolve
                 const base = eventFreq === "frequent" ? 30 : 90;
                 const range = eventFreq === "frequent" ? 30 : 90;
                 eventCooldown = base + Math.random() * range;
@@ -1230,14 +1286,14 @@ export const useGameStore = create<GameStore>()(
               activeChallenge = null;
               // QUICK WIN 5 — +1 Prestige Point for completing a trial
               prestigePoints += 1;
-              // Enlightenment unlocks at 3 challenges completed (not 10)
+              // L1→L2 gate: 3+ distinct challenges completed OR 5+ total challenge
+              // repeats. (Legacy trialRealm mini-games removed in CLEANUP-LEGACY.)
               const totalChallengesCompleted = countChallengesCompleted(completedChallenges);
-              // NEW L1→L2 gate: 5+ trial realms completed OR 3+ old challenges completed (either works)
-              const trialRealmsCompletedCount = Object.values(s.trialRealmsCompleted || {}).filter(Boolean).length;
+              const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
               if (!unlockedLayers.enlightenment &&
-                  (totalChallengesCompleted >= 3 || trialRealmsCompletedCount >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2)) {
+                  (totalChallengesCompleted >= 3 || totalRepeats >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2)) {
                 unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialRealmsCompletedCount}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms, or 3+ old challenges). Enlightenment layer unlocked.`), 0);
+                setTimeout(() => get().addToLog(`Trial progress threshold reached (${totalChallengesCompleted}/3 distinct trials, or ${totalRepeats}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} total repeats). Enlightenment layer unlocked.`), 0);
               }
               // Defer log so we don't race with set()
               setTimeout(() => get().addToLog(`Trial complete: ${chName} (repeat ${completedCount}). Mastery bonus made permanent. (+1 Prestige Point)`), 0);
@@ -1467,10 +1523,10 @@ export const useGameStore = create<GameStore>()(
         // Layer 5 — Faith generation (Apotheosis). Per-galaxy heresy accrual is
         // now derived from each owned galaxy's heresy grid (handled in the
         // per-galaxy L5 tick block further below). Global `heresy` is the
-        // average of `galaxyHeresy` across owned galaxies; the run-ender at
-        // heresy ≥ 100 is retained but is effectively unreachable now (a
-        // galaxy hitting 75 resets to 50), so the L5 loop is no longer a
-        // run-ender — it's a system-loss loop.
+        // average of `galaxyHeresy` across owned galaxies. CLEANUP-LEGACY:
+        // the run-ender now triggers at heresy ≥ 75 (the per-galaxy "red"
+        // threshold), since per-galaxy heresy resets at 75 (one-time per
+        // threshold per galaxy) and the old ≥ 100 check was effectively dead.
         if (unlockedLayers.apotheosis) {
           faith += wMode.faithPerSec * realDt;
         }
@@ -1481,7 +1537,6 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Layer 7 — Omnipotence (Bio-engineering): genetic instability accrual + Skirmish Arena ----
         let instability = s.instability || 0;
-        let peakInstability = s.peakInstability || 0;
         let raidsRepelled = s.raidsRepelled || 0;
         let outpostRaidSpawnTimer = Math.max(0, (s.outpostRaidSpawnTimer ?? OUTPOST_RAID_SPAWN_INTERVAL_SEC) - realDt);
         let outpostRaids = (s.outpostRaids || []).map((r) => ({ ...r, log: [...r.log], deployedLegionIds: [...r.deployedLegionIds] }));
@@ -1494,7 +1549,6 @@ export const useGameStore = create<GameStore>()(
           const effectiveRate = rate * stabMult;
           if (effectiveRate > 0) {
             instability = Math.min(INSTABILITY_ROGUE_THRESHOLD, instability + effectiveRate * realDt);
-            peakInstability = Math.max(peakInstability, instability);
           }
           // Skirmish Arena — periodic raid spawn (every 120s, max 3 active)
           if (outpostRaidSpawnTimer <= 0) {
@@ -1558,13 +1612,6 @@ export const useGameStore = create<GameStore>()(
         }
         const geneticInstability = instability; // alias
 
-        // ---- Layer 8 — Divinity (layer): Prayer generation ----
-        let prayer = s.prayer || 0;
-        if (unlockedLayers.divinity) {
-          const pRate = prayerRate(population, s.prayerChannelLevels || {}, s.activeDivineMask, s.activeWorshipPolarity);
-          if (pRate > 0) prayer += pRate * realDt;
-        }
-
         // ---- Layer unlock chain (Layers 3-6) ----
         // Layer 3 (Transcendence): 10+ constellations COMPLETED (new L2 design).
         if (unlockedLayers.enlightenment && !unlockedLayers.transcendence) {
@@ -1582,18 +1629,35 @@ export const useGameStore = create<GameStore>()(
             setTimeout(() => get().addToLog("All 4 Blood Pacts performed. Genesis layer unlocked."), 0);
           }
         }
-        // Layer 5 (Apotheosis): authored at least 1 world config
+        // Layer 5 (Apotheosis): L4 redesign — completing the galaxy (all 50 systems
+        // claimed) unlocks L5. The old "authored 1 world" condition is kept as a
+        // fallback for save-compat (older saves that authored a world but didn't
+        // complete the galaxy can still progress).
         if (unlockedLayers.genesis && !unlockedLayers.apotheosis) {
-          if (hasAuthoredWorld(s.authoredWorlds || [])) {
+          const galaxyDone = isGalaxyComplete(s.galaxySystems || []);
+          const authoredDone = hasAuthoredWorld(s.authoredWorlds || []);
+          if (galaxyDone || authoredDone) {
             unlockedLayers = { ...unlockedLayers, apotheosis: true };
-            setTimeout(() => get().addToLog("First world authored. Apotheosis layer unlocked."), 0);
+            setTimeout(
+              () => get().addToLog(
+                galaxyDone
+                  ? "Galaxy fully claimed. Apotheosis layer unlocked."
+                  : "First world authored. Apotheosis layer unlocked."
+              ),
+              0
+            );
           }
         }
-        // Layer 6 (Singularity): enacted 3+ divine laws
+        // Layer 6 (Singularity): 3 galaxies conquered OR 3 divine laws enacted.
+        // FIX-AUTOBUYERS-TRIALS — previously used `hasEnactedThreeLaws` alone.
+        // Spec now also accepts `countConqueredGalaxies >= GALAXIES_REQUIRED_FOR_L6`
+        // (3 rival galaxies fully conquered). Either condition unlocks L6.
         if (unlockedLayers.apotheosis && !unlockedLayers.singularity) {
-          if (hasEnactedThreeLaws(s.enactedDivineLaws || {})) {
+          const conqueredCount = countConqueredGalaxies(s.galaxyRivalSystems || {});
+          const threeLawsEnacted = hasEnactedThreeLaws(s.enactedDivineLaws || {});
+          if (conqueredCount >= GALAXIES_REQUIRED_FOR_L6 || threeLawsEnacted) {
             unlockedLayers = { ...unlockedLayers, singularity: true };
-            setTimeout(() => get().addToLog("3 Divine Laws enacted. Singularity layer unlocked."), 0);
+            setTimeout(() => get().addToLog(`3 galaxies conquered (or 3 divine laws enacted). Singularity layer unlocked.`), 0);
           }
         }
         // Layer 7 (Omnipotence): L6 Universal Map complete (20 rifts closed + 10 anchors placed)
@@ -1666,6 +1730,81 @@ export const useGameStore = create<GameStore>()(
           unlockedThemes["special-cosmic"] = true;
           themesChanged = true;
         }
+
+        // ---- Mini themes (ORGANELLES-THEMES) ----
+        // 7 base mini-themes — unlock by milestones.
+        if (achCount >= 10 && !unlockedThemes["mini-terminal"]) {
+          unlockedThemes["mini-terminal"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 1 && !unlockedThemes["mini-void"]) {
+          unlockedThemes["mini-void"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 3 && !unlockedThemes["mini-solar-flare"]) {
+          unlockedThemes["mini-solar-flare"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 5 && !unlockedThemes["mini-forest"]) {
+          unlockedThemes["mini-forest"] = true;
+          themesChanged = true;
+        }
+        if ((s.galacticWins || 0) >= 10 && !unlockedThemes["mini-ice"]) {
+          unlockedThemes["mini-ice"] = true;
+          themesChanged = true;
+        }
+        if (allLayersUnlocked && !unlockedThemes["mini-volcanic"]) {
+          unlockedThemes["mini-volcanic"] = true;
+          themesChanged = true;
+        }
+        // mini-ai — easter egg: unlock when BOTH 10 galactic wins AND all 10
+        // layers are unlocked. The joke is that you've done everything, so
+        // the only thing left to "elevate" is the UI itself.
+        if ((s.galacticWins || 0) >= 10 && allLayersUnlocked && !unlockedThemes["mini-ai"]) {
+          unlockedThemes["mini-ai"] = true;
+          themesChanged = true;
+        }
+        // 13 archetype mini-themes — unlock when that archetype is first
+        // locked in (revealedLineageArchetypes[archId] === true).
+        const revealedLineage = s.revealedLineageArchetypes || {};
+        const ARCHETYPE_THEME_IDS: Array<string> = [
+          "arch-humanoid",
+          "arch-mammalian",
+          "arch-reptilian",
+          "arch-necroid",
+          "arch-arthropoid",
+          "arch-plantoid",
+          "arch-fungoid",
+          "arch-molluscoid",
+          "arch-lithoid",
+          "arch-toxoid",
+          "arch-avian",
+          "arch-aquatic",
+          "arch-extremophile",
+        ];
+        const ARCHETYPE_KEYS: Array<string> = [
+          "humanoid",
+          "mammalian",
+          "reptilian",
+          "necroid",
+          "arthropoid",
+          "plantoid",
+          "fungoid",
+          "molluscoid",
+          "lithoid",
+          "toxoid",
+          "avian",
+          "aquatic",
+          "extremophile",
+        ];
+        for (let i = 0; i < ARCHETYPE_THEME_IDS.length; i++) {
+          const themeId = ARCHETYPE_THEME_IDS[i];
+          const archKey = ARCHETYPE_KEYS[i];
+          if (revealedLineage[archKey] && !unlockedThemes[themeId]) {
+            unlockedThemes[themeId] = true;
+            themesChanged = true;
+          }
+        }
         void themesChanged;
 
         // ---- Theme AUTO mode: re-derive the active stage/layer theme every tick ----
@@ -1679,283 +1818,6 @@ export const useGameStore = create<GameStore>()(
           if (activeStageTheme !== autoStageId) activeStageTheme = autoStageId;
           if (activeLayerTheme !== autoLayerId) activeLayerTheme = autoLayerId;
           if (activeSpecialTheme !== null) activeSpecialTheme = null; // auto mode never uses special
-        }
-
-        // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS — tick processing =====
-        // Layer 1 — Trial Realms: progress the active realm's mini-game
-        let activeTrialRealm = s.activeTrialRealm;
-        // FEATURE 1 — capture the original realm ID for safe indexing (activeTrialRealm may be reassigned to null on auto-close)
-        const tickRealmId = s.activeTrialRealm;
-        let trialRealmState = { ...(s.trialRealmState || {}) };
-        let trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-        // FEATURE 1 — local best-time leaderboard (no login required)
-        let trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-        if (activeTrialRealm && PLAYABLE_REALM_IDS.includes(activeTrialRealm)) {
-          const st = { ...(trialRealmState[activeTrialRealm] || makeDefaultRealmState(activeTrialRealm)) };
-          // Ensure startedAt is set (migration safety)
-          if (!st.startedAt) st.startedAt = newTime - realDt;
-          switch (activeTrialRealm) {
-            case "realm_growth": {
-              st.energy = Math.min(100, (st.energy || 0) + REALM_GROWTH_PASSIVE_FILL_PER_SEC * realDt);
-              break;
-            }
-            case "realm_discontent": {
-              // Happiness oscillates as a sine wave centered on 50, amplitude 35, period 12s
-              st.timer = (st.timer || 0) + realDt;
-              const phase = (st.timer / 12) * Math.PI * 2;
-              const target = 50 + Math.sin(phase) * 35;
-              // Drift toward target slowly
-              st.happiness = (st.happiness || 50) + (target - (st.happiness || 50)) * 0.1 * realDt;
-              st.happiness = Math.max(0, Math.min(100, st.happiness));
-              // Survival timer only progresses while happiness is above the threshold
-              st.survivedTime = (st.survivedTime || 0) + ((st.happiness || 0) >= REALM_DISCONTENT_HAPPINESS_THRESHOLD ? realDt : 0);
-              if ((st.happiness || 0) < REALM_DISCONTENT_HAPPINESS_THRESHOLD) {
-                st.happinessBelowThreshold = true;
-              }
-              // Check completion: survived ≥ 90s AND gold ≥ 200
-              if ((st.survivedTime || 0) >= REALM_DISCONTENT_SURVIVE_SECONDS && (st.gold || 0) >= REALM_DISCONTENT_GOLD_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                // FEATURE 1 — record best time
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                // Check L2 unlock after trial completion
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Discontent conquered! Permanent reward granted."), 0);
-              }
-              break;
-            }
-            case "realm_swiftness": {
-              st.timeLeft = Math.max(0, (st.timeLeft || REALM_SWIFTNESS_TIME_LIMIT) - realDt);
-              if (st.timeLeft <= 0 && !st.completed) {
-                // Time expired; failed unless we already reached Galactic
-                if (!st.reachedGalactic) {
-                  setTimeout(() => get().addToLog("Realm of Swiftness: time expired — run failed."), 0);
-                  activeTrialRealm = null;
-                }
-              }
-              if (s.stageIndex >= STAGES.length - 1) {
-                st.reachedGalactic = true;
-                if (!st.completed) {
-                  st.completed = true;
-                  trialRealmsCompleted[tickRealmId!] = true;
-                  // FEATURE 1 — record best time (faster = better)
-                  const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                  const prevBest = trialRealmBestTimes[tickRealmId!];
-                  if (prevBest === undefined || completionTime < prevBest) {
-                    trialRealmBestTimes[tickRealmId!] = completionTime;
-                  }
-                  // Check L2 unlock after trial completion
-                  const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                  if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                    unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                    setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                  }
-                  setTimeout(() => get().addToLog("Realm of Swiftness conquered! +15% all production speed."), 0);
-                }
-              }
-              break;
-            }
-            // TRIALS-7 — 7 newly playable realm tick cases
-            case "realm_famine": {
-              // Each resource decays slowly. Player pumps forward (A→B→C→A) to
-              // refill whichever is low. Survival timer only progresses while
-              // all three are at/above REALM_FAMINE_THRESHOLD.
-              st.timer = (st.timer || 0) + realDt;
-              const decay = REALM_FAMINE_DECAY_PER_SEC * realDt;
-              st.a = Math.max(0, Math.min(100, (st.a || 0) - decay));
-              st.b = Math.max(0, Math.min(100, (st.b || 0) - decay));
-              st.c = Math.max(0, Math.min(100, (st.c || 0) - decay));
-              // Survival timer only progresses while all three are at/above the threshold
-              const allAbove =
-                (st.a || 0) >= REALM_FAMINE_THRESHOLD &&
-                (st.b || 0) >= REALM_FAMINE_THRESHOLD &&
-                (st.c || 0) >= REALM_FAMINE_THRESHOLD;
-              st.survivedTime = (st.survivedTime || 0) + (allAbove ? realDt : 0);
-              if ((st.survivedTime || 0) >= REALM_FAMINE_SURVIVE_SECONDS && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Famine conquered! +15% food & water production permanently."), 0);
-              }
-              break;
-            }
-            case "realm_ignorance": {
-              // Passive tick — no time pressure; completion handled by buy-node action.
-              // No-op: progress happens when player clicks "Unlock" on each tech node.
-              break;
-            }
-            case "realm_stagnation": {
-              // Production rate = (lvl1 × lvl2 × lvl3 × lvl4) / 16 per sec
-              const lv = st.levels || [1, 1, 1, 1];
-              const rate = (lv[0] * lv[1] * lv[2] * lv[3]) / REALM_STAGNATION_RATE_DIVISOR;
-              st.goods = (st.goods || 0) + rate * realDt;
-              st.produced = (st.produced || 0) + rate * realDt;
-              if ((st.produced || 0) >= REALM_STAGNATION_GOODS_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Stagnation conquered! +10% production at every stage permanently."), 0);
-              }
-              break;
-            }
-            case "realm_weakness": {
-              // Auto-start first wave
-              if ((st.wave || 0) === 0) {
-                st.wave = 1;
-                st.enemies = REALM_WEAKNESS_ENEMY_BASE + 1 * REALM_WEAKNESS_ENEMY_PER_WAVE;
-                st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
-              }
-              if ((st.wave || 0) > 0 && !st.completed && !st.failed) {
-                // Towers kill enemies at REALM_WEAKNESS_TOWER_KILL_RATE per tower per sec
-                const kills = (st.towers || 0) * REALM_WEAKNESS_TOWER_KILL_RATE * realDt;
-                st.enemies = Math.max(0, (st.enemies || 0) - kills);
-                st.waveTimer = Math.max(0, (st.waveTimer || 0) - realDt);
-                if ((st.waveTimer || 0) <= 0) {
-                  // Wave ends — leftover enemies damage the base
-                  const leak = Math.floor(st.enemies || 0);
-                  if (leak > 0) {
-                    st.baseHp = Math.max(0, (st.baseHp || 100) - leak * REALM_WEAKNESS_LEAK_DAMAGE);
-                  }
-                  if ((st.baseHp || 0) <= 0) {
-                    st.failed = true;
-                    setTimeout(() => get().addToLog("Realm of Weakness: base destroyed — realm failed."), 0);
-                    activeTrialRealm = null;
-                    break;
-                  }
-                  // Reward & advance wave
-                  st.military = (st.military || 0) + REALM_WEAKNESS_WAVE_REWARD;
-                  st.wave = (st.wave || 0) + 1;
-                  if ((st.wave || 0) > REALM_WEAKNESS_WAVE_COUNT) {
-                    st.completed = true;
-                    trialRealmsCompleted[tickRealmId!] = true;
-                    const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                    const prevBest = trialRealmBestTimes[tickRealmId!];
-                    if (prevBest === undefined || completionTime < prevBest) {
-                      trialRealmBestTimes[tickRealmId!] = completionTime;
-                    }
-                    const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                    if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                      unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                      setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                    }
-                    setTimeout(() => get().addToLog("Realm of Weakness conquered! +15% military power permanently."), 0);
-                  } else {
-                    // Start next wave (uses new st.wave value)
-                    st.enemies = REALM_WEAKNESS_ENEMY_BASE + (st.wave || 1) * REALM_WEAKNESS_ENEMY_PER_WAVE;
-                    st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
-                  }
-                }
-              }
-              break;
-            }
-            case "realm_late_bloom": {
-              // Geometric growth: food rate = pop² × coeff; cost per pop = pop × COST_PER_POP
-              const pop = Math.max(1, st.pop || 1);
-              const rate = pop * pop * REALM_LATE_BLOOM_PROD_COEFF;
-              st.food = (st.food || 0) + rate * realDt;
-              let guard = 0;
-              while ((st.food || 0) >= pop * REALM_LATE_BLOOM_COST_PER_POP && (st.pop || 0) < REALM_LATE_BLOOM_POP_GOAL && guard < 1000) {
-                st.food = (st.food || 0) - pop * REALM_LATE_BLOOM_COST_PER_POP;
-                st.pop = (st.pop || 1) + 1;
-                guard++;
-              }
-              if ((st.pop || 0) >= REALM_LATE_BLOOM_POP_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Late Bloom conquered! +25% population growth on slow starts (under 50 pop)."), 0);
-              }
-              break;
-            }
-            case "realm_purity": {
-              // Each built system drains the pool passively
-              const drain = (st.systemsBuilt || 0) * REALM_PURITY_DRAIN_PER_SYSTEM * realDt;
-              st.pool = Math.max(0, (st.pool || 0) - drain);
-              if ((st.pool || 0) <= 0 && !st.completed && !st.failed) {
-                st.failed = true;
-                setTimeout(() => get().addToLog("Realm of Purity: shared pool exhausted — realm failed."), 0);
-                activeTrialRealm = null;
-              }
-              if ((st.systemsBuilt || 0) >= REALM_PURITY_SYSTEMS_GOAL && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of Purity conquered! +5% production (scaling reward) permanently."), 0);
-              }
-              break;
-            }
-            case "realm_ascetic": {
-              // Essence accumulates passively: rate = BASE_RATE + stage
-              const rate = REALM_ASCETIC_BASE_RATE + (st.stage || 0);
-              st.essence = (st.essence || 0) + rate * realDt;
-              // Completion handled by build-system action (each purchase advances the stage)
-              if ((st.stage || 0) >= REALM_ASCETIC_STAGES && !st.completed) {
-                st.completed = true;
-                trialRealmsCompleted[tickRealmId!] = true;
-                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
-                const prevBest = trialRealmBestTimes[tickRealmId!];
-                if (prevBest === undefined || completionTime < prevBest) {
-                  trialRealmBestTimes[tickRealmId!] = completionTime;
-                }
-                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-                }
-                setTimeout(() => get().addToLog("Realm of the Ascetic conquered! +12% production with constraints lifted."), 0);
-              }
-              break;
-            }
-          }
-          // Auto-close realm if completed (Growth handled in the breakthrough action)
-          if (st.completed && activeTrialRealm !== "realm_growth") {
-            activeTrialRealm = null;
-          }
-          if (tickRealmId) trialRealmState[tickRealmId] = st;
         }
 
         // Layer 3 — Divine Market: random-walk prices every 10s
@@ -2020,44 +1882,10 @@ export const useGameStore = create<GameStore>()(
           if (dividends > 0) divinity += dividends * realDt;
         }
 
-        // Layer 4 — FEATURE 4 — Natural Disasters: every ~90s, 15% chance to destroy a random tile (not protected by a Mountain neighbor)
-        let worldGrid = s.worldGrid ? s.worldGrid.slice() : Array(20).fill(null);
-        let worldGridSeeds = s.worldGridSeeds ? s.worldGridSeeds.slice() : Array(20).fill(null);
-        let disasterTimer = Math.max(0, (s.disasterTimer || 90) - realDt);
-        let lastDisasterCell = s.lastDisasterCell ?? null;
-        let lastDisasterAt = s.lastDisasterAt || 0;
-        if (unlockedLayers.genesis && disasterTimer <= 0) {
-          disasterTimer = 90;
-          // LAYER UPGRADE — disaster_shield: -25% per level (max 4 → 0% chance)
-          const dsLvl = (s.upgrades?.disaster_shield as number) || 0;
-          const disasterChance = Math.max(0, 0.15 * (1 - 0.25 * dsLvl));
-          // Roll disaster chance to destroy a random filled tile (excluding mountain-adjacent)
-          if (Math.random() < disasterChance) {
-            // Build list of vulnerable cells: filled tiles NOT adjacent to a Mountain
-            const vulnerable: number[] = [];
-            for (let i = 0; i < worldGrid.length; i++) {
-              if (worldGrid[i] === null) continue;
-              if (worldGrid[i] === "mountain") continue; // mountains are sturdy
-              const row = Math.floor(i / 5);
-              const col = i % 5;
-              const neighbors = [
-                col > 0 ? i - 1 : -1,
-                col < 4 ? i + 1 : -1,
-                row > 0 ? i - 5 : -1,
-                row < 3 ? i + 5 : -1,
-              ].filter((n) => n >= 0);
-              const protectedByMountain = neighbors.some((n) => worldGrid[n] === "mountain");
-              if (!protectedByMountain) vulnerable.push(i);
-            }
-            if (vulnerable.length > 0) {
-              const target = vulnerable[Math.floor(Math.random() * vulnerable.length)];
-              worldGrid[target] = null;
-              lastDisasterCell = target;
-              lastDisasterAt = newTime;
-              setTimeout(() => get().addToLog(`🌋 Disaster! Tile on cell ${target + 1} was destroyed. Rebuild it (costs a tile from your supply).`), 0);
-            }
-          }
-        }
+        // Layer 4 — Sacred Grid / Natural Disasters were REMOVED in CLEANUP-LEGACY.
+        // The Galaxy Claim system (`galaxySystems` + `scanGalaxySystem` +
+        // `claimGalaxySystem`) is the canonical L4 loop. The `disaster_shield`
+        // shop upgrade is also legacy (it no longer affects anything).
 
         // ===== Layer 5 — Heresy Web (Galactic Conquest redesign) =====
         // Per-galaxy 8×4 heresy grid. Loop through ALL owned galaxies (starter
@@ -2244,18 +2072,20 @@ export const useGameStore = create<GameStore>()(
           ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
           : 0;
         heresy = newHeresy;
-        // Run-ender: if average heresy is 100 (all owned galaxies maxed), trigger prestige.
-        if (heresy >= 100) {
-          heresy = 100;
+        // Run-ender: if AVERAGE galaxy heresy reaches 75 (the per-galaxy "red"
+        // threshold), the god is cast down. CLEANUP-LEGACY: previously this
+        // checked heresy >= 100, but per-galaxy heresy resets at 75 (one-time
+        // per threshold), so the average can briefly hit 75 but the global
+        // value was effectively unreachable. Triggering at 75 is the meaningful
+        // "your flock has abandoned you" condition (matching the L5 heresy
+        // threshold seeding where 75 = "red" / 3 systems lost).
+        if (heresy >= 75) {
+          heresy = 75;
           setTimeout(() => {
-            get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
+            get().addToLog("Heresy has reached 75 (average across owned galaxies). The god is cast down — the run ends in ruin.");
             get().triggerPrestige();
           }, 0);
         }
-
-        // Legacy `followerGrid` variable — points at the starter galaxy's grid
-        // for backward compat with the auto_manage_heresy upgrade below.
-        let followerGrid = galaxyFollowerGrid[STARTER_GALAXY_ID] || makeInitialFollowerGrid();
 
         // Flush L5 per-galaxy heresy log messages (deferred to avoid setState-in-loop).
         for (const msg of heresyLog) {
@@ -2268,9 +2098,10 @@ export const useGameStore = create<GameStore>()(
         //     galaxy (preferring unanchored ones). Reset timer to 30-60s (random).
         //   • Each open rift spreads corruption: +5% heresy to a random
         //     non-anchored galaxy. Anchored galaxies are immune.
-        //   • When a galaxy's heresy reaches 100, apply the L5 heresy loss
-        //     rules (handled in the L5 tick above — universal galaxies inherit
-        //     the same loss-count formula via heresyLossCount).
+        //   • Per-galaxy heresy thresholds (25/50/75) are handled in the L5
+        //     tick above (universal galaxies inherit the same loss-count
+        //     formula via heresyLossCount). The run-ender triggers when
+        //     AVERAGE galaxy heresy hits 75 (see L5 block above).
         let universalGalaxies = (s.universalGalaxies || makeInitialUniversalGalaxies()).map((g) => ({ ...g }));
         let rifts = (s.rifts || []).map((r) => ({ ...r }));
         let realityAnchors = (s.realityAnchors || []).map((a) => ({ ...a }));
@@ -2381,6 +2212,103 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // ===== DIVINE INVESTMENT MARKET (new L3 design) =====
+        // Each background simulation can be allocated to one of 5 portfolios
+        // (see src/game/data/marketPortfolios.ts). Allocated worlds pay Divinity
+        // dividends = allocatedWorlds × portfolio.baseYield × peakProductionRate
+        // × 0.01 per sec. Riskier portfolios may crash (per-tick roll vs.
+        // portfolio.crashChance) and consume `crashLoss × allocatedWorlds`
+        // worlds. Stability Bonds lock worlds for 120s on allocation. Portfolio
+        // prices random-walk ±1 per tick (clamped 50–200) — currently cosmetic
+        // (drives the buy-low / sell-high sparkline on the card).
+        let portfolioAllocations = { ...(s.portfolioAllocations || {}) };
+        let portfolioLockTimers = { ...(s.portfolioLockTimers || {}) };
+        let portfolioPrices = { ...(s.portfolioPrices || {}) };
+        let portfolioDividendsEarned = s.portfolioDividendsEarned || 0;
+        // Defensive: ensure every portfolio has a starting price (50–200, init 100).
+        for (const p of PORTFOLIOS) {
+          if (typeof portfolioPrices[p.id] !== "number") {
+            portfolioPrices[p.id] = PORTFOLIO_PRICE_START;
+          }
+          if (typeof portfolioAllocations[p.id] !== "number") {
+            portfolioAllocations[p.id] = 0;
+          }
+        }
+        if (unlockedLayers.transcendence) {
+          // Pool of worlds the player has available — total minus already allocated.
+          // We use `backgroundSimulations` (the value computed THIS tick) so the
+          // cap stays in sync with the world count shown everywhere else.
+          const allocatedNow = totalAllocatedWorlds(portfolioAllocations);
+          const availableWorlds = Math.max(0, backgroundSimulations - allocatedNow);
+          // If the world pool shrank (e.g. player lost galaxies) and
+          // allocations now exceed the total, proportionally trim each
+          // portfolio's allocation down so the totals stay valid.
+          if (allocatedNow > backgroundSimulations && backgroundSimulations > 0) {
+            const trimRatio = backgroundSimulations / allocatedNow;
+            for (const p of PORTFOLIOS) {
+              portfolioAllocations[p.id] = Math.floor(
+                (portfolioAllocations[p.id] || 0) * trimRatio
+              );
+            }
+          }
+          // Track deferred log messages so we don't call setState mid-loop.
+          const portfolioLogs: string[] = [];
+          // Per-tick price random walk (±1 clamped 50–200). Cheap & expensive
+          // labels in the UI are derived from this signal.
+          for (const p of PORTFOLIOS) {
+            const cur = portfolioPrices[p.id] ?? PORTFOLIO_PRICE_START;
+            const drift = (Math.random() - 0.5) * PORTFOLIO_PRICE_DRIFT;
+            const next = Math.max(
+              PORTFOLIO_PRICE_MIN,
+              Math.min(PORTFOLIO_PRICE_MAX, cur + drift)
+            );
+            portfolioPrices[p.id] = next;
+          }
+          // Dividends + crash rolls for each portfolio with allocated worlds.
+          // We only process portfolios the player has invested in (alloc > 0)
+          // OR that are still locked down (Stability Bonds timer > 0).
+          for (const p of PORTFOLIOS) {
+            // Decrement lock timer for Stability Bonds (and any future locked
+            // portfolio) regardless of allocation — keeps the timer honest.
+            if ((portfolioLockTimers[p.id] || 0) > 0) {
+              portfolioLockTimers[p.id] = Math.max(
+                0,
+                (portfolioLockTimers[p.id] || 0) - realDt
+              );
+            }
+            const alloc = Math.max(0, Math.floor(portfolioAllocations[p.id] || 0));
+            if (alloc <= 0) continue;
+            // Dividends = allocatedWorlds × baseYield × peakProductionRate × 0.01 × realDt
+            // (×0.01 mirrors the 1%-of-peak-per-world background simulation rule.)
+            const dividends = portfolioDividendsPerSec(p, alloc, peakProductionRate) * realDt;
+            if (dividends > 0) {
+              divinity += dividends;
+              portfolioDividendsEarned += dividends;
+            }
+            // Crash roll — only when peakProductionRate > 0 (otherwise the
+            // portfolio is producing nothing, so crashes feel pointless).
+            if (peakProductionRate > 0 && p.crashChance > 0 && Math.random() < p.crashChance) {
+              const worldsLost = Math.max(1, Math.floor(alloc * p.crashLoss));
+              portfolioAllocations[p.id] = Math.max(0, alloc - worldsLost);
+              if (p.crashLoss >= 1.0) {
+                portfolioLogs.push(
+                  `👁️ Old God Futures CRASHED — ${worldsLost} worlds lost to the void.`
+                );
+              } else {
+                portfolioLogs.push(
+                  `${p.icon} ${p.name} crashed — lost ${worldsLost} worlds (${(p.crashLoss * 100).toFixed(0)}% of allocation).`
+                );
+              }
+            }
+          }
+          // Surface the available-worlds pool as a one-line runtime marker so
+          // the modal can show a "free worlds" hint without recomputing.
+          void availableWorlds;
+          for (const msg of portfolioLogs) {
+            setTimeout(() => get().addToLog(msg), 0);
+          }
+        }
+
         // ===== PP-SHOP-TABS — UNIVERSAL AUTO-BUYER TICK =====
         // Each auto-buyer is a universal upgrade (purchased with Prestige Points).
         // The auto-buyer for layer N unlocks when layer N+1 is unlocked (chain spec).
@@ -2391,7 +2319,7 @@ export const useGameStore = create<GameStore>()(
         // the timer simply advances with no work done.
 
         // ---- auto_light_stars (L3+ unlocked): cheapest affordable constellation star ----
-        if ((s.upgrades["auto_light_stars"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_light_stars"] || 0) > 0
             && s.unlockedLayers?.transcendence
             && newTime - (autoTimers.light_stars || 0) >= 20) {
           autoTimers.light_stars = newTime;
@@ -2448,7 +2376,7 @@ export const useGameStore = create<GameStore>()(
 
         // ---- auto_claim_systems (L5+ unlocked): attack the cheapest affordable
         //      unclaimed system — L5 rival galaxy OR L6 NEW galaxy (whichever is cheaper) ----
-        if ((s.upgrades["auto_claim_systems"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_claim_systems"] || 0) > 0
             && s.unlockedLayers?.apotheosis
             && newTime - (autoTimers.claim_systems || 0) >= 15) {
           autoTimers.claim_systems = newTime;
@@ -2497,7 +2425,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_manage_heresy (L7+ unlocked): convert heretics across owned galaxies ----
-        if ((s.upgrades["auto_manage_heresy"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_manage_heresy"] || 0) > 0
             && s.unlockedLayers?.omnipotence
             && newTime - (autoTimers.manage_heresy || 0) >= 15) {
           autoTimers.manage_heresy = newTime;
@@ -2511,8 +2439,6 @@ export const useGameStore = create<GameStore>()(
             if (idx >= 0) {
               g[idx].state = "faithful";
               galaxyFollowerGrid = { ...galaxyFollowerGrid, [gid]: g };
-              // Keep the legacy `followerGrid` variable in sync with the starter galaxy.
-              if (gid === STARTER_GALAXY_ID) followerGrid = g;
               convertedGalaxy = gid;
               convertedIdx = idx;
               break;
@@ -2525,7 +2451,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_place_anchors (L7+ unlocked): place anchor on random unanchored galaxy ----
-        if ((s.upgrades["auto_place_anchors"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_place_anchors"] || 0) > 0
             && s.unlockedLayers?.omnipotence
             && newTime - (autoTimers.place_anchors || 0) >= 60) {
           autoTimers.place_anchors = newTime;
@@ -2541,7 +2467,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_negotiate (L9+ unlocked): negotiate with first available minor god ----
-        if ((s.upgrades["auto_negotiate"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_negotiate"] || 0) > 0
             && s.unlockedLayers?.infinity
             && newTime - (autoTimers.negotiate || 0) >= 30) {
           autoTimers.negotiate = newTime;
@@ -2564,7 +2490,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // ---- auto_attack_old_gods (L10+ unlocked): attack every active Old God battle ----
-        if ((s.upgrades["auto_attack_old_gods"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_attack_old_gods"] || 0) > 0
             && s.unlockedLayers?.eternity
             && newTime - (autoTimers.attack_old_gods || 0) >= 10) {
           autoTimers.attack_old_gods = newTime;
@@ -2579,7 +2505,7 @@ export const useGameStore = create<GameStore>()(
         // ---- auto_author_universes (L10 finished — Genesis Engine): reveal a
         // random unrevealed rule name on a random owned relic every 120s.
         // (Re-purposed from the legacy "fill universe slot" action.)
-        if ((s.upgrades["auto_author_universes"] || 0) > 0
+        if (!trialAutobuyersBlocked && (s.upgrades["auto_author_universes"] || 0) > 0
             && s.unlockedLayers?.eternity
             && !s.universeSimulating
             && newTime - (autoTimers.author_universes || 0) >= 120) {
@@ -2634,6 +2560,7 @@ export const useGameStore = create<GameStore>()(
           achievements,
           newAchievements,
           activeEvent,
+          eventTimer,
           eventCooldown,
           ownedSystems,
           systemEnabled,
@@ -2665,8 +2592,6 @@ export const useGameStore = create<GameStore>()(
           // Layer 7-8 state
           instability,
           geneticInstability,
-          peakInstability,
-          prayer,
           // NEW: Skirmish Arena — outpost raids + creature XP/levels
           outpostRaids,
           raidsRepelled,
@@ -2682,11 +2607,10 @@ export const useGameStore = create<GameStore>()(
           ritualComboTimer,
           layerEventTimers,
           prestigePoints,
-          // REBUILD L1-6 — runtime state for the new mini-games
-          activeTrialRealm,
-          trialRealmState,
-          trialRealmsCompleted,
-          trialRealmBestTimes,
+          // REBUILD L1-6 — runtime state for the layer mini-games
+          // (Legacy trialRealm* state fields removed in CLEANUP-LEGACY — no
+          // longer mutated by the tick. Kept in initialMetaState + persist
+          // migration for save-shape compat.)
           marketPrices,
           priceHistory,
           marketOwnedResources,
@@ -2695,13 +2619,11 @@ export const useGameStore = create<GameStore>()(
           marketCrashTimer,
           marketCrashActive,
           marketCrashDuration,
-          // FEATURE 4 — Natural Disasters
-          worldGrid,
-          worldGridSeeds,
-          disasterTimer,
-          lastDisasterCell,
-          lastDisasterAt,
-          followerGrid,
+          // DIVINE INVESTMENT MARKET — allocations, lock timers, prices, lifetime dividends
+          portfolioAllocations,
+          portfolioLockTimers,
+          portfolioPrices,
+          portfolioDividendsEarned,
           heresySpreadTimer,
           heresySeedTimer,
           heresyThresholdsSeeded,
@@ -2776,7 +2698,10 @@ export const useGameStore = create<GameStore>()(
         for (const [r, v] of Object.entries(action.produces)) {
           const cap = s.capacities[r] || 0;
           const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-          const totalArchMult = 1 + archResBonus + (archetype?.bonus.allProductionMult || 0);
+          // ARCHETYPES-REWORK — military_power gets additional bonus from
+          // militaryPowerMult (Reptilian +15%, Toxoid +15%, Molluscoid -10%, etc.)
+          const archMilBonus = r === "military_power" ? (archetype?.bonus.militaryPowerMult || 0) : 0;
+          const totalArchMult = 1 + archResBonus + archMilBonus + (archetype?.bonus.allProductionMult || 0);
           const amount = (v as number) * finalMult * totalArchMult;
           res[r] = Math.min(cap, (res[r] || 0) + amount);
         }
@@ -2825,6 +2750,13 @@ export const useGameStore = create<GameStore>()(
               constellationsStarted: s.constellationsStarted || {},
               constellationsCompleted: s.constellationsCompleted || {},
             }).costMult));
+        // ARCHETYPES-REWORK — locked archetype system-cost adjustment
+        // (Humanoid +10% / Arthropoid -15%). Applied as a multiplicative modifier
+        // on top of the challenge cost multiplier.
+        const archSysCostMult = s.lockedArchetype
+          ? (ARCHETYPE_MAP[s.lockedArchetype]?.bonus.systemCostMult || 0)
+          : 0;
+        const archCostFactor = 1 + archSysCostMult;
         let owned = s.ownedSystems[systemId] || 0;
         if (sys.maxOwned && owned >= sys.maxOwned) return;
 
@@ -2834,6 +2766,9 @@ export const useGameStore = create<GameStore>()(
         const archetypeAffinity = { ...s.archetypeAffinity };
 
         let bought = 0;
+        // P7 — Track the first resource we couldn't afford, so we can surface
+        // an inline "Not enough [resource]" error in the UI when bought === 0.
+        let missingResourceId: string | null = null;
         for (let i = 0; i < qty; i++) {
           if (sys.maxOwned && owned + bought >= sys.maxOwned) break;
           if (challengeDebuff.maxSystems !== undefined) {
@@ -2841,22 +2776,35 @@ export const useGameStore = create<GameStore>()(
             if (totalSystems + bought >= challengeDebuff.maxSystems) break;
           }
           const cost = systemCost(sys, owned + bought, costReduction);
+          // DEBUG: Free Buy — skip affordability check + cost deduction
+          if (s.debugFreeBuy) {
+            bought++;
+            continue;
+          }
           let canAfford = true;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
             if ((res[r] || 0) < scaled) {
               canAfford = false;
+              if (!missingResourceId) missingResourceId = r;
               break;
             }
           }
           if (!canAfford) break;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
             res[r] -= scaled;
           }
           bought++;
         }
 
+        // P7 — Error state: if we couldn't afford any (and weren't blocked by
+        // max-owned / trial cap), surface the first missing resource name.
+        if (bought === 0 && missingResourceId) {
+          const friendlyName = RESOURCE_MAP[missingResourceId]?.name
+            || missingResourceId.replace(/_/g, " ");
+          get().notifyPurchaseError(`Not enough ${friendlyName}`);
+        }
         if (bought === 0) return;
 
         ownedSystems[systemId] = owned + bought;
@@ -2947,13 +2895,26 @@ export const useGameStore = create<GameStore>()(
               constellationsStarted: s.constellationsStarted || {},
               constellationsCompleted: s.constellationsCompleted || {},
             }).costMult)));
-        for (const [r, v] of Object.entries(tech.cost)) {
-          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
-          if ((res[r] || 0) < scaled) return;
-        }
-        for (const [r, v] of Object.entries(tech.cost)) {
-          const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
-          res[r] -= scaled;
+        // DEBUG: Free Buy — skip cost check + deduction
+        if (!s.debugFreeBuy) {
+          let missingTechResource: string | null = null;
+          for (const [r, v] of Object.entries(tech.cost)) {
+            const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+            if ((res[r] || 0) < scaled) {
+              if (!missingTechResource) missingTechResource = r;
+            }
+          }
+          if (missingTechResource) {
+            // P7 — Error state: surface the first missing resource.
+            const friendlyName = RESOURCE_MAP[missingTechResource]?.name
+              || missingTechResource.replace(/_/g, " ");
+            get().notifyPurchaseError(`Not enough ${friendlyName}`);
+            return;
+          }
+          for (const [r, v] of Object.entries(tech.cost)) {
+            const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
+            res[r] -= scaled;
+          }
         }
         const technologies = { ...s.technologies, [techId]: true };
         const archetypeAffinity = { ...s.archetypeAffinity };
@@ -2974,19 +2935,25 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         const up = UPGRADE_MAP[upgradeId];
         if (!up) return;
-        if (up.requiresWins && s.galacticWins < up.requiresWins) return;
-        // Layer-specific upgrades require their layer to be unlocked
-        if (up.requiresLayer && !s.unlockedLayers?.[up.requiresLayer]) return;
+        if (!s.debugFreeBuy) {
+          if (up.requiresWins && s.galacticWins < up.requiresWins) return;
+          // Layer-specific upgrades require their layer to be unlocked
+          if (up.requiresLayer && !s.unlockedLayers?.[up.requiresLayer]) return;
+        }
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if (s.evolutionPoints < cost) return;
+        if (!s.debugFreeBuy && s.evolutionPoints < cost) {
+          // P7 — Error state: surface insufficient Evolution Points.
+          get().notifyPurchaseError("Not enough Evolution Points");
+          return;
+        }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          evolutionPoints: s.evolutionPoints - cost,
+          evolutionPoints: s.debugFreeBuy ? s.evolutionPoints : s.evolutionPoints - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).${s.debugFreeBuy ? " (DEBUG: free)" : ""}`);
       },
 
       evolveStage: () => {
@@ -3049,13 +3016,18 @@ export const useGameStore = create<GameStore>()(
 
         // Lock archetype when evolving from Creature → Tribal
         let lockedArchetype = s.lockedArchetype;
+        // ARCHETYPES-REWORK — track which archetypes have EVER been locked in
+        // (persists across prestiges). Drives the "???" reveal state on radar.
+        let revealedLineageArchetypes = { ...(s.revealedLineageArchetypes || {}) };
         if (stage.id === "creature" && !lockedArchetype) {
           const dom = dominantArchetype(s.archetypeAffinity);
           if (dom) {
             lockedArchetype = dom;
+            revealedLineageArchetypes[dom] = true;
             get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
           } else {
             lockedArchetype = "humanoid"; // default fallback
+            revealedLineageArchetypes["humanoid"] = true;
             get().addToLog(`Lineage locked: Humanoid (no drift).`);
           }
         }
@@ -3086,7 +3058,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         // Check achievements after stage clear
-        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, fastestCellClear } as GameState;
+        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, revealedLineageArchetypes, fastestCellClear } as GameState;
         const achResult = checkAchievements(postEvolveState);
         const newAchievements = achResult.newOnes.length > 0
           ? [...(s.newAchievements || []), ...achResult.newOnes]
@@ -3101,6 +3073,7 @@ export const useGameStore = create<GameStore>()(
           stageClearCounts,
           fastestCellClear,
           lockedArchetype,
+          revealedLineageArchetypes,
           achievements: achResult.earned,
           newAchievements,
           activeStageTheme,
@@ -3134,31 +3107,23 @@ export const useGameStore = create<GameStore>()(
         const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
         const wEp = worldEpMultiplier(s.authoredWorlds || []);
         const dl = divineLawBonus(s.enactedDivineLaws || {});
-        const relicEp = relicBonus(s.equippedRelics || {}).epMult;
-        const coreEp = logicCoreBonus(s.activeLogicCores || {}).epMult;
-        // Layers 7-10 EP bonus
+        // Layers 7-9 EP bonus
         const hybridEp = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance).epMult;
-        const chanEp = prayerChannelBonus(s.prayerChannelLevels || {}).epMult;
-        const maskEp = divineMaskBonus(s.activeDivineMask).epMult;
-        const polEp = worshipPolarityBonus(s.activeWorshipPolarity).epMult;
         const allianceEp = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS).epMult;
-        const echoEp = echoBonus(s.purchasedEchoes || {}).epMult;
-        const forkEp = forkBonus(s.resolvedForks || {}).epMult;
-        const debtEp = activeDebtBonus(s.takenFutureDebts || {}, s.repaidFutureDebts || {}).epMult;
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
-        // Layer 10 — Genesis Engine: archetype bonus does not boost EP gain
-        // (legacy testament/canonization/weave/universe/kept bonuses return 0).
-        const testEp = testamentClauseBonus(s.purchasedTestamentClauses || {}).epMult;
-        const canonEp = canonizationBonus(s.activeCanonizations || {}).epMult;
-        const weaveEp = permanenceWeaveBonus(s.activePermanenceWeaves || {}).epMult;
-        const universeEp = universeSlotBonus([]).epMult;
-        const keptEp = keptGodsBonus([]).epMult;
-        void testEp; void canonEp; void weaveEp; void universeEp; void keptEp;
         const layerEpMult = 1 +
-          fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult + relicEp + coreEp +
-          hybridEp + chanEp + maskEp + polEp + allianceEp + echoEp + forkEp + debtEp +
-          fragmentEp;
+          fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult +
+          hybridEp + allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
+
+        // ARCHETYPES-REWORK — locked archetype EP-from-prestige bonus
+        // (Necroid +50%, Necroid Ascendant +50%, etc.). Additive multiplier.
+        const archEpBonus = s.lockedArchetype
+          ? (ARCHETYPE_MAP[s.lockedArchetype]?.bonus.epFromPrestigeMult || 0)
+          : 0;
+        if (archEpBonus > 0) {
+          epEarned = Math.max(1, Math.floor(epEarned * (1 + archEpBonus)));
+        }
 
         // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
         let divinityGain = 0;
@@ -3174,18 +3139,6 @@ export const useGameStore = create<GameStore>()(
         let singularityCoreGain = 0;
         if (s.unlockedLayers?.singularity) {
           singularityCoreGain = Math.max(1, Math.floor(stageMult / 4));
-        }
-        // ---- Layer 9 (Infinity): grant Echoes based on stage ----
-        let echoGain = 0;
-        if (s.unlockedLayers?.infinity) {
-          const echoMult = 1 + echoBonus(s.purchasedEchoes || {}).echoMult;
-          echoGain = Math.max(1, Math.floor(stageMult / 3 * echoMult));
-        }
-        // ---- Layer 10 (Eternity): grant Testament Clauses based on stage ----
-        let testamentGain = 0;
-        if (s.unlockedLayers?.eternity) {
-          const testMult = 1 + testamentClauseBonus(s.purchasedTestamentClauses || {}).testamentMult;
-          testamentGain = Math.max(1, Math.floor(stageMult / 5 * testMult));
         }
 
         const archive = [...s.archive];
@@ -3269,6 +3222,9 @@ export const useGameStore = create<GameStore>()(
           epFromBackground: s.epFromBackground || 0,
           archive,
           archivedArchetypes,
+          // ARCHETYPES-REWORK — revealed lineage archetypes persist across
+          // prestiges (meta state — drives radar ??? reveal).
+          revealedLineageArchetypes: s.revealedLineageArchetypes || {},
           upgrades: s.upgrades,
           storyUnlocked: { ...s.storyUnlocked, god_opens_its_eyes: true },
           storyAcknowledged: s.storyAcknowledged,
@@ -3358,22 +3314,16 @@ export const useGameStore = create<GameStore>()(
           ),
           conqueredGalaxies: s.conqueredGalaxies || {},
           selectedGalaxyId: STARTER_GALAXY_ID,
-          // Legacy L5 fields — also reset.
-          followerGrid: makeInitialFollowerGrid(),
+          // L5 heresy timers — fresh per run
           heresySpreadTimer: 10,
           heresySeedTimer: 30,
           heresyThresholdsSeeded: {}, // per-galaxy threshold tracking — fresh per run
           prophets: [], // remove all placed prophets on prestige
           prophetConvertTimer: 10,
 
-          // Layer 6 — Singularity (persist relics + cores + universal map; reset rifts per-run)
+          // Layer 6 — Singularity (persist cores + universal map; reset rifts per-run).
           singularityCores: (s.singularityCores || 0) + singularityCoreGain,
-          equippedRelics: s.equippedRelics || {},
-          activeLogicCores: s.activeLogicCores || {},
-          logicCoreTimers: {}, // reset per-run
           showSingularity: false,
-          // L6 FIX — Dimension Engine bonus is one-time per run; reset on prestige.
-          dimensionEngineBonusClaimed: false,
           // L6 Universal Map — persist galaxy ownership + anchor coverage (anchors
           // are a permanent investment); reset per-run rifts + heresy (a fresh run
           // starts with no rifts open and all galaxies purged of corruption).
@@ -3388,10 +3338,8 @@ export const useGameStore = create<GameStore>()(
           anchorsPlaced: s.anchorsPlaced || 0, // lifetime counter — persists
 
           // Layer 7 — Omnipotence (Bio-engineering) — persist creatures, legions, stance; reset instability
-          equippedHybrids: s.equippedHybrids || {},
           activeOmnipotenceStance: s.activeOmnipotenceStance || "balanced",
           instability: 0, // reset per-run
-          peakInstability: 0, // reset per-run
           geneticInstability: 0, // reset per-run
           showOmnipotence: false,
           creatures: s.creatures || [],
@@ -3406,10 +3354,6 @@ export const useGameStore = create<GameStore>()(
           outpostRaidSpawnTimer: OUTPOST_RAID_SPAWN_INTERVAL_SEC,
 
           // Layer 8 — Divinity (Divine Alliance) — persist minor gods, relationships, alliances
-          prayer: (s.prayer || 0), // currency persists
-          prayerChannelLevels: s.prayerChannelLevels || {},
-          activeDivineMask: s.activeDivineMask,
-          activeWorshipPolarity: s.activeWorshipPolarity,
           showDivinityLayer: false,
           minorGods: s.minorGods || MINOR_GODS.map((g) => ({ ...g })),
           godRelationships: s.godRelationships ||
@@ -3417,21 +3361,12 @@ export const useGameStore = create<GameStore>()(
           alliances: s.alliances || {},
 
           // Layer 9 — Infinity (Divine War) — persist divine fragments; reset battles per-run
-          echoes: (s.echoes || 0) + echoGain,
-          purchasedEchoes: s.purchasedEchoes || {},
-          resolvedForks: {},
-          takenFutureDebts: {},
-          repaidFutureDebts: {},
           showInfinity: false,
           oldGodBattles: Object.fromEntries(OLD_GODS.map((g) => [g.id, makeInitialBattleState(g.id)])),
           divineFragments: s.divineFragments || 0,
 
           // Layer 10 — Eternity — Genesis Engine: persist relics + discovered
           // archetypes + cosmic boons; reset chosen ending + simulation state.
-          testamentClauses: (s.testamentClauses || 0) + testamentGain,
-          purchasedTestamentClauses: s.purchasedTestamentClauses || {},
-          activeCanonizations: s.activeCanonizations || {},
-          activePermanenceWeaves: s.activePermanenceWeaves || {},
           chosenEnding: null,
           cosmicBoonStacks: (s.cosmicBoonStacks || 0) +
             (s.chosenEnding === "reset" ? 1 : 0),
@@ -3477,6 +3412,20 @@ export const useGameStore = create<GameStore>()(
           paused: s.paused,
           showShop: false,
           showEvolve: false,
+          // P6 — close the consolidated layer modal on prestige.
+          activeLayerModal: null,
+          // P7 — clear any purchase error banner on prestige.
+          lastPurchaseError: null,
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
           activeStoryPopup: s.totalRuns === 0 ? "god_opens_its_eyes" : null,
           hasSeenIntro: true,
           lastSaved: Date.now(),
@@ -3500,12 +3449,6 @@ export const useGameStore = create<GameStore>()(
         if (singularityCoreGain > 0) {
           get().addToLog(`Layer 6: +${singularityCoreGain} Singularity Cores (Singularity).`);
         }
-        if (echoGain > 0) {
-          get().addToLog(`Layer 9: +${echoGain} Echoes (Infinity).`);
-        }
-        if (testamentGain > 0) {
-          get().addToLog(`Layer 10: +${testamentGain} Testament Clauses (Eternity).`);
-        }
       },
 
       setTab: (tab) => set({ currentTab: tab }),
@@ -3524,6 +3467,65 @@ export const useGameStore = create<GameStore>()(
       setShowDivinityLayer: (v) => set({ showDivinityLayer: v }),
       setShowInfinity: (v) => set({ showInfinity: v }),
       setShowEternity: (v) => set({ showEternity: v }),
+
+      // ---- P6: Modal Consolidation ----
+      // openLayerModal(layerId) sets `activeLayerModal` to the requested layer id
+      // AND mirrors it into the corresponding legacy `show*` flag so any code
+      // that still reads `show*` directly continues to work.
+      openLayerModal: (layerId) => {
+        const showFlagMap: Record<string, keyof GameState> = {
+          challenges: "showChallenges",
+          enlightenment: "showEnlightenment",
+          transcendence: "showTranscendence",
+          genesis: "showGenesis",
+          apotheosis: "showApotheosis",
+          singularity: "showSingularity",
+          omnipotence: "showOmnipotence",
+          divinity: "showDivinityLayer",
+          infinity: "showInfinity",
+          eternity: "showEternity",
+        };
+        const flagKey = showFlagMap[layerId];
+        if (!flagKey) return; // unknown id — ignore
+        // Close ALL legacy flags first, then open just the requested one. This
+        // guarantees only one layer modal is ever open at a time.
+        const patch: Partial<GameState> = {
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
+          activeLayerModal: layerId,
+        };
+        (patch as Record<string, unknown>)[flagKey] = true;
+        set(patch);
+      },
+      closeLayerModal: () =>
+        set({
+          activeLayerModal: null,
+          showChallenges: false,
+          showEnlightenment: false,
+          showTranscendence: false,
+          showGenesis: false,
+          showApotheosis: false,
+          showSingularity: false,
+          showOmnipotence: false,
+          showDivinityLayer: false,
+          showInfinity: false,
+          showEternity: false,
+        }),
+
+      // ---- P7: Error states ----
+      // notifyPurchaseError(message) sets the latest purchase-failure message.
+      // UIs (ShopModal / SystemsTab / TechTab) subscribe to `lastPurchaseError`
+      // and surface the message inline for ~2 seconds (then fade locally).
+      notifyPurchaseError: (message) =>
+        set({ lastPurchaseError: { message, ts: Date.now() } }),
 
       // ---- Layer 1: Challenges ----
       // Activating a challenge records the current repeat level (= completed count).
@@ -3571,14 +3573,6 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 2 — ENLIGHTENMENT (CONSTELLATION MAP) ============
-      /**
-       * LEGACY no-op stub. Old saves / external callers may invoke
-       * `purchaseForesightNode(nodeId)`. New design uses `illuminateStar`.
-       */
-      purchaseForesightNode: (_nodeId) => {
-        // No-op — use `illuminateStar(constellationId, starId)` instead.
-      },
-
       setForesightRoute: (routeId) => {
         const s = get();
         if (!s.unlockedLayers?.enlightenment) return;
@@ -3878,49 +3872,9 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 6 — SINGULARITY ============
-      toggleRelicLoadout: (relicId) => {
-        const s = get();
-        if (!s.unlockedLayers?.singularity) return;
-        const relic = RELIC_LOADOUT_MAP[relicId];
-        if (!relic) return;
-        const equippedRelics = { ...(s.equippedRelics || {}) };
-        // Omega shard is exclusive — equipping it unequips everything else
-        if (relicId === "relic_omega") {
-          if (equippedRelics[relicId]) {
-            delete equippedRelics[relicId];
-          } else {
-            for (const k of Object.keys(equippedRelics)) delete equippedRelics[k];
-            equippedRelics[relicId] = true;
-          }
-        } else {
-          // Equipping another relic unequips omega if it's active
-          if (equippedRelics.relic_omega) delete equippedRelics.relic_omega;
-          if (equippedRelics[relicId]) {
-            delete equippedRelics[relicId];
-          } else {
-            equippedRelics[relicId] = true;
-          }
-        }
-        set({ equippedRelics });
-        // QUICK WIN 5 — +1 Prestige Point when binding (equipping) a relic (not on unequip)
-        if (equippedRelics[relicId]) {
-          set({ prestigePoints: (get().prestigePoints || 0) + 1 });
-          get().addToLog(`${relic.name} equipped. (+1 PP)`);
-        } else {
-          get().addToLog(`${relic.name} unequipped.`);
-        }
-      },
-
-      toggleLogicCore: (coreId) => {
-        // LEGACY no-op — Logic Cores were removed in the Universal Map redesign.
-        // Kept for save-shape compat (action signature retained). Does nothing.
-        void coreId;
-      },
-
       // ===== LAYER 6 — UNIVERSAL MAP ACTIONS (Rift Defense + Reality Anchors) =====
-      // These replace the old Dimension Engine actions. Singularity Cores are
-      // the L6 currency — spent to close rifts (severity-scaled) and to place
-      // reality anchors (count-scaled).
+      // Singularity Cores are the L6 currency — spent to close rifts
+      // (severity-scaled) and to place reality anchors (count-scaled).
       closeRift: (riftId) => {
         const s = get();
         if (!s.unlockedLayers?.singularity) return;
@@ -4049,275 +4003,11 @@ export const useGameStore = create<GameStore>()(
         );
       },
 
-      // ============ REBUILD L1-6 — NEW MINI-GAME ACTIONS ============
-      // ---- Layer 1 — Trial Realms ----
-      setActiveTrialRealm: (realmId) => {
-        const s = get();
-        if (realmId === null) {
-          set({ activeTrialRealm: null });
-          return;
-        }
-        if (!TRIAL_REALM_MAP[realmId]) return;
-        const realmState = { ...(s.trialRealmState || {}) };
-        if (!realmState[realmId]) {
-          realmState[realmId] = makeDefaultRealmState(realmId);
-        }
-        // FEATURE 1 — record realm start time for leaderboard tracking
-        if (!realmState[realmId].startedAt) {
-          realmState[realmId].startedAt = s.time || 0;
-        }
-        set({ activeTrialRealm: realmId, trialRealmState: realmState });
-      },
+      // ============ REBUILD L1-6 — LAYER-1-3 ACTIONS ============
+      // Layer 1 — Trial Realm mini-games were removed in CLEANUP-LEGACY. The
+      // canonical L1 system is now `challenges.ts` (10 run-modifier challenges
+      // managed via setActiveChallenge / etc).
 
-      realmBreakthrough: () => {
-        const s = get();
-        const realmId = s.activeTrialRealm;
-        if (realmId !== "realm_growth") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_growth || makeDefaultRealmState("realm_growth")) };
-        if ((st.energy || 0) < 100) return;
-        st.energy = 0;
-        st.breaks = (st.breaks || 0) + 1;
-        st.breakCostMult = (st.breakCostMult || 1) * 1.2;
-        // Population gain +50% of current population
-        const popGain = Math.max(2, Math.floor(s.population * 0.5));
-        const newPop = s.population + popGain;
-        const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-        // FEATURE 1 — local leaderboard
-        const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-        if (st.breaks >= REALM_GROWTH_BREAKS_GOAL) {
-          st.completed = true;
-          trialRealmsCompleted.realm_growth = true;
-          // Record best time (only if faster than previous)
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_growth;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_growth = completionTime;
-          }
-          setTimeout(() => get().addToLog(`Realm of Growth conquered! 10 Break-Throughs performed. +10% population growth permanently.`), 0);
-        }
-        rs.realm_growth = st;
-        set({
-          population: newPop,
-          maxPopulation: Math.max(s.maxPopulation || 0, newPop),
-          trialRealmState: rs,
-          trialRealmsCompleted,
-          trialRealmBestTimes,
-          activeTrialRealm: st.completed ? null : s.activeTrialRealm,
-        });
-        get().addToLog(`🌱 Break-Through #${st.breaks}! +${popGain} population.`);
-      },
-
-      realmDiscontentAction: (action) => {
-        const s = get();
-        const realmId = s.activeTrialRealm;
-        if (realmId !== "realm_discontent") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_discontent || makeDefaultRealmState("realm_discontent")) };
-        const resources = { ...s.resources };
-        switch (action) {
-          case "celebrate":
-            st.happiness = Math.min(100, (st.happiness || 50) + 20);
-            resources.gold = Math.max(0, (resources.gold || 0) - 10);
-            break;
-          case "tax":
-            st.gold = (st.gold || 0) + 20;
-            resources.gold = (resources.gold || 0) + 20;
-            st.happiness = Math.max(0, (st.happiness || 50) - 15);
-            break;
-          case "ignore":
-            st.happiness = Math.min(100, (st.happiness || 50) + 5);
-            st.gold = (st.gold || 0) + 5;
-            resources.gold = (resources.gold || 0) + 5;
-            break;
-        }
-        rs.realm_discontent = st;
-        set({ trialRealmState: rs, resources });
-      },
-
-      // TRIALS-7 — newly playable realm actions
-      realmFaminePump: (resourceId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_famine") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_famine || makeDefaultRealmState("realm_famine")) };
-        if (st.completed || st.failed) return;
-        // resourceId is the SOURCE of the pump (forward direction A→B, B→C, C→A).
-        // Source loses REALM_FAMINE_PUMP_FROM, target gains REALM_FAMINE_PUMP_TO.
-        const next: "a" | "b" | "c" = resourceId === "a" ? "b" : resourceId === "b" ? "c" : "a";
-        if ((st[resourceId] || 0) < REALM_FAMINE_PUMP_FROM) return; // not enough to pump
-        st[resourceId] = Math.max(0, (st[resourceId] || 0) - REALM_FAMINE_PUMP_FROM);
-        st[next] = Math.min(100, (st[next] || 0) + REALM_FAMINE_PUMP_TO);
-        rs.realm_famine = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmIgnoranceBuyNode: (nodeId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_ignorance") return;
-        if (nodeId < 0 || nodeId >= REALM_IGNORANCE_NODE_COUNT) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_ignorance || makeDefaultRealmState("realm_ignorance")) };
-        if (st.completed) return;
-        const unlocked: boolean[] = [...(st.unlocked || Array(REALM_IGNORANCE_NODE_COUNT).fill(false))];
-        if (unlocked[nodeId]) return;
-        // Must unlock nodes in chain order (0 → 1 → 2 → ... → 9)
-        if (nodeId > 0 && !unlocked[nodeId - 1]) return;
-        const cost = REALM_IGNORANCE_NODE_COSTS[nodeId];
-        if ((st.science || 0) < cost) return;
-        st.science = (st.science || 0) - cost;
-        unlocked[nodeId] = true;
-        st.unlocked = unlocked;
-        st.unlockedCount = unlocked.filter(Boolean).length;
-        // Final node reached → completed
-        if (nodeId === REALM_IGNORANCE_NODE_COUNT - 1) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_ignorance = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_ignorance;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_ignorance = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of Ignorance conquered! +20% science production permanently."), 0);
-          rs.realm_ignorance = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_ignorance = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmStagnationUpgrade: (stage) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_stagnation") return;
-        if (stage < 0 || stage >= REALM_STAGNATION_STAGE_COUNT) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_stagnation || makeDefaultRealmState("realm_stagnation")) };
-        if (st.completed) return;
-        const levels = [...(st.levels || [1, 1, 1, 1])];
-        const cost = REALM_STAGNATION_UPGRADE_BASE_COST * levels[stage];
-        if ((st.goods || 0) < cost) return;
-        st.goods = (st.goods || 0) - cost;
-        levels[stage] = levels[stage] + 1;
-        st.levels = levels;
-        rs.realm_stagnation = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmWeaknessPlaceTower: () => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_weakness") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_weakness || makeDefaultRealmState("realm_weakness")) };
-        if (st.completed || st.failed) return;
-        if ((st.military || 0) < REALM_WEAKNESS_TOWER_COST) return;
-        st.military = (st.military || 0) - REALM_WEAKNESS_TOWER_COST;
-        st.towers = (st.towers || 0) + 1;
-        rs.realm_weakness = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmPurityBuildSystem: () => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_purity") return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_purity || makeDefaultRealmState("realm_purity")) };
-        if (st.completed || st.failed) return;
-        if ((st.pool || 0) < REALM_PURITY_BUILD_COST) return;
-        st.pool = (st.pool || 0) - REALM_PURITY_BUILD_COST;
-        st.systemsBuilt = (st.systemsBuilt || 0) + 1;
-        // Completion handled in tick to record best time, but we can short-circuit here too
-        if ((st.systemsBuilt || 0) >= REALM_PURITY_SYSTEMS_GOAL && !st.completed) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_purity = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_purity;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_purity = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of Purity conquered! +5% production (scaling reward) permanently."), 0);
-          rs.realm_purity = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_purity = st;
-        set({ trialRealmState: rs });
-      },
-
-      realmAsceticBuildSystem: (systemId) => {
-        const s = get();
-        if (s.activeTrialRealm !== "realm_ascetic") return;
-        if (systemId < 0 || systemId >= REALM_ASCETIC_STAGES) return;
-        const rs = { ...(s.trialRealmState || {}) };
-        const st = { ...(rs.realm_ascetic || makeDefaultRealmState("realm_ascetic")) };
-        if (st.completed) return;
-        const systems: boolean[] = [...(st.systems || Array(REALM_ASCETIC_STAGES).fill(false))];
-        if (systems[systemId]) return;
-        const cost = REALM_ASCETIC_SYSTEM_COSTS[systemId];
-        if ((st.essence || 0) < cost) return;
-        st.essence = (st.essence || 0) - cost;
-        systems[systemId] = true;
-        st.systems = systems;
-        st.stage = (st.stage || 0) + 1;
-        // Completion when stage reaches 7 (handled in tick too — but short-circuit here)
-        if ((st.stage || 0) >= REALM_ASCETIC_STAGES && !st.completed) {
-          st.completed = true;
-          const trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
-          trialRealmsCompleted.realm_ascetic = true;
-          const trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
-          const completionTime = Math.max(0, (s.time || 0) - (st.startedAt || s.time || 0));
-          const prevBest = trialRealmBestTimes.realm_ascetic;
-          if (prevBest === undefined || completionTime < prevBest) {
-            trialRealmBestTimes.realm_ascetic = completionTime;
-          }
-          const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
-          const unlockedLayers = { ...(s.unlockedLayers || {}) };
-          if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
-            unlockedLayers.enlightenment = true;
-            setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
-          }
-          setTimeout(() => get().addToLog("Realm of the Ascetic conquered! +12% production with constraints lifted."), 0);
-          rs.realm_ascetic = st;
-          set({
-            trialRealmState: rs,
-            trialRealmsCompleted,
-            trialRealmBestTimes,
-            unlockedLayers,
-            activeTrialRealm: null,
-          });
-          return;
-        }
-        rs.realm_ascetic = st;
-        set({ trialRealmState: rs });
-      },
 
       // ---- Layer 2 — Constellation Map (new design) ----
       /**
@@ -4377,23 +4067,6 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(logMsg);
       },
 
-      /**
-       * LEGACY no-op stub. Old UI / saves called `illuminateConstellationNode(nodeId)`.
-       * New design uses `illuminateStar(constellationId, starId)`. Old node ids
-       * don't map to new star ids, so this is a graceful no-op.
-       */
-      illuminateConstellationNode: (_nodeId) => {
-        // No-op — use `illuminateStar(constellationId, starId)` instead.
-      },
-
-      // L2 active abilities REMOVED — stars are lit only by purchasing with Divinity.
-      // These are no-op stubs kept for save-compatibility.
-      stargazeReveal: () => {},
-      supernovaIlluminate: () => {},
-      blackHoleReset: () => {},
-      activateCosmicBridge: () => {},
-
-
       // ---- Layer 3 — Divine Market ----
       marketBuyResource: (resourceId, qty) => {
         const s = get();
@@ -4452,36 +4125,174 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`💎 Offering: ${qty} ${resourceId} → +${gain} Divinity (price ${price.toFixed(1)}).`);
       },
 
-      // ---- Layer 4 — Sacred Grid ----
-      placeGridTile: (cellIndex, tileType) => {
+      // ---- Layer 3 — DIVINE INVESTMENT MARKET (new design) ----
+      /**
+       * Allocate `count` worlds from the available pool (backgroundSimulations −
+       * already allocated) into the named portfolio. For Stability Bonds the
+       * allocated worlds are locked for `portfolio.lockDuration` seconds —
+       * `deallocateWorlds` will refuse to remove them while the lock is active.
+       * Crashes happen passively inside the tick (see portfolio tick block).
+       */
+      allocateWorlds: (portfolioId, count) => {
         const s = get();
-        if (!s.unlockedLayers?.genesis) return;
-        if (cellIndex < 0 || cellIndex >= 20) return;
-        const grid = (s.worldGrid || Array(20).fill(null)).slice();
-        if (grid[cellIndex] !== null) return;
-        grid[cellIndex] = tileType;
-        // Reveal dormant seeds on adjacent empty cells (1 in 3 chance of a seed appearing)
-        const seeds = (s.worldGridSeeds || Array(20).fill(null)).slice();
-        const row = Math.floor(cellIndex / 5);
-        const col = cellIndex % 5;
-        const neighborIdx = [
-          col > 0 ? cellIndex - 1 : -1,
-          col < 4 ? cellIndex + 1 : -1,
-          row > 0 ? cellIndex - 5 : -1,
-          row < 3 ? cellIndex + 5 : -1,
-        ].filter((i) => i >= 0 && grid[i] === null && !seeds[i]);
-        for (const ni of neighborIdx) {
-          if (Math.random() < 0.33) seeds[ni] = "seed_dormant";
+        if (!s.unlockedLayers?.transcendence) return;
+        const portfolio = PORTFOLIO_MAP[portfolioId];
+        if (!portfolio) return;
+        if (count <= 0) return;
+        // Pool of worlds available = current backgroundSimulations − already allocated.
+        // (s.backgroundSimulations is the value computed by the LAST tick — the
+        // tick recomputes it every frame and persists it on the state.)
+        const bg = s.backgroundSimulations || 0;
+        const allocatedNow = totalAllocatedWorlds(s.portfolioAllocations || {});
+        const available = Math.max(0, bg - allocatedNow);
+        if (available <= 0) return;
+        const toAllocate = Math.min(count, available);
+        if (toAllocate <= 0) return;
+        const allocations = { ...(s.portfolioAllocations || {}) };
+        const lockTimers = { ...(s.portfolioLockTimers || {}) };
+        allocations[portfolioId] = (allocations[portfolioId] || 0) + toAllocate;
+        // Stability Bonds lock the LATEST allocation (the whole portfolio's lock
+        // is refreshed so any deallocate-attempt during the lock window fails).
+        // We don't lock the lock for re-allocations to existing locked portfolios —
+        // that would let players extend locks accidentally. The lock only refreshes
+        // when the player adds MORE worlds to a portfolio that is currently unlocked.
+        if (portfolio.lockDuration && portfolio.lockDuration > 0) {
+          // Only (re)start the lock if the timer is already at 0 — this prevents
+          // a player from accidentally extending their lock by topping-up.
+          if ((lockTimers[portfolioId] || 0) <= 0) {
+            lockTimers[portfolioId] = portfolio.lockDuration;
+          }
         }
-        set({ worldGrid: grid, worldGridSeeds: seeds });
-        get().addToLog(`🗺️ Placed ${tileType} tile on cell ${cellIndex + 1}.`);
+        set({
+          portfolioAllocations: allocations,
+          portfolioLockTimers: lockTimers,
+        });
+        get().addToLog(
+          `📈 Allocated ${toAllocate} world${toAllocate === 1 ? "" : "s"} to ${portfolio.name}.` +
+          (portfolio.lockDuration ? ` Locked for ${portfolio.lockDuration}s.` : "")
+        );
       },
 
-      resetWorldGrid: () => {
+      /**
+       * Move `count` worlds back from a portfolio into the available pool.
+       * Refused while Stability Bonds lock is active (timer > 0).
+       */
+      deallocateWorlds: (portfolioId, count) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const portfolio = PORTFOLIO_MAP[portfolioId];
+        if (!portfolio) return;
+        if (count <= 0) return;
+        const allocations = { ...(s.portfolioAllocations || {}) };
+        const have = Math.max(0, Math.floor(allocations[portfolioId] || 0));
+        if (have <= 0) return;
+        // Stability Bonds lock check.
+        if ((s.portfolioLockTimers?.[portfolioId] || 0) > 0) {
+          get().addToLog(
+            `🔒 ${portfolio.name} worlds are locked for ${Math.ceil(s.portfolioLockTimers![portfolioId]!)}s — cannot deallocate.`
+          );
+          return;
+        }
+        const toRemove = Math.min(count, have);
+        allocations[portfolioId] = have - toRemove;
+        set({ portfolioAllocations: allocations });
+        get().addToLog(
+          `📉 Deallocated ${toRemove} world${toRemove === 1 ? "" : "s"} from ${portfolio.name}.`
+        );
+      },
+
+      /**
+       * Speed-up shortcut to L2: spend Divinity on the cheapest affordable
+       * constellation star. Returns the purchased star (or null if none
+       * affordable). Bridges the L3 dividend economy back into L2.
+       */
+      buyStarFromMarket: () => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return null;
+        const cs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        let best: { cId: string; sId: string; cost: number } | null = null;
+        for (const c of CONSTELLATIONS) {
+          for (const st of c.stars) {
+            if (cs.constellationStars[st.id]) continue;
+            const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+            if (cost <= (s.divinity || 0) && (!best || cost < best.cost)) {
+              best = { cId: c.id, sId: st.id, cost };
+            }
+          }
+        }
+        if (!best) return null;
+        // Illuminate the star via the existing action (handles the cost deduction,
+        // constellation progress, PP gain, log message).
+        get().illuminateStar(best.cId, best.sId);
+        return { constellationId: best.cId, starId: best.sId, cost: best.cost };
+      },
+
+      // ---- Layer 4 — Galaxy Claim (L4 redesign) ----
+      // scanGalaxySystem: reveal an unexplored system. Costs GALAXY_SCAN_COST
+      // Genesis Seeds (5). Idempotent if already explored/claimed or unreachable.
+      scanGalaxySystem: (systemId) => {
         const s = get();
         if (!s.unlockedLayers?.genesis) return;
-        set({ worldGrid: Array(20).fill(null), worldGridSeeds: Array(20).fill(null) });
-        get().addToLog("🗺️ Sacred Grid reset.");
+        const sys = GALAXY_SYSTEM_MAP[systemId];
+        if (!sys) return;
+        const galaxySystems = (s.galaxySystems || []).map((g) => ({ ...g }));
+        const state = galaxySystems.find((g) => g.id === systemId);
+        if (!state) return;
+        if (state.explored || state.claimed) return;
+        if ((s.genesisSeeds || 0) < GALAXY_SCAN_COST) {
+          get().addToLog(`📡 Need ${GALAXY_SCAN_COST} Genesis Seeds to scan ${sys.name}.`);
+          return;
+        }
+        state.explored = true;
+        set({
+          genesisSeeds: (s.genesisSeeds || 0) - GALAXY_SCAN_COST,
+          galaxySystems,
+        });
+        const rareLabel = sys.rareResource || "none";
+        get().addToLog(
+          `📡 Scanned ${sys.name}. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%. Rare: ${rareLabel}.`
+        );
+      },
+
+      // claimGalaxySystem: claim an explored-but-unclaimed system. Cost scales
+      // 1.15× per existing claim via `galaxyClaimCost(claimedCount)`. Each claim
+      // grants +10 worlds (counted in backgroundSimulations) and the system's
+      // production / capacity / EP / pop bonus (with adjacency synergy applied
+      // in the tick via `summarizeGalaxyBonuses`).
+      claimGalaxySystem: (systemId) => {
+        const s = get();
+        if (!s.unlockedLayers?.genesis) return;
+        const sys = GALAXY_SYSTEM_MAP[systemId];
+        if (!sys) return;
+        const galaxySystems = (s.galaxySystems || []).map((g) => ({ ...g }));
+        const state = galaxySystems.find((g) => g.id === systemId);
+        if (!state) return;
+        if (!state.explored) {
+          get().addToLog(`📡 Scan ${sys.name} before claiming.`);
+          return;
+        }
+        if (state.claimed) return;
+        const claimedCount = galaxySystems.filter((g) => g.claimed).length;
+        const cost = galaxyClaimCost(claimedCount);
+        if ((s.genesisSeeds || 0) < cost) {
+          get().addToLog(`⭐ Need ${cost} Genesis Seeds to claim ${sys.name}.`);
+          return;
+        }
+        state.claimed = true;
+        set({
+          genesisSeeds: (s.genesisSeeds || 0) - cost,
+          galaxySystems,
+        });
+        get().addToLog(
+          `⭐ Claimed ${sys.name}! +10 worlds. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%.`
+        );
       },
 
       // ---- Layer 5 — Heresy Web (per-galaxy) ----
@@ -4617,32 +4428,6 @@ export const useGameStore = create<GameStore>()(
         set({ selectedGalaxyId: galaxyId });
       },
 
-      // ---- Layer 6 — Dimension Engine (LEGACY no-op stubs) ----
-      // The Dimension Engine was REMOVED in the Universal Map redesign. These
-      // actions are kept as no-op stubs for save-shape compat; calling them
-      // does nothing. Use closeRift / placeRealityAnchor / attackUniversalGalaxy
-      // for the new L6 gameplay loop.
-      setDimensionSpeed: (dimId, speed) => {
-        void dimId;
-        void speed;
-      },
-
-      syncDimension: (fromId, toId) => {
-        void fromId;
-        void toId;
-      },
-
-      initDimensions: () => {
-        // No-op — Dimension Engine was removed.
-      },
-
-      // FEATURE 6 — Collapse two dimensions of the same stage into one
-      // (LEGACY no-op — Dimension Engine was removed in the Universal Map redesign.)
-      collapseDimensions: (fromId, toId) => {
-        void fromId;
-        void toId;
-      },
-
       // ===== FEATURE ENHANCEMENTS — NEW ACTIONS =====
       // FEATURE 5 — Prophets (per-galaxy: place on a galaxy's heresy grid; max 2 globally)
       placeProphet: (galaxyId, cellIndex) => {
@@ -4745,28 +4530,7 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`⏳ Time Stabilized — temporal storm ended (-1 Divine Fragment).`);
       },
 
-      // FEATURE 10 — Forbidden Words (LEGACY): The Genesis Engine redesign
-      // removed the paradox mechanic. This action is kept as a no-op stub for
-      // save-compat (older saves may still call it). Use revealRelicRule /
-      // revealRelicAmount in the new Genesis Engine instead.
-      resolveParadox: () => {
-        get().addToLog("Paradoxes are no more — the Genesis Engine has restructured reality. Use the Crucible to shape universes.");
-      },
-
-      // ===== BACKGROUND-SIMULATION — spawn action REMOVED =====
-      // Sims are now computed from (3 + starsLit) × simMult, not manually spawned.
-      // The simulation_amplifier shop upgrade increases the multiplier.
-      // (spawnBackgroundSimulation action removed — kept as no-op stub for save-compat.)
-      spawnBackgroundSimulation: () => {
-        get().addToLog("Simulations now come from lighting constellation stars. Buy the Simulation Amplifier upgrade to multiply them.");
-      },
-
       // ============ LAYER 7 — OMNIPOTENCE (Bio-engineering) ============
-      toggleHybridLineage: (hybridId) => {
-        // LEGACY stub — kept for migration. The new Creature Lab doesn't use hybrids.
-        void hybridId;
-      },
-
       setOmnipotenceStance: (stanceId) => {
         const s = get();
         if (!s.unlockedLayers?.omnipotence) return;
@@ -5080,21 +4844,6 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 8 — DIVINITY (Divine Alliance) ============
-      levelPrayerChannel: (_channelId) => {
-        // LEGACY stub — kept for migration. The new Divine Alliance doesn't use channels.
-        void _channelId;
-      },
-
-      setDivineMask: (_maskId) => {
-        // LEGACY stub — kept for migration. The new Divine Alliance doesn't use masks.
-        void _maskId;
-      },
-
-      setWorshipPolarity: (_polarityId) => {
-        // LEGACY stub — kept for migration.
-        void _polarityId;
-      },
-
       negotiateWithGod: (godId) => {
         const s = get();
         if (!s.unlockedLayers?.divinity) return;
@@ -5143,14 +4892,14 @@ export const useGameStore = create<GameStore>()(
         const god = MINOR_GOD_MAP[godId];
         if (!god) return;
         // Pay demand → receive reward
-        const demandResource = god.demand.resource as "divinity" | "prayer" | "faith";
+        const demandResource = god.demand.resource as "divinity" | "faith";
         const demandAmount = god.demand.amount;
         const have = (s as any)[demandResource] || 0;
         if (have < demandAmount) {
           get().addToLog(`Not enough ${demandResource} to trade with ${god.name} (need ${demandAmount}).`);
           return;
         }
-        const rewardResource = god.reward.resource as "divinity" | "prayer" | "faith";
+        const rewardResource = god.reward.resource as "divinity" | "faith";
         const rewardAmount = god.reward.amount;
         const relationships = { ...(s.godRelationships || {}) };
         const cur = relationships[godId] || god.startingRelationship;
@@ -5187,27 +4936,6 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 9 — INFINITY (Divine War) ============
-      purchaseEcho: (_echoId) => {
-        // LEGACY stub — kept for migration. The new Divine War doesn't use echoes.
-        void _echoId;
-      },
-
-      resolveFork: (_forkId, _branchId) => {
-        // LEGACY stub — kept for migration.
-        void _forkId;
-        void _branchId;
-      },
-
-      takeFutureDebt: (_debtId) => {
-        // LEGACY stub — kept for migration.
-        void _debtId;
-      },
-
-      repayFutureDebt: (_debtId) => {
-        // LEGACY stub — kept for migration.
-        void _debtId;
-      },
-
       startOldGodBattle: (oldGodId) => {
         const s = get();
         if (!s.unlockedLayers?.infinity) return;
@@ -5412,22 +5140,6 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ============ LAYER 10 — ETERNITY (GENESIS ENGINE) ============
-      purchaseTestamentClause: (_clauseId) => {
-        // LEGACY stub — kept for migration. The new Genesis Engine uses
-        // divine relics + crucible instead of testament clauses.
-        void _clauseId;
-      },
-
-      toggleCanonization: (_canonId) => {
-        // LEGACY stub — kept for migration.
-        void _canonId;
-      },
-
-      togglePermanenceWeave: (_weaveId) => {
-        // LEGACY stub — kept for migration.
-        void _weaveId;
-      },
-
       chooseEnding: (endingId) => {
         const s = get();
         if (!s.unlockedLayers?.eternity) return;
@@ -5448,19 +5160,6 @@ export const useGameStore = create<GameStore>()(
             get().triggerPrestige();
           }, 0);
         }
-      },
-
-      // LEGACY — Genesis Engine redesign removed universe-rule slots.
-      // Kept as no-op stub for save-compat (older saves may still call it).
-      setUniverseRule: (_slotIndex, _optionId) => {
-        void _slotIndex;
-        void _optionId;
-      },
-
-      // LEGACY — Genesis Engine redesign removed the kept-gods pantheon.
-      // Kept as no-op stub for save-compat.
-      toggleKeptGod: (_godId) => {
-        void _godId;
       },
 
       // ============ GENESIS ENGINE — new actions ============
@@ -5697,85 +5396,6 @@ export const useGameStore = create<GameStore>()(
       },
 
       // ===== QUICK WINS =====
-      // WIN 2 — useActiveAbility: triggers the active ability for a given prestige layer
-      useActiveAbility: (layerId) => {
-        const s = get();
-        const ability = ACTIVE_ABILITY_MAP[layerId];
-        if (!ability) return;
-        // Must have the layer unlocked
-        if (layerId !== "evolution") {
-          if (!s.unlockedLayers?.[layerId]) return;
-        } else {
-          // Layer 1 (Evolution) requires unlockedChallenges (first Galactic win) — keeps it as a meaningful perk
-          if (!s.unlockedChallenges) return;
-        }
-        // Check cooldown
-        const cooldowns = { ...(s.activeAbilityCooldowns || {}) };
-        if ((cooldowns[ability.id] || 0) > 0) return;
-
-        // Apply effect
-        const patch: Partial<GameState> = {};
-        const effectsPatch: Record<string, number> = { ...(s.activeAbilityEffects || {}) };
-        switch (ability.effect.kind) {
-          case "instant_pop": {
-            const pop = s.population + (ability.effect.magnitude || 0);
-            patch.population = pop;
-            patch.maxPopulation = Math.max(s.maxPopulation || 0, pop);
-            break;
-          }
-          case "instant_divinity": {
-            patch.divinity = (s.divinity || 0) + (ability.effect.magnitude || 0);
-            break;
-          }
-          case "temp_surge": {
-            effectsPatch["surge"] = ability.effect.durationSec || 10;
-            break;
-          }
-          case "instant_genesis_seed": {
-            patch.genesisSeeds = (s.genesisSeeds || 0) + (ability.effect.magnitude || 1);
-            break;
-          }
-          case "reduce_heresy": {
-            // L5 redesign — convert up to N heretics across owned galaxies.
-            const ownedAb = ownedGalaxyIds(s.galaxyRivalSystems || {});
-            const gfAb = { ...(s.galaxyFollowerGrid || {}) };
-            const ghAb = { ...(s.galaxyHeresy || {}) };
-            const nConvert = Math.max(1, Math.ceil(((ability.effect.magnitude || 0) / 100) * 32));
-            let conv = 0;
-            for (const gid of ownedAb) {
-              const grid = (gfAb[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
-              for (let i = 0; i < grid.length && conv < nConvert; i++) {
-                if (grid[i].state === "heretical") {
-                  grid[i].state = "faithful";
-                  conv++;
-                }
-              }
-              gfAb[gid] = grid;
-              const hc = grid.filter((c) => c.state === "heretical").length;
-              ghAb[gid] = (hc / 32) * 100;
-              if (conv >= nConvert) break;
-            }
-            const newH = ownedAb.length > 0
-              ? ownedAb.reduce((sum, gid) => sum + (ghAb[gid] || 0), 0) / ownedAb.length
-              : 0;
-            patch.heresy = newH;
-            patch.galaxyFollowerGrid = gfAb;
-            patch.galaxyHeresy = ghAb;
-            break;
-          }
-          case "temp_overclock": {
-            effectsPatch["overclock"] = ability.effect.durationSec || 15;
-            break;
-          }
-        }
-        // Set cooldown
-        cooldowns[ability.id] = ability.cooldownSec;
-        patch.activeAbilityCooldowns = cooldowns;
-        patch.activeAbilityEffects = effectsPatch;
-        set(patch);
-        get().addToLog(`${ability.name} activated! (${ability.cooldownSec}s cooldown)`);
-      },
-
       // WIN 5 — buyUniversalUpgrade: spends Prestige Points on universal upgrades
       buyUniversalUpgrade: (upgradeId) => {
         const s = get();
@@ -5785,13 +5405,17 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if ((s.prestigePoints || 0) < cost) return;
+        if (!s.debugFreeBuy && (s.prestigePoints || 0) < cost) {
+          // P7 — Error state: surface insufficient Prestige Points.
+          get().notifyPurchaseError("Not enough Prestige Points");
+          return;
+        }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          prestigePoints: (s.prestigePoints || 0) - cost,
+          prestigePoints: s.debugFreeBuy ? s.prestigePoints : (s.prestigePoints || 0) - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}) for ${cost} Prestige Points.`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1})${s.debugFreeBuy ? " (DEBUG: free)" : ` for ${cost} Prestige Points`}.`);
       },
 
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
@@ -5819,7 +5443,17 @@ export const useGameStore = create<GameStore>()(
         }
         let pop = s.population;
         if (choice.populationChange) {
-          pop = Math.max(0, pop + choice.populationChange);
+          // ARCHETYPES-REWORK — Necroid/Necroid Ascendant populationImmortal
+          // guards against event-driven decreases (population can still grow
+          // from positive events, but never falls).
+          const lockedArch = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
+          const isImmortal = !!lockedArch?.bonus.populationImmortal;
+          if (isImmortal && choice.populationChange < 0) {
+            // Immortal — population never decreases from events.
+            get().addToLog(`${lockedArch?.name} immortality prevented ${choice.populationChange} population loss.`);
+          } else {
+            pop = Math.max(0, pop + choice.populationChange);
+          }
         }
         if (choice.happinessChange) {
           const cap = s.capacities.happiness || 100;
@@ -5955,7 +5589,6 @@ export const useGameStore = create<GameStore>()(
           },
           evolutionPoints: (s.evolutionPoints || 0) + 1000,
           divinity: (s.divinity || 0) + 5000,
-          prayer: (s.prayer || 0) + 200,
           faith: (s.faith || 0) + 200,
           divineRelics: [...currentRelics, ...starterRelics],
           // BACKGROUND-SIMULATION — seed a non-zero peak so the Divine Engine
@@ -5963,7 +5596,164 @@ export const useGameStore = create<GameStore>()(
           // (backgroundSimulations is computed from stars lit, not set here.)
           peakProductionRate: Math.max(s.peakProductionRate || 0, 100),
         });
-        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +5000 Divinity, +200 Prayer, +200 Faith granted. 3 starter relics seeded.");
+        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +5000 Divinity, +200 Faith granted. 3 starter relics seeded.");
+      },
+
+      // DEBUG: Free Buy — when enabled, all purchases cost 0 resources.
+      toggleDebugFreeBuy: () => {
+        const s = get();
+        const next = !s.debugFreeBuy;
+        set({ debugFreeBuy: next });
+        get().addToLog(next ? "DEBUG: Free Buy ENABLED — all purchases cost 0." : "DEBUG: Free Buy disabled.");
+      },
+
+      // DEBUG: Trigger Event — force an event to fire immediately (random or specific).
+      triggerDebugEvent: (eventId) => {
+        const s = get();
+        if (s.activeEvent) {
+          get().addToLog("DEBUG: An event is already active — resolve it first.");
+          return;
+        }
+        const stageId = STAGES[s.stageIndex].id;
+        const possible = eventsForStage(stageId, s.time);
+        if (possible.length === 0) {
+          get().addToLog("DEBUG: No events available for the current stage.");
+          return;
+        }
+        let pick;
+        if (eventId === "random") {
+          pick = possible[Math.floor(Math.random() * possible.length)];
+        } else {
+          pick = possible.find((e) => e.id === eventId) || possible[0];
+        }
+        set({
+          activeEvent: pick.id,
+          eventTimer: 60,
+          eventCooldown: 0,
+        });
+        get().addToLog(`DEBUG: Triggered event "${pick.name}".`);
+      },
+
+      // ===== DEBUG-SHORTCUTS — additional debug actions =====
+      // +1000 of every primary resource (atp, glucose, proteins, lipids,
+      // elements, food, water, materials, organic_matter, knowledge, culture,
+      // wood, lumber, stone, clay, science, happiness, military_power,
+      // production, gold, influence, energy, alloys, data). Also bumps
+      // capacities so the grant isn't immediately clipped.
+      debugGrantResources: () => {
+        const s = get();
+        const resources = { ...(s.resources || {}) };
+        const capacities = { ...(s.capacities || {}) };
+        const DEBUG_GRANT_AMOUNT = 1000;
+        for (const r of RESOURCES) {
+          if (r.category !== "primary") continue;
+          resources[r.id] = (resources[r.id] || 0) + DEBUG_GRANT_AMOUNT;
+          // Lift the capacity floor so the grant isn't immediately lost.
+          if ((capacities[r.id] || 0) < resources[r.id]) {
+            capacities[r.id] = resources[r.id];
+          }
+        }
+        set({ resources, capacities });
+        get().addToLog(`DEBUG: +${DEBUG_GRANT_AMOUNT} of every primary resource granted.`);
+      },
+
+      // +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds,
+      // +100 Singularity Cores.
+      debugGrantCurrency: () => {
+        const s = get();
+        set({
+          evolutionPoints: (s.evolutionPoints || 0) + 1000,
+          prestigePoints: (s.prestigePoints || 0) + 1000,
+          divinity: (s.divinity || 0) + 1000,
+          faith: (s.faith || 0) + 100,
+          genesisSeeds: (s.genesisSeeds || 0) + 100,
+          singularityCores: (s.singularityCores || 0) + 100,
+        });
+        get().addToLog(
+          "DEBUG: +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores granted."
+        );
+      },
+
+      // Unlock the next locked layer. Walks the layer progression chain and
+      // opens the first one that isn't yet unlocked. If all 10 are open, logs.
+      debugCompleteLayer: () => {
+        const s = get();
+        const chain = [
+          { id: "enlightenment", label: "Enlightenment", gate: () => !!s.unlockedChallenges },
+          { id: "transcendence", label: "Transcendence", gate: () => !!s.unlockedLayers?.enlightenment },
+          { id: "genesis", label: "Genesis", gate: () => !!s.unlockedLayers?.transcendence },
+          { id: "apotheosis", label: "Apotheosis", gate: () => !!s.unlockedLayers?.genesis },
+          { id: "singularity", label: "Singularity", gate: () => !!s.unlockedLayers?.apotheosis },
+          { id: "omnipotence", label: "Omnipotence", gate: () => !!s.unlockedLayers?.singularity },
+          { id: "divinity", label: "Divinity", gate: () => !!s.unlockedLayers?.omnipotence },
+          { id: "infinity", label: "Infinity", gate: () => !!s.unlockedLayers?.divinity },
+          { id: "eternity", label: "Eternity", gate: () => !!s.unlockedLayers?.infinity },
+        ];
+        // L1 (Challenges) is its own thing — if not yet unlocked, unlock that.
+        if (!s.unlockedChallenges) {
+          // Challenges unlock after first Galactic win — simulate by granting 1 win.
+          set({
+            unlockedChallenges: true,
+            galacticWins: Math.max(s.galacticWins || 0, 1),
+          });
+          get().addToLog("DEBUG: Challenges layer (L1) unlocked.");
+          return;
+        }
+        for (const layer of chain) {
+          if (!s.unlockedLayers?.[layer.id as keyof typeof s.unlockedLayers]) {
+            // Seed starter relics on Eternity unlock (matches the tick's unlock path).
+            const relicBump =
+              layer.id === "eternity" && (s.divineRelics || []).length === 0
+                ? { divineRelics: [...(s.divineRelics || []), ...generateRelicReward(3)] }
+                : {};
+            set({
+              unlockedLayers: { ...s.unlockedLayers, [layer.id]: true },
+              ...relicBump,
+            });
+            get().addToLog(`DEBUG: ${layer.label} layer unlocked.`);
+            return;
+          }
+        }
+        get().addToLog("DEBUG: All layers already unlocked.");
+      },
+
+      // +1 cosmicBoonStacks (L10 ending currency — multiplies final score on
+      // "Explore another Dimension" resets).
+      debugGenerateBoon: () => {
+        const s = get();
+        set({ cosmicBoonStacks: (s.cosmicBoonStacks || 0) + 1 });
+        get().addToLog("DEBUG: +1 Cosmic Boon granted.");
+      },
+
+      // Immediately call triggerPrestige (the canonical prestige path).
+      debugForcePrestige: () => {
+        get().addToLog("DEBUG: Force prestige triggered.");
+        get().triggerPrestige();
+      },
+
+      // Toggle speed between 100× (for fast testing) and 1×.
+      debugToggle100x: () => {
+        const s = get();
+        const next = s.speed === 100 ? 1 : 100;
+        set({ speed: next });
+        get().addToLog(`DEBUG: Speed set to ${next}×.`);
+      },
+
+      // Rebind a keyboard shortcut by action id. The action id must exist
+      // in DEFAULT_KEYBOARD_SHORTCUTS (otherwise the bind is a no-op).
+      setKeyboardShortcut: (actionId, key) => {
+        const s = get();
+        const current = { ...(s.keyboardShortcuts || {}) };
+        if (!(actionId in DEFAULT_KEYBOARD_SHORTCUTS)) return;
+        // Strip any modifier prefixes — we don't support Ctrl+X etc. (yet).
+        current[actionId] = key;
+        set({ keyboardShortcuts: current });
+      },
+
+      // Reset all keyboard shortcuts to defaults.
+      resetKeyboardShortcuts: () => {
+        set({ keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS } });
+        get().addToLog("Keyboard shortcuts reset to defaults.");
       },
 
       saveGame: () => {
@@ -6001,7 +5791,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 12,
+      version: 13,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -6097,17 +5887,11 @@ export const useGameStore = create<GameStore>()(
         if (persisted.showApotheosis === undefined) persisted.showApotheosis = false;
         // Layer 6 — Singularity
         if (persisted.singularityCores === undefined) persisted.singularityCores = 0;
-        if (!persisted.equippedRelics) persisted.equippedRelics = {};
-        if (!persisted.activeLogicCores) persisted.activeLogicCores = {};
-        if (!persisted.logicCoreTimers) persisted.logicCoreTimers = {};
         if (persisted.showSingularity === undefined) persisted.showSingularity = false;
-        // L6 FIX — Dimension Engine bonus tracker (defaults false on old saves)
-        if (persisted.dimensionEngineBonusClaimed === undefined) persisted.dimensionEngineBonusClaimed = false;
         // L6 Universal Map redesign migration — initialize new fields on old saves.
         // `universalGalaxies` is the 50-galaxy runtime state; `realityAnchors` +
         // `riftsClosed` + `anchorsPlaced` persist across prestiges; `rifts` +
-        // `riftSpawnTimer` reset per-run. Old saves that only have legacy
-        // `dimensions`/`dimensionRiftTimer` get a fresh Universal Map.
+        // `riftSpawnTimer` reset per-run.
         if (!persisted.universalGalaxies || !Array.isArray(persisted.universalGalaxies) || persisted.universalGalaxies.length === 0) {
           persisted.universalGalaxies = makeInitialUniversalGalaxies();
         } else {
@@ -6137,32 +5921,17 @@ export const useGameStore = create<GameStore>()(
 
         // v5 migration: Layers 7-10 state fields
         // Layer 7 — Omnipotence
-        if (!persisted.equippedHybrids) persisted.equippedHybrids = {};
         if (persisted.activeOmnipotenceStance === undefined) persisted.activeOmnipotenceStance = "balanced";
         if (persisted.instability === undefined) persisted.instability = 0;
-        if (persisted.peakInstability === undefined) persisted.peakInstability = 0;
         if (persisted.showOmnipotence === undefined) persisted.showOmnipotence = false;
         if (persisted.unlockedLayers.omnipotence === undefined) persisted.unlockedLayers.omnipotence = false;
         // Layer 8 — Divinity (layer)
-        if (persisted.prayer === undefined) persisted.prayer = 0;
-        if (!persisted.prayerChannelLevels) persisted.prayerChannelLevels = {};
-        if (persisted.activeDivineMask === undefined) persisted.activeDivineMask = null;
-        if (persisted.activeWorshipPolarity === undefined) persisted.activeWorshipPolarity = null;
         if (persisted.showDivinityLayer === undefined) persisted.showDivinityLayer = false;
         if (persisted.unlockedLayers.divinity === undefined) persisted.unlockedLayers.divinity = false;
         // Layer 9 — Infinity
-        if (persisted.echoes === undefined) persisted.echoes = 0;
-        if (!persisted.purchasedEchoes) persisted.purchasedEchoes = {};
-        if (!persisted.resolvedForks) persisted.resolvedForks = {};
-        if (!persisted.takenFutureDebts) persisted.takenFutureDebts = {};
-        if (!persisted.repaidFutureDebts) persisted.repaidFutureDebts = {};
         if (persisted.showInfinity === undefined) persisted.showInfinity = false;
         if (persisted.unlockedLayers.infinity === undefined) persisted.unlockedLayers.infinity = false;
         // Layer 10 — Eternity — Genesis Engine
-        if (persisted.testamentClauses === undefined) persisted.testamentClauses = 0;
-        if (!persisted.purchasedTestamentClauses) persisted.purchasedTestamentClauses = {};
-        if (!persisted.activeCanonizations) persisted.activeCanonizations = {};
-        if (!persisted.activePermanenceWeaves) persisted.activePermanenceWeaves = {};
         if (persisted.chosenEnding === undefined) persisted.chosenEnding = null;
         if (persisted.cosmicBoonStacks === undefined) persisted.cosmicBoonStacks = 0;
         if (persisted.showEternity === undefined) persisted.showEternity = false;
@@ -6176,6 +5945,19 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.divineRelics) persisted.divineRelics = [];
         if (!persisted.crucibleRelicIds) persisted.crucibleRelicIds = [];
         if (!persisted.discoveredArchetypes) persisted.discoveredArchetypes = {};
+        // ARCHETYPES-REWORK — revealedLineageArchetypes tracks which of the 13
+        // lineage archetypes the player has ever locked in. Persists across
+        // prestiges. Drives the radar's ??? reveal state.
+        // Migration: if a pre-rework save has `archivedArchetypes` (a list of
+        // previously-locked archetype ids), seed revealedLineageArchetypes from
+        // it so existing players don't lose visibility of archetypes they've
+        // already locked in past runs.
+        if (!persisted.revealedLineageArchetypes) {
+          const archived = Array.isArray(persisted.archivedArchetypes) ? persisted.archivedArchetypes : [];
+          persisted.revealedLineageArchetypes = Object.fromEntries(
+            archived.map((id: string) => [id, true])
+          );
+        }
         if (persisted.universeSimulating === undefined) persisted.universeSimulating = false;
         if (persisted.simulationStartTime === undefined) persisted.simulationStartTime = 0;
         if (persisted.lastSimulationResult === undefined) persisted.lastSimulationResult = null;
@@ -6214,16 +5996,11 @@ export const useGameStore = create<GameStore>()(
         }
 
         // v8 migration: REBUILD L1-6 unique gameplay loops
-        if (persisted.activeTrialRealm === undefined) persisted.activeTrialRealm = null;
-        if (!persisted.trialRealmState) persisted.trialRealmState = {};
-        if (!persisted.trialRealmsCompleted) persisted.trialRealmsCompleted = {};
-        // FEATURE 1 — local leaderboard migration
-        if (!persisted.trialRealmBestTimes) persisted.trialRealmBestTimes = {};
+        // Trial Realm mini-games were REMOVED in CLEANUP-LEGACY (replaced by
+        // `challenges.ts`). No trialRealm state to migrate.
         // v9 migration: L2 constellation redesign — old `constellationNodes`
         // entries don't map to new star ids, so clear them. Initialize the
-        // new state fields with empty records. The legacy fields remain as
-        // empty records for backward compatibility with any code that still
-        // references them.
+        // new state fields with empty records.
         if (!persisted.constellationStars) persisted.constellationStars = {};
         if (!persisted.constellationProgress) persisted.constellationProgress = {};
         if (!persisted.constellationsStarted) persisted.constellationsStarted = {};
@@ -6244,13 +6021,17 @@ export const useGameStore = create<GameStore>()(
         if (persisted.marketCrashTimer === undefined) persisted.marketCrashTimer = 120;
         if (persisted.marketCrashActive === undefined) persisted.marketCrashActive = false;
         if (persisted.marketCrashDuration === undefined) persisted.marketCrashDuration = 0;
-        if (!persisted.worldGrid) persisted.worldGrid = Array(20).fill(null);
-        if (!persisted.worldGridSeeds) persisted.worldGridSeeds = Array(20).fill(null);
-        // FEATURE 4 — Natural Disasters migration
-        if (persisted.disasterTimer === undefined) persisted.disasterTimer = 90;
-        if (persisted.lastDisasterCell === undefined) persisted.lastDisasterCell = null;
-        if (persisted.lastDisasterAt === undefined) persisted.lastDisasterAt = 0;
-        if (!persisted.followerGrid) persisted.followerGrid = Array.from({ length: 32 }, () => ({ state: "faithful", type: "follower" }));
+        // DIVINE INVESTMENT MARKET migration — initialize the 4 new portfolio
+        // state fields. Existing saves default to "no allocations, prices start
+        // at 100" so the modal renders cleanly on first open after upgrade.
+        if (!persisted.portfolioAllocations) persisted.portfolioAllocations = {};
+        if (!persisted.portfolioLockTimers) persisted.portfolioLockTimers = {};
+        if (!persisted.portfolioPrices) {
+          persisted.portfolioPrices = Object.fromEntries(
+            PORTFOLIOS.map((p) => [p.id, PORTFOLIO_PRICE_START])
+          );
+        }
+        if (persisted.portfolioDividendsEarned === undefined) persisted.portfolioDividendsEarned = 0;
         if (persisted.heresySpreadTimer === undefined) persisted.heresySpreadTimer = 10;
         if (persisted.heresySeedTimer === undefined) persisted.heresySeedTimer = 30;
         if (!persisted.heresyThresholdsSeeded) persisted.heresyThresholdsSeeded = {};
@@ -6305,13 +6086,8 @@ export const useGameStore = create<GameStore>()(
             lastConvertedAt: p?.lastConvertedAt ?? 0,
           }));
         }
-        // LEGACY: `dimensions` + `dimensionRiftTimer` were the old Dimension Engine
-        // state. Kept as empty stubs for save-shape compat — the L6 redesign
-        // uses `universalGalaxies` + `rifts` + `realityAnchors` instead.
-        if (!persisted.dimensions) persisted.dimensions = [];
-        if (persisted.dimensionRiftTimer === undefined) persisted.dimensionRiftTimer = 0;
 
-        // v10 migration: FEATURE ENHANCEMENTS — L7 mutations (creature.mutated flag), L8 amplifiers, L9 temporal storms, L10 paradox
+        // v10 migration: FEATURE ENHANCEMENTS — L7 mutations (creature.mutated flag), L8 amplifiers, L9 temporal storms
         if (persisted.creatures) {
           for (const c of persisted.creatures) {
             if (c.mutated === undefined) c.mutated = false;
@@ -6319,7 +6095,6 @@ export const useGameStore = create<GameStore>()(
         }
         if (!persisted.amplifiers) persisted.amplifiers = [];
         if (!persisted.temporalStorms) persisted.temporalStorms = {};
-        if (persisted.universeParadox === undefined) persisted.universeParadox = 0;
 
         // v9 migration: REBUILD L7-10 — new narrative (Bio-engineering, Divine Alliance, Divine War, Ascension)
         // Layer 7 — Creature Lab
@@ -6375,6 +6150,55 @@ export const useGameStore = create<GameStore>()(
         if (persisted.epFromBackground === undefined) persisted.epFromBackground = 0;
         // backgroundSimulations field kept for display-cache compat; recomputed each tick.
         if (persisted.backgroundSimulations === undefined) persisted.backgroundSimulations = 0;
+
+        // P6 — Modal Consolidation migration. Older saves don't have the
+        // `activeLayerModal` field; default it to null (closed). Also force
+        // any stale `show*` flags false on load so a reloaded save doesn't
+        // immediately open a layer modal the player didn't intend to open.
+        if (persisted.activeLayerModal === undefined) persisted.activeLayerModal = null;
+        // P7 — Error states migration: initialize the new field for older saves.
+        if (persisted.lastPurchaseError === undefined) persisted.lastPurchaseError = null;
+        // If a save somehow has multiple show* flags true, just clear them all
+        // — the consolidated LayerModal will reopen the right one when the
+        // player clicks a layer button.
+        const anyLayerModalOpen =
+          !!persisted.showChallenges ||
+          !!persisted.showEnlightenment ||
+          !!persisted.showTranscendence ||
+          !!persisted.showGenesis ||
+          !!persisted.showApotheosis ||
+          !!persisted.showSingularity ||
+          !!persisted.showOmnipotence ||
+          !!persisted.showDivinityLayer ||
+          !!persisted.showInfinity ||
+          !!persisted.showEternity;
+        if (anyLayerModalOpen) {
+          // Don't auto-open on reload — reset to closed state.
+          persisted.activeLayerModal = null;
+          persisted.showChallenges = false;
+          persisted.showEnlightenment = false;
+          persisted.showTranscendence = false;
+          persisted.showGenesis = false;
+          persisted.showApotheosis = false;
+          persisted.showSingularity = false;
+          persisted.showOmnipotence = false;
+          persisted.showDivinityLayer = false;
+          persisted.showInfinity = false;
+          persisted.showEternity = false;
+        }
+
+        // v13 migration (DEBUG-SHORTCUTS): seed the new `keyboardShortcuts`
+        // field with defaults for older saves. Any custom binds merge over the
+        // defaults. Missing keys (e.g. a brand-new action added in a future
+        // patch) are filled in from DEFAULT_KEYBOARD_SHORTCUTS.
+        if (!persisted.keyboardShortcuts) {
+          persisted.keyboardShortcuts = { ...DEFAULT_KEYBOARD_SHORTCUTS };
+        } else {
+          persisted.keyboardShortcuts = {
+            ...DEFAULT_KEYBOARD_SHORTCUTS,
+            ...persisted.keyboardShortcuts,
+          };
+        }
 
         return persisted;
       },

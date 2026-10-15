@@ -1,151 +1,160 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
-  CRADLE_WORLDS,
-  PRIME_CONDITIONS,
-  SACRED_GEOGRAPHIES,
-  DORMANT_SEEDS,
-  DIFFICULTY_TIERS,
-  CRADLE_WORLD_MAP,
-  PRIME_CONDITION_MAP,
-  SACRED_GEOGRAPHY_MAP,
-  DORMANT_SEED_MAP,
-  DIFFICULTY_TIER_MAP,
-  worldProductionMult,
-  worldCapMult,
-  worldEpMultiplier,
-  worldPopGrowthMult,
-} from "@/game/data/genesis";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+  GALAXY_SYSTEMS,
+  GALAXY_SCAN_COST,
+  GALAXY_TOTAL_SYSTEMS,
+  galaxyClaimCost,
+  getGalaxySystemNeighbors,
+  hexPolygonPoints,
+  hexToPixel,
+  summarizeGalaxyBonuses,
+  type GalaxyBonusType,
+} from "@/game/data/galaxyMap";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Egg, CheckCircle2, RotateCcw } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import {
+  Lock,
+  Egg,
+  Telescope,
+  Star,
+  Boxes,
+  Database,
+  Sparkles,
+  Gauge,
+  Package,
+  Users,
+} from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 
-const GRID_COLS = 5;
-const GRID_ROWS = 4;
-const GRID_SIZE = GRID_COLS * GRID_ROWS; // 20
+// Hex radius (SVG units). 22 keeps the 50-system spiral readable inside a
+// 520-ish-wide viewBox while still fitting on narrow phone screens (the
+// container scrolls horizontally when needed).
+const HEX_SIZE = 22;
 
-const TILE_TYPES = [
-  { id: "forest", name: "Forest", icon: "🌲", bonus: "+5% food production", color: "text-emerald-300 border-emerald-400/40 bg-emerald-500/10" },
-  { id: "mountain", name: "Mountain", icon: "⛰️", bonus: "+5% materials & stone production", color: "text-stone-300 border-stone-400/40 bg-stone-500/10" },
-  { id: "ocean", name: "Ocean", icon: "🌊", bonus: "+5% water production", color: "text-sky-300 border-sky-400/40 bg-sky-500/10" },
-  { id: "desert", name: "Desert", icon: "🏜️", bonus: "+5% gold production", color: "text-amber-300 border-amber-400/40 bg-amber-500/10" },
-  { id: "plains", name: "Plains", icon: "🌾", bonus: "+2% to all production", color: "text-yellow-300 border-yellow-400/40 bg-yellow-500/10" },
-];
+const BONUS_ICON: Record<GalaxyBonusType, string> = {
+  production: "⚙️",
+  capacity: "📦",
+  ep: "✨",
+  pop: "👥",
+};
 
-const TILE_MAP: Record<string, typeof TILE_TYPES[number]> = Object.fromEntries(
-  TILE_TYPES.map((t) => [t.id, t])
-);
+const BONUS_LABEL: Record<GalaxyBonusType, string> = {
+  production: "Production",
+  capacity: "Capacity",
+  ep: "Enlightenment",
+  pop: "Population",
+};
 
-// Adjacency helpers
-function neighborIndices(idx: number): number[] {
-  const row = Math.floor(idx / GRID_COLS);
-  const col = idx % GRID_COLS;
-  const result: number[] = [];
-  if (col > 0) result.push(idx - 1);
-  if (col < GRID_COLS - 1) result.push(idx + 1);
-  if (row > 0) result.push(idx - GRID_COLS);
-  if (row < GRID_ROWS - 1) result.push(idx + GRID_COLS);
-  return result;
+function bonusPct(value: number): string {
+  return `+${Math.round(value * 100)}%`;
 }
 
-// Find groups of 3+ same-type connected tiles
-function findCombos(grid: Array<string | null>): { tileId: string; cells: number[] }[] {
-  const visited = new Set<number>();
-  const combos: { tileId: string; cells: number[] }[] = [];
-  for (let i = 0; i < grid.length; i++) {
-    if (grid[i] === null || visited.has(i)) continue;
-    const tileId = grid[i]!;
-    const comp: number[] = [];
-    const queue = [i];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      if (visited.has(cur) || grid[cur] !== tileId) continue;
-      visited.add(cur);
-      comp.push(cur);
-      for (const ni of neighborIndices(cur)) {
-        if (grid[ni] === tileId && !visited.has(ni)) queue.push(ni);
-      }
-    }
-    if (comp.length >= 3) combos.push({ tileId, cells: comp });
-  }
-  return combos;
-}
-
-// Count adjacency bonuses (each tile adjacent to another tile of any type)
-function countAdjacencyBonuses(grid: Array<string | null>): number {
-  let count = 0;
-  for (let i = 0; i < grid.length; i++) {
-    if (grid[i] === null) continue;
-    for (const ni of neighborIndices(i)) {
-      if (grid[ni] !== null && grid[ni] !== grid[i]) count++;
-    }
-  }
-  return count;
-}
-
-export function GenesisModal() {
-  const show = useGameStore((s) => s.showGenesis);
-  const setShow = useGameStore((s) => s.setShowGenesis);
+export function GenesisContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const genesisSeeds = useGameStore((s) => s.genesisSeeds);
-  const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
-  const pending = useGameStore((s) => s.pendingWorldConfig || {});
-  const setPendingWorldConfig = useGameStore((s) => s.setPendingWorldConfig);
-  const authorWorld = useGameStore((s) => s.authorWorld);
+  const galaxySystems = useGameStore((s) => s.galaxySystems || []);
+  const scanGalaxySystem = useGameStore((s) => s.scanGalaxySystem);
+  const claimGalaxySystem = useGameStore((s) => s.claimGalaxySystem);
 
-  // REBUILD L4 — Sacred Grid state
-  const worldGrid = useGameStore((s) => s.worldGrid || Array(GRID_SIZE).fill(null));
-  const worldGridSeeds = useGameStore((s) => s.worldGridSeeds || Array(GRID_SIZE).fill(null));
-  const placeGridTile = useGameStore((s) => s.placeGridTile);
-  const resetWorldGrid = useGameStore((s) => s.resetWorldGrid);
-  // FEATURE 4 — Natural Disasters
-  const lastDisasterCell = useGameStore((s) => s.lastDisasterCell ?? null);
-  const lastDisasterAt = useGameStore((s) => s.lastDisasterAt || 0);
-  const gameTime = useGameStore((s) => s.time);
-  const disasterTimer = useGameStore((s) => s.disasterTimer || 0);
-  const disasterRecentlyHit = lastDisasterCell !== null && (gameTime - lastDisasterAt) < 0.7;
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const isUnlocked = !!unlockedLayers.genesis;
-  const wProd = worldProductionMult(authoredWorlds);
-  const wCap = worldCapMult(authoredWorlds);
-  const wEp = worldEpMultiplier(authoredWorlds);
-  const wPop = worldPopGrowthMult(authoredWorlds);
 
-  const canAuthor = !!(pending.cradleWorldId && pending.primeConditionId && pending.sacredGeographyId && pending.dormantSeedId && pending.difficultyTierId);
+  // Pre-compute pixel positions + viewBox for the SVG. GALAXY_SYSTEMS is
+  // static, but we depend on `galaxySystems` so the per-system state
+  // (claimed/explored) is fresh on every interaction.
+  const layout = useMemo(() => {
+    const pts = GALAXY_SYSTEMS.map((sys) => {
+      const state = galaxySystems.find((g) => g.id === sys.id);
+      const px = hexToPixel(sys.hex.q, sys.hex.r, HEX_SIZE);
+      return { sys, state, x: px.x, y: px.y };
+    });
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    }
+    const pad = HEX_SIZE * 1.6;
+    return {
+      pts,
+      viewBox: `${(minX - pad).toFixed(2)} ${(minY - pad).toFixed(2)} ${((maxX - minX) + pad * 2).toFixed(2)} ${((maxY - minY) + pad * 2).toFixed(2)}`,
+    };
+  }, [galaxySystems]);
 
-  const filledTiles = worldGrid.filter((t) => t !== null).length;
-  const combos = findCombos(worldGrid);
-  const adjacencyCount = countAdjacencyBonuses(worldGrid);
-  // Grid bonus: each filled tile +1% production, each combo +5%, each adjacency +0.5%
-  const gridProductionBonus = filledTiles * 0.01 + combos.length * 0.05 + adjacencyCount * 0.005;
+  const summary = useMemo(() => summarizeGalaxyBonuses(galaxySystems), [galaxySystems]);
+  const claimedCount = summary.claimedCount;
+  const exploredCount = galaxySystems.filter((g) => g.explored).length;
+  const nextClaimCost = galaxyClaimCost(claimedCount);
+  const worldBonus = claimedCount * 10;
+  const canScan = genesisSeeds >= GALAXY_SCAN_COST;
+  const canClaim = genesisSeeds >= nextClaimCost;
 
-  // Active tile type to place (local React state)
-  const [activeTile, setActiveTile] = useState<string>("forest");
+  // Connection lines between adjacent claimed systems (deduped: A→B and B→A
+  // are the same line).
+  const connectionLines = useMemo(() => {
+    const lines: { x1: number; y1: number; x2: number; y2: number; key: string }[] = [];
+    const seen = new Set<string>();
+    const claimedPts = layout.pts.filter((p) => p.state?.claimed);
+    for (const p of claimedPts) {
+      const neighbors = getGalaxySystemNeighbors(p.sys.id);
+      for (const n of neighbors) {
+        const np = layout.pts.find((pp) => pp.sys.id === n.id);
+        if (!np || !np.state?.claimed) continue;
+        const key = [p.sys.id, np.sys.id].sort().join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        lines.push({ x1: p.x, y1: p.y, x2: np.x, y2: np.y, key });
+      }
+    }
+    return lines;
+  }, [layout]);
+
+  // Neighbor set for hover highlight.
+  const hoveredNeighborIds = useMemo(() => {
+    if (!hoveredId) return new Set<string>();
+    return new Set(getGalaxySystemNeighbors(hoveredId).map((n) => n.id));
+  }, [hoveredId]);
+
+  // Quick lookup for "claimed neighbor count" per system (used for the ★ synergy
+  // marker — claimed systems adjacent to 2+ other claimed systems).
+  const claimedNeighborCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const sys of GALAXY_SYSTEMS) {
+      const neighbors = getGalaxySystemNeighbors(sys.id);
+      const c = neighbors.filter((n) => galaxySystems.find((g) => g.id === n.id)?.claimed).length;
+      map.set(sys.id, c);
+    }
+    return map;
+  }, [galaxySystems]);
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Egg className="w-5 h-5" />
-            Layer 4 — Genesis (Sacred Grid)
-            <BackgroundLayerBadge layerId="genesis" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
-            <span>
-              Place sacred tiles on a 5×4 grid. Adjacent tiles amplify each other; 3+ matching tiles form a combo.
-            </span>
-            <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
-              {formatNumber(genesisSeeds, 0)} Seeds
-            </Badge>
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Egg className="w-5 h-5" />
+          Layer 4 — Genesis (Galaxy Claim)
+          <BackgroundLayerBadge layerId="genesis" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Survey 50 star systems on a hex spiral. Scan the unknown, then claim with Genesis Seeds to grow the Divine Engine.
+          </span>
+          <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
+            {formatNumber(genesisSeeds, 0)} Seeds
+          </Badge>
+        </DialogDescription>
+      </DialogHeader>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -154,238 +163,340 @@ export function GenesisModal() {
             <p className="text-xs mt-1">Perform all 4 Blood Pacts (Layer 3) to unlock Genesis.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Sacred Grid — the new mini-game */}
-            <section className="stat-card">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[0.7rem] uppercase tracking-wide text-emerald-300/80">Sacred Grid (5×4 = 20 cells)</div>
-                <Button size="sm" variant="ghost" onClick={resetWorldGrid} className="h-7 text-[0.65rem]">
-                  <RotateCcw className="w-3 h-3 mr-1" /> Reset Grid
-                </Button>
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+            {/* P7 — Empty state banner: shown when no systems claimed yet,
+                to guide the player toward their first scan + claim. */}
+            {claimedCount === 0 && (
+              <div className="lg:col-span-2">
+                <EmptyState
+                  compact
+                  icon={<Telescope className="w-6 h-6" />}
+                  title="No systems claimed yet."
+                  description="Scan a system to reveal its bonus, then claim it with Genesis Seeds. Click an unexplored hex (with a ?) to begin."
+                />
               </div>
-              <div className="text-[0.65rem] text-muted-foreground mb-2">
-                Pick a tile type, then click an empty cell. Placing next to dormant seeds may reveal them.
-                Each tile gives <span className="text-cyan-300">+1% prod</span>; each adjacency <span className="text-amber-300">+0.5%</span>; each 3+ combo <span className="text-pink-300">+5%</span>.
-              </div>
-
-              {/* Tile picker */}
-              <TilePicker
-                activeTileId={activeTile}
-                onSelect={(id) => setActiveTile(id)}
-              />
-
-              {/* Grid stats */}
-              <div className="flex flex-wrap gap-1 mt-2 mb-2">
-                <Badge variant="outline" className="text-[0.6rem] text-cyan-300 border-cyan-400/40">{filledTiles}/20 tiles placed</Badge>
-                <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">{adjacencyCount} adjacencies (+{(adjacencyCount * 0.5).toFixed(1)}% prod)</Badge>
-                <Badge variant="outline" className="text-[0.6rem] text-pink-300 border-pink-400/40">{combos.length} combos (+{(combos.length * 5).toFixed(0)}% prod)</Badge>
-                <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">Grid total: +{(gridProductionBonus * 100).toFixed(1)}% prod</Badge>
-                {/* FEATURE 4 — Disaster countdown */}
-                <Badge variant="outline" className={`text-[0.6rem] ${disasterTimer < 10 ? "text-rose-300 border-rose-400/60" : "text-muted-foreground"}`}>
-                  🌋 next disaster roll in {Math.ceil(disasterTimer)}s
-                </Badge>
-              </div>
-
-              {disasterRecentlyHit && lastDisasterCell !== null && (
-                <div className="rounded-md border border-rose-400/60 bg-rose-500/15 p-1.5 text-[0.65rem] text-rose-200 mb-2">
-                  ⚠ A natural disaster destroyed the tile on cell {lastDisasterCell + 1}. Rebuild it (click the empty cell to place a new tile).
-                </div>
-              )}
-
-              {/* The 5×4 grid */}
-              <div
-                className="grid gap-1.5"
-                style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}
+            )}
+            {/* Hex map */}
+            <div className="stat-card overflow-x-auto">
+              <svg
+                viewBox={layout.viewBox}
+                className="w-full h-auto"
+                style={{ minWidth: 560, maxHeight: "62vh" }}
+                role="img"
+                aria-label="Galaxy hex map"
               >
-                {Array.from({ length: GRID_SIZE }, (_, i) => {
-                  const tileId = worldGrid[i];
-                  const seed = worldGridSeeds[i];
-                  const tile = tileId ? TILE_MAP[tileId] : null;
-                  const inCombo = combos.some((c) => c.cells.includes(i));
-                  // FEATURE 4 — disaster flash on the recently-destroyed cell
-                  const isDisasterFlash = disasterRecentlyHit && lastDisasterCell === i;
+                {/* Connection lines (under hexes) */}
+                <g>
+                  {connectionLines.map((l) => (
+                    <line
+                      key={l.key}
+                      x1={l.x1}
+                      y1={l.y1}
+                      x2={l.x2}
+                      y2={l.y2}
+                      stroke="rgba(56, 189, 248, 0.55)"
+                      strokeWidth={1.5}
+                    />
+                  ))}
+                </g>
+
+                {/* Hexes */}
+                {layout.pts.map((p) => {
+                  const sys = p.sys;
+                  const state = p.state;
+                  const claimed = !!state?.claimed;
+                  const explored = !!state?.explored;
+                  const isHovered = hoveredId === sys.id;
+                  const isHoverNeighbor = hoveredNeighborIds.has(sys.id);
+                  const synergyCount = claimedNeighborCount.get(sys.id) || 0;
+                  const hasSynergy = claimed && synergyCount >= 2;
+
+                  const fill = claimed
+                    ? "rgba(56, 189, 248, 0.32)"
+                    : explored
+                      ? "rgba(148, 163, 184, 0.16)"
+                      : "rgba(15, 23, 42, 0.55)";
+                  const stroke = claimed
+                    ? "rgba(56, 189, 248, 0.95)"
+                    : explored
+                      ? "rgba(148, 163, 184, 0.55)"
+                      : "rgba(100, 116, 139, 0.55)";
+                  const strokeW = isHovered ? 2.6 : isHoverNeighbor ? 1.8 : 1;
+
+                  const shortName = sys.name.length > 9 ? `${sys.name.slice(0, 8)}…` : sys.name;
+
                   return (
-                    <button
-                      key={i}
-                      disabled={tileId !== null}
-                      onClick={() => placeGridTile(i, activeTile)}
-                      className={`relative aspect-square rounded-md border flex items-center justify-center transition-all
-                        ${isDisasterFlash
-                          ? "border-rose-400/60 bg-rose-500/20 disaster-flash"
-                          : tile
-                            ? `${tile.color} ${inCombo ? "ring-2 ring-pink-400/60" : ""}`
-                            : seed
-                              ? "border-violet-400/40 bg-violet-500/10 hover:border-violet-400/70"
-                              : "border-muted-foreground/20 bg-muted/10 hover:border-emerald-400/40 hover:bg-emerald-500/5"
-                        }
-                      `}
-                      title={isDisasterFlash ? "Disaster struck here — rebuild!" : tile ? `${tile.name} — ${tile.bonus}` : seed ? "Dormant seed — place next to it" : "Empty — click to place"}
-                    >
-                      <span className="text-2xl">
-                        {isDisasterFlash ? "💥" : tile ? tile.icon : seed ? "✨" : ""}
-                      </span>
-                      {inCombo && !isDisasterFlash && (
-                        <span className="absolute -top-1 -right-1 text-[0.6rem] text-pink-300">★</span>
-                      )}
-                    </button>
+                    <Tooltip key={sys.id}>
+                      <TooltipTrigger asChild>
+                        <g
+                          transform={`translate(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`}
+                          className="cursor-pointer"
+                          onMouseEnter={() => setHoveredId(sys.id)}
+                          onMouseLeave={() => setHoveredId((cur) => (cur === sys.id ? null : cur))}
+                          onClick={() => {
+                            if (!explored) scanGalaxySystem(sys.id);
+                            else if (!claimed) claimGalaxySystem(sys.id);
+                          }}
+                        >
+                          <polygon
+                            points={hexPolygonPoints(HEX_SIZE)}
+                            fill={fill}
+                            stroke={isHovered ? "#fde047" : stroke}
+                            strokeWidth={strokeW}
+                          />
+                          {claimed ? (
+                            <>
+                              <text
+                                textAnchor="middle"
+                                y={-3}
+                                fontSize={11}
+                                fill="#bae6fd"
+                                style={{ pointerEvents: "none" }}
+                              >
+                                {BONUS_ICON[sys.bonus.type]}
+                              </text>
+                              <text
+                                textAnchor="middle"
+                                y={8}
+                                fontSize={6.5}
+                                fill="#cbd5e1"
+                                style={{ pointerEvents: "none" }}
+                              >
+                                {shortName}
+                              </text>
+                              {hasSynergy && (
+                                <text
+                                  textAnchor="middle"
+                                  y={-12}
+                                  fontSize={10}
+                                  fill="#fde047"
+                                  style={{ pointerEvents: "none" }}
+                                >
+                                  ★
+                                </text>
+                              )}
+                            </>
+                          ) : explored ? (
+                            <>
+                              <text
+                                textAnchor="middle"
+                                y={-2}
+                                fontSize={11}
+                                fill="#fbbf24"
+                                style={{ pointerEvents: "none" }}
+                              >
+                                {BONUS_ICON[sys.bonus.type]}
+                              </text>
+                              <text
+                                textAnchor="middle"
+                                y={8}
+                                fontSize={6.5}
+                                fill="#94a3b8"
+                                style={{ pointerEvents: "none" }}
+                              >
+                                {bonusPct(sys.bonus.value)}
+                              </text>
+                            </>
+                          ) : (
+                            <text
+                              textAnchor="middle"
+                              y={4}
+                              fontSize={14}
+                              fill="#64748b"
+                              style={{ pointerEvents: "none" }}
+                            >
+                              ?
+                            </text>
+                          )}
+                        </g>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px]">
+                        <div className="text-[0.7rem] space-y-0.5">
+                          <div className="font-semibold text-cyan-200">{sys.name}</div>
+                          <div className="text-muted-foreground">Hex ({sys.hex.q}, {sys.hex.r})</div>
+                          {explored ? (
+                            <>
+                              <div>
+                                {BONUS_LABEL[sys.bonus.type]}: {bonusPct(sys.bonus.value)}
+                              </div>
+                              {sys.rareResource && (
+                                <div className="text-amber-300">
+                                  Rare: {sys.rareResource === "alloys" ? "Alloys" : "Data"}
+                                </div>
+                              )}
+                              <div className={claimed ? "text-cyan-300" : "text-emerald-300"}>
+                                {claimed
+                                  ? "✓ Claimed"
+                                  : `Claim cost: ${nextClaimCost} Seeds`}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-violet-300">
+                              Unexplored — Scan for {GALAXY_SCAN_COST} Seeds
+                            </div>
+                          )}
+                          <div className="text-muted-foreground">
+                            {synergyCount} claimed neighbor{synergyCount === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   );
                 })}
-              </div>
-            </section>
-
-            {/* Aggregated world bonuses */}
-            <div className="stat-card">
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">Aggregated bonuses from {authoredWorlds.length} authored world(s)</div>
-              <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(wProd * 100).toFixed(0)}% prod</Badge>
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(wCap * 100).toFixed(0)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(wEp * 100).toFixed(0)}% EP</Badge>
-                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(wPop * 100).toFixed(0)}% pop</Badge>
+              </svg>
+              <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed">
+                Hover to highlight neighbors. Click an unexplored hex to{" "}
+                <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Seeds) or an
+                explored unclaimed hex to{" "}
+                <span className="text-emerald-300">claim</span> ({nextClaimCost} Seeds).{" "}
+                <span className="text-amber-300">★</span> = synergy (2+ claimed neighbors, +50% bonus).
               </div>
             </div>
 
-            {/* Author UI (preserved) */}
-            <section className="stat-card">
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">Author a new world (costs 1 Genesis Seed)</div>
-              <ConfigPicker
-                label="Cradle World"
-                items={CRADLE_WORLDS.map((c) => ({ id: c.id, name: c.name, icon: c.icon, blurb: c.blurb }))}
-                selected={pending.cradleWorldId}
-                onSelect={(id) => setPendingWorldConfig({ cradleWorldId: id })}
-              />
-              <ConfigPicker
-                label="Prime Condition"
-                items={PRIME_CONDITIONS.map((c) => ({ id: c.id, name: c.name, icon: c.icon, blurb: c.blurb }))}
-                selected={pending.primeConditionId}
-                onSelect={(id) => setPendingWorldConfig({ primeConditionId: id })}
-              />
-              <ConfigPicker
-                label="Sacred Geography"
-                items={SACRED_GEOGRAPHIES.map((c) => ({ id: c.id, name: c.name, icon: c.icon, blurb: c.blurb }))}
-                selected={pending.sacredGeographyId}
-                onSelect={(id) => setPendingWorldConfig({ sacredGeographyId: id })}
-              />
-              <ConfigPicker
-                label="Dormant Seed"
-                items={DORMANT_SEEDS.map((c) => ({ id: c.id, name: c.name, icon: c.icon, blurb: c.blurb }))}
-                selected={pending.dormantSeedId}
-                onSelect={(id) => setPendingWorldConfig({ dormantSeedId: id })}
-              />
-              <ConfigPicker
-                label="Difficulty Tier"
-                items={DIFFICULTY_TIERS.map((c) => ({ id: c.id, name: c.name, icon: c.icon, blurb: c.blurb }))}
-                selected={pending.difficultyTierId}
-                onSelect={(id) => setPendingWorldConfig({ difficultyTierId: id })}
-              />
-              <div className="flex justify-end mt-2">
-                <Button size="sm" disabled={!canAuthor || genesisSeeds < 1} onClick={() => authorWorld()}>
-                  Author World (1 Seed)
-                </Button>
+            {/* Sidebar */}
+            <div className="space-y-3">
+              {/* Progress */}
+              <div className="stat-card">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Galaxy progress
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-cyan-200">{claimedCount}</span>
+                  <span className="text-xs text-muted-foreground">/ {GALAXY_TOTAL_SYSTEMS} systems</span>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">
+                    {formatNumber(genesisSeeds, 0)} Seeds
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
+                    {exploredCount} explored
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
+                    {summary.synergyCount} ★ synergy
+                  </Badge>
+                </div>
               </div>
-            </section>
 
-            {/* Authored Worlds */}
-            <section>
-              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">Authored worlds ({authoredWorlds.length})</div>
-              {authoredWorlds.length === 0 ? (
-                <div className="text-center text-muted-foreground py-4 text-sm">
-                  No worlds authored yet. Author 1 to unlock Layer 5 (Apotheosis).
+              {/* Worlds contributed */}
+              <div className="stat-card">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Worlds contributed
                 </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {authoredWorlds.map((w) => {
-                    const cr = CRADLE_WORLD_MAP[w.cradleWorldId];
-                    const pc = PRIME_CONDITION_MAP[w.primeConditionId];
-                    const sg = SACRED_GEOGRAPHY_MAP[w.sacredGeographyId];
-                    const ds = DORMANT_SEED_MAP[w.dormantSeedId];
-                    const dt = DIFFICULTY_TIER_MAP[w.difficultyTierId];
-                    return (
-                      <div key={w.id} className="stat-card flex items-center gap-2 py-2">
-                        <span className="text-xl">{cr?.icon}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-semibold">{cr?.name}</span>
-                            <Badge variant="outline" className="text-[0.6rem]">{pc?.name}</Badge>
-                            <Badge variant="outline" className="text-[0.6rem]">{sg?.name}</Badge>
-                            <Badge variant="outline" className="text-[0.6rem]">{ds?.name}</Badge>
-                            <Badge variant="outline" className="text-[0.6rem]">{dt?.name}</Badge>
-                          </div>
-                          <div className="text-[0.6rem] text-muted-foreground mt-0.5">
-                            +{((cr?.productionMult || 0) + (dt?.productionMult || 0)) * 100}% prod, +{(pc?.capMult || 0) * 100}% cap, +{((sg?.epMult || 0) + (dt?.epMult || 0)) * 100}% EP, +{(ds?.popGrowthMult || 0) * 100}% pop
-                          </div>
-                        </div>
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      </div>
-                    );
-                  })}
+                <div className="text-lg font-bold text-amber-200">+{worldBonus}</div>
+                <div className="text-[0.6rem] text-muted-foreground">
+                  +10 worlds per claimed system (counts toward background simulations cap of 1,000 at L4)
                 </div>
-              )}
-            </section>
+              </div>
+
+              {/* Active bonuses */}
+              <div className="stat-card">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Active bonuses
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  <BonusRow icon={Gauge}    label="Prod" pct={summary.productionMult} tone="cyan" />
+                  <BonusRow icon={Package}  label="Cap"   pct={summary.capMult}        tone="amber" />
+                  <BonusRow icon={Sparkles} label="EP"    pct={summary.epMult}         tone="emerald" />
+                  <BonusRow icon={Users}   label="Pop"   pct={summary.popGrowthMult}   tone="violet" />
+                </div>
+              </div>
+
+              {/* Rare resources */}
+              <div className="stat-card">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Rare resources collected
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="outline" className="text-[0.6rem] text-sky-300 border-sky-400/40">
+                    <Boxes className="w-3 h-3 mr-1" /> Alloys × {summary.alloysCount}
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-fuchsia-300 border-fuchsia-400/40">
+                    <Database className="w-3 h-3 mr-1" /> Data × {summary.dataCount}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Next costs */}
+              <div className="stat-card">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Next action
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-[0.7rem]">
+                    <span className="flex items-center gap-1">
+                      <Telescope className="w-3 h-3" /> Scan (unexplored)
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={canScan
+                        ? "text-violet-300 border-violet-400/40"
+                        : "text-rose-300 border-rose-400/40"}
+                    >
+                      {GALAXY_SCAN_COST} Seeds
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-[0.7rem]">
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3 h-3" /> Claim (explored)
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={canClaim
+                        ? "text-cyan-300 border-cyan-400/40"
+                        : "text-rose-300 border-rose-400/40"}
+                    >
+                      {nextClaimCost} Seeds
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[0.6rem] text-muted-foreground leading-relaxed">
+                Fill all {GALAXY_TOTAL_SYSTEMS} systems to complete Layer 4 and unlock{" "}
+                <span className="text-cyan-300">Apotheosis (Layer 5)</span>.
+              </div>
+            </div>
           </div>
         )}
 
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
-          The <span className="text-emerald-300">Sacred Grid</span> is the new gameplay loop — place tiles strategically to maximize combos and adjacency bonuses.
-          Author at least 1 world to unlock Layer 5 (Apotheosis).
+          The galaxy spiral is the Layer 4 gameplay loop — scan unknown systems to reveal their bonus and
+          rare resource, then claim them with Genesis Seeds. Adjacency matters: systems with 2+ claimed
+          neighbors gain a <span className="text-amber-300">+50% synergy bonus</span>.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
-function TilePicker({ activeTileId, onSelect }: { activeTileId: string; onSelect: (id: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5 mb-2">
-      {TILE_TYPES.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onSelect(t.id)}
-          className={`stat-card text-left p-1.5 flex items-center gap-1 ${activeTileId === t.id ? "border-amber-400/60 bg-amber-500/10" : ""}`}
-        >
-          <span className="text-lg">{t.icon}</span>
-          <div className="min-w-0">
-            <div className="text-[0.65rem] font-medium leading-none">{t.name}</div>
-            <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-tight">{t.bonus}</div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ConfigPicker({
+// Small helper component for the bonus summary rows.
+function BonusRow({
+  icon: Icon,
   label,
-  items,
-  selected,
-  onSelect,
+  pct,
+  tone,
 }: {
+  icon: typeof Gauge;
   label: string;
-  items: { id: string; name: string; icon: string; blurb: string }[];
-  selected?: string;
-  onSelect: (id: string) => void;
+  pct: number;
+  tone: "cyan" | "amber" | "emerald" | "violet";
 }) {
+  const toneClasses = {
+    cyan: "text-cyan-300 border-cyan-400/40",
+    amber: "text-amber-300 border-amber-400/40",
+    emerald: "text-emerald-300 border-emerald-400/40",
+    violet: "text-violet-300 border-violet-400/40",
+  }[tone];
   return (
-    <div className="mb-2">
-      <div className="text-[0.65rem] text-muted-foreground mb-1">{label}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
-        {items.map((it) => (
-          <button
-            key={it.id}
-            onClick={() => onSelect(it.id)}
-            className={`stat-card text-left p-1.5 ${selected === it.id ? "border-amber-400/60 bg-amber-500/10" : ""}`}
-          >
-            <div className="flex items-center gap-1">
-              <span className="text-sm">{it.icon}</span>
-              <span className="text-[0.65rem] font-medium truncate">{it.name}</span>
-            </div>
-            <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-tight line-clamp-2">{it.blurb}</div>
-          </button>
-        ))}
-      </div>
-    </div>
+    <Badge variant="outline" className={`text-[0.6rem] justify-between ${toneClasses}`}>
+      <span className="flex items-center gap-1">
+        <Icon className="w-3 h-3" />
+        {label}
+      </span>
+      <span>+{Math.round(pct * 100)}%</span>
+    </Badge>
   );
 }

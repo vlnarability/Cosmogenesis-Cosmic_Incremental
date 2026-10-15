@@ -1,0 +1,2002 @@
+     1→// ===========================================================================
+     2→// LAYER 2 — ENLIGHTENMENT (CONSTELLATION MAP)
+     3→// ===========================================================================
+     4→// After 3 trials are mastered, the god opens its eyes. The Enlightenment layer
+     5→// is a star map: the player illuminates individual stars within real IAU
+     6→// constellations. Completing a constellation grants a permanent bonus.
+     7→// Currency = Divinity (earned at prestige while this layer is unlocked).
+     8→// Complete CONSTELLATIONS_REQUIRED_FOR_LAYER_3 constellations to advance to
+     9→// Layer 3 (Transcendence).
+    10→//
+    11→// ===========================================================================
+    12→// ARCHITECTURE NOTE — The full IAU list has 88 constellations. This file ships
+    13→// ALL 88 (12 zodiac + 23 northern + 23 equatorial + 30 southern, grouped by
+    14→// approximate declination). Star positions are normalized 0-100 and packed for
+    15→// visual variety per category — they're NOT a literal equatorial projection.
+    16→// The data shape (`ConstellationDef`) is constellation-count-agnostic, so
+    17→// adding/removing entries requires no other code changes.
+    18→// ===========================================================================
+    19→
+    20→export type ConstellationCategory =
+    21→  | "zodiac"
+    22→  | "northern"
+    23→  | "southern"
+    24→  | "equatorial";
+    25→
+    26→export interface ConstellationStar {
+    27→  /** Globally-unique star id, e.g. "orion_alpha". */
+    28→  id: string;
+    29→  /** Normalized X coordinate on the star map, 0-100 (left → right). */
+    30→  x: number;
+    31→  /** Normalized Y coordinate on the star map, 0-100 (top → bottom). */
+    32→  y: number;
+    33→}
+    34→
+    35→export interface ConstellationBonus {
+    36→  /** Additive production multiplier (0.05 = +5%). */
+    37→  productionMult?: number;
+    38→  /** Additive capacity multiplier. */
+    39→  capMult?: number;
+    40→  /** Additive EP multiplier (applied at prestige). */
+    41→  epMult?: number;
+    42→  /** Additive population growth multiplier. */
+    43→  popGrowthMult?: number;
+    44→  /** Cost reduction (negative = cheaper systems/techs). */
+    45→  costMult?: number;
+    46→  /** Bonus Divinity earned on prestige. */
+    47→  divinityMult?: number;
+    48→}
+    49→
+    50→export interface ConstellationDef {
+    51→  /** Slug id, e.g. "orion". */
+    52→  id: string;
+    53→  /** Display name, e.g. "Orion". */
+    54→  name: string;
+    55→  /** IAU designation (Latin), e.g. "Orion". */
+    56→  i18nName: string;
+    57→  /** Stars with normalized 0-100 coordinates on the star map. */
+    58→  stars: ConstellationStar[];
+    59→  /** Pairs of star ids that form the constellation's connecting lines. */
+    60→  connections: [string, string][];
+    61→  /** Permanent reward for completing this constellation. */
+    62→  bonus: ConstellationBonus;
+    63→  /** Flavor grouping. */
+    64→  category: ConstellationCategory;
+    65→}
+    66→
+    67→// ---------------------------------------------------------------------------
+    68→// COST MODEL CONSTANTS
+    69→// ---------------------------------------------------------------------------
+    70→// **Critical**: matches the user-supplied spec exactly.
+    71→//   baseCost = 10 Divinity.
+    72→//   withinConstellationGrowth = 1.5 — each subsequent star in the SAME
+    73→//     constellation multiplies the cost by 1.5 (cumulative).
+    74→//   costGrowth = 2.0 — multiplier per OTHER started constellation (i.e. any
+    75→//     constellation the player has already begun illuminating that isn't the
+    76→//     one being illuminated right now).
+    77→//
+    78→// Concretely (baseCost = 10):
+    79→//   A·star1:  10 × 1.5^0 × 2.0^0 = 10       (A is the first started → N=0)
+    80→//   A·star2:  10 × 1.5^1 × 2.0^0 = 15        (A is the only started, N=0 still)
+    81→//   A·star3:  10 × 1.5^2 × 2.0^0 = 22.5
+    82→//   B·star1:  10 × 1.5^0 × 2.0^1 = 20        (A is started, B is new → N=1)
+    83→//   B·star2:  10 × 1.5^1 × 2.0^1 = 30        (A+B started, B excluded → N=1)
+    84→//   Cass·star1: 10 × 1.5^0 × 2.0^2 = 40      (A+B started, Cass is new → N=2)
+    85→//
+    86→// Where N = (# of started constellations) - (1 if THIS constellation is
+    87→// already started, else 0). I.e. N counts OTHER started constellations.
+    88→//
+    89→// The "new constellation penalty" the user describes is the costGrowth^N
+    90→// term: it only kicks in when this is a brand-new constellation (because at
+    91→// that point every other started constellation counts toward N). For
+    92→// already-started constellations, N stays fixed at the count when you began
+    93→// that constellation, which means subsequent stars in a "penalized"
+    94→// constellation inherit the same N multiplier — encouraging the player to
+    95→// finish a constellation before starting a new one.
+    96→// ---------------------------------------------------------------------------
+    97→export const CONSTELLATION_BASE_COST = 10;
+    98→export const WITHIN_CONSTELLATION_GROWTH = 1.5;
+    99→export const COST_GROWTH_PER_STARTED = 2.0;
+   100→export const NEW_CONSTELLATION_PENALTY = 2.0;
+   101→
+   102→// Number of constellations the player must COMPLETE to advance to Layer 3.
+   103→// 88 constellations total — completing 20 (~23%) unlocks Transcendence.
+   104→export const CONSTELLATIONS_REQUIRED_FOR_LAYER_3 = 20;
+   105→
+   106→// Per-star production bonus (additive across all lit stars).
+   107→export const PER_STAR_PRODUCTION_BONUS = 0.005; // +0.5% per lit star
+   108→
+   109→// ---------------------------------------------------------------------------
+   110→// L2 ACTIVE ABILITY CONSTANTS (the four EnlightenmentModal abilities)
+   111→// ---------------------------------------------------------------------------
+   112→// These four abilities live alongside the constellation map; they each cost
+   113→// Divinity AND have a cooldown (tracked in `activeAbilityCooldowns` under the
+   114→// ids below). Cosmic Bridge additionally has a duration timer tracked in
+   115→// `cosmicBridgeLink.remaining`.
+   116→export const STARGAZE_COST = 25;
+   117→export const STARGAZE_COOLDOWN_SEC = 60;
+   118→
+   119→export const SUPERNOVA_COST = 100;
+   120→export const SUPERNOVA_COOLDOWN_SEC = 300;
+   121→
+   122→export const BLACK_HOLE_COST = 50;
+   123→export const BLACK_HOLE_COOLDOWN_SEC = 120;
+   124→// Black Hole refunds this fraction of the recomputed base cost per lit star.
+   125→export const BLACK_HOLE_REFUND_FRACTION = 0.75;
+   126→
+   127→export const COSMIC_BRIDGE_COST = 200;
+   128→export const COSMIC_BRIDGE_COOLDOWN_SEC = 600;
+   129→// When activated, the bridge stays active for this many seconds.
+   130→export const COSMIC_BRIDGE_DURATION_SEC = 60;
+   131→
+   132→// Cooldown keys used inside `activeAbilityCooldowns` (shared with the
+   133→// generic per-layer `useActiveAbility` system so cooldowns decay uniformly).
+   134→export const STARGAZE_CD_KEY = "ability_stargaze";
+   135→export const SUPERNOVA_CD_KEY = "ability_supernova";
+   136→export const BLACK_HOLE_CD_KEY = "ability_black_hole";
+   137→export const COSMIC_BRIDGE_CD_KEY = "ability_cosmic_bridge";
+   138→
+   139→/** Shape of the active Cosmic Bridge link (one of `from`/`to` matches the
+   140→ *  constellation the player just illuminated; the OTHER side gets a free
+   141→ *  cheapest-star illumination). */
+   142→export interface CosmicBridgeLink {
+   143→  from: string; // constellationId of the first endpoint
+   144→  to: string;   // constellationId of the second endpoint
+   145→  remaining: number; // seconds remaining (decayed by tick)
+   146→}
+   147→
+   148→// ---------------------------------------------------------------------------
+   149→// THE 88 IAU CONSTELLATIONS
+   150→// ---------------------------------------------------------------------------
+   151→// Star positions are normalized 0-100 on a stylized sky map (NOT a literal
+   152→// equatorial projection — they're packed for visual variety per category).
+   153→// Star counts per constellation range 3-15; connecting lines follow the
+   154→// canonical IAU stick figures (simplified). All 12 zodiac + the most
+   155→// prominent northern/southern asterisms are hand-positioned for recognition;
+   156→// the rest use Wikipedia-derived approximate positions.
+   157→export const CONSTELLATIONS: ConstellationDef[] = [
+   158→  // ===== ZODIAC (12) =====
+   159→  {
+   160→    id: "aries",
+   161→    name: "Aries",
+   162→    i18nName: "Aries",
+   163→    category: "zodiac",
+   164→    stars: [
+   165→      { id: "aries_alpha", x: 12, y: 30 },
+   166→      { id: "aries_beta", x: 16, y: 28 },
+   167→      { id: "aries_gamma", x: 20, y: 32 },
+   168→      { id: "aries_delta", x: 24, y: 35 },
+   169→    ],
+   170→    connections: [
+   171→      ["aries_alpha", "aries_beta"],
+   172→      ["aries_beta", "aries_gamma"],
+   173→      ["aries_gamma", "aries_delta"],
+   174→    ],
+   175→    bonus: { productionMult: 0.04, popGrowthMult: 0.03 },
+   176→  },
+   177→  {
+   178→    id: "taurus",
+   179→    name: "Taurus",
+   180→    i18nName: "Taurus",
+   181→    category: "zodiac",
+   182→    stars: [
+   183→      { id: "taurus_alpha", x: 30, y: 28 }, // Aldebaran
+   184→      { id: "taurus_beta", x: 28, y: 24 },
+   185→      { id: "taurus_gamma", x: 26, y: 30 },
+   186→      { id: "taurus_delta", x: 34, y: 22 },
+   187→      { id: "taurus_eps", x: 32, y: 18 },
+   188→      { id: "taurus_zeta", x: 36, y: 18 },
+   189→      { id: "taurus_eta", x: 38, y: 22 },
+   190→    ],
+   191→    connections: [
+   192→      ["taurus_alpha", "taurus_beta"],
+   193→      ["taurus_alpha", "taurus_gamma"],
+   194→      ["taurus_beta", "taurus_delta"],
+   195→      ["taurus_delta", "taurus_eps"],
+   196→      ["taurus_eps", "taurus_zeta"],
+   197→      ["taurus_zeta", "taurus_eta"],
+   198→      ["taurus_eta", "taurus_delta"],
+   199→    ],
+   200→    bonus: { productionMult: 0.06, capMult: 0.03 },
+   201→  },
+   202→  {
+   203→    id: "gemini",
+   204→    name: "Gemini",
+   205→    i18nName: "Gemini",
+   206→    category: "zodiac",
+   207→    stars: [
+   208→      { id: "gemini_alpha", x: 44, y: 22 }, // Castor
+   209→      { id: "gemini_beta", x: 46, y: 26 },  // Pollux
+   210→      { id: "gemini_gamma", x: 42, y: 24 },
+   211→      { id: "gemini_delta", x: 40, y: 30 },
+   212→      { id: "gemini_eps", x: 43, y: 34 },
+   213→      { id: "gemini_zeta", x: 47, y: 32 },
+   214→      { id: "gemini_eta", x: 49, y: 28 },
+   215→      { id: "gemini_theta", x: 51, y: 24 },
+   216→    ],
+   217→    connections: [
+   218→      ["gemini_alpha", "gemini_gamma"],
+   219→      ["gemini_gamma", "gemini_delta"],
+   220→      ["gemini_delta", "gemini_eps"],
+   221→      ["gemini_beta", "gemini_zeta"],
+   222→      ["gemini_zeta", "gemini_eta"],
+   223→      ["gemini_eta", "gemini_theta"],
+   224→    ],
+   225→    bonus: { productionMult: 0.05, epMult: 0.04 },
+   226→  },
+   227→  {
+   228→    id: "cancer",
+   229→    name: "Cancer",
+   230→    i18nName: "Cancer",
+   231→    category: "zodiac",
+   232→    stars: [
+   233→      { id: "cancer_alpha", x: 56, y: 22 },
+   234→      { id: "cancer_beta", x: 54, y: 26 },
+   235→      { id: "cancer_gamma", x: 58, y: 28 },
+   236→      { id: "cancer_delta", x: 56, y: 32 },
+   237→      { id: "cancer_eps", x: 60, y: 24 },
+   238→    ],
+   239→    connections: [
+   240→      ["cancer_alpha", "cancer_beta"],
+   241→      ["cancer_alpha", "cancer_gamma"],
+   242→      ["cancer_gamma", "cancer_delta"],
+   243→      ["cancer_alpha", "cancer_eps"],
+   244→    ],
+   245→    bonus: { capMult: 0.05, popGrowthMult: 0.02 },
+   246→  },
+   247→  {
+   248→    id: "leo",
+   249→    name: "Leo",
+   250→    i18nName: "Leo",
+   251→    category: "zodiac",
+   252→    stars: [
+   253→      { id: "leo_alpha", x: 65, y: 28 }, // Regulus
+   254→      { id: "leo_beta", x: 70, y: 22 },  // Denebola
+   255→      { id: "leo_gamma", x: 62, y: 22 },
+   256→      { id: "leo_delta", x: 60, y: 26 },
+   257→      { id: "leo_eps", x: 68, y: 30 },
+   258→      { id: "leo_zeta", x: 72, y: 26 },
+   259→      { id: "leo_eta", x: 74, y: 24 },
+   260→    ],
+   261→    connections: [
+   262→      ["leo_alpha", "leo_delta"],
+   263→      ["leo_delta", "leo_gamma"],
+   264→      ["leo_gamma", "leo_alpha"],
+   265→      ["leo_alpha", "leo_eps"],
+   266→      ["leo_eps", "leo_zeta"],
+   267→      ["leo_zeta", "leo_beta"],
+   268→      ["leo_beta", "leo_eta"],
+   269→    ],
+   270→    bonus: { productionMult: 0.06, epMult: 0.03 },
+   271→  },
+   272→  {
+   273→    id: "virgo",
+   274→    name: "Virgo",
+   275→    i18nName: "Virgo",
+   276→    category: "zodiac",
+   277→    stars: [
+   278→      { id: "virgo_alpha", x: 80, y: 30 }, // Spica
+   279→      { id: "virgo_beta", x: 76, y: 22 },
+   280→      { id: "virgo_gamma", x: 84, y: 22 },
+   281→      { id: "virgo_delta", x: 78, y: 26 },
+   282→      { id: "virgo_eps", x: 82, y: 24 },
+   283→      { id: "virgo_zeta", x: 86, y: 28 },
+   284→      { id: "virgo_eta", x: 88, y: 26 },
+   285→    ],
+   286→    connections: [
+   287→      ["virgo_alpha", "virgo_delta"],
+   288→      ["virgo_delta", "virgo_beta"],
+   289→      ["virgo_delta", "virgo_eps"],
+   290→      ["virgo_eps", "virgo_gamma"],
+   291→      ["virgo_alpha", "virgo_zeta"],
+   292→      ["virgo_zeta", "virgo_eta"],
+   293→    ],
+   294→    bonus: { productionMult: 0.05, capMult: 0.04 },
+   295→  },
+   296→  {
+   297→    id: "libra",
+   298→    name: "Libra",
+   299→    i18nName: "Libra",
+   300→    category: "zodiac",
+   301→    stars: [
+   302→      { id: "libra_alpha", x: 88, y: 40 },
+   303→      { id: "libra_beta", x: 92, y: 38 },
+   304→      { id: "libra_gamma", x: 86, y: 44 },
+   305→      { id: "libra_delta", x: 90, y: 46 },
+   306→    ],
+   307→    connections: [
+   308→      ["libra_alpha", "libra_beta"],
+   309→      ["libra_alpha", "libra_gamma"],
+   310→      ["libra_beta", "libra_delta"],
+   311→      ["libra_gamma", "libra_delta"],
+   312→    ],
+   313→    bonus: { costMult: -0.05 },
+   314→  },
+   315→  {
+   316→    id: "scorpius",
+   317→    name: "Scorpius",
+   318→    i18nName: "Scorpius",
+   319→    category: "zodiac",
+   320→    stars: [
+   321→      { id: "scorpius_alpha", x: 82, y: 50 }, // Antares
+   322→      { id: "scorpius_beta", x: 78, y: 48 },
+   323→      { id: "scorpius_gamma", x: 80, y: 54 },
+   324→      { id: "scorpius_delta", x: 84, y: 56 },
+   325→      { id: "scorpius_eps", x: 86, y: 60 },
+   326→      { id: "scorpius_zeta", x: 88, y: 62 },
+   327→      { id: "scorpius_eta", x: 90, y: 60 },
+   328→      { id: "scorpius_theta", x: 92, y: 56 },
+   329→      { id: "scorpius_iota", x: 86, y: 52 },
+   330→    ],
+   331→    connections: [
+   332→      ["scorpius_beta", "scorpius_alpha"],
+   333→      ["scorpius_alpha", "scorpius_iota"],
+   334→      ["scorpius_alpha", "scorpius_gamma"],
+   335→      ["scorpius_gamma", "scorpius_delta"],
+   336→      ["scorpius_delta", "scorpius_eps"],
+   337→      ["scorpius_eps", "scorpius_zeta"],
+   338→      ["scorpius_zeta", "scorpius_eta"],
+   339→      ["scorpius_eta", "scorpius_theta"],
+   340→    ],
+   341→    bonus: { productionMult: 0.07, popGrowthMult: 0.04 },
+   342→  },
+   343→  {
+   344→    id: "sagittarius",
+   345→    name: "Sagittarius",
+   346→    i18nName: "Sagittarius",
+   347→    category: "zodiac",
+   348→    stars: [
+   349→      { id: "sag_alpha", x: 70, y: 60 },
+   350→      { id: "sag_beta", x: 66, y: 58 },
+   351→      { id: "sag_gamma", x: 74, y: 62 },
+   352→      { id: "sag_delta", x: 72, y: 66 },
+   353→      { id: "sag_eps", x: 68, y: 64 },
+   354→      { id: "sag_zeta", x: 76, y: 68 },
+   355→      { id: "sag_eta", x: 78, y: 64 },
+   356→      { id: "sag_theta", x: 64, y: 62 },
+   357→    ],
+   358→    connections: [
+   359→      ["sag_beta", "sag_alpha"],
+   360→      ["sag_alpha", "sag_gamma"],
+   361→      ["sag_gamma", "sag_zeta"],
+   362→      ["sag_zeta", "sag_eta"],
+   363→      ["sag_alpha", "sag_eps"],
+   364→      ["sag_eps", "sag_delta"],
+   365→      ["sag_eps", "sag_beta"],
+   366→      ["sag_beta", "sag_theta"],
+   367→    ],
+   368→    bonus: { productionMult: 0.05, divinityMult: 0.10 },
+   369→  },
+   370→  {
+   371→    id: "capricornus",
+   372→    name: "Capricornus",
+   373→    i18nName: "Capricornus",
+   374→    category: "zodiac",
+   375→    stars: [
+   376→      { id: "cap_alpha", x: 56, y: 64 },
+   377→      { id: "cap_beta", x: 60, y: 62 },
+   378→      { id: "cap_gamma", x: 52, y: 60 },
+   379→      { id: "cap_delta", x: 64, y: 60 },
+   380→      { id: "cap_eps", x: 50, y: 58 },
+   381→      { id: "cap_zeta", x: 66, y: 56 },
+   382→    ],
+   383→    connections: [
+   384→      ["cap_gamma", "cap_alpha"],
+   385→      ["cap_alpha", "cap_beta"],
+   386→      ["cap_beta", "cap_delta"],
+   387→      ["cap_gamma", "cap_eps"],
+   388→      ["cap_delta", "cap_zeta"],
+   389→    ],
+   390→    bonus: { capMult: 0.06, epMult: 0.03 },
+   391→  },
+   392→  {
+   393→    id: "aquarius",
+   394→    name: "Aquarius",
+   395→    i18nName: "Aquarius",
+   396→    category: "zodiac",
+   397→    stars: [
+   398→      { id: "aqua_alpha", x: 42, y: 58 },
+   399→      { id: "aqua_beta", x: 38, y: 60 },
+   400→      { id: "aqua_gamma", x: 46, y: 56 },
+   401→      { id: "aqua_delta", x: 34, y: 58 },
+   402→      { id: "aqua_eps", x: 30, y: 60 },
+   403→      { id: "aqua_zeta", x: 44, y: 64 },
+   404→      { id: "aqua_eta", x: 40, y: 66 },
+   405→    ],
+   406→    connections: [
+   407→      ["aqua_beta", "aqua_alpha"],
+   408→      ["aqua_alpha", "aqua_gamma"],
+   409→      ["aqua_beta", "aqua_delta"],
+   410→      ["aqua_delta", "aqua_eps"],
+   411→      ["aqua_alpha", "aqua_zeta"],
+   412→      ["aqua_zeta", "aqua_eta"],
+   413→    ],
+   414→    bonus: { productionMult: 0.04, capMult: 0.04 },
+   415→  },
+   416→  {
+   417→    id: "pisces",
+   418→    name: "Pisces",
+   419→    i18nName: "Pisces",
+   420→    category: "zodiac",
+   421→    stars: [
+   422→      { id: "pis_alpha", x: 22, y: 60 },
+   423→      { id: "pis_beta", x: 26, y: 62 },
+   424→      { id: "pis_gamma", x: 18, y: 58 },
+   425→      { id: "pis_delta", x: 14, y: 56 },
+   426→      { id: "pis_eps", x: 28, y: 58 },
+   427→      { id: "pis_zeta", x: 24, y: 56 },
+   428→      { id: "pis_eta", x: 20, y: 54 },
+   429→    ],
+   430→    connections: [
+   431→      ["pis_gamma", "pis_alpha"],
+   432→      ["pis_alpha", "pis_beta"],
+   433→      ["pis_gamma", "pis_delta"],
+   434→      ["pis_alpha", "pis_zeta"],
+   435→      ["pis_zeta", "pis_eps"],
+   436→      ["pis_zeta", "pis_eta"],
+   437→    ],
+   438→    bonus: { productionMult: 0.05, popGrowthMult: 0.03 },
+   439→  },
+   440→
+   441→  // ===== NORTHERN (8) =====
+   442→  {
+   443→    id: "ursa_major",
+   444→    name: "Ursa Major",
+   445→    i18nName: "Ursa Major",
+   446→    category: "northern",
+   447→    stars: [
+   448→      { id: "um_alpha", x: 10, y: 8 },  // Dubhe
+   449→      { id: "um_beta", x: 14, y: 10 },  // Merak
+   450→      { id: "um_gamma", x: 18, y: 8 },  // Phecda
+   451→      { id: "um_delta", x: 22, y: 12 }, // Megrez
+   452→      { id: "um_eps", x: 26, y: 8 },    // Alioth
+   453→      { id: "um_zeta", x: 30, y: 10 },  // Mizar
+   454→      { id: "um_eta", x: 34, y: 14 },   // Alkaid
+   455→    ],
+   456→    connections: [
+   457→      ["um_alpha", "um_beta"],
+   458→      ["um_beta", "um_gamma"],
+   459→      ["um_gamma", "um_delta"],
+   460→      ["um_delta", "um_eps"],
+   461→      ["um_eps", "um_zeta"],
+   462→      ["um_zeta", "um_eta"],
+   463→      ["um_delta", "um_alpha"],
+   464→    ],
+   465→    bonus: { productionMult: 0.06, epMult: 0.05 },
+   466→  },
+   467→  {
+   468→    id: "ursa_minor",
+   469→    name: "Ursa Minor",
+   470→    i18nName: "Ursa Minor",
+   471→    category: "northern",
+   472→    stars: [
+   473→      { id: "umi_alpha", x: 8, y: 4 },   // Polaris
+   474→      { id: "umi_beta", x: 6, y: 8 },
+   475→      { id: "umi_gamma", x: 10, y: 10 },
+   476→      { id: "umi_delta", x: 12, y: 6 },
+   477→      { id: "umi_eps", x: 14, y: 8 },
+   478→      { id: "umi_zeta", x: 4, y: 6 },
+   479→      { id: "umi_eta", x: 2, y: 8 },
+   480→    ],
+   481→    connections: [
+   482→      ["umi_alpha", "umi_delta"],
+   483→      ["umi_delta", "umi_eps"],
+   484→      ["umi_eps", "umi_gamma"],
+   485→      ["umi_gamma", "umi_beta"],
+   486→      ["umi_beta", "umi_zeta"],
+   487→      ["umi_zeta", "umi_eta"],
+   488→    ],
+   489→    bonus: { capMult: 0.05, epMult: 0.04 },
+   490→  },
+   491→  {
+   492→    id: "cassiopeia",
+   493→    name: "Cassiopeia",
+   494→    i18nName: "Cassiopeia",
+   495→    category: "northern",
+   496→    stars: [
+   497→      { id: "cas_alpha", x: 40, y: 6 },
+   498→      { id: "cas_beta", x: 44, y: 10 },
+   499→      { id: "cas_gamma", x: 48, y: 6 },
+   500→      { id: "cas_delta", x: 52, y: 10 },
+   501→      { id: "cas_eps", x: 56, y: 6 },
+   502→    ],
+   503→    connections: [
+   504→      ["cas_alpha", "cas_beta"],
+   505→      ["cas_beta", "cas_gamma"],
+   506→      ["cas_gamma", "cas_delta"],
+   507→      ["cas_delta", "cas_eps"],
+   508→    ],
+   509→    bonus: { productionMult: 0.04, epMult: 0.06 },
+   510→  },
+   511→  {
+   512→    id: "cygnus",
+   513→    name: "Cygnus",
+   514→    i18nName: "Cygnus",
+   515→    category: "northern",
+   516→    stars: [
+   517→      { id: "cyg_alpha", x: 64, y: 8 },  // Deneb
+   518→      { id: "cyg_beta", x: 68, y: 12 },
+   519→      { id: "cyg_gamma", x: 72, y: 8 },
+   520→      { id: "cyg_delta", x: 76, y: 14 },
+   521→      { id: "cyg_eps", x: 60, y: 12 },
+   522→      { id: "cyg_zeta", x: 66, y: 16 },
+   523→    ],
+   524→    connections: [
+   525→      ["cyg_alpha", "cyg_beta"],
+   526→      ["cyg_beta", "cyg_delta"],
+   527→      ["cyg_beta", "cyg_zeta"],
+   528→      ["cyg_zeta", "cyg_eps"],
+   529→      ["cyg_alpha", "cyg_gamma"],
+   530→    ],
+   531→    bonus: { productionMult: 0.05, popGrowthMult: 0.04 },
+   532→  },
+   533→  {
+   534→    id: "lyra",
+   535→    name: "Lyra",
+   536→    i18nName: "Lyra",
+   537→    category: "northern",
+   538→    stars: [
+   539→      { id: "lyr_alpha", x: 80, y: 8 }, // Vega
+   540→      { id: "lyr_beta", x: 82, y: 12 },
+   541→      { id: "lyr_gamma", x: 84, y: 10 },
+   542→      { id: "lyr_delta", x: 78, y: 12 },
+   543→      { id: "lyr_eps", x: 80, y: 14 },
+   544→    ],
+   545→    connections: [
+   546→      ["lyr_alpha", "lyr_beta"],
+   547→      ["lyr_beta", "lyr_gamma"],
+   548→      ["lyr_gamma", "lyr_alpha"],
+   549→      ["lyr_beta", "lyr_eps"],
+   550→      ["lyr_eps", "lyr_delta"],
+   551→      ["lyr_delta", "lyr_alpha"],
+   552→    ],
+   553→    bonus: { productionMult: 0.04, epMult: 0.06, divinityMult: 0.05 },
+   554→  },
+   555→  {
+   556→    id: "draco",
+   557→    name: "Draco",
+   558→    i18nName: "Draco",
+   559→    category: "northern",
+   560→    stars: [
+   561→      { id: "dra_alpha", x: 90, y: 4 },
+   562→      { id: "dra_beta", x: 86, y: 6 },
+   563→      { id: "dra_gamma", x: 82, y: 4 },
+   564→      { id: "dra_delta", x: 78, y: 8 },
+   565→      { id: "dra_eps", x: 74, y: 4 },
+   566→      { id: "dra_zeta", x: 70, y: 6 },
+   567→      { id: "dra_eta", x: 66, y: 4 },
+   568→      { id: "dra_theta", x: 62, y: 8 },
+   569→    ],
+   570→    connections: [
+   571→      ["dra_alpha", "dra_beta"],
+   572→      ["dra_beta", "dra_gamma"],
+   573→      ["dra_gamma", "dra_delta"],
+   574→      ["dra_delta", "dra_eps"],
+   575→      ["dra_eps", "dra_zeta"],
+   576→      ["dra_zeta", "dra_eta"],
+   577→      ["dra_eta", "dra_theta"],
+   578→    ],
+   579→    bonus: { capMult: 0.04, epMult: 0.05, costMult: -0.03 },
+   580→  },
+   581→  {
+   582→    id: "pegasus",
+   583→    name: "Pegasus",
+   584→    i18nName: "Pegasus",
+   585→    category: "northern",
+   586→    stars: [
+   587→      { id: "peg_alpha", x: 38, y: 18 },
+   588→      { id: "peg_beta", x: 42, y: 16 },
+   589→      { id: "peg_gamma", x: 42, y: 22 },
+   590→      { id: "peg_delta", x: 38, y: 24 },
+   591→      { id: "peg_eps", x: 34, y: 18 },
+   592→      { id: "peg_zeta", x: 46, y: 20 },
+   593→    ],
+   594→    connections: [
+   595→      ["peg_alpha", "peg_beta"],
+   596→      ["peg_beta", "peg_gamma"],
+   597→      ["peg_gamma", "peg_delta"],
+   598→      ["peg_delta", "peg_alpha"],
+   599→      ["peg_alpha", "peg_eps"],
+   600→      ["peg_beta", "peg_zeta"],
+   601→    ],
+   602→    bonus: { productionMult: 0.05, capMult: 0.05 },
+   603→  },
+   604→  {
+   605→    id: "andromeda",
+   606→    name: "Andromeda",
+   607→    i18nName: "Andromeda",
+   608→    category: "northern",
+   609→    stars: [
+   610→      { id: "and_alpha", x: 48, y: 18 },
+   611→      { id: "and_beta", x: 52, y: 20 },
+   612→      { id: "and_gamma", x: 56, y: 22 },
+   613→      { id: "and_delta", x: 60, y: 18 },
+   614→      { id: "and_eps", x: 50, y: 24 },
+   615→      { id: "and_zeta", x: 54, y: 26 },
+   616→    ],
+   617→    connections: [
+   618→      ["and_alpha", "and_beta"],
+   619→      ["and_beta", "and_gamma"],
+   620→      ["and_gamma", "and_delta"],
+   621→      ["and_beta", "and_eps"],
+   622→      ["and_eps", "and_zeta"],
+   623→    ],
+   624→    bonus: { productionMult: 0.05, epMult: 0.04, divinityMult: 0.05 },
+   625→  },
+   626→
+   627→  // ===== EQUATORIAL (4) =====
+   628→  {
+   629→    id: "orion",
+   630→    name: "Orion",
+   631→    i18nName: "Orion",
+   632→    category: "equatorial",
+   633→    stars: [
+   634→      { id: "ori_alpha", x: 12, y: 40 }, // Betelgeuse
+   635→      { id: "ori_beta", x: 8, y: 36 },  // Rigel
+   636→      { id: "ori_gamma", x: 16, y: 38 }, // Bellatrix
+   637→      { id: "ori_delta", x: 14, y: 44 }, // Saiph
+   638→      { id: "ori_eps", x: 10, y: 42 },  // belt
+   639→      { id: "ori_zeta", x: 12, y: 42 },
+   640→      { id: "ori_eta", x: 14, y: 42 },
+   641→      { id: "ori_theta", x: 11, y: 40 }, // sword
+   642→      { id: "ori_iota", x: 13, y: 40 },
+   643→    ],
+   644→    connections: [
+   645→      ["ori_alpha", "ori_gamma"],
+   646→      ["ori_alpha", "ori_zeta"],
+   647→      ["ori_gamma", "ori_eta"],
+   648→      ["ori_eta", "ori_zeta"],
+   649→      ["ori_zeta", "ori_eps"],
+   650→      ["ori_beta", "ori_eps"],
+   651→      ["ori_eps", "ori_theta"],
+   652→      ["ori_theta", "ori_iota"],
+   653→      ["ori_iota", "ori_delta"],
+   654→    ],
+   655→    bonus: { productionMult: 0.08, popGrowthMult: 0.05 },
+   656→  },
+   657→  {
+   658→    id: "perseus",
+   659→    name: "Perseus",
+   660→    i18nName: "Perseus",
+   661→    category: "equatorial",
+   662→    stars: [
+   663→      { id: "per_alpha", x: 28, y: 40 },
+   664→      { id: "per_beta", x: 32, y: 42 },
+   665→      { id: "per_gamma", x: 26, y: 44 },
+   666→      { id: "per_delta", x: 30, y: 46 },
+   667→      { id: "per_eps", x: 34, y: 44 },
+   668→      { id: "per_zeta", x: 32, y: 38 },
+   669→    ],
+   670→    connections: [
+   671→      ["per_alpha", "per_beta"],
+   672→      ["per_beta", "per_eps"],
+   673→      ["per_alpha", "per_zeta"],
+   674→      ["per_alpha", "per_gamma"],
+   675→      ["per_gamma", "per_delta"],
+   676→      ["per_delta", "per_beta"],
+   677→    ],
+   678→    bonus: { productionMult: 0.05, epMult: 0.05 },
+   679→  },
+   680→  {
+   681→    id: "hercules",
+   682→    name: "Hercules",
+   683→    i18nName: "Hercules",
+   684→    category: "equatorial",
+   685→    stars: [
+   686→      { id: "her_alpha", x: 60, y: 38 },
+   687→      { id: "her_beta", x: 64, y: 36 },
+   688→      { id: "her_gamma", x: 64, y: 42 },
+   689→      { id: "her_delta", x: 60, y: 44 },
+   690→      { id: "her_eps", x: 56, y: 36 },
+   691→      { id: "her_zeta", x: 68, y: 40 },
+   692→      { id: "her_eta", x: 56, y: 44 },
+   693→      { id: "her_theta", x: 68, y: 44 },
+   694→    ],
+   695→    connections: [
+   696→      ["her_alpha", "her_beta"],
+   697→      ["her_beta", "her_gamma"],
+   698→      ["her_gamma", "her_delta"],
+   699→      ["her_delta", "her_alpha"],
+   700→      ["her_alpha", "her_eps"],
+   701→      ["her_beta", "her_zeta"],
+   702→      ["her_delta", "her_eta"],
+   703→      ["her_gamma", "her_theta"],
+   704→    ],
+   705→    bonus: { productionMult: 0.06, popGrowthMult: 0.05, capMult: 0.03 },
+   706→  },
+   707→  {
+   708→    id: "aquila",
+   709→    name: "Aquila",
+   710→    i18nName: "Aquila",
+   711→    category: "equatorial",
+   712→    stars: [
+   713→      { id: "aql_alpha", x: 76, y: 40 }, // Altair
+   714→      { id: "aql_beta", x: 78, y: 36 },
+   715→      { id: "aql_gamma", x: 74, y: 44 },
+   716→      { id: "aql_delta", x: 80, y: 42 },
+   717→      { id: "aql_eps", x: 72, y: 38 },
+   718→    ],
+   719→    connections: [
+   720→      ["aql_beta", "aql_alpha"],
+   721→      ["aql_alpha", "aql_gamma"],
+   722→      ["aql_alpha", "aql_delta"],
+   723→      ["aql_alpha", "aql_eps"],
+   724→    ],
+   725→    bonus: { productionMult: 0.05, epMult: 0.04 },
+   726→  },
+   727→
+   728→  // ===== SOUTHERN (4) =====
+   729→  {
+   730→    id: "crux",
+   731→    name: "Crux",
+   732→    i18nName: "Crux",
+   733→    category: "southern",
+   734→    stars: [
+   735→      { id: "crux_alpha", x: 50, y: 78 },
+   736→      { id: "crux_beta", x: 48, y: 82 },
+   737→      { id: "crux_gamma", x: 52, y: 82 },
+   738→      { id: "crux_delta", x: 50, y: 86 },
+   739→    ],
+   740→    connections: [
+   741→      ["crux_alpha", "crux_delta"],
+   742→      ["crux_beta", "crux_gamma"],
+   743→    ],
+   744→    bonus: { productionMult: 0.06, divinityMult: 0.08 },
+   745→  },
+   746→  {
+   747→    id: "centaurus",
+   748→    name: "Centaurus",
+   749→    i18nName: "Centaurus",
+   750→    category: "southern",
+   751→    stars: [
+   752→      { id: "cen_alpha", x: 42, y: 80 }, // Rigil Kentaurus
+   753→      { id: "cen_beta", x: 38, y: 84 },  // Hadar
+   754→      { id: "cen_gamma", x: 44, y: 86 },
+   755→      { id: "cen_delta", x: 46, y: 82 },
+   756→      { id: "cen_eps", x: 36, y: 80 },
+   757→      { id: "cen_zeta", x: 40, y: 88 },
+   758→    ],
+   759→    connections: [
+   760→      ["cen_alpha", "cen_beta"],
+   761→      ["cen_alpha", "cen_delta"],
+   762→      ["cen_beta", "cen_eps"],
+   763→      ["cen_beta", "cen_zeta"],
+   764→      ["cen_delta", "cen_gamma"],
+   765→    ],
+   766→    bonus: { productionMult: 0.06, capMult: 0.04 },
+   767→  },
+   768→  {
+   769→    id: "carina",
+   770→    name: "Carina",
+   771→    i18nName: "Carina",
+   772→    category: "southern",
+   773→    stars: [
+   774→      { id: "car_alpha", x: 30, y: 80 }, // Canopus
+   775→      { id: "car_beta", x: 26, y: 84 },
+   776→      { id: "car_gamma", x: 34, y: 84 },
+   777→      { id: "car_delta", x: 28, y: 88 },
+   778→      { id: "car_eps", x: 32, y: 88 },
+   779→    ],
+   780→    connections: [
+   781→      ["car_alpha", "car_beta"],
+   782→      ["car_alpha", "car_gamma"],
+   783→      ["car_beta", "car_delta"],
+   784→      ["car_gamma", "car_eps"],
+   785→    ],
+   786→    bonus: { productionMult: 0.05, capMult: 0.05 },
+   787→  },
+   788→  {
+   789→    id: "bootes",
+   790→    name: "Boötes",
+   791→    i18nName: "Boötes",
+   792→    category: "equatorial",
+   793→    stars: [
+   794→      { id: "boo_alpha", x: 62, y: 64 }, // Arcturus
+   795→      { id: "boo_beta", x: 66, y: 60 },
+   796→      { id: "boo_gamma", x: 64, y: 70 },
+   797→      { id: "boo_delta", x: 68, y: 66 },
+   798→      { id: "boo_eps", x: 60, y: 60 },
+   799→    ],
+   800→    connections: [
+   801→      ["boo_alpha", "boo_beta"],
+   802→      ["boo_alpha", "boo_gamma"],
+   803→      ["boo_beta", "boo_eps"],
+   804→      ["boo_beta", "boo_delta"],
+   805→    ],
+   806→    bonus: { productionMult: 0.05, popGrowthMult: 0.05 },
+   807→  },
+   808→
+   809→  // ===== ADDITIONAL NORTHERN (15) =====
+   810→  // Prominent hand-positioned (Cepheus, Corona Borealis, Canes Venatici,
+   811→  // Delphinus, Sagitta, Lynx, Auriga) + faint/lesser pack (Camelopardalis,
+   812→  // Coma Berenices, Leo Minor, Vulpecula, Lacerta, Equuleus, Scutum, Canis Minor).
+   813→  {
+   814→    id: "cepheus",
+   815→    name: "Cepheus",
+   816→    i18nName: "Cepheus",
+   817→    category: "northern",
+   818→    stars: [
+   819→      { id: "cep_alpha", x: 88, y: 18 },
+   820→      { id: "cep_beta", x: 92, y: 14 },
+   821→      { id: "cep_gamma", x: 86, y: 12 },
+   822→      { id: "cep_delta", x: 90, y: 20 },
+   823→      { id: "cep_eps", x: 94, y: 18 },
+   824→      { id: "cep_zeta", x: 88, y: 22 },
+   825→    ],
+   826→    connections: [
+   827→      ["cep_alpha", "cep_beta"],
+   828→      ["cep_beta", "cep_gamma"],
+   829→      ["cep_gamma", "cep_delta"],
+   830→      ["cep_alpha", "cep_eps"],
+   831→      ["cep_eps", "cep_zeta"],
+   832→      ["cep_zeta", "cep_delta"],
+   833→    ],
+   834→    bonus: { capMult: 0.03, epMult: 0.01 },
+   835→  },
+   836→  {
+   837→    id: "corona_borealis",
+   838→    name: "Corona Borealis",
+   839→    i18nName: "Corona Borealis",
+   840→    category: "northern",
+   841→    stars: [
+   842→      { id: "crb_alpha", x: 70, y: 30 }, // Alphecca
+   843→      { id: "crb_beta", x: 68, y: 28 },
+   844→      { id: "crb_gamma", x: 72, y: 28 },
+   845→      { id: "crb_delta", x: 66, y: 30 },
+   846→      { id: "crb_eps", x: 74, y: 30 },
+   847→      { id: "crb_zeta", x: 64, y: 32 },
+   848→    ],
+   849→    connections: [
+   850→      ["crb_zeta", "crb_delta"],
+   851→      ["crb_delta", "crb_beta"],
+   852→      ["crb_beta", "crb_alpha"],
+   853→      ["crb_alpha", "crb_gamma"],
+   854→      ["crb_gamma", "crb_eps"],
+   855→    ],
+   856→    bonus: { productionMult: 0.02, divinityMult: 0.02 },
+   857→  },
+   858→  {
+   859→    id: "canes_venatici",
+   860→    name: "Canes Venatici",
+   861→    i18nName: "Canes Venatici",
+   862→    category: "northern",
+   863→    stars: [
+   864→      { id: "cvn_alpha", x: 30, y: 28 }, // Cor Caroli
+   865→      { id: "cvn_beta", x: 26, y: 30 },
+   866→      { id: "cvn_gamma", x: 32, y: 32 },
+   867→      { id: "cvn_delta", x: 28, y: 34 },
+   868→    ],
+   869→    connections: [
+   870→      ["cvn_alpha", "cvn_beta"],
+   871→      ["cvn_alpha", "cvn_gamma"],
+   872→      ["cvn_gamma", "cvn_delta"],
+   873→    ],
+   874→    bonus: { productionMult: 0.02 },
+   875→  },
+   876→  {
+   877→    id: "delphinus",
+   878→    name: "Delphinus",
+   879→    i18nName: "Delphinus",
+   880→    category: "northern",
+   881→    stars: [
+   882→      { id: "del_alpha", x: 76, y: 28 },
+   883→      { id: "del_beta", x: 78, y: 26 },
+   884→      { id: "del_gamma", x: 80, y: 28 },
+   885→      { id: "del_delta", x: 78, y: 30 },
+   886→      { id: "del_eps", x: 82, y: 30 },
+   887→    ],
+   888→    connections: [
+   889→      ["del_alpha", "del_beta"],
+   890→      ["del_beta", "del_gamma"],
+   891→      ["del_gamma", "del_delta"],
+   892→      ["del_delta", "del_alpha"],
+   893→      ["del_gamma", "del_eps"],
+   894→    ],
+   895→    bonus: { productionMult: 0.02, epMult: 0.01 },
+   896→  },
+   897→  {
+   898→    id: "sagitta",
+   899→    name: "Sagitta",
+   900→    i18nName: "Sagitta",
+   901→    category: "northern",
+   902→    stars: [
+   903→      { id: "sge_alpha", x: 72, y: 24 },
+   904→      { id: "sge_beta", x: 74, y: 22 },
+   905→      { id: "sge_gamma", x: 70, y: 22 },
+   906→      { id: "sge_delta", x: 76, y: 24 },
+   907→    ],
+   908→    connections: [
+   909→      ["sge_gamma", "sge_beta"],
+   910→      ["sge_beta", "sge_alpha"],
+   911→      ["sge_alpha", "sge_delta"],
+   912→    ],
+   913→    bonus: { productionMult: 0.02 },
+   914→  },
+   915→  {
+   916→    id: "vulpecula",
+   917→    name: "Vulpecula",
+   918→    i18nName: "Vulpecula",
+   919→    category: "northern",
+   920→    stars: [
+   921→      { id: "vul_alpha", x: 68, y: 26 },
+   922→      { id: "vul_beta", x: 70, y: 24 },
+   923→      { id: "vul_gamma", x: 66, y: 24 },
+   924→      { id: "vul_delta", x: 64, y: 26 },
+   925→      { id: "vul_eps", x: 68, y: 28 },
+   926→    ],
+   927→    connections: [
+   928→      ["vul_alpha", "vul_beta"],
+   929→      ["vul_beta", "vul_gamma"],
+   930→      ["vul_gamma", "vul_delta"],
+   931→      ["vul_alpha", "vul_eps"],
+   932→    ],
+   933→    bonus: { productionMult: 0.01, capMult: 0.01 },
+   934→  },
+   935→  {
+   936→    id: "equuleus",
+   937→    name: "Equuleus",
+   938→    i18nName: "Equuleus",
+   939→    category: "northern",
+   940→    stars: [
+   941→      { id: "equ_alpha", x: 84, y: 28 },
+   942→      { id: "equ_beta", x: 86, y: 26 },
+   943→      { id: "equ_gamma", x: 82, y: 26 },
+   944→      { id: "equ_delta", x: 84, y: 30 },
+   945→    ],
+   946→    connections: [
+   947→      ["equ_alpha", "equ_beta"],
+   948→      ["equ_beta", "equ_gamma"],
+   949→      ["equ_alpha", "equ_delta"],
+   950→    ],
+   951→    bonus: { productionMult: 0.01 },
+   952→  },
+   953→  {
+   954→    id: "lacerta",
+   955→    name: "Lacerta",
+   956→    i18nName: "Lacerta",
+   957→    category: "northern",
+   958→    stars: [
+   959→      { id: "lac_alpha", x: 90, y: 24 },
+   960→      { id: "lac_beta", x: 88, y: 22 },
+   961→      { id: "lac_gamma", x: 92, y: 22 },
+   962→      { id: "lac_delta", x: 86, y: 24 },
+   963→      { id: "lac_eps", x: 90, y: 26 },
+   964→    ],
+   965→    connections: [
+   966→      ["lac_delta", "lac_beta"],
+   967→      ["lac_beta", "lac_alpha"],
+   968→      ["lac_alpha", "lac_gamma"],
+   969→      ["lac_alpha", "lac_eps"],
+   970→    ],
+   971→    bonus: { productionMult: 0.01 },
+   972→  },
+   973→  {
+   974→    id: "auriga",
+   975→    name: "Auriga",
+   976→    i18nName: "Auriga",
+   977→    category: "northern",
+   978→    stars: [
+   979→      { id: "aur_alpha", x: 56, y: 30 }, // Capella
+   980→      { id: "aur_beta", x: 60, y: 32 },
+   981→      { id: "aur_gamma", x: 54, y: 34 },
+   982→      { id: "aur_delta", x: 58, y: 36 },
+   983→      { id: "aur_eps", x: 62, y: 34 },
+   984→      { id: "aur_zeta", x: 60, y: 30 },
+   985→    ],
+   986→    connections: [
+   987→      ["aur_alpha", "aur_beta"],
+   988→      ["aur_beta", "aur_eps"],
+   989→      ["aur_eps", "aur_delta"],
+   990→      ["aur_delta", "aur_gamma"],
+   991→      ["aur_gamma", "aur_alpha"],
+   992→      ["aur_beta", "aur_zeta"],
+   993→    ],
+   994→    bonus: { productionMult: 0.03, capMult: 0.01 },
+   995→  },
+   996→  {
+   997→    id: "lynx",
+   998→    name: "Lynx",
+   999→    i18nName: "Lynx",
+  1000→    category: "northern",
+  1001→    stars: [
+  1002→      { id: "lyn_alpha", x: 44, y: 20 },
+  1003→      { id: "lyn_beta", x: 40, y: 18 },
+  1004→      { id: "lyn_gamma", x: 48, y: 22 },
+  1005→      { id: "lyn_delta", x: 52, y: 20 },
+  1006→      { id: "lyn_eps", x: 36, y: 16 },
+  1007→      { id: "lyn_zeta", x: 32, y: 14 },
+  1008→      { id: "lyn_eta", x: 28, y: 16 },
+  1009→    ],
+  1010→    connections: [
+  1011→      ["lyn_eps", "lyn_beta"],
+  1012→      ["lyn_beta", "lyn_alpha"],
+  1013→      ["lyn_alpha", "lyn_gamma"],
+  1014→      ["lyn_gamma", "lyn_delta"],
+  1015→      ["lyn_eps", "lyn_zeta"],
+  1016→      ["lyn_zeta", "lyn_eta"],
+  1017→    ],
+  1018→    bonus: { productionMult: 0.02, epMult: 0.01 },
+  1019→  },
+  1020→  {
+  1021→    id: "leo_minor",
+  1022→    name: "Leo Minor",
+  1023→    i18nName: "Leo Minor",
+  1024→    category: "northern",
+  1025→    stars: [
+  1026→      { id: "lm_alpha", x: 58, y: 24 },
+  1027→      { id: "lm_beta", x: 56, y: 22 },
+  1028→      { id: "lm_gamma", x: 60, y: 22 },
+  1029→      { id: "lm_delta", x: 62, y: 24 },
+  1030→    ],
+  1031→    connections: [
+  1032→      ["lm_beta", "lm_alpha"],
+  1033→      ["lm_alpha", "lm_gamma"],
+  1034→      ["lm_gamma", "lm_delta"],
+  1035→    ],
+  1036→    bonus: { productionMult: 0.01 },
+  1037→  },
+  1038→  {
+  1039→    id: "coma_berenices",
+  1040→    name: "Coma Berenices",
+  1041→    i18nName: "Coma Berenices",
+  1042→    category: "northern",
+  1043→    stars: [
+  1044→      { id: "com_alpha", x: 76, y: 32 },
+  1045→      { id: "com_beta", x: 78, y: 30 },
+  1046→      { id: "com_gamma", x: 74, y: 30 },
+  1047→      { id: "com_delta", x: 80, y: 32 },
+  1048→      { id: "com_eps", x: 76, y: 34 },
+  1049→    ],
+  1050→    connections: [
+  1051→      ["com_gamma", "com_beta"],
+  1052→      ["com_beta", "com_alpha"],
+  1053→      ["com_alpha", "com_delta"],
+  1054→      ["com_alpha", "com_eps"],
+  1055→    ],
+  1056→    bonus: { productionMult: 0.01, epMult: 0.01 },
+  1057→  },
+  1058→  {
+  1059→    id: "camelopardalis",
+  1060→    name: "Camelopardalis",
+  1061→    i18nName: "Camelopardalis",
+  1062→    category: "northern",
+  1063→    stars: [
+  1064→      { id: "cam_alpha", x: 22, y: 22 },
+  1065→      { id: "cam_beta", x: 18, y: 20 },
+  1066→      { id: "cam_gamma", x: 26, y: 24 },
+  1067→      { id: "cam_delta", x: 20, y: 26 },
+  1068→      { id: "cam_eps", x: 24, y: 20 },
+  1069→    ],
+  1070→    connections: [
+  1071→      ["cam_beta", "cam_alpha"],
+  1072→      ["cam_alpha", "cam_gamma"],
+  1073→      ["cam_beta", "cam_delta"],
+  1074→      ["cam_alpha", "cam_eps"],
+  1075→    ],
+  1076→    bonus: { capMult: 0.02 },
+  1077→  },
+  1078→  {
+  1079→    id: "scutum",
+  1080→    name: "Scutum",
+  1081→    i18nName: "Scutum",
+  1082→    category: "northern",
+  1083→    stars: [
+  1084→      { id: "sct_alpha", x: 60, y: 56 },
+  1085→      { id: "sct_beta", x: 62, y: 54 },
+  1086→      { id: "sct_gamma", x: 58, y: 54 },
+  1087→      { id: "sct_delta", x: 60, y: 58 },
+  1088→    ],
+  1089→    connections: [
+  1090→      ["sct_gamma", "sct_beta"],
+  1091→      ["sct_beta", "sct_alpha"],
+  1092→      ["sct_alpha", "sct_delta"],
+  1093→    ],
+  1094→    bonus: { productionMult: 0.02 },
+  1095→  },
+  1096→  {
+  1097→    id: "canis_minor",
+  1098→    name: "Canis Minor",
+  1099→    i18nName: "Canis Minor",
+  1100→    category: "northern",
+  1101→    stars: [
+  1102→      { id: "cma_alpha", x: 56, y: 36 }, // Procyon
+  1103→      { id: "cma_beta", x: 54, y: 34 },
+  1104→      { id: "cma_gamma", x: 58, y: 38 },
+  1105→    ],
+  1106→    connections: [
+  1107→      ["cma_beta", "cma_alpha"],
+  1108→      ["cma_alpha", "cma_gamma"],
+  1109→    ],
+  1110→    bonus: { productionMult: 0.02 },
+  1111→  },
+  1112→
+  1113→  // ===== ADDITIONAL EQUATORIAL (18) =====
+  1114→  // Includes the largest constellations (Hydra, Eridanus, Serpens,
+  1115→  // Ophiuchus, Cetus, Puppis, Vela) + several smaller patterns.
+  1116→  {
+  1117→    id: "hydra",
+  1118→    name: "Hydra",
+  1119→    i18nName: "Hydra",
+  1120→    category: "equatorial",
+  1121→    stars: [
+  1122→      { id: "hya_alpha", x: 60, y: 50 }, // Alphard
+  1123→      { id: "hya_beta", x: 56, y: 48 },
+  1124→      { id: "hya_gamma", x: 52, y: 50 },
+  1125→      { id: "hya_delta", x: 48, y: 52 },
+  1126→      { id: "hya_eps", x: 44, y: 54 },
+  1127→      { id: "hya_zeta", x: 40, y: 56 },
+  1128→      { id: "hya_eta", x: 36, y: 58 },
+  1129→      { id: "hya_theta", x: 32, y: 60 },
+  1130→      { id: "hya_iota", x: 28, y: 62 },
+  1131→      { id: "hya_kappa", x: 24, y: 64 },
+  1132→      { id: "hya_lambda", x: 20, y: 66 },
+  1133→      { id: "hya_mu", x: 64, y: 48 },
+  1134→      { id: "hya_nu", x: 68, y: 46 },
+  1135→      { id: "hya_xi", x: 72, y: 48 },
+  1136→      { id: "hya_pi", x: 76, y: 50 },
+  1137→    ],
+  1138→    connections: [
+  1139→      ["hya_pi", "hya_xi"],
+  1140→      ["hya_xi", "hya_nu"],
+  1141→      ["hya_nu", "hya_mu"],
+  1142→      ["hya_mu", "hya_alpha"],
+  1143→      ["hya_alpha", "hya_beta"],
+  1144→      ["hya_beta", "hya_gamma"],
+  1145→      ["hya_gamma", "hya_delta"],
+  1146→      ["hya_delta", "hya_eps"],
+  1147→      ["hya_eps", "hya_zeta"],
+  1148→      ["hya_zeta", "hya_eta"],
+  1149→      ["hya_eta", "hya_theta"],
+  1150→      ["hya_theta", "hya_iota"],
+  1151→      ["hya_iota", "hya_kappa"],
+  1152→      ["hya_kappa", "hya_lambda"],
+  1153→    ],
+  1154→    bonus: { productionMult: 0.07, capMult: 0.07 },
+  1155→  },
+  1156→  {
+  1157→    id: "eridanus",
+  1158→    name: "Eridanus",
+  1159→    i18nName: "Eridanus",
+  1160→    category: "equatorial",
+  1161→    stars: [
+  1162→      { id: "eri_alpha", x: 8, y: 56 }, // Achernar (south end)
+  1163→      { id: "eri_beta", x: 10, y: 52 },
+  1164→      { id: "eri_gamma", x: 14, y: 54 },
+  1165→      { id: "eri_delta", x: 18, y: 52 },
+  1166→      { id: "eri_eps", x: 22, y: 50 },
+  1167→      { id: "eri_zeta", x: 26, y: 48 },
+  1168→      { id: "eri_eta", x: 30, y: 46 },
+  1169→      { id: "eri_theta", x: 34, y: 44 },
+  1170→      { id: "eri_iota", x: 38, y: 42 },
+  1171→      { id: "eri_kappa", x: 42, y: 40 },
+  1172→      { id: "eri_lambda", x: 46, y: 38 },
+  1173→      { id: "eri_mu", x: 50, y: 36 },
+  1174→    ],
+  1175→    connections: [
+  1176→      ["eri_alpha", "eri_beta"],
+  1177→      ["eri_beta", "eri_gamma"],
+  1178→      ["eri_gamma", "eri_delta"],
+  1179→      ["eri_delta", "eri_eps"],
+  1180→      ["eri_eps", "eri_zeta"],
+  1181→      ["eri_zeta", "eri_eta"],
+  1182→      ["eri_eta", "eri_theta"],
+  1183→      ["eri_theta", "eri_iota"],
+  1184→      ["eri_iota", "eri_kappa"],
+  1185→      ["eri_kappa", "eri_lambda"],
+  1186→      ["eri_lambda", "eri_mu"],
+  1187→    ],
+  1188→    bonus: { productionMult: 0.05, capMult: 0.03 },
+  1189→  },
+  1190→  {
+  1191→    id: "cetus",
+  1192→    name: "Cetus",
+  1193→    i18nName: "Cetus",
+  1194→    category: "equatorial",
+  1195→    stars: [
+  1196→      { id: "cet_alpha", x: 18, y: 48 }, // Menkar
+  1197→      { id: "cet_beta", x: 24, y: 50 },  // Deneb Kaitos (Diphda)
+  1198→      { id: "cet_gamma", x: 22, y: 44 },
+  1199→      { id: "cet_delta", x: 28, y: 46 },
+  1200→      { id: "cet_eps", x: 14, y: 46 },
+  1201→      { id: "cet_zeta", x: 30, y: 52 },
+  1202→      { id: "cet_eta", x: 26, y: 54 },
+  1203→      { id: "cet_theta", x: 20, y: 52 },
+  1204→    ],
+  1205→    connections: [
+  1206→      ["cet_eps", "cet_alpha"],
+  1207→      ["cet_alpha", "cet_gamma"],
+  1208→      ["cet_gamma", "cet_delta"],
+  1209→      ["cet_delta", "cet_beta"],
+  1210→      ["cet_beta", "cet_zeta"],
+  1211→      ["cet_zeta", "cet_eta"],
+  1212→      ["cet_eta", "cet_theta"],
+  1213→      ["cet_theta", "cet_beta"],
+  1214→    ],
+  1215→    bonus: { capMult: 0.04, costMult: -0.01 },
+  1216→  },
+  1217→  {
+  1218→    id: "ophiuchus",
+  1219→    name: "Ophiuchus",
+  1220→    i18nName: "Ophiuchus",
+  1221→    category: "equatorial",
+  1222→    stars: [
+  1223→      { id: "oph_alpha", x: 70, y: 48 }, // Rasalhague
+  1224→      { id: "oph_beta", x: 74, y: 52 },
+  1225→      { id: "oph_gamma", x: 66, y: 52 },
+  1226→      { id: "oph_delta", x: 72, y: 56 },
+  1227→      { id: "oph_eps", x: 68, y: 56 },
+  1228→      { id: "oph_zeta", x: 76, y: 48 },
+  1229→      { id: "oph_eta", x: 62, y: 50 },
+  1230→      { id: "oph_theta", x: 78, y: 54 },
+  1231→    ],
+  1232→    connections: [
+  1233→      ["oph_alpha", "oph_beta"],
+  1234→      ["oph_alpha", "oph_gamma"],
+  1235→      ["oph_alpha", "oph_zeta"],
+  1236→      ["oph_gamma", "oph_eps"],
+  1237→      ["oph_eps", "oph_delta"],
+  1238→      ["oph_delta", "oph_beta"],
+  1239→      ["oph_gamma", "oph_eta"],
+  1240→      ["oph_beta", "oph_theta"],
+  1241→    ],
+  1242→    bonus: { productionMult: 0.04, capMult: 0.04 },
+  1243→  },
+  1244→  {
+  1245→    id: "serpens",
+  1246→    name: "Serpens",
+  1247→    i18nName: "Serpens",
+  1248→    category: "equatorial",
+  1249→    stars: [
+  1250→      { id: "ser_alpha", x: 64, y: 50 }, // Unukalhai (Caput head)
+  1251→      { id: "ser_beta", x: 62, y: 48 },
+  1252→      { id: "ser_gamma", x: 66, y: 52 },
+  1253→      { id: "ser_delta", x: 80, y: 54 }, // Cauda tail
+  1254→      { id: "ser_eps", x: 76, y: 56 },
+  1255→      { id: "ser_zeta", x: 72, y: 54 },
+  1256→      { id: "ser_eta", x: 84, y: 52 },
+  1257→      { id: "ser_theta", x: 86, y: 56 },
+  1258→      { id: "ser_iota", x: 88, y: 54 },
+  1259→      { id: "ser_kappa", x: 82, y: 58 },
+  1260→    ],
+  1261→    connections: [
+  1262→      ["ser_beta", "ser_alpha"],
+  1263→      ["ser_alpha", "ser_gamma"],
+  1264→      ["ser_gamma", "ser_zeta"],
+  1265→      ["ser_zeta", "ser_eps"],
+  1266→      ["ser_eps", "ser_delta"],
+  1267→      ["ser_delta", "ser_eta"],
+  1268→      ["ser_eta", "ser_theta"],
+  1269→      ["ser_theta", "ser_iota"],
+  1270→      ["ser_delta", "ser_kappa"],
+  1271→    ],
+  1272→    bonus: { productionMult: 0.04, capMult: 0.03 },
+  1273→  },
+  1274→  {
+  1275→    id: "canis_major",
+  1276→    name: "Canis Major",
+  1277→    i18nName: "Canis Major",
+  1278→    category: "equatorial",
+  1279→    stars: [
+  1280→      { id: "cma2_alpha", x: 40, y: 64 }, // Sirius
+  1281→      { id: "cma2_beta", x: 38, y: 62 },  // Mirzam
+  1282→      { id: "cma2_gamma", x: 44, y: 66 },
+  1283→      { id: "cma2_delta", x: 42, y: 70 },
+  1284→      { id: "cma2_eps", x: 46, y: 68 },
+  1285→      { id: "cma2_zeta", x: 36, y: 68 },
+  1286→      { id: "cma2_eta", x: 48, y: 70 },
+  1287→    ],
+  1288→    connections: [
+  1289→      ["cma2_beta", "cma2_alpha"],
+  1290→      ["cma2_alpha", "cma2_gamma"],
+  1291→      ["cma2_gamma", "cma2_eps"],
+  1292→      ["cma2_eps", "cma2_delta"],
+  1293→      ["cma2_alpha", "cma2_zeta"],
+  1294→      ["cma2_eps", "cma2_eta"],
+  1295→    ],
+  1296→    bonus: { productionMult: 0.03, divinityMult: 0.03 },
+  1297→  },
+  1298→  {
+  1299→    id: "monoceros",
+  1300→    name: "Monoceros",
+  1301→    i18nName: "Monoceros",
+  1302→    category: "equatorial",
+  1303→    stars: [
+  1304→      { id: "mon_alpha", x: 46, y: 50 },
+  1305→      { id: "mon_beta", x: 44, y: 48 },
+  1306→      { id: "mon_gamma", x: 48, y: 52 },
+  1307→      { id: "mon_delta", x: 42, y: 52 },
+  1308→      { id: "mon_eps", x: 50, y: 50 },
+  1309→    ],
+  1310→    connections: [
+  1311→      ["mon_beta", "mon_alpha"],
+  1312→      ["mon_alpha", "mon_gamma"],
+  1313→      ["mon_alpha", "mon_eps"],
+  1314→      ["mon_delta", "mon_beta"],
+  1315→    ],
+  1316→    bonus: { productionMult: 0.02 },
+  1317→  },
+  1318→  {
+  1319→    id: "lepus",
+  1320→    name: "Lepus",
+  1321→    i18nName: "Lepus",
+  1322→    category: "equatorial",
+  1323→    stars: [
+  1324→      { id: "lep_alpha", x: 14, y: 50 },
+  1325→      { id: "lep_beta", x: 12, y: 52 },
+  1326→      { id: "lep_gamma", x: 16, y: 52 },
+  1327→      { id: "lep_delta", x: 14, y: 54 },
+  1328→      { id: "lep_eps", x: 18, y: 50 },
+  1329→    ],
+  1330→    connections: [
+  1331→      ["lep_beta", "lep_alpha"],
+  1332→      ["lep_alpha", "lep_gamma"],
+  1333→      ["lep_beta", "lep_delta"],
+  1334→      ["lep_alpha", "lep_eps"],
+  1335→    ],
+  1336→    bonus: { capMult: 0.02 },
+  1337→  },
+  1338→  {
+  1339→    id: "corvus",
+  1340→    name: "Corvus",
+  1341→    i18nName: "Corvus",
+  1342→    category: "equatorial",
+  1343→    stars: [
+  1344→      { id: "crv_alpha", x: 56, y: 56 },
+  1345→      { id: "crv_beta", x: 60, y: 54 },
+  1346→      { id: "crv_gamma", x: 58, y: 58 },
+  1347→      { id: "crv_delta", x: 62, y: 56 },
+  1348→      { id: "crv_eps", x: 54, y: 54 },
+  1349→    ],
+  1350→    connections: [
+  1351→      ["crv_eps", "crv_alpha"],
+  1352→      ["crv_alpha", "crv_gamma"],
+  1353→      ["crv_gamma", "crv_delta"],
+  1354→      ["crv_delta", "crv_beta"],
+  1355→      ["crv_beta", "crv_alpha"],
+  1356→    ],
+  1357→    bonus: { capMult: 0.02 },
+  1358→  },
+  1359→  {
+  1360→    id: "crater",
+  1361→    name: "Crater",
+  1362→    i18nName: "Crater",
+  1363→    category: "equatorial",
+  1364→    stars: [
+  1365→      { id: "crt_alpha", x: 52, y: 60 },
+  1366→      { id: "crt_beta", x: 50, y: 58 },
+  1367→      { id: "crt_gamma", x: 54, y: 62 },
+  1368→      { id: "crt_delta", x: 48, y: 62 },
+  1369→      { id: "crt_eps", x: 52, y: 64 },
+  1370→    ],
+  1371→    connections: [
+  1372→      ["crt_beta", "crt_alpha"],
+  1373→      ["crt_alpha", "crt_gamma"],
+  1374→      ["crt_gamma", "crt_eps"],
+  1375→      ["crt_eps", "crt_delta"],
+  1376→      ["crt_delta", "crt_beta"],
+  1377→    ],
+  1378→    bonus: { capMult: 0.02, costMult: -0.01 },
+  1379→  },
+  1380→  {
+  1381→    id: "sextans",
+  1382→    name: "Sextans",
+  1383→    i18nName: "Sextans",
+  1384→    category: "equatorial",
+  1385→    stars: [
+  1386→      { id: "sex_alpha", x: 64, y: 56 },
+  1387→      { id: "sex_beta", x: 66, y: 54 },
+  1388→      { id: "sex_gamma", x: 62, y: 58 },
+  1389→      { id: "sex_delta", x: 64, y: 60 },
+  1390→      { id: "sex_eps", x: 60, y: 56 },
+  1391→    ],
+  1392→    connections: [
+  1393→      ["sex_eps", "sex_alpha"],
+  1394→      ["sex_alpha", "sex_beta"],
+  1395→      ["sex_alpha", "sex_gamma"],
+  1396→      ["sex_gamma", "sex_delta"],
+  1397→    ],
+  1398→    bonus: { costMult: -0.02 },
+  1399→  },
+  1400→  {
+  1401→    id: "pyxis",
+  1402→    name: "Pyxis",
+  1403→    i18nName: "Pyxis",
+  1404→    category: "equatorial",
+  1405→    stars: [
+  1406→      { id: "pyx_alpha", x: 36, y: 60 },
+  1407→      { id: "pyx_beta", x: 38, y: 58 },
+  1408→      { id: "pyx_gamma", x: 34, y: 62 },
+  1409→      { id: "pyx_delta", x: 38, y: 62 },
+  1410→    ],
+  1411→    connections: [
+  1412→      ["pyx_beta", "pyx_alpha"],
+  1413→      ["pyx_alpha", "pyx_gamma"],
+  1414→      ["pyx_gamma", "pyx_delta"],
+  1415→    ],
+  1416→    bonus: { capMult: 0.01 },
+  1417→  },
+  1418→  {
+  1419→    id: "puppis",
+  1420→    name: "Puppis",
+  1421→    i18nName: "Puppis",
+  1422→    category: "equatorial",
+  1423→    stars: [
+  1424→      { id: "pup_alpha", x: 38, y: 70 },
+  1425→      { id: "pup_beta", x: 36, y: 72 },
+  1426→      { id: "pup_gamma", x: 40, y: 74 },
+  1427→      { id: "pup_delta", x: 34, y: 68 },
+  1428→      { id: "pup_eps", x: 42, y: 76 },
+  1429→      { id: "pup_zeta", x: 32, y: 70 },
+  1430→      { id: "pup_eta", x: 38, y: 76 },
+  1431→    ],
+  1432→    connections: [
+  1433→      ["pup_delta", "pup_zeta"],
+  1434→      ["pup_zeta", "pup_beta"],
+  1435→      ["pup_beta", "pup_alpha"],
+  1436→      ["pup_alpha", "pup_gamma"],
+  1437→      ["pup_gamma", "pup_eps"],
+  1438→      ["pup_gamma", "pup_eta"],
+  1439→    ],
+  1440→    bonus: { productionMult: 0.04 },
+  1441→  },
+  1442→  {
+  1443→    id: "vela",
+  1444→    name: "Vela",
+  1445→    i18nName: "Vela",
+  1446→    category: "equatorial",
+  1447→    stars: [
+  1448→      { id: "vel_alpha", x: 46, y: 72 },
+  1449→      { id: "vel_beta", x: 44, y: 70 },
+  1450→      { id: "vel_gamma", x: 48, y: 74 },
+  1451→      { id: "vel_delta", x: 42, y: 74 },
+  1452→      { id: "vel_eps", x: 50, y: 76 },
+  1453→      { id: "vel_zeta", x: 40, y: 76 },
+  1454→      { id: "vel_eta", x: 52, y: 74 },
+  1455→      { id: "vel_theta", x: 46, y: 78 },
+  1456→    ],
+  1457→    connections: [
+  1458→      ["vel_zeta", "vel_delta"],
+  1459→      ["vel_delta", "vel_beta"],
+  1460→      ["vel_beta", "vel_alpha"],
+  1461→      ["vel_alpha", "vel_gamma"],
+  1462→      ["vel_gamma", "vel_eps"],
+  1463→      ["vel_eps", "vel_eta"],
+  1464→      ["vel_gamma", "vel_theta"],
+  1465→    ],
+  1466→    bonus: { capMult: 0.05, divinityMult: 0.02 },
+  1467→  },
+  1468→  {
+  1469→    id: "fornax",
+  1470→    name: "Fornax",
+  1471→    i18nName: "Fornax",
+  1472→    category: "equatorial",
+  1473→    stars: [
+  1474→      { id: "for_alpha", x: 16, y: 56 },
+  1475→      { id: "for_beta", x: 14, y: 58 },
+  1476→      { id: "for_gamma", x: 18, y: 58 },
+  1477→      { id: "for_delta", x: 16, y: 60 },
+  1478→    ],
+  1479→    connections: [
+  1480→      ["for_beta", "for_alpha"],
+  1481→      ["for_alpha", "for_gamma"],
+  1482→      ["for_alpha", "for_delta"],
+  1483→    ],
+  1484→    bonus: { costMult: -0.02 },
+  1485→  },
+  1486→  {
+  1487→    id: "piscis_austrinus",
+  1488→    name: "Piscis Austrinus",
+  1489→    i18nName: "Piscis Austrinus",
+  1490→    category: "equatorial",
+  1491→    stars: [
+  1492→      { id: "psa_alpha", x: 72, y: 60 }, // Fomalhaut
+  1493→      { id: "psa_beta", x: 70, y: 62 },
+  1494→      { id: "psa_gamma", x: 74, y: 62 },
+  1495→      { id: "psa_delta", x: 76, y: 60 },
+  1496→      { id: "psa_eps", x: 72, y: 64 },
+  1497→    ],
+  1498→    connections: [
+  1499→      ["psa_beta", "psa_alpha"],
+  1500→      ["psa_alpha", "psa_gamma"],
+  1501→      ["psa_gamma", "psa_delta"],
+  1502→      ["psa_alpha", "psa_eps"],
+  1503→    ],
+  1504→    bonus: { capMult: 0.03 },
+  1505→  },
+  1506→  {
+  1507→    id: "triangulum",
+  1508→    name: "Triangulum",
+  1509→    i18nName: "Triangulum",
+  1510→    category: "equatorial",
+  1511→    stars: [
+  1512→      { id: "tri_alpha", x: 84, y: 24 },
+  1513→      { id: "tri_beta", x: 86, y: 22 },
+  1514→      { id: "tri_gamma", x: 82, y: 22 },
+  1515→    ],
+  1516→    connections: [
+  1517→      ["tri_alpha", "tri_beta"],
+  1518→      ["tri_beta", "tri_gamma"],
+  1519→      ["tri_gamma", "tri_alpha"],
+  1520→    ],
+  1521→    bonus: { productionMult: 0.02, epMult: 0.01 },
+  1522→  },
+  1523→  {
+  1524→    id: "antlia",
+  1525→    name: "Antlia",
+  1526→    i18nName: "Antlia",
+  1527→    category: "equatorial",
+  1528→    stars: [
+  1529→      { id: "ant_alpha", x: 44, y: 66 },
+  1530→      { id: "ant_beta", x: 42, y: 64 },
+  1531→      { id: "ant_gamma", x: 46, y: 64 },
+  1532→    ],
+  1533→    connections: [
+  1534→      ["ant_beta", "ant_alpha"],
+  1535→      ["ant_alpha", "ant_gamma"],
+  1536→    ],
+  1537→    bonus: { productionMult: 0.02 },
+  1538→  },
+  1539→
+  1540→  // ===== ADDITIONAL SOUTHERN (27) =====
+  1541→  // Small faint patterns + prominent southern sky (Phoenix, Pavo,
+  1542→  // Octans near pole, Triangulum Australe, Lupus).
+  1543→  {
+  1544→    id: "phoenix",
+  1545→    name: "Phoenix",
+  1546→    i18nName: "Phoenix",
+  1547→    category: "southern",
+  1548→    stars: [
+  1549→      { id: "phe_alpha", x: 22, y: 78 },
+  1550→      { id: "phe_beta", x: 20, y: 76 },
+  1551→      { id: "phe_gamma", x: 24, y: 80 },
+  1552→      { id: "phe_delta", x: 18, y: 82 },
+  1553→      { id: "phe_eps", x: 22, y: 84 },
+  1554→      { id: "phe_zeta", x: 26, y: 82 },
+  1555→    ],
+  1556→    connections: [
+  1557→      ["phe_beta", "phe_alpha"],
+  1558→      ["phe_alpha", "phe_gamma"],
+  1559→      ["phe_gamma", "phe_zeta"],
+  1560→      ["phe_gamma", "phe_eps"],
+  1561→      ["phe_eps", "phe_delta"],
+  1562→    ],
+  1563→    bonus: { divinityMult: 0.02, costMult: -0.01 },
+  1564→  },
+  1565→  {
+  1566→    id: "pavo",
+  1567→    name: "Pavo",
+  1568→    i18nName: "Pavo",
+  1569→    category: "southern",
+  1570→    stars: [
+  1571→      { id: "pav_alpha", x: 70, y: 88 },
+  1572→      { id: "pav_beta", x: 68, y: 86 },
+  1573→      { id: "pav_gamma", x: 72, y: 86 },
+  1574→      { id: "pav_delta", x: 66, y: 90 },
+  1575→      { id: "pav_eps", x: 74, y: 90 },
+  1576→      { id: "pav_zeta", x: 70, y: 92 },
+  1577→      { id: "pav_eta", x: 76, y: 88 },
+  1578→    ],
+  1579→    connections: [
+  1580→      ["pav_beta", "pav_alpha"],
+  1581→      ["pav_alpha", "pav_gamma"],
+  1582→      ["pav_gamma", "pav_eta"],
+  1583→      ["pav_beta", "pav_delta"],
+  1584→      ["pav_delta", "pav_zeta"],
+  1585→      ["pav_zeta", "pav_eps"],
+  1586→      ["pav_eps", "pav_gamma"],
+  1587→    ],
+  1588→    bonus: { divinityMult: 0.02 },
+  1589→  },
+  1590→  {
+  1591→    id: "octans",
+  1592→    name: "Octans",
+  1593→    i18nName: "Octans",
+  1594→    category: "southern",
+  1595→    stars: [
+  1596→      { id: "oct_alpha", x: 50, y: 96 }, // Sigma Octantis (south pole star)
+  1597→      { id: "oct_beta", x: 48, y: 94 },
+  1598→      { id: "oct_gamma", x: 52, y: 94 },
+  1599→      { id: "oct_delta", x: 46, y: 96 },
+  1600→      { id: "oct_eps", x: 54, y: 96 },
+  1601→    ],
+  1602→    connections: [
+  1603→      ["oct_delta", "oct_beta"],
+  1604→      ["oct_beta", "oct_alpha"],
+  1605→      ["oct_alpha", "oct_gamma"],
+  1606→      ["oct_gamma", "oct_eps"],
+  1607→    ],
+  1608→    bonus: { divinityMult: 0.03 },
+  1609→  },
+  1610→  {
+  1611→    id: "triangulum_australe",
+  1612→    name: "Triangulum Australe",
+  1613→    i18nName: "Triangulum Australe",
+  1614→    category: "southern",
+  1615→    stars: [
+  1616→      { id: "tra_alpha", x: 62, y: 84 },
+  1617→      { id: "tra_beta", x: 60, y: 88 },
+  1618→      { id: "tra_gamma", x: 64, y: 88 },
+  1619→      { id: "tra_delta", x: 62, y: 90 },
+  1620→    ],
+  1621→    connections: [
+  1622→      ["tra_alpha", "tra_beta"],
+  1623→      ["tra_beta", "tra_delta"],
+  1624→      ["tra_delta", "tra_gamma"],
+  1625→      ["tra_gamma", "tra_alpha"],
+  1626→    ],
+  1627→    bonus: { divinityMult: 0.02 },
+  1628→  },
+  1629→  {
+  1630→    id: "lupus",
+  1631→    name: "Lupus",
+  1632→    i18nName: "Lupus",
+  1633→    category: "southern",
+  1634→    stars: [
+  1635→      { id: "lup_alpha", x: 54, y: 78 },
+  1636→      { id: "lup_beta", x: 52, y: 76 },
+  1637→      { id: "lup_gamma", x: 56, y: 80 },
+  1638→      { id: "lup_delta", x: 50, y: 80 },
+  1639→      { id: "lup_eps", x: 58, y: 78 },
+  1640→      { id: "lup_zeta", x: 56, y: 82 },
+  1641→    ],
+  1642→    connections: [
+  1643→      ["lup_beta", "lup_alpha"],
+  1644→      ["lup_alpha", "lup_gamma"],
+  1645→      ["lup_gamma", "lup_eps"],
+  1646→      ["lup_gamma", "lup_zeta"],
+  1647→      ["lup_beta", "lup_delta"],
+  1648→    ],
+  1649→    bonus: { productionMult: 0.03, capMult: 0.01 },
+  1650→  },
+  1651→  {
+  1652→    id: "ara",
+  1653→    name: "Ara",
+  1654→    i18nName: "Ara",
+  1655→    category: "southern",
+  1656→    stars: [
+  1657→      { id: "ara_alpha", x: 78, y: 78 },
+  1658→      { id: "ara_beta", x: 76, y: 76 },
+  1659→      { id: "ara_gamma", x: 80, y: 80 },
+  1660→      { id: "ara_delta", x: 78, y: 82 },
+  1661→      { id: "ara_eps", x: 82, y: 78 },
+  1662→    ],
+  1663→    connections: [
+  1664→      ["ara_beta", "ara_alpha"],
+  1665→      ["ara_alpha", "ara_gamma"],
+  1666→      ["ara_gamma", "ara_delta"],
+  1667→      ["ara_alpha", "ara_eps"],
+  1668→    ],
+  1669→    bonus: { capMult: 0.02, divinityMult: 0.02 },
+  1670→  },
+  1671→  {
+  1672→    id: "dorado",
+  1673→    name: "Dorado",
+  1674→    i18nName: "Dorado",
+  1675→    category: "southern",
+  1676→    stars: [
+  1677→      { id: "dor_alpha", x: 78, y: 88 },
+  1678→      { id: "dor_beta", x: 76, y: 86 },
+  1679→      { id: "dor_gamma", x: 80, y: 90 },
+  1680→      { id: "dor_delta", x: 82, y: 88 },
+  1681→      { id: "dor_eps", x: 78, y: 92 },
+  1682→    ],
+  1683→    connections: [
+  1684→      ["dor_beta", "dor_alpha"],
+  1685→      ["dor_alpha", "dor_delta"],
+  1686→      ["dor_delta", "dor_gamma"],
+  1687→      ["dor_gamma", "dor_eps"],
+  1688→    ],
+  1689→    bonus: { divinityMult: 0.02 },
+  1690→  },
+  1691→  {
+  1692→    id: "grus",
+  1693→    name: "Grus",
+  1694→    i18nName: "Grus",
+  1695→    category: "southern",
+  1696→    stars: [
+  1697→      { id: "gru_alpha", x: 88, y: 82 }, // Alnair
+  1698→      { id: "gru_beta", x: 86, y: 80 },
+  1699→      { id: "gru_gamma", x: 92, y: 84 },
+  1700→      { id: "gru_delta", x: 90, y: 86 },
+  1701→      { id: "gru_eps", x: 94, y: 82 },
+  1702→    ],
+  1703→    connections: [
+  1704→      ["gru_beta", "gru_alpha"],
+  1705→      ["gru_alpha", "gru_gamma"],
+  1706→      ["gru_gamma", "gru_delta"],
+  1707→      ["gru_gamma", "gru_eps"],
+  1708→    ],
+  1709→    bonus: { divinityMult: 0.02 },
+  1710→  },
+  1711→  {
+  1712→    id: "tucana",
+  1713→    name: "Tucana",
+  1714→    i18nName: "Tucana",
+  1715→    category: "southern",
+  1716→    stars: [
+  1717→      { id: "tuc_alpha", x: 90, y: 92 },
+  1718→      { id: "tuc_beta", x: 92, y: 90 },
+  1719→      { id: "tuc_gamma", x: 88, y: 94 },
+  1720→      { id: "tuc_delta", x: 86, y: 90 },
+  1721→    ],
+  1722→    connections: [
+  1723→      ["tuc_delta", "tuc_alpha"],
+  1724→      ["tuc_alpha", "tuc_beta"],
+  1725→      ["tuc_alpha", "tuc_gamma"],
+  1726→    ],
+  1727→    bonus: { divinityMult: 0.02 },
+  1728→  },
+  1729→  {
+  1730→    id: "indus",
+  1731→    name: "Indus",
+  1732→    i18nName: "Indus",
+  1733→    category: "southern",
+  1734→    stars: [
+  1735→      { id: "ind_alpha", x: 84, y: 86 },
+  1736→      { id: "ind_beta", x: 82, y: 84 },
+  1737→      { id: "ind_gamma", x: 86, y: 88 },
+  1738→      { id: "ind_delta", x: 80, y: 88 },
+  1739→      { id: "ind_eps", x: 84, y: 90 },
+  1740→    ],
+  1741→    connections: [
+  1742→      ["ind_beta", "ind_alpha"],
+  1743→      ["ind_alpha", "ind_gamma"],
+  1744→      ["ind_beta", "ind_delta"],
+  1745→      ["ind_gamma", "ind_eps"],
+  1746→    ],
+  1747→    bonus: { divinityMult: 0.02 },
+  1748→  },
+  1749→  {
+  1750→    id: "pictor",
+  1751→    name: "Pictor",
+  1752→    i18nName: "Pictor",
+  1753→    category: "southern",
+  1754→    stars: [
+  1755→      { id: "pic_alpha", x: 60, y: 84 },
+  1756→      { id: "pic_beta", x: 58, y: 82 },
+  1757→      { id: "pic_gamma", x: 62, y: 86 },
+  1758→      { id: "pic_delta", x: 64, y: 84 },
+  1759→    ],
+  1760→    connections: [
+  1761→      ["pic_beta", "pic_alpha"],
+  1762→      ["pic_alpha", "pic_delta"],
+  1763→      ["pic_alpha", "pic_gamma"],
+  1764→    ],
+  1765→    bonus: { costMult: -0.01 },
+  1766→  },
+  1767→  {
+  1768→    id: "reticulum",
+  1769→    name: "Reticulum",
+  1770→    i18nName: "Reticulum",
+  1771→    category: "southern",
+  1772→    stars: [
+  1773→      { id: "ret_alpha", x: 76, y: 82 },
+  1774→      { id: "ret_beta", x: 74, y: 80 },
+  1775→      { id: "ret_gamma", x: 78, y: 84 },
+  1776→      { id: "ret_delta", x: 74, y: 84 },
+  1777→    ],
+  1778→    connections: [
+  1779→      ["ret_beta", "ret_alpha"],
+  1780→      ["ret_alpha", "ret_gamma"],
+  1781→      ["ret_gamma", "ret_delta"],
+  1782→      ["ret_delta", "ret_beta"],
+  1783→    ],
+  1784→    bonus: { divinityMult: 0.02 },
+  1785→  },
+  1786→  {
+  1787→    id: "horologium",
+  1788→    name: "Horologium",
+  1789→    i18nName: "Horologium",
+  1790→    category: "southern",
+  1791→    stars: [
+  1792→      { id: "hor_alpha", x: 70, y: 82 },
+  1793→      { id: "hor_beta", x: 68, y: 80 },
+  1794→      { id: "hor_gamma", x: 72, y: 84 },
+  1795→      { id: "hor_delta", x: 70, y: 86 },
+  1796→      { id: "hor_eps", x: 66, y: 84 },
+  1797→    ],
+  1798→    connections: [
+  1799→      ["hor_beta", "hor_alpha"],
+  1800→      ["hor_alpha", "hor_gamma"],
+  1801→      ["hor_gamma", "hor_delta"],
+  1802→      ["hor_beta", "hor_eps"],
+  1803→    ],
+  1804→    bonus: { capMult: 0.01, costMult: -0.01 },
+  1805→  },
+  1806→  {
+  1807→    id: "sculptor",
+  1808→    name: "Sculptor",
+  1809→    i18nName: "Sculptor",
+  1810→    category: "southern",
+  1811→    stars: [
+  1812→      { id: "scl_alpha", x: 66, y: 76 },
+  1813→      { id: "scl_beta", x: 64, y: 74 },
+  1814→      { id: "scl_gamma", x: 68, y: 78 },
+  1815→      { id: "scl_delta", x: 62, y: 78 },
+  1816→      { id: "scl_eps", x: 66, y: 80 },
+  1817→    ],
+  1818→    connections: [
+  1819→      ["scl_beta", "scl_alpha"],
+  1820→      ["scl_alpha", "scl_gamma"],
+  1821→      ["scl_gamma", "scl_eps"],
+  1822→      ["scl_eps", "scl_delta"],
+  1823→      ["scl_delta", "scl_beta"],
+  1824→    ],
+  1825→    bonus: { costMult: -0.02 },
+  1826→  },
+  1827→  {
+  1828→    id: "telescopium",
+  1829→    name: "Telescopium",
+  1830→    i18nName: "Telescopium",
+  1831→    category: "southern",
+  1832→    stars: [
+  1833→      { id: "tel_alpha", x: 80, y: 78 },
+  1834→      { id: "tel_beta", x: 78, y: 76 },
+  1835→      { id: "tel_gamma", x: 82, y: 80 },
+  1836→      { id: "tel_delta", x: 84, y: 78 },
+  1837→      { id: "tel_eps", x: 80, y: 82 },
+  1838→    ],
+  1839→    connections: [
+  1840→      ["tel_beta", "tel_alpha"],
+  1841→      ["tel_alpha", "tel_gamma"],
+  1842→      ["tel_gamma", "tel_eps"],
+  1843→      ["tel_gamma", "tel_delta"],
+  1844→    ],
+  1845→    bonus: { costMult: -0.02 },
+  1846→  },
+  1847→  {
+  1848→    id: "microscopium",
+  1849→    name: "Microscopium",
+  1850→    i18nName: "Microscopium",
+  1851→    category: "southern",
+  1852→    stars: [
+  1853→      { id: "mic_alpha", x: 86, y: 78 },
+  1854→      { id: "mic_beta", x: 84, y: 76 },
+  1855→      { id: "mic_gamma", x: 88, y: 80 },
+  1856→      { id: "mic_delta", x: 86, y: 82 },
+  1857→    ],
+  1858→    connections: [
+  1859→      ["mic_beta", "mic_alpha"],
+  1860→      ["mic_alpha", "mic_gamma"],
+  1861→      ["mic_gamma", "mic_delta"],
+  1862→    ],
+  1863→    bonus: { costMult: -0.01 },
+  1864→  },
+  1865→  {
+  1866→    id: "norma",
+  1867→    name: "Norma",
+  1868→    i18nName: "Norma",
+  1869→    category: "southern",
+  1870→    stars: [
+  1871→      { id: "nor_alpha", x: 66, y: 80 },
+  1872→      { id: "nor_beta", x: 64, y: 78 },
+  1873→      { id: "nor_gamma", x: 68, y: 82 },
+  1874→      { id: "nor_delta", x: 70, y: 80 },
+  1875→      { id: "nor_eps", x: 66, y: 84 },
+  1876→    ],
+  1877→    connections: [
+  1878→      ["nor_beta", "nor_alpha"],
+  1879→      ["nor_alpha", "nor_gamma"],
+  1880→      ["nor_gamma", "nor_delta"],
+  1881→      ["nor_alpha", "nor_eps"],
+  1882→    ],
+  1883→    bonus: { capMult: 0.01, costMult: -0.01 },
+  1884→  },
+  1885→  {
+  1886→    id: "circinus",
+  1887→    name: "Circinus",
+  1888→    i18nName: "Circinus",
+  1889→    category: "southern",
+  1890→    stars: [
+  1891→      { id: "cir_alpha", x: 60, y: 78 },
+  1892→      { id: "cir_beta", x: 58, y: 76 },
+  1893→      { id: "cir_gamma", x: 62, y: 80 },
+  1894→      { id: "cir_delta", x: 60, y: 82 },
+  1895→    ],
+  1896→    connections: [
+  1897→      ["cir_beta", "cir_alpha"],
+  1898→      ["cir_alpha", "cir_gamma"],
+  1899→      ["cir_alpha", "cir_delta"],
+  1900→    ],
+  1901→    bonus: { costMult: -0.01, divinityMult: 0.01 },
+  1902→  },
+  1903→  {
+  1904→    id: "mensa",
+  1905→    name: "Mensa",
+  1906→    i18nName: "Mensa",
+  1907→    category: "southern",
+  1908→    stars: [
+  1909→      { id: "men_alpha", x: 82, y: 88 },
+  1910→      { id: "men_beta", x: 80, y: 86 },
+  1911→      { id: "men_gamma", x: 84, y: 90 },
+  1912→      { id: "men_delta", x: 86, y: 88 },
+  1913→    ],
+  1914→    connections: [
+  1915→      ["men_beta", "men_alpha"],
+  1916→      ["men_alpha", "men_gamma"],
+  1917→      ["men_gamma", "men_delta"],
+  1918→    ],
+  1919→    bonus: { divinityMult: 0.01 },
+  1920→  },
+  1921→  {
+  1922→    id: "chamaeleon",
+  1923→    name: "Chamaeleon",
+  1924→    i18nName: "Chamaeleon",
+  1925→    category: "southern",
+  1926→    stars: [
+  1927→      { id: "cha_alpha", x: 64, y: 92 },
+  1928→      { id: "cha_beta", x: 62, y: 90 },
+  1929→      { id: "cha_gamma", x: 66, y: 94 },
+  1930→      { id: "cha_delta", x: 64, y: 96 },
+  1931→    ],
+  1932→    connections: [
+  1933→      ["cha_beta", "cha_alpha"],
+  1934→      ["cha_alpha", "cha_gamma"],
+  1935→      ["cha_gamma", "cha_delta"],
+  1936→    ],
+  1937→    bonus: { divinityMult: 0.01 },
+  1938→  },
+  1939→  {
+  1940→    id: "musca",
+  1941→    name: "Musca",
+  1942→    i18nName: "Musca",
+  1943→    category: "southern",
+  1944→    stars: [
+  1945→      { id: "mus_alpha", x: 60, y: 86 },
+  1946→      { id: "mus_beta", x: 58, y: 84 },
+  1947→      { id: "mus_gamma", x: 62, y: 88 },
+  1948→      { id: "mus_delta", x: 60, y: 90 },
+  1949→    ],
+  1950→    connections: [
+  1951→      ["mus_beta", "mus_alpha"],
+  1952→      ["mus_alpha", "mus_gamma"],
+  1953→      ["mus_gamma", "mus_delta"],
+  1954→    ],
+  1955→    bonus: { divinityMult: 0.01 },
+  1956→  },
+  1957→  {
+  1958→    id: "volans",
+  1959→    name: "Volans",
+  1960→    i18nName: "Volans",
+  1961→    category: "southern",
+  1962→    stars: [
+  1963→      { id: "vol_alpha", x: 78, y: 92 },
+  1964→      { id: "vol_beta", x: 76, y: 90 },
+  1965→      { id: "vol_gamma", x: 80, y: 94 },
+  1966→      { id: "vol_delta", x: 82, y: 92 },
+  1967→      { id: "vol_eps", x: 78, y: 96 },
+  1968→    ],
+  1969→    connections: [
+  1970→      ["vol_beta", "vol_alpha"],
+  1971→      ["vol_alpha", "vol_delta"],
+  1972→      ["vol_alpha", "vol_gamma"],
+  1973→      ["vol_gamma", "vol_eps"],
+  1974→    ],
+  1975→    bonus: { divinityMult: 0.01 },
+  1976→  },
+  1977→  {
+  1978→    id: "apus",
+  1979→    name: "Apus",
+  1980→    i18nName: "Apus",
+  1981→    category: "southern",
+  1982→    stars: [
+  1983→      { id: "aps_alpha", x: 74, y: 92 },
+  1984→      { id: "aps_beta", x: 72, y: 90 },
+  1985→      { id: "aps_gamma", x: 76, y: 94 },
+  1986→      { id: "aps_delta", x: 74, y: 96 },
+  1987→    ],
+  1988→    connections: [
+  1989→      ["aps_beta", "aps_alpha"],
+  1990→      ["aps_alpha", "aps_gamma"],
+  1991→      ["aps_gamma", "aps_delta"],
+  1992→    ],
+  1993→    bonus: { divinityMult: 0.01 },
+  1994→  },
+  1995→  {
+  1996→    id: "caelum",
+  1997→    name: "Caelum",
+  1998→    i18nName: "Caelum",
+  1999→    category: "southern",
+  2000→    stars: [
+
+[showing lines 1-2000 of 2243; use offset=2001 with limit to continue reading]

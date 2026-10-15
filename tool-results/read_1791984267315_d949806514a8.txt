@@ -1,0 +1,602 @@
+  1700→          }
+  1701→        }
+  1702→        // Special themes
+  1703→        if ((s.galacticWins || 0) >= 1 && !unlockedThemes["special-void"]) {
+  1704→          unlockedThemes["special-void"] = true;
+  1705→          themesChanged = true;
+  1706→        }
+  1707→        const achCount = Object.values(achievements || {}).filter(Boolean).length;
+  1708→        if (achCount >= 10 && !unlockedThemes["special-retro"]) {
+  1709→          unlockedThemes["special-retro"] = true;
+  1710→          themesChanged = true;
+  1711→        }
+  1712→        const allLayersUnlocked = !!(unlockedLayers.evolution && unlockedLayers.enlightenment && unlockedLayers.transcendence && unlockedLayers.genesis && unlockedLayers.apotheosis && unlockedLayers.singularity && unlockedLayers.omnipotence && unlockedLayers.divinity && unlockedLayers.infinity && unlockedLayers.eternity);
+  1713→        if (allLayersUnlocked && !unlockedThemes["special-cosmic"]) {
+  1714→          unlockedThemes["special-cosmic"] = true;
+  1715→          themesChanged = true;
+  1716→        }
+  1717→        void themesChanged;
+  1718→
+  1719→        // ---- Theme AUTO mode: re-derive the active stage/layer theme every tick ----
+  1720→        // (when themeMode === "auto", the player's manual picks are overridden)
+  1721→        let activeStageTheme = s.activeStageTheme || "stage-cell";
+  1722→        let activeLayerTheme = s.activeLayerTheme;
+  1723→        let activeSpecialTheme = s.activeSpecialTheme;
+  1724→        if ((s.themeMode || "auto") === "auto") {
+  1725→          const autoStageId = STAGE_INDEX_TO_THEME[s.stageIndex] || "stage-cell";
+  1726→          const autoLayerId = highestUnlockedLayerThemeId(unlockedLayers);
+  1727→          if (activeStageTheme !== autoStageId) activeStageTheme = autoStageId;
+  1728→          if (activeLayerTheme !== autoLayerId) activeLayerTheme = autoLayerId;
+  1729→          if (activeSpecialTheme !== null) activeSpecialTheme = null; // auto mode never uses special
+  1730→        }
+  1731→
+  1732→        // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS — tick processing =====
+  1733→        // Layer 1 — Trial Realms: progress the active realm's mini-game
+  1734→        let activeTrialRealm = s.activeTrialRealm;
+  1735→        // FEATURE 1 — capture the original realm ID for safe indexing (activeTrialRealm may be reassigned to null on auto-close)
+  1736→        const tickRealmId = s.activeTrialRealm;
+  1737→        let trialRealmState = { ...(s.trialRealmState || {}) };
+  1738→        let trialRealmsCompleted = { ...(s.trialRealmsCompleted || {}) };
+  1739→        // FEATURE 1 — local best-time leaderboard (no login required)
+  1740→        let trialRealmBestTimes = { ...(s.trialRealmBestTimes || {}) };
+  1741→        if (activeTrialRealm && PLAYABLE_REALM_IDS.includes(activeTrialRealm)) {
+  1742→          const st = { ...(trialRealmState[activeTrialRealm] || makeDefaultRealmState(activeTrialRealm)) };
+  1743→          // Ensure startedAt is set (migration safety)
+  1744→          if (!st.startedAt) st.startedAt = newTime - realDt;
+  1745→          switch (activeTrialRealm) {
+  1746→            case "realm_growth": {
+  1747→              st.energy = Math.min(100, (st.energy || 0) + REALM_GROWTH_PASSIVE_FILL_PER_SEC * realDt);
+  1748→              break;
+  1749→            }
+  1750→            case "realm_discontent": {
+  1751→              // Happiness oscillates as a sine wave centered on 50, amplitude 35, period 12s
+  1752→              st.timer = (st.timer || 0) + realDt;
+  1753→              const phase = (st.timer / 12) * Math.PI * 2;
+  1754→              const target = 50 + Math.sin(phase) * 35;
+  1755→              // Drift toward target slowly
+  1756→              st.happiness = (st.happiness || 50) + (target - (st.happiness || 50)) * 0.1 * realDt;
+  1757→              st.happiness = Math.max(0, Math.min(100, st.happiness));
+  1758→              // Survival timer only progresses while happiness is above the threshold
+  1759→              st.survivedTime = (st.survivedTime || 0) + ((st.happiness || 0) >= REALM_DISCONTENT_HAPPINESS_THRESHOLD ? realDt : 0);
+  1760→              if ((st.happiness || 0) < REALM_DISCONTENT_HAPPINESS_THRESHOLD) {
+  1761→                st.happinessBelowThreshold = true;
+  1762→              }
+  1763→              // Check completion: survived ≥ 90s AND gold ≥ 200
+  1764→              if ((st.survivedTime || 0) >= REALM_DISCONTENT_SURVIVE_SECONDS && (st.gold || 0) >= REALM_DISCONTENT_GOLD_GOAL && !st.completed) {
+  1765→                st.completed = true;
+  1766→                trialRealmsCompleted[tickRealmId!] = true;
+  1767→                // FEATURE 1 — record best time
+  1768→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1769→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1770→                if (prevBest === undefined || completionTime < prevBest) {
+  1771→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1772→                }
+  1773→                // Check L2 unlock after trial completion
+  1774→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1775→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1776→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1777→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1778→                }
+  1779→                setTimeout(() => get().addToLog("Realm of Discontent conquered! Permanent reward granted."), 0);
+  1780→              }
+  1781→              break;
+  1782→            }
+  1783→            case "realm_swiftness": {
+  1784→              st.timeLeft = Math.max(0, (st.timeLeft || REALM_SWIFTNESS_TIME_LIMIT) - realDt);
+  1785→              if (st.timeLeft <= 0 && !st.completed) {
+  1786→                // Time expired; failed unless we already reached Galactic
+  1787→                if (!st.reachedGalactic) {
+  1788→                  setTimeout(() => get().addToLog("Realm of Swiftness: time expired — run failed."), 0);
+  1789→                  activeTrialRealm = null;
+  1790→                }
+  1791→              }
+  1792→              if (s.stageIndex >= STAGES.length - 1) {
+  1793→                st.reachedGalactic = true;
+  1794→                if (!st.completed) {
+  1795→                  st.completed = true;
+  1796→                  trialRealmsCompleted[tickRealmId!] = true;
+  1797→                  // FEATURE 1 — record best time (faster = better)
+  1798→                  const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1799→                  const prevBest = trialRealmBestTimes[tickRealmId!];
+  1800→                  if (prevBest === undefined || completionTime < prevBest) {
+  1801→                    trialRealmBestTimes[tickRealmId!] = completionTime;
+  1802→                  }
+  1803→                  // Check L2 unlock after trial completion
+  1804→                  const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1805→                  if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1806→                    unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1807→                    setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1808→                  }
+  1809→                  setTimeout(() => get().addToLog("Realm of Swiftness conquered! +15% all production speed."), 0);
+  1810→                }
+  1811→              }
+  1812→              break;
+  1813→            }
+  1814→            // TRIALS-7 — 7 newly playable realm tick cases
+  1815→            case "realm_famine": {
+  1816→              // Each resource decays slowly. Player pumps forward (A→B→C→A) to
+  1817→              // refill whichever is low. Survival timer only progresses while
+  1818→              // all three are at/above REALM_FAMINE_THRESHOLD.
+  1819→              st.timer = (st.timer || 0) + realDt;
+  1820→              const decay = REALM_FAMINE_DECAY_PER_SEC * realDt;
+  1821→              st.a = Math.max(0, Math.min(100, (st.a || 0) - decay));
+  1822→              st.b = Math.max(0, Math.min(100, (st.b || 0) - decay));
+  1823→              st.c = Math.max(0, Math.min(100, (st.c || 0) - decay));
+  1824→              // Survival timer only progresses while all three are at/above the threshold
+  1825→              const allAbove =
+  1826→                (st.a || 0) >= REALM_FAMINE_THRESHOLD &&
+  1827→                (st.b || 0) >= REALM_FAMINE_THRESHOLD &&
+  1828→                (st.c || 0) >= REALM_FAMINE_THRESHOLD;
+  1829→              st.survivedTime = (st.survivedTime || 0) + (allAbove ? realDt : 0);
+  1830→              if ((st.survivedTime || 0) >= REALM_FAMINE_SURVIVE_SECONDS && !st.completed) {
+  1831→                st.completed = true;
+  1832→                trialRealmsCompleted[tickRealmId!] = true;
+  1833→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1834→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1835→                if (prevBest === undefined || completionTime < prevBest) {
+  1836→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1837→                }
+  1838→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1839→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1840→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1841→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1842→                }
+  1843→                setTimeout(() => get().addToLog("Realm of Famine conquered! +15% food & water production permanently."), 0);
+  1844→              }
+  1845→              break;
+  1846→            }
+  1847→            case "realm_ignorance": {
+  1848→              // Passive tick — no time pressure; completion handled by buy-node action.
+  1849→              // No-op: progress happens when player clicks "Unlock" on each tech node.
+  1850→              break;
+  1851→            }
+  1852→            case "realm_stagnation": {
+  1853→              // Production rate = (lvl1 × lvl2 × lvl3 × lvl4) / 16 per sec
+  1854→              const lv = st.levels || [1, 1, 1, 1];
+  1855→              const rate = (lv[0] * lv[1] * lv[2] * lv[3]) / REALM_STAGNATION_RATE_DIVISOR;
+  1856→              st.goods = (st.goods || 0) + rate * realDt;
+  1857→              st.produced = (st.produced || 0) + rate * realDt;
+  1858→              if ((st.produced || 0) >= REALM_STAGNATION_GOODS_GOAL && !st.completed) {
+  1859→                st.completed = true;
+  1860→                trialRealmsCompleted[tickRealmId!] = true;
+  1861→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1862→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1863→                if (prevBest === undefined || completionTime < prevBest) {
+  1864→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1865→                }
+  1866→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1867→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1868→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1869→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1870→                }
+  1871→                setTimeout(() => get().addToLog("Realm of Stagnation conquered! +10% production at every stage permanently."), 0);
+  1872→              }
+  1873→              break;
+  1874→            }
+  1875→            case "realm_weakness": {
+  1876→              // Auto-start first wave
+  1877→              if ((st.wave || 0) === 0) {
+  1878→                st.wave = 1;
+  1879→                st.enemies = REALM_WEAKNESS_ENEMY_BASE + 1 * REALM_WEAKNESS_ENEMY_PER_WAVE;
+  1880→                st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
+  1881→              }
+  1882→              if ((st.wave || 0) > 0 && !st.completed && !st.failed) {
+  1883→                // Towers kill enemies at REALM_WEAKNESS_TOWER_KILL_RATE per tower per sec
+  1884→                const kills = (st.towers || 0) * REALM_WEAKNESS_TOWER_KILL_RATE * realDt;
+  1885→                st.enemies = Math.max(0, (st.enemies || 0) - kills);
+  1886→                st.waveTimer = Math.max(0, (st.waveTimer || 0) - realDt);
+  1887→                if ((st.waveTimer || 0) <= 0) {
+  1888→                  // Wave ends — leftover enemies damage the base
+  1889→                  const leak = Math.floor(st.enemies || 0);
+  1890→                  if (leak > 0) {
+  1891→                    st.baseHp = Math.max(0, (st.baseHp || 100) - leak * REALM_WEAKNESS_LEAK_DAMAGE);
+  1892→                  }
+  1893→                  if ((st.baseHp || 0) <= 0) {
+  1894→                    st.failed = true;
+  1895→                    setTimeout(() => get().addToLog("Realm of Weakness: base destroyed — realm failed."), 0);
+  1896→                    activeTrialRealm = null;
+  1897→                    break;
+  1898→                  }
+  1899→                  // Reward & advance wave
+  1900→                  st.military = (st.military || 0) + REALM_WEAKNESS_WAVE_REWARD;
+  1901→                  st.wave = (st.wave || 0) + 1;
+  1902→                  if ((st.wave || 0) > REALM_WEAKNESS_WAVE_COUNT) {
+  1903→                    st.completed = true;
+  1904→                    trialRealmsCompleted[tickRealmId!] = true;
+  1905→                    const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1906→                    const prevBest = trialRealmBestTimes[tickRealmId!];
+  1907→                    if (prevBest === undefined || completionTime < prevBest) {
+  1908→                      trialRealmBestTimes[tickRealmId!] = completionTime;
+  1909→                    }
+  1910→                    const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1911→                    if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1912→                      unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1913→                      setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1914→                    }
+  1915→                    setTimeout(() => get().addToLog("Realm of Weakness conquered! +15% military power permanently."), 0);
+  1916→                  } else {
+  1917→                    // Start next wave (uses new st.wave value)
+  1918→                    st.enemies = REALM_WEAKNESS_ENEMY_BASE + (st.wave || 1) * REALM_WEAKNESS_ENEMY_PER_WAVE;
+  1919→                    st.waveTimer = REALM_WEAKNESS_WAVE_DURATION;
+  1920→                  }
+  1921→                }
+  1922→              }
+  1923→              break;
+  1924→            }
+  1925→            case "realm_late_bloom": {
+  1926→              // Geometric growth: food rate = pop² × coeff; cost per pop = pop × COST_PER_POP
+  1927→              const pop = Math.max(1, st.pop || 1);
+  1928→              const rate = pop * pop * REALM_LATE_BLOOM_PROD_COEFF;
+  1929→              st.food = (st.food || 0) + rate * realDt;
+  1930→              let guard = 0;
+  1931→              while ((st.food || 0) >= pop * REALM_LATE_BLOOM_COST_PER_POP && (st.pop || 0) < REALM_LATE_BLOOM_POP_GOAL && guard < 1000) {
+  1932→                st.food = (st.food || 0) - pop * REALM_LATE_BLOOM_COST_PER_POP;
+  1933→                st.pop = (st.pop || 1) + 1;
+  1934→                guard++;
+  1935→              }
+  1936→              if ((st.pop || 0) >= REALM_LATE_BLOOM_POP_GOAL && !st.completed) {
+  1937→                st.completed = true;
+  1938→                trialRealmsCompleted[tickRealmId!] = true;
+  1939→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1940→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1941→                if (prevBest === undefined || completionTime < prevBest) {
+  1942→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1943→                }
+  1944→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1945→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1946→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1947→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1948→                }
+  1949→                setTimeout(() => get().addToLog("Realm of Late Bloom conquered! +25% population growth on slow starts (under 50 pop)."), 0);
+  1950→              }
+  1951→              break;
+  1952→            }
+  1953→            case "realm_purity": {
+  1954→              // Each built system drains the pool passively
+  1955→              const drain = (st.systemsBuilt || 0) * REALM_PURITY_DRAIN_PER_SYSTEM * realDt;
+  1956→              st.pool = Math.max(0, (st.pool || 0) - drain);
+  1957→              if ((st.pool || 0) <= 0 && !st.completed && !st.failed) {
+  1958→                st.failed = true;
+  1959→                setTimeout(() => get().addToLog("Realm of Purity: shared pool exhausted — realm failed."), 0);
+  1960→                activeTrialRealm = null;
+  1961→              }
+  1962→              if ((st.systemsBuilt || 0) >= REALM_PURITY_SYSTEMS_GOAL && !st.completed) {
+  1963→                st.completed = true;
+  1964→                trialRealmsCompleted[tickRealmId!] = true;
+  1965→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1966→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1967→                if (prevBest === undefined || completionTime < prevBest) {
+  1968→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1969→                }
+  1970→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1971→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1972→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1973→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1974→                }
+  1975→                setTimeout(() => get().addToLog("Realm of Purity conquered! +5% production (scaling reward) permanently."), 0);
+  1976→              }
+  1977→              break;
+  1978→            }
+  1979→            case "realm_ascetic": {
+  1980→              // Essence accumulates passively: rate = BASE_RATE + stage
+  1981→              const rate = REALM_ASCETIC_BASE_RATE + (st.stage || 0);
+  1982→              st.essence = (st.essence || 0) + rate * realDt;
+  1983→              // Completion handled by build-system action (each purchase advances the stage)
+  1984→              if ((st.stage || 0) >= REALM_ASCETIC_STAGES && !st.completed) {
+  1985→                st.completed = true;
+  1986→                trialRealmsCompleted[tickRealmId!] = true;
+  1987→                const completionTime = Math.max(0, newTime - (st.startedAt || newTime));
+  1988→                const prevBest = trialRealmBestTimes[tickRealmId!];
+  1989→                if (prevBest === undefined || completionTime < prevBest) {
+  1990→                  trialRealmBestTimes[tickRealmId!] = completionTime;
+  1991→                }
+  1992→                const trialsDone = Object.values(trialRealmsCompleted).filter(Boolean).length;
+  1993→                if (trialsDone >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2 && !unlockedLayers.enlightenment) {
+  1994→                  unlockedLayers = { ...unlockedLayers, enlightenment: true };
+  1995→                  setTimeout(() => get().addToLog(`Trial progress threshold reached (${trialsDone}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} realms). Enlightenment layer unlocked.`), 0);
+  1996→                }
+  1997→                setTimeout(() => get().addToLog("Realm of the Ascetic conquered! +12% production with constraints lifted."), 0);
+  1998→              }
+  1999→              break;
+  2000→            }
+  2001→          }
+  2002→          // Auto-close realm if completed (Growth handled in the breakthrough action)
+  2003→          if (st.completed && activeTrialRealm !== "realm_growth") {
+  2004→            activeTrialRealm = null;
+  2005→          }
+  2006→          if (tickRealmId) trialRealmState[tickRealmId] = st;
+  2007→        }
+  2008→
+  2009→        // Layer 3 — Divine Market: random-walk prices every 10s
+  2010→        let marketPrices = { ...(s.marketPrices || {}) };
+  2011→        let priceHistory = { ...(s.priceHistory || {}) };
+  2012→        let marketOwnedResources = { ...(s.marketOwnedResources || {}) };
+  2013→        let marketTickTimer = (s.marketTickTimer || 10) - realDt;
+  2014→        // FEATURE 3 — Market Crashes (every ~120s, 20% chance, 30s duration at 30% base price)
+  2015→        let marketCrashTimer = (s.marketCrashTimer || 120) - realDt;
+  2016→        let marketCrashActive = !!(s.marketCrashActive);
+  2017→        let marketCrashDuration = Math.max(0, (s.marketCrashDuration || 0) - realDt);
+  2018→        const MARKET_BASE_PRICES: Record<string, number> = { food: 10, water: 8, materials: 15, science: 20, gold: 25, energy: 30 };
+  2019→        if (marketCrashActive) {
+  2020→          // Force all prices to 30% of base during crash (continuous — overrides random walk)
+  2021→          for (const r of Object.keys(MARKET_BASE_PRICES)) {
+  2022→            marketPrices[r] = MARKET_BASE_PRICES[r] * 0.3;
+  2023→          }
+  2024→          if (marketCrashDuration <= 0) {
+  2025→            // Crash ends — restore prices to base & resume normal walk
+  2026→            marketCrashActive = false;
+  2027→            marketCrashTimer = 120;
+  2028→            for (const r of Object.keys(MARKET_BASE_PRICES)) {
+  2029→              marketPrices[r] = MARKET_BASE_PRICES[r];
+  2030→            }
+  2031→            setTimeout(() => get().addToLog("📈 Market crash resolved — prices recover."), 0);
+  2032→          }
+  2033→        } else {
+  2034→          if (marketCrashTimer <= 0) {
+  2035→            // 20% chance to trigger a crash
+  2036→            if (Math.random() < 0.20) {
+  2037→              marketCrashActive = true;
+  2038→              marketCrashDuration = 30;
+  2039→              for (const r of Object.keys(MARKET_BASE_PRICES)) {
+  2040→                marketPrices[r] = MARKET_BASE_PRICES[r] * 0.3;
+  2041→              }
+  2042→              setTimeout(() => get().addToLog("⚠ MARKET CRASH! All prices dropped to 30% — buy now!"), 0);
+  2043→            } else {
+  2044→              marketCrashTimer = 120;
+  2045→            }
+  2046→          }
+  2047→          // Normal random walk (skipped during active crash)
+  2048→          if (marketTickTimer <= 0) {
+  2049→            marketTickTimer = 10;
+  2050→            for (const r of Object.keys(marketPrices)) {
+  2051→              const cur = marketPrices[r] || 10;
+  2052→              const drift = (Math.random() - 0.5) * 0.6; // ±30%
+  2053→              let next = cur * (1 + drift);
+  2054→              next = Math.max(1, Math.min(200, next));
+  2055→              marketPrices[r] = next;
+  2056→              const hist = (priceHistory[r] || []).slice(-19);
+  2057→              hist.push(next);
+  2058→              priceHistory[r] = hist;
+  2059→            }
+  2060→          }
+  2061→        }
+  2062→        // Divine-dends — passive Divinity from owned resource types (100+ units → +1 Div/s)
+  2063→        if (unlockedLayers.transcendence) {
+  2064→          let dividends = 0;
+  2065→          for (const r of Object.keys(marketOwnedResources)) {
+  2066→            if ((marketOwnedResources[r] || 0) >= 100) dividends += 1;
+  2067→          }
+  2068→          if (dividends > 0) divinity += dividends * realDt;
+  2069→        }
+  2070→
+  2071→        // Layer 4 — FEATURE 4 — Natural Disasters: every ~90s, 15% chance to destroy a random tile (not protected by a Mountain neighbor)
+  2072→        let worldGrid = s.worldGrid ? s.worldGrid.slice() : Array(20).fill(null);
+  2073→        let worldGridSeeds = s.worldGridSeeds ? s.worldGridSeeds.slice() : Array(20).fill(null);
+  2074→        let disasterTimer = Math.max(0, (s.disasterTimer || 90) - realDt);
+  2075→        let lastDisasterCell = s.lastDisasterCell ?? null;
+  2076→        let lastDisasterAt = s.lastDisasterAt || 0;
+  2077→        if (unlockedLayers.genesis && disasterTimer <= 0) {
+  2078→          disasterTimer = 90;
+  2079→          // LAYER UPGRADE — disaster_shield: -25% per level (max 4 → 0% chance)
+  2080→          const dsLvl = (s.upgrades?.disaster_shield as number) || 0;
+  2081→          const disasterChance = Math.max(0, 0.15 * (1 - 0.25 * dsLvl));
+  2082→          // Roll disaster chance to destroy a random filled tile (excluding mountain-adjacent)
+  2083→          if (Math.random() < disasterChance) {
+  2084→            // Build list of vulnerable cells: filled tiles NOT adjacent to a Mountain
+  2085→            const vulnerable: number[] = [];
+  2086→            for (let i = 0; i < worldGrid.length; i++) {
+  2087→              if (worldGrid[i] === null) continue;
+  2088→              if (worldGrid[i] === "mountain") continue; // mountains are sturdy
+  2089→              const row = Math.floor(i / 5);
+  2090→              const col = i % 5;
+  2091→              const neighbors = [
+  2092→                col > 0 ? i - 1 : -1,
+  2093→                col < 4 ? i + 1 : -1,
+  2094→                row > 0 ? i - 5 : -1,
+  2095→                row < 3 ? i + 5 : -1,
+  2096→              ].filter((n) => n >= 0);
+  2097→              const protectedByMountain = neighbors.some((n) => worldGrid[n] === "mountain");
+  2098→              if (!protectedByMountain) vulnerable.push(i);
+  2099→            }
+  2100→            if (vulnerable.length > 0) {
+  2101→              const target = vulnerable[Math.floor(Math.random() * vulnerable.length)];
+  2102→              worldGrid[target] = null;
+  2103→              lastDisasterCell = target;
+  2104→              lastDisasterAt = newTime;
+  2105→              setTimeout(() => get().addToLog(`🌋 Disaster! Tile on cell ${target + 1} was destroyed. Rebuild it (costs a tile from your supply).`), 0);
+  2106→            }
+  2107→          }
+  2108→        }
+  2109→
+  2110→        // ===== Layer 5 — Heresy Web (Galactic Conquest redesign) =====
+  2111→        // Per-galaxy 8×4 heresy grid. Loop through ALL owned galaxies (starter
+  2112→        // + any rival with ≥1 claimed system). For each:
+  2113→        //   • Spread heresy every 10s (faithful→heretical via adjacent spread).
+  2114→        //   • Seed 1 heretic every 30s if the grid is all-faithful.
+  2115→        //   • Prophets convert adjacent heretics every 10s.
+  2116→        //   • Compute heresy % = (hereticCount / 32) × 100.
+  2117→        //   • When heresy crosses 25/50/75 (one-time per galaxy per threshold),
+  2118→        //     apply system loss: yellow=1, orange=2, red=3 random claimed
+  2119→        //     systems (rival galaxies only). Reset grid to 16 heretics (heresy=50).
+  2120→        // Global `heresy` is recomputed as the average of galaxyHeresy across
+  2121→        // owned galaxies (display value).
+  2122→        let galaxyHeresy = { ...(s.galaxyHeresy || {}) };
+  2123→        let galaxyFollowerGrid = { ...(s.galaxyFollowerGrid || {}) };
+  2124→        let galaxyRivalSystems = { ...(s.galaxyRivalSystems || {}) };
+  2125→        let heresyThresholdsSeeded = { ...(s.heresyThresholdsSeeded || {}) };
+  2126→        let prophets = (s.prophets || []).map((p) => ({ ...p }));
+  2127→        let heresySpreadTimer = (s.heresySpreadTimer || 10) - realDt;
+  2128→        let heresySeedTimer = Math.max(0, (s.heresySeedTimer || 30) - realDt);
+  2129→        let prophetConvertTimer = Math.max(0, (s.prophetConvertTimer || 10) - realDt);
+  2130→        const heresyLog: string[] = [];
+  2131→        const l5Upgrades = s.upgrades || {};
+  2132→        const hwLvl = (l5Upgrades.heresy_ward as number) || 0;
+  2133→        const spreadChance = Math.max(0, 1 - 0.30 * hwLvl);
+  2134→        const piLvl = (l5Upgrades.prophet_inspiration as number) || 0;
+  2135→        const owned = ownedGalaxyIds(galaxyRivalSystems);
+  2136→
+  2137→        // Consume the staged surge grid (applied to the starter galaxy).
+  2138→        if (pendingSurgeGrid) {
+  2139→          galaxyFollowerGrid = {
+  2140→            ...galaxyFollowerGrid,
+  2141→            [STARTER_GALAXY_ID]: pendingSurgeGrid,
+  2142→          };
+  2143→          pendingSurgeGrid = null;
+  2144→        }
+  2145→
+  2146→        for (const gid of owned) {
+  2147→          if (!galaxyFollowerGrid[gid]) {
+  2148→            galaxyFollowerGrid[gid] = makeInitialFollowerGrid();
+  2149→          }
+  2150→          let grid = galaxyFollowerGrid[gid].map((c) => ({ ...c }));
+  2151→
+  2152→          // Spread heresy every 10s (faithful→heretical via adjacent spread).
+  2153→          if (unlockedLayers.apotheosis && heresySpreadTimer <= 0) {
+  2154→            const next = grid.map((c) => ({ ...c }));
+  2155→            for (let i = 0; i < next.length; i++) {
+  2156→              if (next[i].state !== "heretical") continue;
+  2157→              if (Math.random() >= spreadChance) continue; // ward blocks this spread
+  2158→              const row = Math.floor(i / 8);
+  2159→              const col = i % 8;
+  2160→              const neighbors = [
+  2161→                col > 0 ? i - 1 : -1,
+  2162→                col < 7 ? i + 1 : -1,
+  2163→                row > 0 ? i - 8 : -1,
+  2164→                row < 3 ? i + 8 : -1,
+  2165→              ].filter((n) => n >= 0 && next[n].state === "faithful");
+  2166→              if (neighbors.length === 0) continue;
+  2167→              const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+  2168→              next[target].state = "heretical";
+  2169→            }
+  2170→            grid = next;
+  2171→          }
+  2172→
+  2173→          // Seed heretic every 30s if grid is all-faithful.
+  2174→          if (unlockedLayers.apotheosis && heresySeedTimer <= 0) {
+  2175→            const hereticCount = grid.filter((c) => c.state === "heretical").length;
+  2176→            if (hereticCount === 0) {
+  2177→              const faithfulIndices = grid
+  2178→                .map((c, i) => (c.state === "faithful" ? i : -1))
+  2179→                .filter((i) => i >= 0);
+  2180→              if (faithfulIndices.length > 0) {
+  2181→                const pick = faithfulIndices[Math.floor(Math.random() * faithfulIndices.length)];
+  2182→                grid[pick] = { ...grid[pick], state: "heretical" };
+  2183→              }
+  2184→            }
+  2185→          }
+  2186→
+  2187→          // Prophets on this galaxy convert adjacent heretics every 10s.
+  2188→          const galaxyProphets = prophets.filter((p) => p.galaxyId === gid);
+  2189→          if (unlockedLayers.apotheosis && galaxyProphets.length > 0 && prophetConvertTimer <= 0) {
+  2190→            const next = grid.map((c) => ({ ...c }));
+  2191→            for (const p of galaxyProphets) {
+  2192→              const i = p.cellIndex;
+  2193→              const row = Math.floor(i / 8);
+  2194→              const col = i % 8;
+  2195→              const candidates: number[] = [];
+  2196→              if (col > 0) candidates.push(i - 1);
+  2197→              if (col < 7) candidates.push(i + 1);
+  2198→              if (row > 0) candidates.push(i - 8);
+  2199→              if (row < 3) candidates.push(i + 8);
+  2200→              if (piLvl >= 1) {
+  2201→                if (col > 0 && row > 0) candidates.push(i - 9);
+  2202→                if (col < 7 && row > 0) candidates.push(i - 7);
+  2203→                if (col > 0 && row < 3) candidates.push(i + 7);
+  2204→                if (col < 7 && row < 3) candidates.push(i + 9);
+  2205→              }
+  2206→              if (piLvl >= 2) {
+  2207→                if (col > 1) candidates.push(i - 2);
+  2208→                if (col < 6) candidates.push(i + 2);
+  2209→                if (row > 1) candidates.push(i - 16);
+  2210→                if (row < 2) candidates.push(i + 16);
+  2211→              }
+  2212→              const neighbors = candidates.filter((n) => n >= 0 && n < next.length);
+  2213→              let converted = 0;
+  2214→              for (const n of neighbors) {
+  2215→                if (next[n].state === "heretical") {
+  2216→                  next[n].state = "faithful";
+  2217→                  converted++;
+  2218→                }
+  2219→              }
+  2220→              if (converted > 0) {
+  2221→                p.lastConvertedAt = newTime;
+  2222→                heresyLog.push(`🌟 Prophet in ${RIVAL_GALAXY_MAP[gid]?.name || gid} converted ${converted} heretic(s).`);
+  2223→              }
+  2224→            }
+  2225→            grid = next;
+  2226→          }
+  2227→
+  2228→          // Compute heresy % = (hereticCount / 32) × 100.
+  2229→          const hereticCount = grid.filter((c) => c.state === "heretical").length;
+  2230→          const heresyPct = (hereticCount / 32) * 100;
+  2231→          galaxyHeresy[gid] = heresyPct;
+  2232→
+  2233→          // Threshold crossings: 25/50/75 → system loss + grid reset (one-time per galaxy per threshold).
+  2234→          for (const threshold of [25, 50, 75]) {
+  2235→            const key = `${gid}:${threshold}`;
+  2236→            if (heresyPct >= threshold && !heresyThresholdsSeeded[key]) {
+  2237→              heresyThresholdsSeeded[key] = true;
+  2238→              const lossCount = threshold === 25 ? 1 : threshold === 50 ? 2 : 3;
+  2239→              const galaxyName = RIVAL_GALAXY_MAP[gid]?.name || gid;
+  2240→
+  2241→              if (gid !== STARTER_GALAXY_ID) {
+  2242→                // Lose random claimed systems from this rival galaxy.
+  2243→                const systems = (galaxyRivalSystems[gid] || []).map((sys) => ({ ...sys }));
+  2244→                const claimedIdx = systems
+  2245→                  .map((sys, i) => (sys.claimed ? i : -1))
+  2246→                  .filter((i) => i >= 0);
+  2247→                let actuallyLost = 0;
+  2248→                for (let k = 0; k < lossCount && claimedIdx.length > 0; k++) {
+  2249→                  const pick = Math.floor(Math.random() * claimedIdx.length);
+  2250→                  const idx = claimedIdx.splice(pick, 1)[0];
+  2251→                  systems[idx].claimed = false;
+  2252→                  actuallyLost++;
+  2253→                }
+  2254→                galaxyRivalSystems[gid] = systems;
+  2255→                heresyLog.push(`🔥 ${galaxyName} heresy hit ${threshold}%. Lost ${actuallyLost} claimed system(s).`);
+  2256→              } else {
+  2257→                heresyLog.push(`🔥 ${galaxyName} heresy hit ${threshold}%. The flock wavers in doubt.`);
+  2258→              }
+  2259→
+  2260→              // Reset grid to 16 heretics (heresy = 50). Preserve prophet positions.
+  2261→              const resetGrid = grid.map((c) => ({
+  2262→                state: "faithful",
+  2263→                type: c.type === "prophet" ? "prophet" : "follower",
+  2264→              }));
+  2265→              const nonProphetIdx = resetGrid
+  2266→                .map((c, i) => (c.type !== "prophet" ? i : -1))
+  2267→                .filter((i) => i >= 0);
+  2268→              // Fisher-Yates shuffle then pick first 16 to convert.
+  2269→              for (let i = nonProphetIdx.length - 1; i > 0; i--) {
+  2270→                const j = Math.floor(Math.random() * (i + 1));
+  2271→                [nonProphetIdx[i], nonProphetIdx[j]] = [nonProphetIdx[j], nonProphetIdx[i]];
+  2272→              }
+  2273→              for (let k = 0; k < 16 && k < nonProphetIdx.length; k++) {
+  2274→                resetGrid[nonProphetIdx[k]].state = "heretical";
+  2275→              }
+  2276→              grid = resetGrid;
+  2277→              galaxyHeresy[gid] = 50;
+  2278→              break; // only one threshold per tick per galaxy
+  2279→            }
+  2280→          }
+  2281→
+  2282→          galaxyFollowerGrid[gid] = grid;
+  2283→        }
+  2284→
+  2285→        // Reset spread/seed/prophet timers.
+  2286→        if (heresySpreadTimer <= 0) heresySpreadTimer = 10;
+  2287→        if (heresySeedTimer <= 0) heresySeedTimer = 30;
+  2288→        if (prophetConvertTimer <= 0) prophetConvertTimer = 10;
+  2289→
+  2290→        // Recompute global heresy as the average of owned galaxies' heresy.
+  2291→        const newHeresy = owned.length > 0
+  2292→          ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
+  2293→          : 0;
+  2294→        heresy = newHeresy;
+  2295→        // Run-ender: if average heresy is 100 (all owned galaxies maxed), trigger prestige.
+  2296→        if (heresy >= 100) {
+  2297→          heresy = 100;
+  2298→          setTimeout(() => {
+  2299→            get().addToLog("Heresy has reached 100. The god is cast down — the run ends in ruin.");
+
+[showing lines 1700-2299 of 6868; use offset=2300 with limit to continue reading]

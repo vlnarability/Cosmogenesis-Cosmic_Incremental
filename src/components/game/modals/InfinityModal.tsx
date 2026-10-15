@@ -9,7 +9,7 @@ import {
 } from "@/game/data/infinity";
 import { MINOR_GOD_MAP } from "@/game/data/divinity_layer";
 import { CREATURE_BODY_TYPE_MAP, legionPower } from "@/game/data/omnipotence";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -22,9 +22,8 @@ const PHASE_LABELS: Record<string, string> = {
   final_stand: "Final Stand",
 };
 
-export function InfinityModal() {
-  const show = useGameStore((s) => s.showInfinity);
-  const setShow = useGameStore((s) => s.setShowInfinity);
+export function InfinityContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const oldGodBattles = useGameStore((s) => s.oldGodBattles || {});
   const divineFragments = useGameStore((s) => s.divineFragments || 0);
@@ -47,21 +46,20 @@ export function InfinityModal() {
   const totalDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Swords className="w-5 h-5" />
-            Layer 9 — Infinity (Divine War)
-            <BackgroundLayerBadge layerId="infinity" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
-            <span>
-              Battle the Old Gods. Deploy Legions, call Allies, defeat all 3 to ascend.
-            </span>
-            <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
-              {divineFragments} Divine Fragments
-            </Badge>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Swords className="w-5 h-5" />
+          Layer 9 — Infinity (Divine War)
+          <BackgroundLayerBadge layerId="infinity" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between">
+          <span>
+            Battle the Old Gods. Deploy Legions, call Allies, defeat all 3 to ascend.
+          </span>
+          <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
+            {divineFragments} Divine Fragments
+          </Badge>
           </DialogDescription>
         </DialogHeader>
 
@@ -315,10 +313,9 @@ export function InfinityModal() {
           Defeat all 3 Old Gods to unlock Layer 10 (Ascension). Each victory grants a permanent Divine Fragment bonus.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
