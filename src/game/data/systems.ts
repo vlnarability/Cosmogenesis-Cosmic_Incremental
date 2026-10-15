@@ -2552,7 +2552,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 20, gold: 8 },
     costGrowth: 1.24,
     produces: { military_power: 1.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "temple",
@@ -2564,7 +2563,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 30, gold: 15, stone: 20 },
     costGrowth: 1.26,
     produces: { culture: 0.8, happiness: 0.5 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   {
     id: "sanitation_grid",
@@ -2946,7 +2944,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 120, gold: 100, influence: 20 },
     costGrowth: 1.30,
     produces: { influence: 2.0, happiness: 0.5 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   {
     id: "civ_arch_senate",
@@ -2958,7 +2955,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 200, gold: 150, happiness: 80 },
     costGrowth: 1.32,
     produces: { influence: 1.5, culture: 0.5 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "civ_arch_great_library",
@@ -2970,7 +2966,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, gold: 200, knowledge: 150 },
     costGrowth: 1.35,
     produces: { knowledge: 4.0, science: 1.0 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   // Mammalian (3)
   {
@@ -2983,7 +2978,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 100, wood: 80, food: 40 },
     costGrowth: 1.28,
     produces: { happiness: 1.0, food: 0.5 },
-    grantsAffinity: { archetype: "mammalian", amount: 2 },
   },
   {
     id: "civ_arch_kinship_lodge",
@@ -2997,7 +2991,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: { happiness: 0.5 },
     popGrowth: 0.1,
     maxOwned: 15,
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   {
     id: "civ_arch_warm_forge",
@@ -3009,7 +3002,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 120, materials: 80, stone: 60 },
     costGrowth: 1.28,
     produces: { materials: 2.0, production: 0.5 },
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   // Reptilian (3)
   {
@@ -3022,7 +3014,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 150, gold: 100, military_power: 30 },
     costGrowth: 1.30,
     produces: { military_power: 3.0, happiness: 0.3 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "civ_arch_scaled_garrison",
@@ -3034,7 +3025,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 200, stone: 150, gold: 100 },
     costGrowth: 1.30,
     produces: { military_power: 2.5, production: 0.3 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "civ_arch_sun_basking_plaza",
@@ -3046,7 +3036,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 120, stone: 150, gold: 60 },
     costGrowth: 1.27,
     produces: { happiness: 0.8, culture: 0.4 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   // Avian (3)
   {
@@ -3059,7 +3048,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 200, stone: 200, gold: 100 },
     costGrowth: 1.32,
     produces: { influence: 1.5, knowledge: 0.8 },
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
   {
     id: "civ_arch_wind_roost",
@@ -3071,7 +3059,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 100, wood: 150, gold: 50 },
     costGrowth: 1.26,
     produces: { happiness: 0.5, knowledge: 1.0 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   {
     id: "civ_arch_migration_map",
@@ -3083,7 +3070,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 150, knowledge: 100, gold: 80 },
     costGrowth: 1.28,
     produces: { knowledge: 1.5, science: 0.5 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   // Arthropoid (3)
   {
@@ -3096,7 +3082,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, materials: 250, stone: 200 },
     costGrowth: 1.32,
     produces: { production: 5.0, materials: 1.0 },
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
   {
     id: "civ_arch_cocoon_foundry",
@@ -3110,7 +3095,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: {},
     popGrowth: 0.15,
     maxOwned: 20,
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "civ_arch_chitin_forge",
@@ -3122,7 +3106,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 180, materials: 200, gold: 60 },
     costGrowth: 1.28,
     produces: { materials: 2.5, military_power: 0.5 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   // Molluscoid (3)
   {
@@ -3135,7 +3118,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 220, knowledge: 150, gold: 100 },
     costGrowth: 1.30,
     produces: { knowledge: 3.0, science: 0.5 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
   {
     id: "civ_arch_pearl_exchange",
@@ -3147,7 +3129,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 180, gold: 150, water: 50 },
     costGrowth: 1.28,
     produces: { gold: 4.0, culture: 0.3 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "civ_arch_shell_archive",
@@ -3159,7 +3140,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 200, knowledge: 120, gold: 80 },
     costGrowth: 1.28,
     produces: { knowledge: 2.0, science: 0.5 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   // Fungoid (3)
   {
@@ -3172,7 +3152,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 250, organic_matter: 200, gold: 100 },
     costGrowth: 1.30,
     produces: { organic_matter: 3.0, production: 1.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "civ_arch_spore_vault",
@@ -3186,7 +3165,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: {},
     popGrowth: 0.15,
     maxOwned: 20,
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "civ_arch_decomposer_yard",
@@ -3198,7 +3176,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 180, organic_matter: 100, stone: 100 },
     costGrowth: 1.28,
     produces: { food: 2.0, organic_matter: 0.5 },
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   // Plantoid (3)
   {
@@ -3211,7 +3188,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, water: 200, gold: 100 },
     costGrowth: 1.30,
     produces: { happiness: 1.0, food: 1.0, culture: 0.5 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "civ_arch_living_archive",
@@ -3223,7 +3199,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 250, knowledge: 200, water: 100 },
     costGrowth: 1.30,
     produces: { knowledge: 2.5, science: 0.5 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "civ_arch_solar_sanctum",
@@ -3235,7 +3210,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 220, gold: 150, water: 80 },
     costGrowth: 1.28,
     produces: { energy: 2.0, happiness: 0.5 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   // Toxoid (3)
   {
@@ -3248,7 +3222,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 250, materials: 200, gold: 100 },
     costGrowth: 1.30,
     produces: { materials: 3.0, military_power: 0.5 },
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "civ_arch_contagion_lab",
@@ -3260,7 +3233,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 220, science: 150, gold: 100 },
     costGrowth: 1.30,
     produces: { science: 3.0, military_power: 0.3 },
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   {
     id: "civ_arch_plague_cauldron",
@@ -3272,7 +3244,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 200, materials: 150, gold: 80 },
     costGrowth: 1.28,
     produces: { military_power: 2.0, science: 0.3 },
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   // Aquatic (2)
   {
@@ -3285,7 +3256,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 250, water: 200, stone: 150 },
     costGrowth: 1.30,
     produces: { military_power: 2.5, water: 0.5 },
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
   {
     id: "civ_arch_abyssal_archive",
@@ -3297,7 +3267,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 280, knowledge: 200, water: 150 },
     costGrowth: 1.30,
     produces: { knowledge: 3.0, science: 0.5 },
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   // Necroid (2)
   {
@@ -3310,7 +3279,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, stone: 250, gold: 150 },
     costGrowth: 1.32,
     produces: { culture: 2.0, happiness: 0.5, influence: 0.3 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   {
     id: "civ_arch_bone_forge",
@@ -3322,7 +3290,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 250, materials: 200, gold: 100 },
     costGrowth: 1.28,
     produces: { materials: 2.5, military_power: 0.8 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   // Lithoid (2)
   {
@@ -3335,7 +3302,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 280, stone: 300, gold: 150 },
     costGrowth: 1.32,
     produces: { culture: 1.5, science: 0.8, influence: 0.3 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "civ_arch_geode_vault",
@@ -3348,7 +3314,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { gold: 1.0 },
     capacityBoost: { gold: 800, stone: 500 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   // Extremophile (2)
   {
@@ -3361,7 +3326,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, stone: 250, materials: 150 },
     costGrowth: 1.32,
     produces: { materials: 3.0, energy: 1.0, military_power: 0.5 },
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
   {
     id: "civ_arch_frostvault",
@@ -3374,7 +3338,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { food: 1.0 },
     capacityBoost: { food: 500 },
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
 
   // ===== EMPIRE =====
@@ -3865,7 +3828,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 800, gold: 1000, influence: 200 },
     costGrowth: 1.32,
     produces: { influence: 15.0, happiness: 1.0, culture: 1.0 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   {
     id: "emp_arch_imperial_senate",
@@ -3877,7 +3839,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1200, gold: 1500, influence: 300 },
     costGrowth: 1.34,
     produces: { influence: 10.0, culture: 2.0, happiness: 0.5 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "emp_arch_global_library",
@@ -3889,7 +3850,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1500, gold: 1200, science: 800, data: 500 },
     costGrowth: 1.35,
     produces: { data: 20.0, science: 15.0, culture: 2.0 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   // Mammalian (3)
   {
@@ -3902,7 +3862,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1000, gold: 800, food: 500 },
     costGrowth: 1.30,
     produces: { happiness: 5.0, food: 5.0, culture: 2.0 },
-    grantsAffinity: { archetype: "mammalian", amount: 2 },
   },
   {
     id: "emp_arch_kinship_ministry",
@@ -3916,7 +3875,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: { happiness: 3.0 },
     popGrowth: 0.3,
     maxOwned: 15,
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   {
     id: "emp_arch_warm_factory",
@@ -3928,7 +3886,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1500, gold: 1000, materials: 800 },
     costGrowth: 1.30,
     produces: { production: 25.0, materials: 5.0, happiness: 0.5 },
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   // Reptilian (3)
   {
@@ -3941,7 +3898,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1500, gold: 1200, military_power: 300 },
     costGrowth: 1.33,
     produces: { military_power: 50.0, influence: 3.0, science: 1.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "emp_arch_scaled_legion",
@@ -3953,7 +3909,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1000, gold: 800, military_power: 200 },
     costGrowth: 1.30,
     produces: { military_power: 35.0, production: 1.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "emp_arch_predator_arena",
@@ -3965,7 +3920,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1200, gold: 1000, influence: 100 },
     costGrowth: 1.30,
     produces: { happiness: 5.0, military_power: 5.0, culture: 2.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   // Avian (3)
   {
@@ -3978,7 +3932,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, science: 1000 },
     costGrowth: 1.34,
     produces: { military_power: 40.0, influence: 3.0, science: 2.0 },
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
   {
     id: "emp_arch_wind_fleet",
@@ -3990,7 +3943,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1200, gold: 900, science: 600 },
     costGrowth: 1.30,
     produces: { influence: 5.0, data: 3.0, culture: 1.0 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   {
     id: "emp_arch_orbital_roost",
@@ -4002,7 +3954,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2500, gold: 2000, science: 1500 },
     costGrowth: 1.35,
     produces: { science: 15.0, influence: 5.0, data: 5.0 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   // Arthropoid (3)
   {
@@ -4015,7 +3966,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2500, gold: 1500, materials: 1500 },
     costGrowth: 1.34,
     produces: { production: 60.0, materials: 10.0 },
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
   {
     id: "emp_arch_swarm_factory",
@@ -4027,7 +3977,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, science: 800 },
     costGrowth: 1.32,
     produces: { production: 40.0, materials: 8.0, science: 1.0 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "emp_arch_chitin_armory",
@@ -4039,7 +3988,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1800, gold: 1200, materials: 1000 },
     costGrowth: 1.30,
     produces: { military_power: 30.0, materials: 5.0 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   // Molluscoid (3)
   {
@@ -4052,7 +4000,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, science: 1200, data: 500 },
     costGrowth: 1.33,
     produces: { science: 30.0, data: 8.0, culture: 2.0 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
   {
     id: "emp_arch_pearl_bank",
@@ -4064,7 +4011,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1500, gold: 2000, influence: 300 },
     costGrowth: 1.32,
     produces: { gold: 50.0, influence: 5.0, culture: 1.0 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "emp_arch_shell_archive",
@@ -4076,7 +4022,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1800, gold: 1200, science: 1000 },
     costGrowth: 1.30,
     produces: { data: 20.0, science: 5.0, culture: 1.0 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   // Fungoid (3)
   {
@@ -4089,7 +4034,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, organic_matter: 1500 },
     costGrowth: 1.33,
     produces: { organic_matter: 30.0, production: 20.0, food: 10.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "emp_arch_spore_reactor",
@@ -4101,7 +4045,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1800, gold: 1500, organic_matter: 1000 },
     costGrowth: 1.30,
     produces: { energy: 40.0, organic_matter: 5.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "emp_arch_decomposer_plant",
@@ -4113,7 +4056,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 1500, gold: 1000, organic_matter: 800 },
     costGrowth: 1.30,
     produces: { food: 25.0, materials: 5.0, organic_matter: 3.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   // Plantoid (3)
   {
@@ -4126,7 +4068,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2500, gold: 2000, water: 1000 },
     costGrowth: 1.32,
     produces: { food: 50.0, science: 2.0, water: 5.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "emp_arch_solar_gardens",
@@ -4138,7 +4079,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, water: 800 },
     costGrowth: 1.30,
     produces: { energy: 35.0, food: 5.0, happiness: 1.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "emp_arch_planetary_forest",
@@ -4150,7 +4090,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 4000, gold: 3000, water: 2000 },
     costGrowth: 1.40,
     produces: { food: 30.0, organic_matter: 20.0, happiness: 3.0, culture: 3.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   // Toxoid (3)
   {
@@ -4164,7 +4103,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.35,
     produces: { military_power: 80.0, science: 3.0 },
     upkeep: { gold: 5.0 },
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "emp_arch_toxic_economy",
@@ -4176,7 +4114,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2000, gold: 1500, materials: 1000 },
     costGrowth: 1.30,
     produces: { gold: 60.0, materials: 5.0, military_power: 2.0 },
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   {
     id: "emp_arch_venom_infrastructure",
@@ -4188,7 +4125,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2500, gold: 2000, materials: 1500 },
     costGrowth: 1.32,
     produces: { materials: 15.0, military_power: 10.0, science: 1.0 },
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   // Aquatic (2)
   {
@@ -4201,7 +4137,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3000, gold: 2500, water: 2000 },
     costGrowth: 1.35,
     produces: { materials: 25.0, food: 20.0, water: 10.0, culture: 2.0 },
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
   {
     id: "emp_arch_abyssal_lab",
@@ -4213,7 +4148,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3000, gold: 2500, science: 1500 },
     costGrowth: 1.34,
     produces: { science: 25.0, data: 10.0, energy: 5.0 },
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   // Necroid (2)
   {
@@ -4226,7 +4160,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3500, gold: 3000, influence: 500 },
     costGrowth: 1.38,
     produces: { influence: 25.0, culture: 5.0, science: 3.0, military_power: 5.0 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   {
     id: "emp_arch_bone_factory",
@@ -4238,7 +4171,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 2500, gold: 2000, materials: 1500 },
     costGrowth: 1.32,
     produces: { materials: 20.0, military_power: 5.0, production: 3.0 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   // Lithoid (2)
   {
@@ -4251,7 +4183,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 4000, gold: 3500, stone: 3000, influence: 500 },
     costGrowth: 1.40,
     produces: { influence: 20.0, culture: 8.0, science: 5.0, happiness: 2.0 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "emp_arch_geode_reactor",
@@ -4263,7 +4194,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3000, gold: 2500, stone: 2000, science: 1500 },
     costGrowth: 1.34,
     produces: { energy: 60.0, science: 3.0 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   // Extremophile (2)
   {
@@ -4276,7 +4206,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3500, gold: 3000, materials: 2000 },
     costGrowth: 1.36,
     produces: { energy: 80.0, materials: 10.0, military_power: 5.0 },
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
   {
     id: "emp_arch_ice_station",
@@ -4288,7 +4217,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 3000, gold: 2500, science: 2000 },
     costGrowth: 1.34,
     produces: { science: 30.0, data: 10.0, energy: 5.0 },
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
 
   // ===== SOLAR =====
@@ -4302,7 +4230,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 25, alloys: 8 },
     costGrowth: 1.22,
     produces: { energy: 4.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "orbital_forge",
@@ -4449,7 +4376,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 120, alloys: 100, science: 50 },
     costGrowth: 1.30,
     produces: { food: 3.0, science: 2.0 },
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
     maxOwned: 10,
   },
   {
@@ -4473,7 +4399,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 60, alloys: 40 },
     costGrowth: 1.24,
     produces: { alloys: 2.5, science: 1.0 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "space_dock",
@@ -4508,7 +4433,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { energy: 30.0 },
     requiredTech: "dyson_swarm",
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
     maxOwned: 25,
   },
   {
@@ -4592,7 +4516,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 100, alloys: 80, science: 50 },
     costGrowth: 1.26,
     produces: { military_power: 1.0, science: 1.0 },
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
   {
     id: "terraforming_plant",
@@ -4675,7 +4598,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.6,
     produces: {},
     popGrowth: 0.25,
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
     maxOwned: 25,
   },
   {
@@ -4689,7 +4611,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.6,
     produces: {},
     popGrowth: 0.25,
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
     maxOwned: 25,
   },
   {
@@ -4748,7 +4669,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 150, alloys: 100, military_power: 50 },
     costGrowth: 1.26,
     produces: { military_power: 5.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "comm_hub",
@@ -4839,7 +4759,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 300, alloys: 200, science: 100 },
     costGrowth: 1.28,
     produces: { energy: 15.0, food: 5.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
     maxOwned: 15,
   },
   {
@@ -4852,7 +4771,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 250, alloys: 200, military_power: 100 },
     costGrowth: 1.30,
     produces: { military_power: 6.0, science: 1.0 },
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "mycelium_network",
@@ -4864,7 +4782,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 200, alloys: 150, organic_matter: 50 },
     costGrowth: 1.26,
     produces: { organic_matter: 5.0, data: 2.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "crystal_lattice_station",
@@ -4876,7 +4793,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 300, alloys: 250 },
     costGrowth: 1.28,
     produces: { alloys: 8.0, science: 1.0 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "crypt_vault",
@@ -4888,7 +4804,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 250, alloys: 200, influence: 50 },
     costGrowth: 1.30,
     produces: { influence: 2.0, divinity: 0.05 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   {
     id: "vacuum_habitat",
@@ -4901,7 +4816,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.6,
     produces: {},
     popGrowth: 0.3,
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
     maxOwned: 20,
   },
   {
@@ -4914,7 +4828,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 250, alloys: 200, science: 100 },
     costGrowth: 1.26,
     produces: { science: 5.0, data: 3.0 },
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
   {
     id: "hive_station",
@@ -4926,7 +4839,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 250, alloys: 200, production: 100 },
     costGrowth: 1.26,
     produces: { production: 8.0, food: 2.0 },
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
   {
     id: "ice_comet_tug",
@@ -4938,7 +4850,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 250, alloys: 200, water: 50 },
     costGrowth: 1.26,
     produces: { water: 8.0, alloys: 2.0 },
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
 
   // ===== GALACTIC — BASE SYSTEMS =====
@@ -5436,7 +5347,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 1500, alloys: 1000, military_power: 500, influence: 300 },
     costGrowth: 1.30,
     produces: { military_power: 12.0 },
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "gaia_protocol",
@@ -5448,7 +5358,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 3000, alloys: 2000, data: 1500, influence: 800 },
     costGrowth: 1.35,
     produces: { food: 8.0, divinity: 0.05 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
     maxOwned: 10,
   },
   {
@@ -5461,7 +5370,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 1500, alloys: 1000, data: 600, influence: 300 },
     costGrowth: 1.30,
     produces: { organic_matter: 5.0, data: 3.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "crystal_siphon",
@@ -5473,7 +5381,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 1500, alloys: 1500, data: 500, influence: 300 },
     costGrowth: 1.30,
     produces: { alloys: 15.0, data: 1.0 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "tomb_world_forge",
@@ -5485,7 +5392,6 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { energy: 1800, alloys: 1200, data: 700, influence: 400 },
     costGrowth: 1.32,
     produces: { alloys: 8.0, divinity: 0.05, influence: 1.0 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
     maxOwned: 10,
   },
 ];

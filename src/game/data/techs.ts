@@ -1949,7 +1949,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_alchemy"],
     effects: "+60% knowledge & culture",
     multiplier: { target: "production", value: 0.60 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   // Path 4: Military (10 techs)
   {
@@ -1962,7 +1961,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+30% military power",
     multiplier: { target: "production", value: 0.30 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "civ_fortifications_tech",
@@ -2071,7 +2069,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_siege_engines", "civ_crossbow"],
     effects: "+70% military power",
     multiplier: { target: "production", value: 0.70 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   // Path 5: Economics (10 techs)
   {
@@ -2192,7 +2189,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_taxation", "civ_maritime_trade"],
     effects: "+45% gold & happiness",
     multiplier: { target: "production", value: 0.45 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   // Path 6: Culture (10 techs)
   {
@@ -2301,7 +2297,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_poetry", "civ_festivals"],
     effects: "+55% knowledge & science",
     multiplier: { target: "production", value: 0.55 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
   {
     id: "civ_universities_tech",
@@ -2314,7 +2309,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_libraries_tech"],
     effects: "+60% science & culture",
     multiplier: { target: "production", value: 0.60 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   // Path 7: Government (10 techs)
   {
@@ -2387,7 +2381,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_code_of_laws"],
     effects: "+40% influence & happiness",
     multiplier: { target: "production", value: 0.40 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   {
     id: "civ_citizenship",
@@ -2436,7 +2429,6 @@ export const TECHS: TechDef[] = [
     requires: ["civ_tax_collection", "civ_citizenship"],
     effects: "+55% influence & science",
     multiplier: { target: "production", value: 0.55 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
 
   // ===== EMPIRE =====
@@ -2691,7 +2683,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_machine_guns"],
     effects: "+80% military power",
     multiplier: { target: "production", value: 0.80 },
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "emp_radar",
@@ -2716,7 +2707,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_chemical_weapons", "emp_radar"],
     effects: "+120% military power",
     multiplier: { target: "production", value: 1.20 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   // Path 3: Science (10 techs)
   {
@@ -2837,7 +2827,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_relativity", "emp_quantum_theory"],
     effects: "+150% science & data",
     multiplier: { target: "production", value: 1.50 },
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
   // Path 4: Transportation (10 techs)
   {
@@ -3030,7 +3019,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_computers", "emp_satellite_communications"],
     effects: "+100% science & data",
     multiplier: { target: "production", value: 1.0 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "emp_mobile_networks",
@@ -3079,7 +3067,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_quantum_theory", "emp_fiber_optics", "emp_internet"],
     effects: "+150% science & data",
     multiplier: { target: "production", value: 1.50 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
   // Path 6: Medicine (10 techs)
   {
@@ -3128,7 +3115,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_antiseptics"],
     effects: "+55% population growth & happiness",
     multiplier: { target: "population", value: 0.55 },
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "emp_x_rays",
@@ -3201,7 +3187,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_artificial_organs"],
     effects: "+100% population growth",
     multiplier: { target: "population", value: 1.0 },
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   // Path 7: Energy (10 techs)
   {
@@ -3263,7 +3248,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_electromagnetism"],
     effects: "+75% energy",
     multiplier: { target: "production", value: 0.75 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "emp_wind_power",
@@ -3276,7 +3260,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_electromagnetism"],
     effects: "+70% energy",
     multiplier: { target: "production", value: 0.70 },
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
   {
     id: "emp_hydroelectric",
@@ -3289,7 +3272,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_solar_power"],
     effects: "+85% energy",
     multiplier: { target: "production", value: 0.85 },
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
   {
     id: "emp_geothermal",
@@ -3302,7 +3284,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_hydroelectric"],
     effects: "+80% energy",
     multiplier: { target: "production", value: 0.80 },
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
   {
     id: "emp_fusion_research",
@@ -3327,7 +3308,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_fusion_research", "emp_relativity"],
     effects: "+150% energy",
     multiplier: { target: "production", value: 1.50 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   // Path 8: Naval (10 techs)
   {
@@ -3449,7 +3429,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_aegis_system", "emp_aircraft_carriers"],
     effects: "+150% military power & influence",
     multiplier: { target: "production", value: 1.50 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   // Path 9: Aerospace (10 techs)
   {
@@ -3546,7 +3525,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_space_stations"],
     effects: "+120% science & influence",
     multiplier: { target: "production", value: 1.20 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   {
     id: "emp_mars_probes",
@@ -3571,7 +3549,6 @@ export const TECHS: TechDef[] = [
     requires: ["emp_mars_probes", "emp_relativity", "emp_quantum_theory"],
     effects: "+200% science (unlocks Solar stage)",
     multiplier: { target: "production", value: 2.0 },
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
 
   // ===== SOLAR =====
@@ -3703,7 +3680,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+35% energy",
     multiplier: { target: "production", value: 0.35 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "fusion_drives",
@@ -3811,7 +3787,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+25% population growth",
     multiplier: { target: "population", value: 0.25 },
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
   {
     id: "cryogenic_sleep",
@@ -3824,7 +3799,6 @@ export const TECHS: TechDef[] = [
     requires: ["closed_loop_systems"],
     effects: "+50% population growth",
     multiplier: { target: "population", value: 0.50 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "biome_domes",
@@ -3837,7 +3811,6 @@ export const TECHS: TechDef[] = [
     requires: ["hydroponic_farms", "closed_loop_systems"],
     effects: "+75% population growth",
     multiplier: { target: "population", value: 0.75 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "ecosystem_engineering",
@@ -3922,7 +3895,6 @@ export const TECHS: TechDef[] = [
     requires: ["space_stations"],
     effects: "+50% military power",
     multiplier: { target: "production", value: 0.50 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "space_docks",
@@ -3996,7 +3968,6 @@ export const TECHS: TechDef[] = [
     requires: ["dome_cities"],
     effects: "+35% population growth",
     multiplier: { target: "population", value: 0.35 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "ocean_cities",
@@ -4009,7 +3980,6 @@ export const TECHS: TechDef[] = [
     requires: ["dome_cities"],
     effects: "+35% population growth",
     multiplier: { target: "population", value: 0.35 },
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
   {
     id: "venus_floating_cities",
@@ -4022,7 +3992,6 @@ export const TECHS: TechDef[] = [
     requires: ["atmospheric_processors"],
     effects: "+75% population growth",
     multiplier: { target: "population", value: 0.75 },
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
   {
     id: "mars_domes",
@@ -4047,7 +4016,6 @@ export const TECHS: TechDef[] = [
     requires: ["atmospheric_processors"],
     effects: "+80% population growth",
     multiplier: { target: "population", value: 0.80 },
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
 
   // ===== SOLAR — PATH 5: MINING & EXTRACTION =====
@@ -4061,7 +4029,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+40% alloys",
     multiplier: { target: "production", value: 0.40 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "lunar_mining",
@@ -4109,7 +4076,6 @@ export const TECHS: TechDef[] = [
     requires: ["lunar_mining"],
     effects: "+50% alloys",
     multiplier: { target: "production", value: 0.50 },
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "helium_3_mining",
@@ -4172,7 +4138,6 @@ export const TECHS: TechDef[] = [
     requires: ["fusion_power"],
     effects: "+100% energy",
     multiplier: { target: "production", value: 1.0 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "stellar_lifters",
@@ -4305,7 +4270,6 @@ export const TECHS: TechDef[] = [
     requires: ["space_fleets"],
     effects: "+60% military power",
     multiplier: { target: "production", value: 0.60 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "warp_warfare",
@@ -4379,7 +4343,6 @@ export const TECHS: TechDef[] = [
     requires: ["interplanetary_internet"],
     effects: "+50% data, +30% science",
     multiplier: { target: "production", value: 0.50 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "mind_network",
@@ -4392,7 +4355,6 @@ export const TECHS: TechDef[] = [
     requires: ["knowledge_crystals", "quantum_entanglement_comms"],
     effects: "+100% data, +100% science",
     multiplier: { target: "production", value: 1.0 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
 
   // ===== GALACTIC — PATH 1: FTL DRIVES =====
@@ -4526,7 +4488,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+30% influence",
     multiplier: { target: "production", value: 0.30 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "trade_federation",
@@ -4539,7 +4500,6 @@ export const TECHS: TechDef[] = [
     requires: ["federation"],
     effects: "+100% gold & production",
     multiplier: { target: "production", value: 1.0 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "cultural_exchange",
@@ -4788,7 +4748,6 @@ export const TECHS: TechDef[] = [
     tier: 2,
     effects: "+100% military power",
     multiplier: { target: "production", value: 1.0 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "wormhole_defense",

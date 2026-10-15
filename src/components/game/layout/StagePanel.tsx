@@ -195,6 +195,12 @@ export function StagePanel() {
 
         {isLocked ? (
           <LockedArchetypeDisplay archId={lockedArchetype!} />
+        ) : stageIndex >= 2 ? (
+          // After Tribal evolution but somehow no locked archetype — shouldn't happen
+          // but handle gracefully
+          <div className="text-xs text-muted-foreground italic">
+            Lineage not locked — this shouldn't happen after Tribal.
+          </div>
         ) : hasAffinity ? (
           <div className="space-y-2">
             <ArchetypeRadar
@@ -205,7 +211,7 @@ export function StagePanel() {
             />
             {stageIndex < 1 && (
               <p className="text-[0.65rem] text-muted-foreground italic text-center">
-                Lineage locks at Creature → Tribal evolution
+                Drift locks at Creature → Tribal evolution
               </p>
             )}
             {stageIndex >= 1 && domArch && (
@@ -256,40 +262,23 @@ export function StagePanel() {
 function LockedArchetypeDisplay({ archId }: { archId: string }) {
   const arch = ARCHETYPE_MAP[archId];
   if (!arch) return null;
-  // ARCHETYPES-REWORK — show the 3 buffs + 1 debuff as structured lists.
-  // Falls back to the legacy single-label badge if buffs/debuff aren't
-  // populated (defensive — should always be populated post-rework).
   const buffs = arch.bonus.buffs ?? [];
   const debuff = arch.bonus.debuff;
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-mono" style={{ color: arch.color }}>{arch.glyph}</span>
-        <div>
-          <div className="text-sm font-bold" style={{ color: arch.color }}>{arch.name}</div>
-          <div className="text-[0.65rem] text-muted-foreground">{arch.rarity} · locked</div>
-        </div>
-        {buffs.length === 0 && (
-          <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
-            {arch.bonus.label}
-          </Badge>
-        )}
+    <div className="space-y-1">
+      <div className="text-xs font-bold" style={{ color: arch.color }}>
+        Species Archetype: {arch.name}
       </div>
-      <p className="text-xs text-muted-foreground italic leading-snug">{arch.bonus.desc}</p>
       {buffs.length > 0 && (
-        <div className="space-y-0.5 mt-1">
-          {buffs.map((b, i) => (
-            <div key={i} className="flex items-start gap-1 text-[0.65rem] text-emerald-300/90 leading-snug">
-              <span className="text-emerald-400 shrink-0">+</span>
-              <span>{b}</span>
-            </div>
-          ))}
-          {debuff && (
-            <div className="flex items-start gap-1 text-[0.65rem] text-rose-300/90 leading-snug mt-0.5">
-              <span className="text-rose-400 shrink-0">−</span>
-              <span>{debuff}</span>
-            </div>
-          )}
+        <div className="text-[0.65rem] text-emerald-300/90 leading-snug">
+          <span className="text-muted-foreground">Advantages: </span>
+          {buffs.join(", ")}
+        </div>
+      )}
+      {debuff && (
+        <div className="text-[0.65rem] text-rose-300/90 leading-snug">
+          <span className="text-muted-foreground">Disadvantages: </span>
+          {debuff}
         </div>
       )}
     </div>
