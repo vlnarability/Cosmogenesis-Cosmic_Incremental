@@ -92,6 +92,11 @@ export function Header() {
   // that still reads `show*` directly.
   const openLayerModal = useGameStore((s) => s.openLayerModal);
   const setTab = useGameStore((s) => s.setTab);
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "Title Clicker" achievement
+  // checks `titleClicks >= 10`. The "Evolution Idle" title in the header
+  // is the canonical click target; each click bumps the counter via the
+  // generic `bumpAchievementMeta` store action.
+  const bumpAchievementMeta = useGameStore((s) => s.bumpAchievementMeta);
 
   const stage = STAGES[stageIndex];
   const speeds = [1, 2, 4, 8];
@@ -173,7 +178,24 @@ export function Header() {
             {isL2Plus ? "🌌" : stage.icon}
           </span>
           <div className="min-w-0 hidden sm:block">
-            <h1 className="text-sm font-semibold leading-tight truncate">
+            <h1
+              // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — clicking the title
+              // 10× unlocks "Title Clicker". The h1 is wrapped in a
+              // button-equivalent (role + tabIndex + key handler) so the
+              // click is keyboard-accessible while still looking like
+              // static text — `cursor-pointer` is the only visual cue.
+              className="text-sm font-semibold leading-tight truncate cursor-pointer select-none hover:text-primary transition-colors"
+              role="button"
+              tabIndex={0}
+              title="Evolution Idle — click 10× to unlock a secret achievement"
+              onClick={() => bumpAchievementMeta("titleClicks")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  bumpAchievementMeta("titleClicks");
+                }
+              }}
+            >
               Evolution Idle
             </h1>
             <p className="text-[0.7rem] leading-tight truncate text-muted-foreground">

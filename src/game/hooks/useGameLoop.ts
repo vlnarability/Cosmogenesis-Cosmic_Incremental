@@ -6,6 +6,7 @@ import { useGameStore } from "../state/store";
 // Drives the game loop with requestAnimationFrame, ~60fps ticks
 // Calls store.tick(dt) and periodically saves.
 // On mount, applies offline progress (if away > 30s).
+// MEMORY LEAK FIX: all event listeners are now properly cleaned up.
 export function useGameLoop() {
   const tick = useGameStore((s) => s.tick);
   const saveGame = useGameStore((s) => s.saveGame);
@@ -16,6 +17,12 @@ export function useGameLoop() {
     elapsed: number;
     resourcesGained: Record<string, number>;
   } | null>(null);
+
+  // Use refs to avoid re-creating the RAF loop when store functions change reference
+  const tickRef = useRef(tick);
+  const saveRef = useRef(saveGame);
+  tickRef.current = tick;
+  saveRef.current = saveGame;
 
   // On mount: apply offline progress
   useEffect(() => {
@@ -28,36 +35,39 @@ export function useGameLoop() {
     }
   }, [applyOfflineProgress]);
 
+  // Game loop — runs once on mount, uses refs to avoid re-subscribing
   useEffect(() => {
     let raf: number;
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - lastFrame.current) / 1000);
       lastFrame.current = now;
-      tick(dt);
+      tickRef.current(dt);
       // Auto-save every 30s
       if (now - lastSave.current > 30000) {
         lastSave.current = now;
-        saveGame();
+        saveRef.current();
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [tick, saveGame]);
+  }, []); // Empty deps — mount once, never re-create
 
-  // Save on unmount / page hide
+  // Save on unmount / page hide — all listeners properly cleaned up
   useEffect(() => {
-    const handler = () => saveGame();
+    const handler = () => saveRef.current();
+    const visibilityHandler = () => {
+      if (document.visibilityState === "hidden") saveRef.current();
+    };
     window.addEventListener("beforeunload", handler);
     window.addEventListener("pagehide", handler);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") saveGame();
-    });
+    document.addEventListener("visibilitychange", visibilityHandler);
     return () => {
       window.removeEventListener("beforeunload", handler);
       window.removeEventListener("pagehide", handler);
+      document.removeEventListener("visibilitychange", visibilityHandler);
     };
-  }, [saveGame]);
+  }, []); // Empty deps — mount once, never re-create
 
   return { offlineSummary, dismissOffline: () => setOfflineSummary(null) };
 }

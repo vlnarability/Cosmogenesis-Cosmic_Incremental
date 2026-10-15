@@ -5614,7 +5614,15 @@ export const useGameStore = create<GameStore>()(
           get().addToLog(`Special theme ${id} is locked.`);
           return;
         }
-        set({ activeSpecialTheme: id });
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "AI Detected" achievement
+        // checks `aiThemeActive`. The flag is set when the player picks the
+        // `mini-ai` special/mini theme (the "MAXIMALLY AI-looking" palette).
+        // Encoded as 0/1 on the loose `achievementMeta` record.
+        const patch: Partial<GameState> = { activeSpecialTheme: id };
+        if (id === "mini-ai") {
+          patch.achievementMeta = bumpAchievementMeta(s, "aiThemeActive", 0, { replace: 1 });
+        }
+        set(patch);
         get().addToLog(`Special theme: ${id}.`);
       },
 
@@ -5663,6 +5671,18 @@ export const useGameStore = create<GameStore>()(
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
       setEventFrequency: (freq) => set({ eventFrequency: freq }),
 
+      // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for
+      // counter-based achievements ("Title Clicker", "Easter Egg: Hidden
+      // Message") and flag-based achievements ("AI Detected", "View
+      // Credits"). UIs call this with `(key)` to increment or
+      // `(key, 0, { replace: 1 })` to set a 0/1 flag. The underlying
+      // `bumpAchievementMeta` helper returns the new meta object so we can
+      // batch it with other state in the same `set(...)` call.
+      bumpAchievementMeta: (key, delta = 1, opts) => {
+        const s = get();
+        set({ achievementMeta: bumpAchievementMeta(s, key, delta, opts) });
+      },
+
       resolveEvent: (eventId, choiceId) => {
         const s = get();
         const ev = EVENT_MAP[eventId];
@@ -5675,26 +5695,49 @@ export const useGameStore = create<GameStore>()(
           set({ activeEvent: null });
           return;
         }
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — apply conditionalEffects
+        // when the player has satisfied the choice's gating condition
+        // (tech researched OR system built). The conditionalEffects fully
+        // REPLACE the base `resourceChanges` and `populationChange`; all
+        // other base fields (happiness, affinity, unlockTech, logMsg) still
+        // apply. This makes events STILL FIRE for tech-protected players
+        // but with a softer penalty — replaces the old "immuneTech blocks
+        // the event entirely" behaviour.
+        let effectiveResourceChanges = choice.resourceChanges;
+        let effectivePopulationChange = choice.populationChange;
+        if (choice.conditionalEffects) {
+          const cond = choice.conditionalEffects;
+          const hasTech = cond.techId
+            ? Boolean(s.technologies?.[cond.techId]) ||
+              ((s.ownedSystems?.[cond.techId] || 0) > 0)
+            : false;
+          if (hasTech) {
+            if (cond.resourceChanges) effectiveResourceChanges = cond.resourceChanges;
+            if (cond.populationChange !== undefined) {
+              effectivePopulationChange = cond.populationChange;
+            }
+          }
+        }
         // Apply effects
         const res = { ...s.resources };
-        if (choice.resourceChanges) {
-          for (const [r, v] of Object.entries(choice.resourceChanges)) {
+        if (effectiveResourceChanges) {
+          for (const [r, v] of Object.entries(effectiveResourceChanges)) {
             const cap = s.capacities[r] || Infinity;
             res[r] = Math.max(0, Math.min(cap, (res[r] || 0) + (v as number)));
           }
         }
         let pop = s.population;
-        if (choice.populationChange) {
+        if (effectivePopulationChange) {
           // ARCHETYPES-REWORK — Necroid/Necroid Ascendant populationImmortal
           // guards against event-driven decreases (population can still grow
           // from positive events, but never falls).
           const lockedArch = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
           const isImmortal = !!lockedArch?.bonus.populationImmortal;
-          if (isImmortal && choice.populationChange < 0) {
+          if (isImmortal && effectivePopulationChange < 0) {
             // Immortal — population never decreases from events.
-            get().addToLog(`${lockedArch?.name} immortality prevented ${choice.populationChange} population loss.`);
+            get().addToLog(`${lockedArch?.name} immortality prevented ${effectivePopulationChange} population loss.`);
           } else {
-            pop = Math.max(0, pop + choice.populationChange);
+            pop = Math.max(0, pop + effectivePopulationChange);
           }
         }
         if (choice.happinessChange) {

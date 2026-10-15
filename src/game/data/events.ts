@@ -17,6 +17,19 @@ export interface EventChoice {
   // for narrative "discovery" events that should grant a tech without
   // the player having to spend science on the Tech tab.
   unlockTech?: string;
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — when set, the choice's
+  // `resourceChanges` and `populationChange` are OVERRIDDEN by these
+  // values if the player has researched the named tech OR built the
+  // matching system (checked via `technologies[techId]` OR
+  // `ownedSystems[techId] > 0`). All other base fields (happiness,
+  // affinity, unlockTech, logMsg) still apply. This replaces the old
+  // "immuneTech blocks the event entirely" behaviour — events now
+  // STILL FIRE for tech-protected players but with a softer penalty.
+  conditionalEffects?: {
+    techId: string;
+    resourceChanges?: Partial<Record<ResourceId, number>>;
+    populationChange?: number;
+  };
   // Log message to add after choosing
   logMsg?: string;
 }
@@ -76,7 +89,9 @@ export const EVENTS: GameEvent[] = [
     desc: "Something larger moves in the dark. The cell feels the pressure of a predator's presence.",
     icon: "🌑",
     stages: ["cell"],
-    immuneTech: "camouflage",
+    // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — removed immuneTech so the
+    // event STILL FIRES for camouflage-researched players; the new
+    // `flee` choice's conditionalEffects softens the penalty instead.
     minTime: 60,
     weight: 8,
     choices: [
@@ -90,8 +105,13 @@ export const EVENTS: GameEvent[] = [
       {
         id: "flee",
         label: "Flee aggressively",
-        desc: "Burn 5 glucose to escape faster. +3 ATP from adrenaline.",
+        desc: "−5 population (base), −5 glucose, +3 ATP. With Camouflage researched: only −1 population.",
         resourceChanges: { glucose: -5, atp: 3 },
+        populationChange: -5,
+        conditionalEffects: {
+          techId: "camouflage",
+          populationChange: -1,
+        },
         logMsg: "Fled the predator. Burned glucose, gained ATP.",
       },
     ],
@@ -170,6 +190,20 @@ export const EVENTS: GameEvent[] = [
         resourceChanges: { atp: -4, glucose: -5 },
         logMsg: "Endured the viral drain. Lost ATP and glucose.",
       },
+      {
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — new "Quarantine" choice
+        // that always loses some population; players who have already
+        // researched `dna_repair` take a softer penalty (−1 vs −5).
+        id: "quarantine",
+        label: "Quarantine infected cells",
+        desc: "−5 population (base). With DNA Repair researched: only −1 population.",
+        populationChange: -5,
+        conditionalEffects: {
+          techId: "dna_repair",
+          populationChange: -1,
+        },
+        logMsg: "Quarantined infected cells to contain the phages.",
+      },
     ],
   },
   {
@@ -220,6 +254,21 @@ export const EVENTS: GameEvent[] = [
         desc: "−5 glucose, −2 proteins. The cell survives smaller.",
         resourceChanges: { glucose: -5, proteins: -2 },
         logMsg: "Shed damaged mass to survive the breach.",
+      },
+      {
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — new "Repair" choice.
+        // Costs glucose; players with a Nucleus system built take a much
+        // softer hit (−3 vs −10). The Nucleus is checked via the
+        // `ownedSystems["nucleus"] > 0` branch of the techId check.
+        id: "repair",
+        label: "Repair the breach",
+        desc: "−10 glucose (base). With a Nucleus system built: only −3 glucose.",
+        resourceChanges: { glucose: -10 },
+        conditionalEffects: {
+          techId: "nucleus",
+          resourceChanges: { glucose: -3 },
+        },
+        logMsg: "Repaired the membrane breach.",
       },
     ],
   },
@@ -2251,7 +2300,9 @@ export const EVENTS: GameEvent[] = [
     desc: "Reports of a spreading sickness reach the capital. The council debates action.",
     icon: "🦠",
     stages: ["civilization", "empire"],
-    immuneTech: "immune_system",
+    // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — removed immuneTech so the
+    // event STILL FIRES for immune-system-researched players; the new
+    // `isolate` choice's conditionalEffects softens the penalty instead.
     minTime: 300,
     weight: 6,
     choices: [
@@ -2269,6 +2320,20 @@ export const EVENTS: GameEvent[] = [
         desc: "No cost now, but risk: −5 population later.",
         populationChange: -5,
         logMsg: "Ignored the plague rumors. Population suffered.",
+      },
+      {
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — new "Isolate" choice.
+        // Always loses some population; players with `immune_system`
+        // researched take a softer penalty (−2 vs −10).
+        id: "isolate",
+        label: "Isolate the infected district",
+        desc: "−10 population (base). With Immune System researched: only −2 population.",
+        populationChange: -10,
+        conditionalEffects: {
+          techId: "immune_system",
+          populationChange: -2,
+        },
+        logMsg: "Isolated the infected district to halt the spread.",
       },
     ],
   },
@@ -2570,16 +2635,25 @@ export const EVENTS: GameEvent[] = [
     desc: "The rains fail. The granaries will be tested as the harvest withers.",
     icon: "🏜️",
     stages: ["civilization"],
-    immuneTech: "hibernation",
+    // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — removed immuneTech so the
+    // event STILL FIRES for hibernation-researched players; the modified
+    // `ration` choice's conditionalEffects softens the food penalty.
     minTime: 330,
     weight: 5,
     choices: [
       {
+        // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — base cost bumped from
+        // −10 → −15 food; players with `hibernation` researched pay a
+        // softer penalty (−5 food instead of −15) via conditionalEffects.
         id: "ration",
         label: "Ration strictly",
-        desc: "−10 food, +3 happiness (shared burden).",
-        resourceChanges: { food: -10 },
+        desc: "−15 food (base), +3 happiness (shared burden). With Hibernation researched: only −5 food.",
+        resourceChanges: { food: -15 },
         happinessChange: 3,
+        conditionalEffects: {
+          techId: "hibernation",
+          resourceChanges: { food: -5 },
+        },
         logMsg: "Rationed food through the drought. Solidarity held.",
       },
       {

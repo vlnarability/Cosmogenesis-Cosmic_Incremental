@@ -6341,3 +6341,302 @@ wires the increment hooks in the corresponding components. All other
 achievements should fire correctly via the store's `checkAchievements`
 helper (called every 2s in the tick + after evolveStage / triggerPrestige /
 resolveEvent).
+
+---
+
+## ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS
+
+Wired 4 UI achievement hooks + redesigned conditional event effects so
+tech-protected events STILL FIRE with a softer penalty.
+
+### Task 1 — 4 Achievement UI hooks
+
+1. **Title Clicker** (`titleClicks >= 10`)
+   - `Header.tsx`: wrapped the "Evolution Idle" `<h1>` in a
+     button-equivalent (`role="button"`, `tabIndex={0}`, `onClick`,
+     `onKeyDown` for Enter/Space). Each click calls
+     `bumpAchievementMeta("titleClicks")`. Visual cue: `cursor-pointer`
+     + `hover:text-primary` so the title is discoverable without
+     looking like a button.
+2. **Easter Egg: Hidden Message** (`versionClicks >= 5`)
+   - `SettingsModal.tsx`: `handleVersionClick` now also calls
+     `bumpAchievementMeta("versionClicks")` to sync the local counter
+     into the persisted `achievementMeta` record. Local React state
+     still drives the debug-panel reveal; the store counter drives the
+     achievement check.
+3. **AI Detected** (`aiThemeActive`)
+   - Store-side: `setSpecialTheme("mini-ai")` now sets
+     `achievementMeta.aiThemeActive = 1` (encoded as a 0/1 flag via
+     `bumpAchievementMeta("aiThemeActive", 0, { replace: 1 })`). The
+     flag is set the moment the player picks the mini-ai special theme
+     in the Settings theme picker.
+4. **View Credits** (`viewedCredits >= 1`)
+   - `EternityModal.tsx`: added a `useEffect` that fires when the
+     EndingScreen renders (`isUnlocked && allDiscovered &&
+     chosenEnding === null`). Calls
+     `bumpAchievementMeta("viewedCredits", 0, { replace: 1 })` —
+     idempotent, so re-opening the modal doesn't bump it further.
+
+New generic store action: `bumpAchievementMeta(key, delta?, opts?)`
+in `store.ts` + matching signature on `GameStore` in `types.ts`. It
+delegates to the existing `bumpAchievementMeta` helper (which already
+backed the in-tick + lifetime counters like `stableUniversesCreated`
+and `trialsAbandoned`). Now any UI can bump a counter or set a flag.
+
+### Task 2 — Conditional event effects
+
+**Behaviour change**: events with `immuneTech` previously NEVER FIRED
+for players who'd researched that tech. Now they STILL FIRE but apply a
+softer penalty via `conditionalEffects`. Removed `immuneTech` from the
+3 events below and replaced the gating logic with per-choice
+conditional effects.
+
+**New `EventChoice.conditionalEffects` field**:
+```ts
+conditionalEffects?: {
+  techId: string;            // tech id OR system id (checked both ways)
+  resourceChanges?: Partial<Record<ResourceId, number>>;
+  populationChange?: number;
+};
+```
+When the player has the named tech researched (`technologies[techId]`)
+OR has the matching system built (`ownedSystems[techId] > 0`), the
+choice's `resourceChanges` and `populationChange` are fully REPLACED
+by the conditional values. All other base fields (happiness, affinity,
+unlockTech, logMsg) still apply. Implementation lives in the
+`resolveEvent` store action.
+
+5 events updated:
+
+| Event | Choice | Base | Conditional (has tech) |
+|---|---|---|---|
+| Viral Attack | `quarantine` (NEW) | -5 pop | `dna_repair` → -1 pop |
+| Membrane Breach | `repair` (NEW) | -10 glucose | `nucleus` system → -3 glucose |
+| Plague Rumor | `isolate` (NEW) | -10 pop | `immune_system` → -2 pop |
+| Predator Shadow | `flee` (modified) | -5 pop + -5 glucose + 3 ATP | `camouflage` → -1 pop |
+| Drought Year | `ration` (modified) | -15 food + 3 happiness | `hibernation` → -5 food |
+
+For `Membrane Breach`'s "Repair" choice the `techId: "nucleus"` resolves
+to the **Nucleus system** (not a tech). The store action checks both
+`technologies[techId]` and `ownedSystems[techId] > 0`, so a single
+`techId` field handles both cases.
+
+### Lint
+
+`bun run lint` → **0 errors, 7 pre-existing warnings** (galaxies.ts +
+upload/logic.js — unrelated to this task). Targeted lint on the 6
+touched files (`store.ts`, `types.ts`, `events.ts`, `Header.tsx`,
+`SettingsModal.tsx`, `EternityModal.tsx`) → **0 errors, 0 warnings**.
+
+### Files changed
+
+- `src/game/state/store.ts` — new `bumpAchievementMeta` action;
+  `setSpecialTheme` sets `aiThemeActive`; `resolveEvent` applies
+  `conditionalEffects`.
+- `src/game/state/types.ts` — added `bumpAchievementMeta` signature
+  on `GameStore`.
+- `src/game/data/events.ts` — added `conditionalEffects` to
+  `EventChoice` interface; updated 5 events (3 new choices + 2
+  modified choices); removed `immuneTech` from 3 of those events.
+- `src/components/game/layout/Header.tsx` — title click hook.
+- `src/components/game/modals/SettingsModal.tsx` — version-click hook.
+- `src/components/game/modals/EternityModal.tsx` — ending-screen
+  viewedCredits hook (useEffect).
+
+No tests written (per task constraints).
+
+## Task ID: ARCHETYPE-TECHS — Archetype-Specific Techs (Tribal→Galactic)
+
+### Goal
+
+Add UNIQUE techs per archetype at Tribal+ stages. Previously only systems
+had `requiredArchetype` — techs didn't. Added 2 archetype-specific techs
+per archetype per stage (Tribal→Galactic = 5 stages × 13 archetypes × 2
+techs = **130 new techs**).
+
+### Pre-existing infrastructure (verified, NOT modified)
+
+On inspection, the following hooks were ALREADY present in the codebase
+(from prior `FIX-ARCHETYPE-LOCKED` work) and needed no changes:
+
+- `TechDef.requiredArchetype?: string` field already declared in
+  `src/game/state/types.ts:86`.
+- `store.buyTech` already enforces `requiredArchetype` at
+  `src/game/state/store.ts:2994` — refuses purchase with inline
+  "Requires ${archName} archetype" error if the player's locked archetype
+  doesn't match.
+- `TechTab.tsx` already filters techs whose `requiredArchetype` doesn't
+  match the player's `lockedArchetype` (lines 36–44, comment
+  "FIX-ARCHETYPE-LOCKED — hide techs whose requiredArchetype doesn't
+  match"). Non-matching techs are invisible to the player.
+
+So this task's actual code work = writing the 130 new `TechDef` entries.
+
+### Techs added — 2 per archetype per stage × 13 archetypes = 130
+
+ID naming convention: `tech_arch_<archetype>_<stage>_<1|2>` (e.g.,
+`tech_arch_toxoid_tribal_1`, `tech_arch_plantoid_galactic_2`).
+
+Branch field is the archetype's display name ("Humanoid", "Mammalian",
+…). Each archetype has 10 techs:
+
+- **Humanoid** (generalist, diplomacy, society)
+  - Tribal: Council Traditions (+20% all prod), Trade Networks (+25%)
+  - Civ: Diplomatic Doctrine (+30%), Senate Procedure (+25%)
+  - Empire: Imperial Diplomacy (+35%), Civic Administration (+30%)
+  - Solar: Stellar Diplomacy (+40%), Common Tongue (+35%)
+  - Galactic: Galactic Federation (+60%), Universal Citizenship (+50%)
+
+- **Mammalian** (warm-blooded, kinship, growth)
+  - Tribal: Pack Bonds (+25% pop), Warm Hearth Lore (+30%)
+  - Civ: Kinship Doctrine (+35%), Clan Records (+30%)
+  - Empire: Hearth Empire Doctrine (+40%), Welfare State (+40% pop)
+  - Solar: Solar Nurseries (+50% pop), Warm-Blooded Colonies (+40%)
+  - Galactic: Galactic Kinship (+60% pop), Biofilial Networks (+50%)
+
+- **Reptilian** (cold-blooded, predator, sun)
+  - Tribal: Sun Cult Lore (+30%), Cold-Blooded Discipline (+25%)
+  - Civ: War Altar Rites (+40%), Basking Doctrine (+30%)
+  - Empire: Predator Doctrine (+50%), Imperial Sun Cult (+40%)
+  - Solar: Solar Basking Arrays (+40%), Cold-Blooded Legions (+50%)
+  - Galactic: Stellar War Doctrine (+80%), Predator Civilization (+50%)
+
+- **Necroid** (death, undeath, bone, soul)
+  - Tribal: Ancestor Rites (+25%), Bone Lore (+30%)
+  - Civ: Tomb Cathedral Rites (+35%), Bone Smithing (+35%)
+  - Empire: Death Cult (+50%), Bone Industry (+40%)
+  - Solar: Orbital Crypts (+40%), Soul Anchor Theory (+35%)
+  - Galactic: Tomb World Engineering (+60%), Galactic Undeath (+50%)
+
+- **Arthropoid** (hive, swarm, industrious)
+  - Tribal: Hive Mind Lore (+30%), Swarm Tactics (+25%)
+  - Civ: Hive Metropolis Doctrine (+40%), Chitin Metallurgy (+35%)
+  - Empire: Swarm Logistics (+50%), Hive Militarism (+45%)
+  - Solar: Orbital Hive (+50%), Swarm Fleet Doctrine (+60%)
+  - Galactic: Galactic Hive (+70%), Singular Overmind (+50%)
+
+- **Plantoid** (photosynthesis, growth, gardens)
+  - Tribal: Photosynthetic Lore (+30%), Root Memory (+25%)
+  - Civ: Great Garden Rites (+40%), Living Archive (+35%)
+  - Empire: Hydroponic Mastery (+50%), Planetary Forest (+40%)
+  - Solar: Dyson Trees (+50%), Solar Photosynthesis (+60%)
+  - Galactic: Gaia Protocol (+50%), Stellar Garden (+40%)
+
+- **Fungoid** (decomposition, network, organic)
+  - Tribal: Mycelial Lore (+30%), Decomposer Rites (+25%)
+  - Civ: Mycelial Grid Theory (+40%), Spore Cultivation (+30% pop)
+  - Empire: Industrial Decomposition (+50%), Spore Reactor Theory (+40%)
+  - Solar: Stellar Mycelium (+60%), Spore Networking (+45%)
+  - Galactic: Spore Nebula Theory (+70%), Galactic Decomposition (+50%)
+
+- **Molluscoid** (soft, ancient, science)
+  - Tribal: Tide Lore (+30%), Ink Scribe Rites (+25%)
+  - Civ: Tide Library Doctrine (+40%), Pearl Economics (+35%)
+  - Empire: Tide University (+50%), Pearl Banking (+45%)
+  - Solar: Pressure-Tested Hulls (+40%), Tide-Stellar Cartography (+50%)
+  - Galactic: Galactic Inkwell (+70%), Soft Civilization (+50%)
+
+- **Lithoid** (crystal, mineral, tectonic)
+  - Tribal: Crystal Lore (+30%), Tectonic Rites (+25%)
+  - Civ: Crystal Spire Doctrine (+40%), Geode Theory (+35%)
+  - Empire: Crystal Palace Rites (+50%), Geode Reactor Theory (+45%)
+  - Solar: Crystal Lattice Station (+50%), Tectonic Mining (+60%)
+  - Galactic: Crystal Siphon Theory (+70%), Stellar Crystal (+50%)
+
+- **Toxoid** (venom, plague, hazardous)
+  - Tribal: Venom Lore (+30%), Acid Digestion (+25%)
+  - Civ: Contagion Warfare (+40%), Toxic Refining (+35%)
+  - Empire: Bio-Weapon Doctrine (+50%), Venom Infrastructure (+45%)
+  - Solar: Orbital Toxin Network (+60%), Radiation Harvesting (+50%)
+  - Galactic: Venom Fleet Doctrine (+80%), Bio-Singularity (+50%)
+
+- **Avian** (flight, sky, vision)
+  - Tribal: Aerie Lore (+30%), Wind Riding (+25%)
+  - Civ: Sky Tower Doctrine (+40%), Migration Cartography (+35%)
+  - Empire: Sky Fortress Doctrine (+50%), Orbital Roost Theory (+45%)
+  - Solar: Sky Spire (+50%), Stellar Migration (+60%)
+  - Galactic: Galactic Migration (+70%), Skyfleet Doctrine (+50%)
+
+- **Aquatic** (water, ocean, tide)
+  - Tribal: Coral Lore (+30%), Tide Pool Farming (+25%)
+  - Civ: Coral Citadel Doctrine (+40%), Abyssal Archive Theory (+35%)
+  - Empire: Coral Empire Doctrine (+50%), Abyssal Lab Theory (+45%)
+  - Solar: Ice Comet Tug (+50%), Tide-Stellar Resonance (+60%)
+  - Galactic: Galactic Ocean (+70%), Abyssal Fleet Doctrine (+50%)
+
+- **Extremophile** (radiation, pressure, extreme)
+  - Tribal: Vent Lore (+30%), Radiation Rites (+25%)
+  - Civ: Volcanic Outpost Doctrine (+40%), Frostvault Theory (+35% cap)
+  - Empire: Volcanic Reactor Theory (+50%), Ice Station Doctrine (+45%)
+  - Solar: Vacuum Habitat Theory (+50% pop), Radiation Harvesting (+60%)
+  - Galactic: Galactic Extremophile (+60%), Singularity Survival (+50%)
+
+### Effect types used
+
+All effects go through the existing `multiplier` field on `TechDef`,
+which `techMultiplier()` in store.ts aggregates into a single multiplier
+per target type:
+
+- `{ target: "production", value: <n> }` — additive bonus to ALL resource
+  production (matches existing convention used by base techs like
+  `civ_smithing` — desc strings say "+30% food/materials/etc." but the
+  applied effect is "+30% all production", per `techMultiplier`).
+- `{ target: "population", value: <n> }` — additive bonus to population
+  growth (used for: `mammalian_tribal_1`, `mammalian_emp_2`,
+  `mammalian_sol_1`, `mammalian_gal_1`, `fungoid_civ_2`,
+  `extremophile_sol_1`).
+- `{ target: "capacity", value: <n> }` — additive bonus to resource
+  capacity (used once: `extremophile_civ_2` "Frostvault Theory"
+  matches the Frostvault storage system).
+
+### Cost scaling
+
+Costs scale with stage, mirroring existing tech patterns:
+
+- Tribal: wood/stone/knowledge/food ~ 10–45 each
+- Civilization: production/gold/knowledge/materials ~ 50–300 each
+- Empire: production/gold/science/influence ~ 800–4000 each
+- Solar: energy/alloys/science/data ~ 50–350 each
+- Galactic: energy/alloys/data/influence ~ 800–6000 each
+
+### Files modified
+
+- `src/game/data/techs.ts` — appended one large `// ARCHETYPE-LOCKED
+  TECHS` block (130 entries + section comment) before the existing
+  `];` closing the `TECHS` array. File grew from 4888 → 6496 lines.
+  No existing techs modified. `TECH_MAP` and `techsForStage` export
+  helpers are unchanged and now auto-include the new techs.
+
+### Verification
+
+- `bun run lint` → **0 errors, 7 warnings** (all 7 pre-existing:
+  galaxies.ts eslint-disable warning at line 386, plus 6
+  `no-unused-expressions` warnings in `upload/logic.js`. None
+  introduced by this task.)
+- `bun -e "require('./src/game/data/techs.ts')"` → loads OK.
+  - Total TECHS length: **536** (was 406, +130).
+  - Archetype-locked techs: **130**.
+  - Duplicate IDs: **0**.
+  - Per-archetype count: exactly **10** each (2 × 5 stages).
+  - Per-(archetype,stage) count: exactly **2** each.
+- The store's `buyTech` enforcement + TechTab filter are unchanged;
+  the 130 new techs slot into the existing requiredArchetype machinery
+  with zero additional wiring.
+
+### Follow-up notes / future work (NOT done in this task)
+
+- The 130 new techs do NOT add `requiredTech` linkage to existing
+  archetype-drift systems (e.g., `humanoid_council_tent`). They give
+  passive multiplier effects instead, mirroring the bulk of base techs.
+  A follow-up could add `requiredTech: "tech_arch_X_stage_N"` to the
+  corresponding archetype-drift systems to make these techs literal
+  *system-unlock* prerequisites. Skipped here to avoid accidentally
+  blocking purchase of systems players already own in current save
+  games.
+- Solar stage currently has archetype-drift systems for only 9 of 13
+  archetypes (missing humanoid, mammalian, reptilian, molluscoid);
+  Galactic stage has only 5 (missing 8). The 4+8 "orphan" techs at
+  these stages give meaningful production/pop boosts but have no
+  corresponding archetype-drift system to link to. A future
+  archetype-systems-expansion task could fill those gaps.
+

@@ -660,6 +660,17 @@ export interface GameStore extends GameState {
   dismissTutorial: () => void;
   resolveEvent: (eventId: string, choiceId: string) => void;
   setEventFrequency: (freq: "off" | "normal" | "frequent") => void;
+  /**
+   * ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for the
+   * counter/flag achievements ("Title Clicker", "Easter Egg: Hidden
+   * Message", "AI Detected", "View Credits"). UIs call with `(key)` to
+   * increment a counter or `(key, 0, { replace: 1 })` to set a 0/1 flag.
+   */
+  bumpAchievementMeta: (
+    key: string,
+    delta?: number,
+    opts?: { cap?: number; replace?: number }
+  ) => void;
   dismissStory: (id: string) => void;
   dismissAchievementToast: () => void;
   applyOfflineProgress: () => { elapsed: number; resourcesGained: Record<string, number>; applied: boolean } | null;

@@ -90,6 +90,12 @@ export function SettingsModal() {
   const setLayerTheme = useGameStore((s) => s.setLayerTheme);
   const setSpecialTheme = useGameStore((s) => s.setSpecialTheme);
   const setThemeMode = useGameStore((s) => s.setThemeMode);
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for the
+  // counter/flag achievements. The version-text click below uses it to
+  // bump `versionClicks` ("Easter Egg: Hidden Message"). The "AI
+  // Detected" flag is set inside `setSpecialTheme` (store-side) when the
+  // player picks `mini-ai`, so we don't need to call it from here.
+  const bumpAchievementMeta = useGameStore((s) => s.bumpAchievementMeta);
 
   // Game stats
   const time = useGameStore((s) => s.time);
@@ -173,6 +179,11 @@ export function SettingsModal() {
   const handleVersionClick = () => {
     const next = versionClicks + 1;
     setVersionClicks(next);
+    // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — sync the cumulative click
+    // count to the store so the "Easter Egg: Hidden Message" achievement
+    // (checks `versionClicks >= 5`) fires. The local counter is also
+    // retained because it drives the debug-panel reveal below.
+    bumpAchievementMeta("versionClicks");
     if (next >= 5 && !debugUnlocked) {
       setDebugUnlocked(true);
       setVersionClicks(0);

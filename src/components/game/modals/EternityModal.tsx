@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   ENDING_CHOICES,
@@ -85,6 +85,12 @@ export function EternityContent() {
   const revealRelicAmount = useGameStore((s) => s.revealRelicAmount);
   const triggerBigBang = useGameStore((s) => s.triggerBigBang);
   const chooseEnding = useGameStore((s) => s.chooseEnding);
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "View Credits" achievement
+  // checks `viewedCredits >= 1`. We set the flag (encoded as 0/1) the
+  // first time the EndingScreen renders (all 100 archetypes discovered
+  // and no ending yet chosen). Using the store action because the flag
+  // lives on `achievementMeta` alongside the other UI-driven counters.
+  const bumpAchievementMeta = useGameStore((s) => s.bumpAchievementMeta);
 
   const isUnlocked = !!unlockedLayers.eternity;
   const discoveredCount = Object.values(discoveredArchetypes).filter(Boolean).length;
@@ -94,6 +100,16 @@ export function EternityContent() {
   // ["mundane"]; we read it here so the EndingScreen's dimension picker
   // can determine which dimensions are selectable.
   const visitedDimensions = useGameStore((s) => s.visitedDimensions || ["mundane"]);
+
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — set `viewedCredits` once
+  // the ending screen actually renders (all 100 archetypes discovered
+  // and no ending chosen yet). Idempotent — `replace: 1` keeps the
+  // flag pinned at 1 even if the player re-opens the modal later.
+  useEffect(() => {
+    if (isUnlocked && allDiscovered && chosenEnding === null) {
+      bumpAchievementMeta("viewedCredits", 0, { replace: 1 });
+    }
+  }, [isUnlocked, allDiscovered, chosenEnding, bumpAchievementMeta]);
 
   // Compute crucible rule view (recomputed each render — cheap).
   const crucibleRelics: DivineRelic[] = useMemo(() => {
