@@ -322,15 +322,105 @@ export const PLAYSTYLE_BRANCHES = {
 export type PlaystyleBranch = keyof typeof PLAYSTYLE_BRANCHES;
 
 /**
+ * Each archetype has a UNIQUE trigger condition for its government — a
+ * different combination of tech branch dominance. This means getting the
+ * Necrocracy requires a different playstyle than getting the Venom Council.
+ *
+ * The 7 general governments (Totalitarian, Technocracy, Cultural Republic,
+ * Merchant Oligarchy, Socialist Collective, Industrial Juggernaut, Democracy)
+ * are available to ALL archetypes — they just require a different tech focus.
+ *
+ * The archetype-specific government triggers ONLY when the player's tech path
+ * matches the archetype's unique recipe. Otherwise, they fall through to the
+ * general pool.
+ */
+interface ArchetypeGovCondition {
+  /** Minimum tech count per branch to trigger this archetype's government */
+  military: number;
+  science: number;
+  culture: number;
+  economics: number;
+  /** Which branch must be the highest (or null for balanced) */
+  dominantBranch?: PlaystyleBranch | null;
+  /** Which branch must be the lowest (or null for any) */
+  weakestBranch?: PlaystyleBranch | null;
+}
+
+export const ARCHETYPE_GOV_CONDITIONS: Record<string, ArchetypeGovCondition> = {
+  // Humanoid → perfectly balanced across all 4 → Human Republic
+  humanoid:    { military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null },
+  // Mammalian → high Agriculture (Culture) + low Military → Pack Dominion
+  mammalian:   { military: 0, science: 0, culture: 3, economics: 2, dominantBranch: "culture", weakestBranch: "military" },
+  // Reptilian → high Military + low Culture → Reptilian Junta
+  reptilian:   { military: 4, science: 0, culture: 1, economics: 0, dominantBranch: "military", weakestBranch: "culture" },
+  // Necroid → high Science + low Economics → Necrocracy
+  necroid:     { military: 0, science: 4, culture: 0, economics: 1, dominantBranch: "science", weakestBranch: "economics" },
+  // Arthropoid → high Economics + low Culture → Hive Collective
+  arthropoid:  { military: 0, science: 0, culture: 1, economics: 4, dominantBranch: "economics", weakestBranch: "culture" },
+  // Plantoid → high Culture + low Military → Gaia Communion
+  plantoid:    { military: 1, science: 0, culture: 4, economics: 0, dominantBranch: "culture", weakestBranch: "military" },
+  // Fungoid → high Economics + high Science (both ≥ 3) → Fungal Network
+  fungoid:     { military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Molluscoid → high Economics + high Culture (both ≥ 3) → Mollusc Syndicate
+  molluscoid:  { military: 0, science: 0, culture: 3, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Lithoid → high Science + high Military (both ≥ 3) → Crystal Hegemony
+  lithoid:     { military: 3, science: 3, culture: 0, economics: 0, dominantBranch: null, weakestBranch: null },
+  // Toxoid → high Military + high Economics (both ≥ 3) → Venom Council
+  toxoid:      { military: 3, science: 0, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Avian → high Science + high Culture (both ≥ 3) → Aerie Senate
+  avian:       { military: 0, science: 3, culture: 3, economics: 0, dominantBranch: null, weakestBranch: null },
+  // Aquatic → high Science + high Economics (both ≥ 3) → Tidal Federation
+  aquatic:     { military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Extremophile → ALL branches exactly equal (perfect tie, all ≥ 2) → Extremophile Regime
+  extremophile:{ military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null },
+};
+
+/**
+ * Check if the player's tech counts match their archetype's unique condition.
+ * Each archetype requires a different pattern — e.g. Necroid needs high Science
+ * + low Economics, while Toxoid needs high Military + high Economics.
+ */
+function matchesArchetypeCondition(
+  counts: Record<PlaystyleBranch, number>,
+  cond: ArchetypeGovCondition
+): boolean {
+  // Check minimums
+  if (counts.military < cond.military) return false;
+  if (counts.science < cond.science) return false;
+  if (counts.culture < cond.culture) return false;
+  if (counts.economics < cond.economics) return false;
+  // Check dominant branch (null = no single dominant required, e.g. balanced)
+  if (cond.dominantBranch) {
+    const dom = counts[cond.dominantBranch];
+    // Must be strictly the highest
+    for (const k of Object.keys(counts) as PlaystyleBranch[]) {
+      if (k !== cond.dominantBranch && counts[k] > dom) return false;
+    }
+  } else if (cond.dominantBranch === null) {
+    // For "balanced" conditions: check that the spread is tight (max - min ≤ 1)
+    const vals = Object.values(counts);
+    const max = Math.max(...vals);
+    const min = Math.min(...vals);
+    if (max - min > 1) return false;
+  }
+  // Check weakest branch (if specified, must be the lowest)
+  if (cond.weakestBranch) {
+    const weak = counts[cond.weakestBranch];
+    for (const k of Object.keys(counts) as PlaystyleBranch[]) {
+      if (k !== cond.weakestBranch && counts[k] < weak) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Pick a playstyle government based on which of the four Civilization-stage
- * branches the player has researched the most. Ties → Democracy.
+ * branches the player has researched the most. These 7 are available to ALL
+ * archetypes. Ties → Democracy.
  *
  * Also checks for special conditions:
- * - High Agriculture + Culture → Socialist Collective
- * - High Industry → Industrial Juggernaut
- *
- * @param technologies  the player's researched tech map
- * @returns             the chosen government id
+ * - High Culture + Economics → Socialist Collective
+ * - High Economics, low Military → Industrial Juggernaut
  */
 export function pickPlaystyleGovernment(
   technologies: Record<string, boolean>
@@ -353,11 +443,9 @@ export function pickPlaystyleGovernment(
   }
 
   // Check for special playstyle conditions:
-  // High Agriculture + Culture (food/happiness focus) → Socialist Collective
   if (counts.culture >= 3 && counts.economics >= 2) {
     return "socialist_collective";
   }
-  // High Industry (production focus) → Industrial Juggernaut
   if (counts.economics >= 4 && counts.military <= 1) {
     return "industrial_juggernaut";
   }
@@ -386,40 +474,83 @@ export function pickPlaystyleGovernment(
 }
 
 /**
+ * Count tech branches for the player's researched techs.
+ */
+export function countTechBranches(
+  technologies: Record<string, boolean>
+): Record<PlaystyleBranch, number> {
+  const counts: Record<PlaystyleBranch, number> = {
+    military: 0, science: 0, culture: 0, economics: 0,
+  };
+  for (const [techId, owned] of Object.entries(technologies)) {
+    if (!owned) continue;
+    const tech = TECH_REF[techId];
+    if (!tech) continue;
+    for (const k of Object.keys(counts) as PlaystyleBranch[]) {
+      if (tech.branch === PLAYSTYLE_BRANCHES[k]) counts[k] += 1;
+    }
+  }
+  return counts;
+}
+
+/**
  * Decide which government to assign at Empire evolution.
  *
- *  1. Count techs per Civilization branch (Military, Science, Culture, Economics).
- *  2. If one branch is clearly dominant (more than any other + more than 0),
- *     the playstyle government wins (available to ANYONE, including archetypes).
- *     E.g. Necroid with heavy Military → Totalitarian (not Necrocracy).
- *  3. If tech is spread evenly (no dominant branch), the archetype-specific
- *     government is the fallback (reflects the species' natural tendencies).
- *  4. If no archetype government either → Democracy.
+ *  1. Check if the player's locked archetype has a unique government trigger
+ *     (each archetype has a DIFFERENT recipe — e.g. Necroid needs high Science
+ *     + low Economics, Toxoid needs high Military + high Economics).
+ *  2. If the archetype condition matches → assign the archetype government.
+ *  3. Otherwise → fall through to the 7 general governments (available to all).
  *
- * @returns the government id, or null if no archetype and no playstyle techs.
+ * This means:
+ * - A Necroid with heavy Military gets Totalitarian (general), not Necrocracy.
+ * - A Necroid with heavy Science + low Economics gets Necrocracy (archetype).
+ * - Any archetype can get any of the 7 general governments.
+ * - Each archetype's unique government requires a different playstyle.
  */
 export function pickGovernmentForEmpire(
   lockedArchetype: string | null,
   technologies: Record<string, boolean>
 ): string {
-  // First try playstyle — if one branch is clearly dominant, that wins
-  // regardless of archetype. A Necroid with heavy military gets Totalitarian.
-  const playstyle = pickPlaystyleGovernment(technologies);
-  // pickPlaystyleGovernment returns "democracy" on tie/empty. But Democracy
-  // is a valid playstyle pick (balanced). We need to distinguish "balanced"
-  // from "no techs at all".
-  const hasTechs = Object.values(technologies).some(Boolean);
-  if (playstyle !== "democracy") {
-    // A dominant branch was found — use the playstyle government.
-    return playstyle;
-  }
-  // No dominant branch (tie or balanced) — fall back to archetype government.
+  const counts = countTechBranches(technologies);
+
+  // Step 1: Check archetype-specific condition (each has a unique recipe)
   if (lockedArchetype) {
+    const cond = ARCHETYPE_GOV_CONDITIONS[lockedArchetype];
     const archGov = ARCHETYPE_GOVERNMENT_MAP[lockedArchetype];
-    if (archGov && GOVERNMENT_MAP[archGov]) return archGov;
+    if (cond && archGov && GOVERNMENT_MAP[archGov]) {
+      if (matchesArchetypeCondition(counts, cond)) {
+        return archGov;
+      }
+    }
   }
-  // No archetype government — Democracy (balanced/neutral).
-  return hasTechs ? "democracy" : "democracy";
+
+  // Step 2: Fall through to general governments (7, available to all)
+  // Special conditions first
+  if (counts.culture >= 3 && counts.economics >= 2) return "socialist_collective";
+  if (counts.economics >= 4 && counts.military <= 1) return "industrial_juggernaut";
+
+  // Find dominant branch
+  let best: PlaystyleBranch | null = null;
+  let bestVal = 0;
+  let tie = false;
+  for (const k of Object.keys(counts) as PlaystyleBranch[]) {
+    if (counts[k] > bestVal) {
+      bestVal = counts[k];
+      best = k;
+      tie = false;
+    } else if (counts[k] === bestVal && bestVal > 0) {
+      tie = true;
+    }
+  }
+  if (!best || bestVal === 0 || tie) return "democracy";
+  switch (best) {
+    case "military":   return "totalitarian";
+    case "science":    return "technocracy";
+    case "culture":    return "cultural_republic";
+    case "economics":  return "merchant_oligarchy";
+    default:           return "democracy";
+  }
 }
 
 // TECH_REF — internal lazy reference to the tech branch lookup. Pulled in
