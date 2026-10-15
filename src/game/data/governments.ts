@@ -137,6 +137,29 @@ export const GOVERNMENTS: GovernmentDef[] = [
     productionMult: 0.10,
     happinessMult: 0.10,
   },
+  {
+    id: "socialist_collective",
+    name: "Socialist Collective",
+    icon: "🌾",
+    desc: "From each by ability; to each by need. The granary is always full.",
+    advantages: ["+30% food", "+20% happiness", "+10% pop growth"],
+    disadvantages: ["-15% production", "-20% gold"],
+    popGrowthMult: 0.10,
+    happinessMult: 0.20,
+    goldMult: -0.20,
+  },
+  {
+    id: "industrial_juggernaut",
+    name: "Industrial Juggernaut",
+    icon: "🏭",
+    desc: "The factory IS the state. Smoke never sleeps.",
+    advantages: ["+40% production", "+15% capacity"],
+    disadvantages: ["-25% happiness", "-15% science"],
+    productionMult: 0.40,
+    capacityMult: 0.15,
+    happinessMult: -0.25,
+    scienceMult: -0.15,
+  },
 
   // ============================================================
   // ARCHETYPE GOVERNMENTS — forced when locked archetype matches
@@ -302,6 +325,10 @@ export type PlaystyleBranch = keyof typeof PLAYSTYLE_BRANCHES;
  * Pick a playstyle government based on which of the four Civilization-stage
  * branches the player has researched the most. Ties → Democracy.
  *
+ * Also checks for special conditions:
+ * - High Agriculture + Culture → Socialist Collective
+ * - High Industry → Industrial Juggernaut
+ *
  * @param technologies  the player's researched tech map
  * @returns             the chosen government id
  */
@@ -323,6 +350,16 @@ export function pickPlaystyleGovernment(
         counts[k] += 1;
       }
     }
+  }
+
+  // Check for special playstyle conditions:
+  // High Agriculture + Culture (food/happiness focus) → Socialist Collective
+  if (counts.culture >= 3 && counts.economics >= 2) {
+    return "socialist_collective";
+  }
+  // High Industry (production focus) → Industrial Juggernaut
+  if (counts.economics >= 4 && counts.military <= 1) {
+    return "industrial_juggernaut";
   }
 
   // Find the dominant branch (ties → Democracy).
@@ -351,10 +388,13 @@ export function pickPlaystyleGovernment(
 /**
  * Decide which government to assign at Empire evolution.
  *
- *  1. If the player has a locked archetype that maps to an archetype-specific
- *     government, that government wins (overrides playstyle).
- *  2. Otherwise, count techs per Civilization branch (Military, Science,
- *     Culture, Economics) and pick the playstyle government by dominant branch.
+ *  1. Count techs per Civilization branch (Military, Science, Culture, Economics).
+ *  2. If one branch is clearly dominant (more than any other + more than 0),
+ *     the playstyle government wins (available to ANYONE, including archetypes).
+ *     E.g. Necroid with heavy Military → Totalitarian (not Necrocracy).
+ *  3. If tech is spread evenly (no dominant branch), the archetype-specific
+ *     government is the fallback (reflects the species' natural tendencies).
+ *  4. If no archetype government either → Democracy.
  *
  * @returns the government id, or null if no archetype and no playstyle techs.
  */
@@ -362,11 +402,24 @@ export function pickGovernmentForEmpire(
   lockedArchetype: string | null,
   technologies: Record<string, boolean>
 ): string {
+  // First try playstyle — if one branch is clearly dominant, that wins
+  // regardless of archetype. A Necroid with heavy military gets Totalitarian.
+  const playstyle = pickPlaystyleGovernment(technologies);
+  // pickPlaystyleGovernment returns "democracy" on tie/empty. But Democracy
+  // is a valid playstyle pick (balanced). We need to distinguish "balanced"
+  // from "no techs at all".
+  const hasTechs = Object.values(technologies).some(Boolean);
+  if (playstyle !== "democracy") {
+    // A dominant branch was found — use the playstyle government.
+    return playstyle;
+  }
+  // No dominant branch (tie or balanced) — fall back to archetype government.
   if (lockedArchetype) {
     const archGov = ARCHETYPE_GOVERNMENT_MAP[lockedArchetype];
     if (archGov && GOVERNMENT_MAP[archGov]) return archGov;
   }
-  return pickPlaystyleGovernment(technologies);
+  // No archetype government — Democracy (balanced/neutral).
+  return hasTechs ? "democracy" : "democracy";
 }
 
 // TECH_REF — internal lazy reference to the tech branch lookup. Pulled in

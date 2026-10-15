@@ -1088,7 +1088,44 @@ h1, h2, h3 {
    - rainbow status dots
    - curly quotes are baked into the theme's name + desc in themes.ts
    - aspirational copy is baked into the theme's desc
+   - PULSING GRADIENT BACKGROUND (the AI loves animated gradients)
+   - "Powered by AI" watermark
 */
+.ai-cringe-mode {
+  animation: ai-bg-pulse 8s ease-in-out infinite;
+}
+
+@keyframes ai-bg-pulse {
+  0%, 100% {
+    background: linear-gradient(135deg,
+      oklch(0.13 0.045 280) 0%,
+      oklch(0.16 0.05 300) 30%,
+      oklch(0.15 0.04 260) 60%,
+      oklch(0.14 0.06 320) 100%);
+  }
+  50% {
+    background: linear-gradient(135deg,
+      oklch(0.16 0.05 300) 0%,
+      oklch(0.13 0.045 280) 30%,
+      oklch(0.14 0.06 320) 60%,
+      oklch(0.15 0.04 260) 100%);
+  }
+}
+
+/* "Powered by AI" watermark — fixed in bottom-right corner */
+.ai-cringe-mode::after {
+  content: "Powered by AI \1F916";
+  position: fixed;
+  bottom: 8px;
+  right: 8px;
+  font-size: 0.6rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: oklch(0.72 0.04 270);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .ai-cringe-mode .stat-card,
 .ai-cringe-mode [class*="rounded"] {
   backdrop-filter: blur(12px) saturate(1.1);
@@ -1117,9 +1154,13 @@ h1, h2, h3 {
   box-shadow: 0 0 8px color-mix(in oklch, var(--accent) 30%, transparent);
 }
 
+/* Force more emojis into UI text — prepend emoji to common UI elements */
+.ai-cringe-mode h1::before { content: "\1F680 "; }
+.ai-cringe-mode h2::before { content: "\2728 "; }
+.ai-cringe-mode h3::before { content: "\1F4A1 "; }
+
 /* Rainbow status dots — applied to any element with class "status-dot"
-   in the UI when AI mode is active. If the game does not currently
-   render any, this is harmlessly inert. */
+   in the UI when AI mode is active. */
 .ai-cringe-mode .status-dot,
 .ai-cringe-mode .dot {
   background: conic-gradient(
