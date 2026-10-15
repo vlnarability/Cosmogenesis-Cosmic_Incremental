@@ -4195,3 +4195,91 @@ Task: Comprehensive code review — verify what's ACTUALLY implemented vs claime
 ## Honest Verdict
 
 The game is **mechanically playable end-to-end** — all 10 layers have working data, store actions, tick integration, and UI modals. The user can advance from Cell to Galactic, prestige into L1 trials, light stars on the L2 constellation map, trade on L3, author worlds on L4 (via the OLD Sacred Grid), attack rival galaxies on L5 with the cosmic map, defend rifts on L6, breed creatures and skirmish on L7, negotiate with minor gods on L8, fight Old Gods with HP bars on L9, and trigger Big Bangs to discover archetypes on L10. The "fun" rating is 🔥 for 7 of 10 layers and 😐/🪲 for L3/L4/L8. **The #1 thing needed for launch: build the L4 hex-grid galaxy claim UI and rewire the L4→L5 unlock to use `isGalaxyComplete(galaxySystems)` instead of `hasAuthoredWorld(authoredWorlds)`.** Without it, the L4 redesign is 200+ lines of dead data and the player's first introduction to "cosmic-scale" gameplay (the L4 hex map) is missing — they go from L3's flat market straight to L5's galaxy tabs without ever plotting on a hex grid.
+
+---
+
+## Task TECH-SYS-TRIBAL — Tribal Techs & Systems (2024)
+
+**Scope**: Add Tribal stage techs and systems. 60 techs across 5 development paths + 73 new tribal systems (21 base + 52 archetype-drift across all 13 archetypes).
+
+### Files changed
+- `src/game/data/techs.ts` — appended 60 new Tribal techs after the existing 5 (midwifery, agriculture, masonry, writing, warcraft). Total Tribal techs: 65.
+- `src/game/data/systems.ts` — appended 73 new Tribal systems after the existing 7 (farm, well, sawmill, quarry, hut, totem, hearth_circle). Total Tribal systems: 80.
+
+### Task 1 — Tribal Techs (60 new, 5 paths × 12)
+
+All Tribal-stage. Existing interfaces used (`TechDef`). Each tech has `id`, `name`, `desc`, `stage: "tribal"`, `cost` (wood/food/water/materials/knowledge/culture/stone/clay/military_power), `branch`, `tier` (1-3), `requires` (cross-branch & intra-branch prereq ids), `effects`, `multiplier: { target: "production"|"capacity"|"population", value }`. T1 has no requires; T2 requires ≥1 T1; T3 requires ≥1 T2 (some also chain to other T3s as in the Advanced Smithing example).
+
+- **Path 1: Crafting** (T1: stone_knapping, fire_making, pottery, weaving; T2: metalworking, bronze_working, wheel, plow; T3: archery, mining_tools, woodworking, advanced_smithing). `advanced_smithing` requires `bronze_working` + `mining_tools` (per spec example).
+- **Path 2: Warfare** (T1: spear_hunting, bow_hunting, trapping, wolf_domestication; T2: fishing_nets, warrior_training, fortifications, siege_weapons; T3: bronze_weapons, war_tactics, military_organization, chariots). Cross-branch: `bronze_weapons` requires `bronze_working` (Crafting); `chariots` requires `wheel` (Crafting).
+- **Path 3: Agriculture** (T1: gathering, basic_agriculture, irrigation, crop_rotation; T2: animal_husbandry, fishing, food_preservation, fermentation; T3: selective_breeding, plow_agriculture, granary_tech, advanced_agriculture). Cross-branch: `plow_agriculture` requires `plow` (Crafting).
+- **Path 4: Construction** (T1: thatch_huts, mud_bricks, stone_walls, timber_framing; T2: adobe, defensive_walls, watchtowers, granaries_tech; T3: construction_workshop, monument, stone_masonry, tribal_urban_planning). ID `tribal_urban_planning` chosen to avoid collision with existing civilization-stage tech `urban_planning`.
+- **Path 5: Culture** (T1: cave_painting, storytelling, music, dance; T2: totem_poles, ancestor_worship, shamanism, rituals; T3: tattoos, pottery_decoration, oral_tradition, early_writing). Cross-branch: `pottery_decoration` requires `pottery` (Crafting).
+
+Archetype affinity drifts attached to ~22 of the new techs (e.g. wolf_domestication → mammalian +2; bronze_weapons → reptilian +2; advanced_agriculture → plantoid +2; tribal_urban_planning → humanoid +2; early_writing → molluscoid +2; etc.).
+
+### Task 2 — Tribal Systems (73 new)
+
+Existing interfaces used (`SystemDef`). Each system: `stage: "tribal"`, `icon`, `category`, `baseCost` in tribal resources, `costGrowth` (1.20–1.30), `maxOwned: 25`, optional `capacityBoost`/`upkeep`/`popGrowth`/`grantsAffinity`.
+
+**21 base systems** (skipped Farm/Well/Totem/Quarry as those exact IDs already exist as Tribal systems; Granary and Workshop use `tribal_` prefix to avoid collision with civilization-stage systems of the same name):
+hearth, tribal_granary, tribal_workshop, watchtower, palisade, shrine, campfire, storage_pit, hunting_camp, fishing_hut, gathering_camp, tool_maker, weaver_hut, pottery_hut, smithy, lumber_camp, clay_pit, market_stall, council_hall, training_ground, burial_ground.
+
+**52 archetype-drift systems** (4 per archetype × 13 archetypes), each granting affinity to its archetype (`+2` for the first system in each group, `+1` for the other three). All produce thematic resources aligned with the archetype's bonus profile:
+- Humanoid: humanoid_council_tent (+2), humanoid_trade_post, humanoid_diplomacy_hut, humanoid_language_school
+- Mammalian: mammalian_pack_lodge (+2, popGrowth), mammalian_nursing_quarters (+1, popGrowth), mammalian_warm_hearth, mammalian_hunting_pack
+- Reptilian: reptilian_sun_temple (+2), reptilian_egg_hatchery (+1, popGrowth), reptilian_cold_blood_camp, reptilian_reptile_guard
+- Necroid: necroid_necropolis (+2), necroid_bone_shrine, necroid_death_ritual_site, necroid_soul_pillar
+- Arthropoid: arthropoid_hive_city (+2), arthropoid_silk_workshop, arthropoid_swarm_barracks, arthropoid_chitin_forge
+- Plantoid: plantoid_sacred_grove (+2), plantoid_root_cellar (storage), plantoid_sun_temple, plantoid_forest_garden
+- Fungoid: fungoid_spore_village (+2), fungoid_mycelial_network, fungoid_decomposer_pit, fungoid_mushroom_hall
+- Molluscoid: molluscoid_pearl_market (+2), molluscoid_tide_mill, molluscoid_shell_fortress, molluscoid_ink_scribe
+- Lithoid: lithoid_crystal_city (+2, capacity), lithoid_mine_network, lithoid_stone_temple, lithoid_tectonic_pillar
+- Toxoid: toxoid_venom_works (+2), toxoid_toxic_swamp, toxoid_plague_cauldron, toxoid_acid_refinery
+- Avian: avian_aerie_nest (+2), avian_sky_shrine, avian_feather_market, avian_wind_rider_camp
+- Aquatic: aquatic_coral_city (+2), aquatic_tide_pool_farm, aquatic_deep_sanctuary, aquatic_pearl_fishery
+- Extremophile: extremophile_vent_city (+2, capacity), extremophile_radiation_shrine, extremophile_pressure_mine, extremophile_extreme_outpost
+
+Note: "Sun Temple" appears in both Reptilian and Plantoid lists (per spec); given distinct IDs `reptilian_sun_temple` and `plantoid_sun_temple`.
+
+### Lint result
+`bun run lint` → **0 errors**, 7 warnings (all in unrelated pre-existing files: `src/game/data/galaxies.ts` and `upload/logic.js`). New code introduces 0 errors and 0 warnings.
+
+### Totals
+- Tribal techs: 5 existing + 60 new = 65 total
+- Tribal systems: 7 existing + 73 new = 80 total
+- Net additions this task: 60 techs + 73 systems = 133 new entries
+
+---
+Task ID: TECH-SYS-CELL-CREATURE
+Agent: general-purpose
+Task: Add Cell + Creature techs & systems (27 Cell techs across 3 paths, 27 Creature techs across 3 paths, 59 Creature systems: 20 base + 39 archetype-drift across all 13 archetypes)
+
+Work Log:
+- **Cell techs** (`src/game/data/techs.ts`): Modified 2 existing cell techs to anchor the new path structure:
+  - `enzymatic_pathways` → repurposed as Metabolism Path #1 (branch "Metabolism", tier 1, removed requires, effects +20% ATP, multiplier 0.20 production). Kept fungoid +1 grantsAffinity.
+  - `membrane_reinforcement` → branch changed "Survival" → "Membrane" (still tier 1, no requires, +25% ATP).
+  - Added 25 NEW cell techs across 3 paths (8 Metabolism + 8 Membrane + 9 Genetics including `dna_replication` as Genetics #1). Costs in cell resources (glucose/atp/proteins/lipids/elements/science). Tiers 1–7 with proper prereq chains. `dna_repair` immune to mutation events, `osmoregulation` immune to water events (both with small token multipliers for code consistency).
+- **Creature techs** (`src/game/data/techs.ts`): Modified 2 existing creature techs to fit the new Evolution path:
+  - `tool_use` → branch "Survival"→"Evolution", requires `pack_instinct`→`natural_selection`, effects updated to "Unlock tool systems, +10% materials" (was +30%), multiplier 0.30→0.10.
+  - `domestication` → branch "Lineage"→"Evolution", tier 2→8, requires `pack_instinct`→`tool_use`, cost scaled up (food 30→80, knowledge 12→30, materials 10→25) since it's now a tier-8 tech. Kept mammalian +3 grantsAffinity.
+  - Added 25 NEW creature techs across 3 paths (7 Evolution + 9 Neural + 9 Anatomy). Costs in creature resources (food/water/materials/organic_matter/knowledge/culture). `camouflage` immune to predator events, `hibernation` survives droughts, `immune_system` immune to plague events (all with small token multipliers). Tier-1 starters: `natural_selection`, `photosensitivity`, `skeletal_framework` (no requires).
+- **Creature systems** (`src/game/data/systems.ts`): Added 56 NEW creature-stage systems (existing 6 kept as-is; total creature systems = 62):
+  - **17 base systems** (task listed 20 base by name, but 3 already existed or duplicated: `den`, `tool_cache` existed; `pack_den` appears in both base list and Mammalian archetype list, so it was placed in archetype-drift set with grantsAffinity mammalian +2). Added: hunting_lodge, nest, lookout_post, trail_maker, water_source, forge, burrow, territorial_marker, caching_hole, grooming_station, fire_pit, midden, scent_marker, lookout_tower, burrow_network, communal_nest, water_cache.
+  - **39 archetype-drift systems** — 3 per archetype × all 13 archetypes (Humanoid, Mammalian, Reptilian, Necroid, Arthropoid, Plantoid, Fungoid, Molluscoid, Lithoid, Toxoid, Avian, Aquatic, Extremophile). Each archetype has one +2-affinity system and two +1-affinity systems. Total drift per archetype = +4 (matching the spec). All grantsAffinity point at valid archetype IDs from `archetypes.ts`.
+- All systems use stage="creature", sensible costs (food/water/materials/organic_matter/knowledge), costGrowth 1.20–1.50, maxOwned 25 on popGrowth systems. SystemDef interface unchanged.
+- TechDef interface unchanged. All techs use proper `multiplier: { target, value }` shape.
+
+Stage Summary:
+- Cell techs: 5 existing (2 modified in place) + 25 new = 30 total in cell stage. 27 fit the 3 new paths (9 Metabolism + 9 Membrane + 9 Genetics), plus 3 legacy (`organelle_specialization` Survival, `photosynthesis` Lineage, `cellular_division` Metabolism tier 2) preserved untouched.
+- Creature techs: 5 existing (2 modified in place) + 25 new = 30 total in creature stage. 27 fit the 3 new paths (9 Evolution + 9 Neural + 9 Anatomy), plus 3 legacy (`pack_instinct` Survival, `language` Mind, `mating_seasons` Behavior) preserved untouched.
+- Creature systems: 6 existing + 56 new = 62 total. 59 fit the spec structure (20 base + 39 archetype-drift); 3 extra come from existing systems overlapping the base-20 list (`den`/`tool_cache` already existed and were not re-added; the existing `den` also grants mammalian +1 on top of the new Mammalian archetype-drift set).
+
+### Lint result
+`bun run lint` → **0 errors**, 7 warnings (all pre-existing in unrelated files: `src/game/data/galaxies.ts` and `upload/logic.js`). New code introduces 0 errors and 0 warnings.
+
+### Totals
+- Cell techs: 5 existing (2 modified) + 25 new = 30 total
+- Creature techs: 5 existing (2 modified) + 25 new = 30 total
+- Creature systems: 6 existing + 56 new = 62 total
+- Net additions this task: 50 new techs (25 cell + 25 creature) + 56 new systems = 106 new entries; 4 existing entries modified (2 cell techs + 2 creature techs)
