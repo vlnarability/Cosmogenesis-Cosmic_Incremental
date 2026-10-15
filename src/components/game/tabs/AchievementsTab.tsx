@@ -50,6 +50,11 @@ function AchievementsContent() {
   const totalCount = ACHIEVEMENTS.length;
   const prodBonus = achievementBonus(achievements, ctx, "production");
   const capBonus = achievementBonus(achievements, ctx, "capacity");
+  // ACHIEVEMENT-EXPANSION — also surface the EP + pop bonuses on the
+  // summary card. Both are additive multipliers applied at prestige / in
+  // the population tick (see store.ts).
+  const epBonus = achievementBonus(achievements, ctx, "ep");
+  const popBonus = achievementBonus(achievements, ctx, "pop");
 
   const filtered = filter === "all" ? ACHIEVEMENTS : ACHIEVEMENTS.filter((a) => a.category === filter);
 
@@ -95,6 +100,24 @@ function AchievementsContent() {
               </div>
               <div className="text-lg font-bold text-cyan-400 tabular-nums">
                 +{(capBonus * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5" />
+                EP Bonus
+              </div>
+              <div className="text-lg font-bold text-amber-400 tabular-nums">
+                +{(epBonus * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5" />
+                Pop Growth Bonus
+              </div>
+              <div className="text-lg font-bold text-pink-400 tabular-nums">
+                +{(popBonus * 100).toFixed(1)}%
               </div>
             </div>
           </div>

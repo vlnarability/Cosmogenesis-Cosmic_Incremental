@@ -95,3 +95,12 @@ These are full visual reskins of the entire game (Cell→Galactic + L1-L10). Eac
 - The game logic (formulas, progression, layers) stays the same — only the presentation changes
 - Unlocked dimensions persist in save data across runs
 - The dimension picker UI lives in the L10 ending screen
+
+## FTL Branch Ideas (Steam Release Expansion)
+Considered for the Solar stage — 3 branching FTL tech choices. Skip for now; revisit for the Steam release.
+
+| FTL Type | Pros | Cons | Theme |
+|---|---|---|---|
+| Warp Drive | +50% production, +30% pop growth | -20% happiness, -15% military | "Fold space, collapse distance" |
+| Wormhole Network | +100% trade value, +50% science | -30% stability, -20% military | "Bend the universe into a loop" |
+| Jump Drive | +80% all production, immune to distance | -40% pop growth, -25% capacity | "Skip space entirely" |

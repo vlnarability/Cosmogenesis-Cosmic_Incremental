@@ -6,11 +6,12 @@ import type { GameState, GameStore, StageId, TabId } from "./types";
 import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES } from "../data/resources";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
 import { ACTION_MAP } from "../data/actions";
-import { SYSTEMS, SYSTEM_MAP, systemCost } from "../data/systems";
-import { TECH_MAP, TECHS } from "../data/techs";
+import { SYSTEMS, SYSTEM_MAP, systemCost, systemsForStage } from "../data/systems";
+import { TECH_MAP, TECHS, techsForStage } from "../data/techs";
 import { UPGRADE_MAP, UPGRADES, upgradeCost } from "../data/upgrades";
 import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
 import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
+import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -19,6 +20,7 @@ import {
   getMaxRepeats,
   getChallengeDebuffAtRepeat,
   challengeMasteryBonusFromRepeats,
+  MAX_REPEATS_WITH_MASTERY,
   type ChallengeEffects,
 } from "../data/challenges";
 import { countChallengesCompleted } from "../data/prestigeLayers";
@@ -382,6 +384,7 @@ function initialRunState(): Partial<GameState> {
     technologies: {},
     archetypeAffinity: {},
     lockedArchetype: null,
+    activeGovernment: null,
     log: ["New run started. The first spark stirs."],
   };
 }
@@ -650,6 +653,12 @@ function initialMetaState(): Partial<GameState> {
     // Default rebindable shortcuts. See DEFAULT_KEYBOARD_SHORTCUTS above for
     // the action-id → layer mapping + comments.
     keyboardShortcuts: { ...DEFAULT_KEYBOARD_SHORTCUTS },
+
+    // ===== ACHIEVEMENT META (ACHIEVEMENT-EXPANSION) =====
+    // Loose bag of counters + UI flags that don't fit elsewhere on GameState.
+    // Wired keys are documented on the GameState type. Initialized to {} —
+    // buildAchievementCtx reads with `|| 0` defaults so missing keys are safe.
+    achievementMeta: {},
   };
 }
 
@@ -663,6 +672,28 @@ export const useGameStore = create<GameStore>()(
       tick: (dt) => {
         const s = get();
         if (s.paused) return;
+
+        // ACHIEVEMENT-EXPANSION — track consecutive idle duration (real
+        // time since the last player-initiated action). When the gap
+        // exceeds 1 second, increment `idleDurationSec` by the tick dt
+        // (capped at 3600 = 1 hour, the "Idle Master" threshold). The
+        // counter resets on any player action via `markPlayerAction`.
+        // We mutate the local `s.achievementMeta` snapshot so that any
+        // mid-tick flag updates (e.g. heresySurvivor) AND this idle
+        // counter are persisted by the tail set() call.
+        const idleMeta = { ...(s.achievementMeta || {}) };
+        const lastActionRealTime = (idleMeta.lastActionRealTime as number) || 0;
+        if (lastActionRealTime > 0) {
+          const gapSec = (Date.now() - lastActionRealTime) / 1000;
+          if (gapSec >= 1) {
+            const prevIdle = (idleMeta.idleDurationSec as number) || 0;
+            if (prevIdle < 3600) {
+              idleMeta.idleDurationSec = Math.min(3600, prevIdle + dt);
+            }
+          }
+        }
+        // Persist onto the local snapshot so the tail set() picks it up.
+        (s as GameState).achievementMeta = idleMeta;
 
         // ---- Temporal Acceleration: +0.5× effective speed per level ----
         const temporalLvl = s.upgrades["temporal_acceleration"] || 0;
@@ -851,8 +882,35 @@ export const useGameStore = create<GameStore>()(
         // Archetype system-cost multiplier (additive: +0.10 = +10% costs, -0.15 = -15%)
         const archSystemCostMult = archetype?.bonus.systemCostMult || 0;
 
+        // GOVERNMENT-SYSTEMS — apply active government bonuses (set when the
+        // player enters Empire stage). Folded into the archetype-bonus fields
+        // below so the existing per-resource + capacity + pop + happiness
+        // pipelines pick them up without duplicating logic.
+        const gov = s.activeGovernment ? GOVERNMENT_MAP[s.activeGovernment] : null;
+        const govAllMult = gov?.productionMult || 0;
+        const govPopMult = gov?.popGrowthMult || 0;
+        const govCapMult = gov?.capacityMult || 0;
+        const govMilitaryMult = gov?.militaryMult || 0;
+        // Happiness drift — government happinessMult (e.g. +0.20 Cultural
+        // Republic) is scaled to a per-second delta and folded into the
+        // archetype happiness drift so it caps naturally at the happiness cap.
+        const govHappinessPerTick = (gov?.happinessMult || 0) * HAPPINESS_DRIFT_SCALE;
+        // Per-resource government bonuses (science + gold). military is
+        // folded into the combined military multiplier below; tradeMult stays
+        // cosmetic until a market/trade system exists (mirrors archetype's
+        // tradeValueMult handling).
+        const govResourceBonus: Record<string, number> = {};
+        if (gov?.scienceMult) govResourceBonus.science = (govResourceBonus.science || 0) + gov.scienceMult;
+        if (gov?.goldMult)   govResourceBonus.gold    = (govResourceBonus.gold    || 0) + gov.goldMult;
+
+        const allAllMult = archAllMult + govAllMult;
+        const allPopMult = archPopMult + govPopMult;
+        const allCapMult = archCapMult + govCapMult;
+        const allMilitaryMult = archMilitaryMult + govMilitaryMult;
+        const allHappinessPerTick = archHappinessPerTick + govHappinessPerTick;
+
         const resources = { ...s.resources };
-        let capacities = recomputeCapacitiesFresh(s, capMult + archCapMult);
+        let capacities = recomputeCapacitiesFresh(s, capMult + allCapMult);
 
         // Cost reduction (frugality) — also used by auto-buyer
         // Layers 2-6: foresight cost reduction (additive, negative = cheaper).
@@ -904,21 +962,25 @@ export const useGameStore = create<GameStore>()(
           // fractional production rate. They still benefit from archAllMult +
           // stage scaling, but their effective count is multiplied by the
           // fraction (e.g. 0.20 = 20% of normal output).
+          // GOVERNMENT-SYSTEMS — govAllMult (productionMult) is folded in via
+          // `allAllMult` so all-production bonuses from both sources stack.
           const disabledFrac = isDisabledProducer ? archDisabledFrac : 1;
-          const mult = autoMult * techMult * stageMult * (1 + archAllMult) * disabledFrac;
+          const mult = autoMult * techMult * stageMult * (1 + allAllMult) * disabledFrac;
 
           // Per-resource archetype bonus
           // ARCHETYPES-REWORK — military_power gets an additional multiplier
           // from militaryPowerMult (Reptilian +15%, Toxoid +15%, etc.).
           // Lithoid gets bonus production from stone/alloy-producing systems
           // (productionFromMineralSystemsMult).
+          // GOVERNMENT-SYSTEMS — govResourceBonus (science + gold) and the
+          // combined allMilitaryMult are folded in here.
           const produces = sys.produces as Record<string, number>;
           const sysIsMineral = !!(produces.stone || produces.alloys);
           for (const [r, v] of Object.entries(produces)) {
             const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-            let resourceBonus = archResBonus;
-            if (r === "military_power" && archMilitaryMult) {
-              resourceBonus += archMilitaryMult;
+            let resourceBonus = archResBonus + (govResourceBonus[r] || 0);
+            if (r === "military_power" && allMilitaryMult) {
+              resourceBonus += allMilitaryMult;
             }
             if (sysIsMineral && archMineralBonus && (r === "stone" || r === "alloys")) {
               resourceBonus += archMineralBonus;
@@ -955,10 +1017,13 @@ export const useGameStore = create<GameStore>()(
 
         // ARCHETYPES-REWORK — archetype happiness drift (Fungoid -15% / Toxoid -10%).
         // Applied as a per-second delta, capped by the happiness capacity floor/ceiling.
-        if (archHappinessPerTick !== 0) {
+        // GOVERNMENT-SYSTEMS — government happinessMult is folded in via
+        // `allHappinessPerTick` so e.g. Cultural Republic (+20% happiness)
+        // drifts happiness up while Totalitarian (-30%) drifts it down.
+        if (allHappinessPerTick !== 0) {
           const cap = capacities.happiness || 100;
           const cur = resources.happiness ?? 50;
-          const next = Math.max(0, Math.min(cap, cur + archHappinessPerTick * realDt));
+          const next = Math.max(0, Math.min(cap, cur + allHappinessPerTick * realDt));
           resources.happiness = next;
         }
 
@@ -967,7 +1032,8 @@ export const useGameStore = create<GameStore>()(
         let popGrowthRate = 0.045; // base per second
         const happiness = resources.happiness || 50;
         popGrowthRate *= (1 + (happiness - 40) / 200);
-        popGrowthRate *= (1 + archPopMult);
+        // GOVERNMENT-SYSTEMS — govPopMult folded into allPopMult.
+        popGrowthRate *= (1 + allPopMult);
         // Layers 2-6: aggregate pop-growth bonus
         popGrowthRate *= (1 + layerPopBonus);
 
@@ -1010,6 +1076,12 @@ export const useGameStore = create<GameStore>()(
         // its own balance curve (see techMultiplier helper).
         const popTechMult = techMultiplier(s, "population");
         popGrowthRate *= popTechMult;
+
+        // ACHIEVEMENT-EXPANSION — apply the "pop" achievement bonus as an
+        // additive multiplier on population growth (e.g. "Population Boom"
+        // achievement grants +1% pop growth). Achievements are checked
+        // against the current snapshot via buildAchievementCtx.
+        popGrowthRate *= 1 + achievementBonus(s.achievements || {}, buildAchievementCtx(s), "pop");
 
         let populationProgress = (s.populationProgress || 0) + popGrowthRate * realDt;
         let population = s.population;
@@ -2107,6 +2179,15 @@ export const useGameStore = create<GameStore>()(
         // threshold seeding where 75 = "red" / 3 systems lost).
         if (heresy >= 75) {
           heresy = 75;
+          // ACHIEVEMENT-EXPANSION — flag that the player experienced (and
+          // thus "survived") a heresy run-ender event. Drives the "Heresy
+          // Survivor" achievement.
+          const heresyMeta = { ...(s.achievementMeta || {}) };
+          heresyMeta.heresySurvivor = 1;
+          (s as GameState).achievementMeta = heresyMeta;
+          // Persist the flag in the tick's tail set() by mutating the
+          // local snapshot — the bottom set() call below includes
+          // `achievementMeta` when it differs from the start snapshot.
           setTimeout(() => {
             get().addToLog("Heresy has reached 75 (average across owned galaxies). The god is cast down — the run ends in ruin.");
             get().triggerPrestige();
@@ -2676,6 +2757,10 @@ export const useGameStore = create<GameStore>()(
           divinityFromBackground,
           epFromBackground,
           evolutionPoints,
+          // ACHIEVEMENT-EXPANSION — persist the (possibly mutated)
+          // achievementMeta record from the top-of-tick idle update and
+          // any mid-tick flag updates (e.g. heresySurvivor).
+          achievementMeta: s.achievementMeta,
         });
         // L6 Universal Map — log rift spawn / corruption events (deferred to avoid setState-in-loop).
         for (const msg of riftLog) {
@@ -2735,6 +2820,10 @@ export const useGameStore = create<GameStore>()(
         set({
           resources: res,
           totalActions: (s.totalActions || 0) + 1,
+          // ACHIEVEMENT-EXPANSION — mark this as a player action so the
+          // tick can reset the consecutive idle counter (drives "Idle
+          // Master" — 1 hour without clicking).
+          achievementMeta: markPlayerAction(s),
         });
       },
 
@@ -3102,8 +3191,40 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // ACHIEVEMENT-EXPANSION — track fastest Galactic clear (for the
+        // "Speed Demon" achievement: reach Galactic in under 30 min).
+        // Galactic is reached by evolving past Solar; record the run-time
+        // at that moment and keep the minimum across all runs.
+        let achievementMeta = { ...(s.achievementMeta || {}) };
+        if (stage.id === "solar") {
+          const galacticClearTime = s.time;
+          const prevFastest = (achievementMeta.fastestGalacticClearSec as number) || 0;
+          if (prevFastest === 0 || galacticClearTime < prevFastest) {
+            achievementMeta.fastestGalacticClearSec = galacticClearTime;
+          }
+        }
+
+        // GOVERNMENT-SYSTEMS — when entering Empire (stageIndex becomes 4),
+        // auto-assign a government based on the player's locked archetype
+        // (forced archetype government) OR, when no archetype government
+        // applies, from the most-researched Civilization-stage tech branch.
+        // The government's tick bonuses are applied in the tick below.
+        let activeGovernment = s.activeGovernment ?? null;
+        if (nextStageIdx === 4 && !activeGovernment) {
+          const govId = pickGovernmentForEmpire(lockedArchetype, s.technologies);
+          if (govId && GOVERNMENT_MAP[govId]) {
+            activeGovernment = govId;
+            const g = GOVERNMENT_MAP[govId];
+            const advMsg = g.advantages.length ? g.advantages.join(", ") : "none";
+            const disMsg = g.disadvantages.length ? g.disadvantages.join(", ") : "none";
+            // Deferred log so it fires AFTER the "Evolved to Empire" line.
+            const govLine = `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
+            setTimeout(() => get().addToLog(govLine), 0);
+          }
+        }
+
         // Check achievements after stage clear
-        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, revealedLineageArchetypes, fastestCellClear } as GameState;
+        const postEvolveState = { ...s, stageClearCounts, lockedArchetype, revealedLineageArchetypes, fastestCellClear, activeGovernment, achievementMeta } as GameState;
         const achResult = checkAchievements(postEvolveState);
         const newAchievements = achResult.newOnes.length > 0
           ? [...(s.newAchievements || []), ...achResult.newOnes]
@@ -3129,6 +3250,10 @@ export const useGameStore = create<GameStore>()(
           fastestCellClear,
           lockedArchetype,
           revealedLineageArchetypes,
+          activeGovernment,
+          // ACHIEVEMENT-EXPANSION — persist the (possibly updated)
+          // fastestGalacticClearSec meta value.
+          achievementMeta,
           achievements: achResult.earned,
           newAchievements,
           activeStageTheme,
@@ -3170,6 +3295,14 @@ export const useGameStore = create<GameStore>()(
           fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult +
           hybridEp + allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
+
+        // ACHIEVEMENT-EXPANSION — apply the "ep" achievement bonus as an
+        // additive multiplier on EP earned from prestige (e.g. "Genesis
+        // Engine" achievement grants +2.5% EP).
+        const achEpBonus = achievementBonus(s.achievements || {}, buildAchievementCtx(s), "ep");
+        if (achEpBonus > 0) {
+          epEarned = Math.max(1, Math.floor(epEarned * (1 + achEpBonus)));
+        }
 
         // ARCHETYPES-REWORK — locked archetype EP-from-prestige bonus
         // (Necroid +50%, Necroid Ascendant +50%, etc.). Additive multiplier.
@@ -3518,7 +3651,29 @@ export const useGameStore = create<GameStore>()(
 
       setTab: (tab) => set({ currentTab: tab }),
       setSpeed: (speed) => set({ speed }),
-      togglePause: () => set((s) => ({ paused: !s.paused })),
+      // ACHIEVEMENT-EXPANSION — togglePause now also tracks consecutive
+      // pause duration. `achievementMeta.pauseDurationSec` records the
+      // longest single pause so the "Pause Master" achievement (60s) can
+      // fire even after the player un-pauses.
+      togglePause: () => {
+        const s = get();
+        const nowPaused = !s.paused;
+        const meta = { ...(s.achievementMeta || {}) };
+        if (nowPaused) {
+          // Begin a new pause window.
+          meta.pauseStartRealTime = Date.now();
+        } else {
+          // End the current pause window — update the max consecutive.
+          const start = (meta.pauseStartRealTime as number) || 0;
+          if (start > 0) {
+            const elapsed = Math.floor((Date.now() - start) / 1000);
+            const prev = (meta.pauseDurationSec as number) || 0;
+            meta.pauseDurationSec = Math.max(prev, elapsed);
+            meta.pauseStartRealTime = 0;
+          }
+        }
+        set({ paused: nowPaused, achievementMeta: meta });
+      },
       setShowShop: (v) => set({ showShop: v }),
       setShowEvolve: (v) => set({ showEvolve: v }),
       setShowSettings: (v) => set({ showSettings: v }),
@@ -3602,7 +3757,13 @@ export const useGameStore = create<GameStore>()(
           if (s.activeChallenge) {
             const newRepeatCounts = { ...(s.challengeRepeatCounts || {}) };
             delete newRepeatCounts[s.activeChallenge];
-            set({ activeChallenge: null, challengeRepeatCounts: newRepeatCounts });
+            // ACHIEVEMENT-EXPANSION — bump the trials-abandoned counter
+            // (drives the "Trial and Error" achievement: abandon 5 trials).
+            set({
+              activeChallenge: null,
+              challengeRepeatCounts: newRepeatCounts,
+              achievementMeta: bumpAchievementMeta(s, "trialsAbandoned", 1),
+            });
           } else {
             set({ activeChallenge: null });
           }
@@ -4354,6 +4515,9 @@ export const useGameStore = create<GameStore>()(
         set({
           genesisSeeds: (s.genesisSeeds || 0) - cost,
           galaxySystems,
+          // ACHIEVEMENT-EXPANSION — track total systems claimed across all
+          // runs (drives "Galactic Surveyor" achievement).
+          achievementMeta: bumpAchievementMeta(s, "galaxySystemsClaimedTotal", 1),
         });
         get().addToLog(
           `⭐ Claimed ${sys.name}! +10 worlds. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%.`
@@ -4665,10 +4829,16 @@ export const useGameStore = create<GameStore>()(
           mutated,
           mutatedStat: mutated ? mutatedStat : undefined,
         };
+        // ACHIEVEMENT-EXPANSION — track mutation events (drives the
+        // "First Mutation" + "Mutation Master" achievements).
+        const metaAfterCreature = mutated
+          ? bumpAchievementMeta(s, "mutationsTriggered", 1)
+          : (s.achievementMeta || {});
         set({
           creatures: [...(s.creatures || []), creature],
           divinity: (s.divinity || 0) - divinityCost,
           faith: (s.faith || 0) - faithCost,
+          achievementMeta: metaAfterCreature,
         });
         if (mutated) {
           get().addToLog(`🧬 Mutation! ${creature.name} (${body.name}) — ATK ${creature.attack} / DEF ${creature.defense} / SPD ${creature.speed}. (+50% to ${mutatedStat}, +20% instability). -${divinityCost} Div, -${faithCost} Faith.`);
@@ -5308,10 +5478,13 @@ export const useGameStore = create<GameStore>()(
           get().addToLog("Add at least one relic to the crucible to trigger a Big Bang.");
           return;
         }
+        // ACHIEVEMENT-EXPANSION — bump the lifetime Big Bang counter.
+        const newMeta = bumpAchievementMeta(s, "bigBangsTriggered", 1);
         set({
           universeSimulating: true,
           simulationStartTime: s.time,
           lastSimulationResult: null,
+          achievementMeta: newMeta,
         });
         get().addToLog("💥 Big Bang initiated — simulating the cosmos... (30s)");
       },
@@ -5381,6 +5554,10 @@ export const useGameStore = create<GameStore>()(
               relicsLost: 0,
               instability: 0,
             },
+            // ACHIEVEMENT-EXPANSION — bump the lifetime stable-universe
+            // counter (drives the "Genesis Engine" + "layer_10_complete"
+            // achievements).
+            achievementMeta: bumpAchievementMeta(s, "stableUniversesCreated", 1),
           });
           const discoveredCount = Object.values(discovered).filter(Boolean).length;
           const archName = archetypeId ? (GENESIS_ARCHETYPE_MAP[archetypeId]?.name || "Unknown") : "no archetype";
@@ -5631,6 +5808,13 @@ export const useGameStore = create<GameStore>()(
 
         get().addToLog(`Offline progress: simulated ${Math.floor(appliedDt / 60)}m ${Math.floor(appliedDt % 60)}s away.`);
 
+        // ACHIEVEMENT-EXPANSION — flag that the player used offline
+        // progress (drives the "Time Traveler" achievement).
+        const after2 = get();
+        set({
+          achievementMeta: bumpAchievementMeta(after2, "offlineProgressUsed", 0, { replace: 1 }),
+        });
+
         return { elapsed: appliedDt, resourcesGained, applied: true };
       },
 
@@ -5872,7 +6056,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 13,
+      version: 14,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -6290,6 +6474,23 @@ export const useGameStore = create<GameStore>()(
           };
         }
 
+        // ACHIEVEMENT-EXPANSION migration — seed the loose achievementMeta
+        // record (counters + UI flags) for older saves. All reads default
+        // to 0/undefined, so an empty object is safe; new counters added
+        // in future patches also benefit from the same `|| 0` defaults.
+        if (!persisted.achievementMeta) persisted.achievementMeta = {};
+
+        // v14 migration (GOVERNMENT-SYSTEMS): initialize `activeGovernment`
+        // to null for older saves. The evolveStage action will populate it
+        // on the next Empire entry. For saves already past Empire that
+        // never had a government assigned, we leave it null — the player
+        // will see no government panel and no government bonuses until
+        // their next prestige → Empire progression. (Bumping the version
+        // to 14 here so the migrate block is unambiguous.)
+        if (persisted.activeGovernment === undefined) {
+          persisted.activeGovernment = null;
+        }
+
         return persisted;
       },
     }
@@ -6357,6 +6558,90 @@ function buildAchievementCtx(s: GameState): AchievementCheckCtx {
   const techResearchedCount = Object.keys(s.technologies).filter((id) => s.technologies[id]).length;
   const upgradesOwnedCount = Object.values(s.upgrades).filter((c) => c > 0).length;
   const storyUnlockedCount = Object.keys(s.storyUnlocked).filter((id) => s.storyUnlocked[id]).length;
+
+  // Derive per-stage tech + system counts for stage completionist/builder
+  // achievements. techsByStage counts how many techs the player has researched
+  // for each stage; systemsByStage counts how many distinct system TYPES the
+  // player has built (≥1 owned) per stage.
+  const techsByStage: Record<string, number> = {};
+  const systemsByStage: Record<string, number> = {};
+  for (const st of STAGE_IDS) {
+    const stageTechIds = techsForStage(st).map((t) => t.id);
+    const stageSystemIds = systemsForStage(st).map((sy) => sy.id);
+    techsByStage[st] = stageTechIds.filter((id) => s.technologies[id]).length;
+    systemsByStage[st] = stageSystemIds.filter((id) => (s.ownedSystems[id] || 0) > 0).length;
+  }
+
+  // Challenges / Trials
+  const completedChallengesMap = s.completedChallenges || {};
+  const challengesCompletedCount = Object.values(completedChallengesMap).filter((v) => (v || 0) > 0).length;
+  const challengesTotalRepeats = Object.values(completedChallengesMap).reduce((a, b) => a + (b || 0), 0);
+  const challengesAtMaxLevel = Object.values(completedChallengesMap).filter((v) => (v || 0) >= MAX_REPEATS_WITH_MASTERY).length;
+
+  // Constellations (L2)
+  const constellationStarsLit = Object.values(s.constellationStars || {}).filter(Boolean).length;
+  const constellationsCompleted = Object.values(s.constellationsCompleted || {}).filter(Boolean).length;
+
+  // Divine Market (L3) — portfolio dividends counter is persisted.
+  const portfolioDividendsEarned = s.portfolioDividendsEarned || 0;
+
+  // Galaxy Claim (L4) — current run claimed count + total across runs.
+  const galaxySystemsClaimed = (s.galaxySystems || []).filter((g) => g.claimed).length;
+  const galaxySystemsClaimedTotal = (s.achievementMeta?.galaxySystemsClaimedTotal as number) || 0;
+
+  // Apotheosis (L5) — galaxies conquered (current run) + heresy survivor flag.
+  const galaxiesConquered = Object.values(s.conqueredGalaxies || {}).filter(Boolean).length;
+  const heresySurvivor = Boolean(s.achievementMeta?.heresySurvivor);
+
+  // Singularity (L6)
+  const riftsClosed = s.riftsClosed || 0;
+  const anchorsPlaced = s.anchorsPlaced || 0;
+
+  // Omnipotence (L7) — mutations triggered + outpost raids repelled.
+  const mutationsTriggered = (s.achievementMeta?.mutationsTriggered as number) || 0;
+  const raidsRepelled = s.raidsRepelled || 0;
+
+  // Divinity (L8) — alliances formed.
+  const alliancesFormed = Object.values(s.alliances || {}).filter(Boolean).length;
+
+  // Infinity (L9) — Old God battles won.
+  const oldGodBattlesWon = Object.values(s.oldGodBattles || {}).filter((b) => b?.status === "won").length;
+
+  // Eternity (L10) — Genesis Engine counters.
+  const bigBangsTriggered = (s.achievementMeta?.bigBangsTriggered as number) || 0;
+  const stableUniversesCreated = (s.achievementMeta?.stableUniversesCreated as number) || 0;
+  const discoveredProceduralArchetypes = Object.keys(s.discoveredArchetypes || {}).filter((id) => s.discoveredArchetypes[id]).length;
+  const cosmicBoonStacks = s.cosmicBoonStacks || 0;
+
+  // Layer unlock state — count unlocked non-default layers.
+  const unlockedLayers = s.unlockedLayers || {};
+  const unlockedLayerCount = Object.values(unlockedLayers).filter(Boolean).length;
+
+  // Meta progression
+  const totalPlayTime = s.totalPlayTime || 0;
+  const totalActions = s.totalActions || 0;
+  const totalSystemsBuilt = s.totalSystemsBuilt || 0;
+  const totalTechResearched = s.totalTechResearched || 0;
+  const stageIndex = s.stageIndex;
+
+  // Government + divine engine worlds
+  const governmentAssigned = !!s.activeGovernment;
+  const divineEngineWorlds = s.backgroundSimulations || 0;
+
+  // Fun / hidden UI flags (populated by store actions on the same record)
+  const meta = s.achievementMeta || {};
+  const titleClickCount = (meta.titleClicks as number) || 0;
+  const versionClickCount = (meta.versionClicks as number) || 0;
+  const aiThemeActive = Boolean(meta.aiThemeActive);
+  const viewedCredits = Boolean(meta.viewedCredits);
+  const offlineProgressUsed = Boolean(meta.offlineProgressUsed);
+  const idleDurationSec = (meta.idleDurationSec as number) || 0;
+  const pauseDurationSec = (meta.pauseDurationSec as number) || 0;
+  const trialsAbandoned = (meta.trialsAbandoned as number) || 0;
+  const fastestTrialClearSec = (meta.fastestTrialClearSec as number) || 0;
+  const fastestGalacticClearSec = (meta.fastestGalacticClearSec as number) || 0;
+  const marketTradesTotal = (meta.marketTradesTotal as number) || 0;
+
   return {
     galacticWins: s.galacticWins,
     totalRuns: s.totalRuns,
@@ -6369,6 +6654,52 @@ function buildAchievementCtx(s: GameState): AchievementCheckCtx {
     maxPopulation: s.maxPopulation || 0,
     fastestCellClear: s.fastestCellClear || 0,
     totalEventsResolved: s.totalEventsResolved || 0,
+
+    // New fields
+    stageIndex,
+    totalPlayTime,
+    totalActions,
+    totalSystemsBuilt,
+    totalTechResearched,
+    unlockedLayers,
+    unlockedLayerCount,
+    challengesCompletedCount,
+    challengesTotalRepeats,
+    challengesAtMaxLevel,
+    trialsAbandoned,
+    fastestTrialClearSec,
+    fastestGalacticClearSec,
+    constellationStarsLit,
+    constellationsCompleted,
+    marketTradesTotal,
+    portfolioDividendsEarned,
+    galaxySystemsClaimed,
+    galaxySystemsClaimedTotal,
+    galaxiesConquered,
+    heresySurvivor,
+    riftsClosed,
+    anchorsPlaced,
+    mutationsTriggered,
+    raidsRepelled,
+    alliancesFormed,
+    oldGodBattlesWon,
+    bigBangsTriggered,
+    stableUniversesCreated,
+    discoveredProceduralArchetypes,
+    cosmicBoonStacks,
+    chosenEnding: s.chosenEnding,
+    techsByStage: techsByStage as Record<StageId, number>,
+    systemsByStage: systemsByStage as Record<StageId, number>,
+    shopUpgradesAllOwned: upgradesOwnedCount >= UPGRADES.length,
+    governmentAssigned,
+    divineEngineWorlds,
+    titleClickCount,
+    versionClickCount,
+    aiThemeActive,
+    viewedCredits,
+    offlineProgressUsed,
+    idleDurationSec,
+    pauseDurationSec,
   };
 }
 
@@ -6448,3 +6779,41 @@ export function isSystemCapped(
 
 // Export for components
 export { STAGES, STAGE_IDS, SYSTEMS, TECHS, UPGRADES, ARCHETYPE_MAP };
+
+// ===========================================================================
+// ACHIEVEMENT-EXPANSION helpers
+// ===========================================================================
+// bumpAchievementMeta — increment a counter (or set a boolean flag encoded
+// as 0/1) on the loose `achievementMeta` record. Returns the new meta
+// object so callers can include it in a `set({...})` call. The `delta`
+// defaults to 1; pass 0 to set a flag without incrementing.
+function bumpAchievementMeta(
+  s: GameState,
+  key: string,
+  delta: number = 1,
+  opts: { cap?: number; replace?: number } = {}
+): Record<string, number> {
+  const meta = { ...(s.achievementMeta || {}) };
+  const cur = (meta[key] as number) || 0;
+  let next: number;
+  if (opts.replace !== undefined) {
+    next = opts.replace;
+  } else {
+    next = cur + delta;
+  }
+  if (opts.cap !== undefined && next > opts.cap) next = opts.cap;
+  meta[key] = next;
+  return meta;
+}
+
+// markPlayerAction — bump lastActionRealTime + reset consecutive idle timer.
+// Called by any player-initiated action (manual action, buy, evolve, etc.)
+// so the tick can compute idle duration as `now - lastActionRealTime`.
+function markPlayerAction(s: GameState): Record<string, number> {
+  const meta = { ...(s.achievementMeta || {}) };
+  meta.lastActionRealTime = Date.now();
+  // Reset the consecutive idle counter — "Idle Master" needs a full hour
+  // without ANY player click.
+  meta.idleDurationSec = 0;
+  return meta;
+}

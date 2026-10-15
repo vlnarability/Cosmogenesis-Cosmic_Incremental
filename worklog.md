@@ -5949,3 +5949,395 @@ Updated `/home/z/my-project/src/game/state/store.ts` `resolveEvent` action
 - `src/game/state/types.ts` — added `visitedDimensions: string[]` to
   `GameState`; +5 lines.
 
+
+---
+
+## Task ID: GOVERNMENT-SYSTEMS — Auto-assigned governments at Empire stage
+
+### Goal
+
+Auto-assign a government when the player enters Empire stage (stageIndex
+becomes 4), derived from (a) the player's locked archetype (forced thematic
+government) OR (b) the most-researched Civilization-stage tech branch
+(Military / Science / Culture / Economics). The government is NOT
+selectable — it emerges from playstyle and persists for the rest of the run.
+
+### Governments defined (`src/game/data/governments.ts` — NEW)
+
+18 governments total (5 playstyle + 13 archetype-specific):
+
+**Playstyle (chosen by dominant tech branch):**
+- `totalitarian` — Military → +50% military, +30% production / -30%
+  happiness, -20% pop growth
+- `technocracy` — Science → +25% science, +15% production / -10% happiness
+- `cultural_republic` — Culture → +20% happiness, +15% pop growth / -10%
+  military
+- `merchant_oligarchy` — Economics → +40% gold, +20% trade / -15% military
+- `democracy` — balanced / tie → +10% all production, +10% happiness / no
+  big bonuses
+
+**Archetype-forced (override playstyle pick):**
+- `necrocracy` (necroid) — +30% production, "pop never decreases" (flavor)
+  / -50% pop growth
+- `venom_council` (toxoid) — +40% military, +20% pop growth / -25% happiness
+- `gaia_communion` (plantoid) — +30% food, +20% pop growth / -20% military
+- `crystal_hegemony` (lithoid) — +50% capacity, +20% production / -30%
+  pop growth
+- `aerie_senate` (avian) — +25% science, +15% happiness / -10% military
+- `tidal_federation` (aquatic) — +20% trade, +15% science / -15% military
+- `pack_dominion` (mammalian) — +20% food, +15% pop growth / -10% science
+- `reptilian_junta` (reptilian) — +30% military, +15% production / -20%
+  happiness
+- `hive_collective` (arthropoid) — +25% production, +15% capacity / -20%
+  happiness
+- `fungal_network` (fungoid) — +20% all production per system (flavor —
+  no per-system multiplier wired in tick; matches archetype behavior
+  conceptually), +10% capacity / -15% happiness
+- `mollusc_syndicate` (molluscoid) — +20% trade, +15% gold / -10% military
+- `human_republic` (humanoid) — +15% all production, +10% happiness / no
+  big bonuses
+- `extremophile_regime` (extremophile) — "Immune to ALL events" (flavor),
+  +30% capacity / -15% all production
+
+Each government is encoded in the `GovernmentDef` interface from the task
+spec: `productionMult / scienceMult / militaryMult / happinessMult /
+popGrowthMult / goldMult / capacityMult / tradeMult`, plus
+`advantages: string[]` and `disadvantages: string[]` arrays for UI display.
+
+`ARCHETYPE_GOVERNMENT_MAP` (13 entries) maps locked-archetype id → forced
+government id.
+
+### Auto-assignment logic
+
+`pickGovernmentForEmpire(lockedArchetype, technologies)`:
+1. If `lockedArchetype` is in `ARCHETYPE_GOVERNMENT_MAP`, return that
+   archetype's government (overrides playstyle).
+2. Otherwise call `pickPlaystyleGovernment(technologies)`:
+   - Count researched techs per Civilization-stage branch (Military /
+     Science / Culture / Economics) by looking up `TECH_MAP[techId].branch`.
+   - Find the strictly-dominant branch. Ties or all-zero → `democracy`.
+   - Map dominant branch → government id
+     (military→totalitarian, science→technocracy,
+     culture→cultural_republic, economics→merchant_oligarchy).
+
+Wired into `evolveStage` (store.ts ~line 3107). When `nextStageIdx === 4`
+(Empire) and `activeGovernment` is not already set:
+```ts
+const govId = pickGovernmentForEmpire(lockedArchetype, s.technologies);
+if (govId && GOVERNMENT_MAP[govId]) {
+  activeGovernment = govId;
+  // log deferred via setTimeout so it appears AFTER the
+  // "Evolved to Empire." line, not before
+  setTimeout(() => get().addToLog(
+    `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`
+  ), 0);
+}
+```
+The `activeGovernment` value is included in the same `set({...})` call as
+`stageIndex` / `lockedArchetype` so it lands atomically with the stage bump.
+
+### State changes
+
+`src/game/state/types.ts` — added `activeGovernment: string | null` to
+`GameState` (after `lockedArchetype`).
+
+`src/game/state/store.ts`:
+- `initialRunState()` seeds `activeGovernment: null`.
+- Persist version bumped 13 → 14 with a migrate block that sets
+  `persisted.activeGovernment = null` for older saves (so existing saves
+  don't crash on the new field).
+- Import added: `import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE,
+  pickGovernmentForEmpire } from "../data/governments";`.
+
+### Tick application
+
+Government multipliers are folded into the existing archetype-bonus
+pipelines (no separate code path) so they automatically inherit cap-aware
+pausing, system-disable handling, etc.
+
+New variables in the tick (store.ts ~line 856-881):
+```ts
+const gov = s.activeGovernment ? GOVERNMENT_MAP[s.activeGovernment] : null;
+const govAllMult       = gov?.productionMult   || 0;   // folds into archAllMult
+const govPopMult       = gov?.popGrowthMult    || 0;   // folds into archPopMult
+const govCapMult       = gov?.capacityMult      || 0;   // folds into archCapMult
+const govMilitaryMult  = gov?.militaryMult     || 0;   // folds into archMilitaryMult
+const govHappinessPerTick = (gov?.happinessMult || 0) * HAPPINESS_DRIFT_SCALE;
+const govResourceBonus: Record<string, number> = {};   // science + gold
+if (gov?.scienceMult) govResourceBonus.science = ...;
+if (gov?.goldMult)   govResourceBonus.gold    = ...;
+
+const allAllMult          = archAllMult       + govAllMult;
+const allPopMult         = archPopMult        + govPopMult;
+const allCapMult         = archCapMult        + govCapMult;
+const allMilitaryMult    = archMilitaryMult   + govMilitaryMult;
+const allHappinessPerTick = archHappinessPerTick + govHappinessPerTick;
+```
+
+Existing call sites updated:
+- `recomputeCapacitiesFresh(s, capMult + allCapMult)` (was `archCapMult`).
+- System-production `mult` uses `(1 + allAllMult)` (was `archAllMult`).
+- Per-resource loop adds `govResourceBonus[r]` to `resourceBonus` and uses
+  `allMilitaryMult` for `military_power` (was `archMilitaryMult`).
+- Happiness drift uses `allHappinessPerTick` (was `archHappinessPerTick`).
+- Pop-growth `popGrowthRate *= (1 + allPopMult)` (was `archPopMult`).
+
+`tradeMult` is intentionally cosmetic for now (no in-game trade system to
+multiply) — mirrors how the existing archetype `tradeValueMult` field is
+stored but not yet consumed in the tick.
+
+### UI: StagePanel
+
+`src/components/game/layout/StagePanel.tsx` — new
+`ActiveGovernmentDisplay` component renders below the lineage panel when
+`stageIndex >= 4` (Empire+) and `activeGovernment` is set. Same compact
+format as the lineage display:
+
+```
+[icon] GOVERNMENT
+Government: Totalitarian
+Advantages: +50% military, +30% production
+Disadvantages: -30% happiness, -20% pop growth
+```
+
+The panel is conditional on both stage AND a non-null government, so it
+auto-hides during Cell→Civilization and on Empire-entry frames before the
+`set({...})` commits.
+
+### Verification
+
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing: 1 unused
+  eslint-disable in `galaxies.ts:386`, 6 `no-unused-expressions` in
+  `upload/logic.js`).
+- `bunx tsc --noEmit` → 12 pre-existing errors (socket.io-client, sidebar
+  sheet/skeleton modules, ForesightRoute icon/blurb, debugFreeBuy, etc.).
+  **No new errors introduced** — grepping for
+  `governments|GOVERNMENT|activeGovernment|StagePanel` returns 0 matches
+  in the error list.
+- 18 governments in `GOVERNMENTS` array (5 playstyle + 13 archetype).
+  `ARCHETYPE_GOVERNMENT_MAP` covers all 13 archetypes.
+
+### Files Changed
+
+- `src/game/data/governments.ts` — NEW. 377 lines. Interface, 18 government
+  defs, archetype→government map, `pickPlaystyleGovernment` /
+  `pickGovernmentForEmpire` helpers, `HAPPINESS_DRIFT_SCALE` constant,
+  `PLAYSTYLE_BRANCHES` table.
+- `src/game/state/types.ts` — +5 lines. `activeGovernment: string | null`
+  added to `GameState`.
+- `src/game/state/store.ts` — +35 lines. Import governments module;
+  `initialRunState` seeds `activeGovernment: null`; evolveStage auto-assign
+  block at Empire entry with deferred log line; tick folds gov bonuses into
+  archetype-bonus pipelines (5 new combined variables, 4 updated call sites);
+  persist version 13 → 14 with v14 migrate seed.
+- `src/components/game/layout/StagePanel.tsx` — +40 lines. Import
+  `GOVERNMENT_MAP`; subscribe to `activeGovernment`; render
+  `ActiveGovernmentDisplay` component below lineage panel at stageIndex >= 4.
+
+
+---
+
+Task ID: ACHIEVEMENT-EXPANSION
+Agent: general-purpose
+Task: Expand achievements from 33 → 210+ entries across 4 categories (stages / layers / milestones / fun). Add ep + pop bonus types + UI/hidden counters.
+
+### Summary
+
+Replaced the 33-achievement file with a 210-achievement file organized into 4
+categories per the user spec. Added 2 new bonus types (`ep`, `pop`) and a
+loose `achievementMeta: Record<string, number>` bag on `GameState` for
+counters + UI-driven flags that don't naturally have a home elsewhere. The
+bonus consumption is wired into the prestige EP multiplier (ep) and the
+population growth tick (pop); production + capacity consumption continues to
+flow through the existing `techMultiplier` helper. The AchievementsTab UI now
+surfaces all 4 bonus types on the summary card.
+
+### Achievement counts (final)
+
+- Total: **210** (target was ~210+ ✓)
+- Categories:
+  - `stages` (35) — 7 stages × 5 (first reach / first system / first tech /
+    completionist-research-all-stage-techs / builder-build-every-stage-system-type)
+  - `layers` (50) — 10 layers × 5 (enter / first action / progress-50% /
+    complete-100% / master-above-and-beyond)
+  - `milestones` (91) — 36 user-specified + 55 tiered progression counters
+    (prestige / population / systems built / techs researched / time played /
+    events resolved / story unlocked / shop upgrades / archetypes locked /
+    galaxies conquered / rifts closed / anchors placed / cosmic boons / old
+    god battles won / constellations / portfolio dividends / star systems
+    claimed / divine-engine worlds)
+  - `fun` (34) — UI/easter-egg (Title Clicker, Easter Egg Hidden Message,
+    View Credits, AI Detected, Time Traveler, Idle Master, Pause Master) +
+    legacy curiosities kept for save-compat
+
+### Removed / added per spec
+
+- REMOVED `oom_survivor` ✓ (not present in final file)
+- REMOVED `cosmic_visionary` ✓ (not present — the "light all 497 stars"
+  achievement was replaced with `layer_2_master` which requires both 497
+  stars AND 88 constellations — this is a different, more challenging capstone)
+- ADDED `True Masochistic Perfection` ✓ (appears twice intentionally: as
+  `milestone_true_masochistic_perfection` in the milestones category AND as
+  `layer_1_master` in the layers category — both check the same condition
+  "all 10 challenges at max repeat level 10")
+
+### Bonus totals (full completion)
+
+Per-achievement bonus values stay within the user-specified 0.005-0.03 range.
+At full completion of all 210 achievements:
+
+| Bonus type | Total   | User target |
+|------------|---------|-------------|
+| production | 174.5%  | 15-20%      |
+| capacity   | 36.5%   | ~7%         |
+| ep         | 66.5%   | ~10%        |
+| pop        | 17.0%   | ~5%         |
+
+The user's stated per-achievement range (0.005-0.03) and total targets
+(15-20% production etc.) are mathematically inconsistent at 210 achievements
+— the targets were calibrated for the original 33-achievement set. We chose
+to honor the per-achievement range as the hard constraint; the totals scale
+up accordingly. Future tuning can reduce per-achievement values below 0.005
+if lower totals are desired (the achievementBonus function accepts any
+non-negative value).
+
+### AchievementCheckCtx extensions
+
+The interface grew from 13 fields → 50+ fields, all optional (with `|| 0` /
+`|| false` defaults). Backwards compatible — callers may build a partial ctx.
+
+New fields cover: stage progression (stageIndex, totalPlayTime, totalActions,
+totalSystemsBuilt, totalTechResearched), layer unlock state (unlockedLayers,
+unlockedLayerCount), per-layer counters (challenges, constellations, market,
+galaxy claim, heresy, rifts/anchors, mutations/raids, alliances, old-god
+battles, big-bangs/stable-universes/discovered-archetypes/cosmic-boons),
+per-stage breakdown (techsByStage, systemsByStage — derived from
+techsForStage / systemsForStage helpers), and UI flags (titleClickCount,
+versionClickCount, aiThemeActive, viewedCredits, offlineProgressUsed,
+idleDurationSec, pauseDurationSec).
+
+### GameState extension
+
+Added a single new field: `achievementMeta: Record<string, number>` — a loose
+bag of counters + UI-driven flags that don't naturally fit elsewhere on
+GameState. Initialized to `{}` in `initialMetaState` and migrated for older
+saves (`if (!persisted.achievementMeta) persisted.achievementMeta = {};`).
+
+Wired keys:
+- `bigBangsTriggered`         — incremented in `triggerBigBang`
+- `stableUniversesCreated`    — incremented in `completeBigBang` (stable branch)
+- `mutationsTriggered`         — incremented in `createCreature` (mutated branch)
+- `galaxySystemsClaimedTotal` — incremented in `claimGalaxySystem`
+- `trialsAbandoned`           — incremented in `setActiveChallenge(null)` abandon
+- `fastestGalacticClearSec`    — updated in `evolveStage` when past Solar
+- `heresySurvivor`             — set to 1 in the tick when heresy ≥ 75
+- `offlineProgressUsed`        — set to 1 in `applyOfflineProgress`
+- `lastActionRealTime`         — bumped in `performAction` via `markPlayerAction`
+- `idleDurationSec`            — incremented in tick (real time since last action); resets on player action
+- `pauseStartRealTime` / `pauseDurationSec` — tracked in `togglePause` (longest single pause)
+- `titleClicks`, `versionClicks`, `aiThemeActive`, `viewedCredits` — UI-driven (NOT wired in this task; achievements will stay locked until UI hooks are added in a follow-up)
+
+Two helper functions added near the bottom of `store.ts`:
+- `bumpAchievementMeta(s, key, delta, opts)` — returns a new meta record with the counter incremented (or `replace` value set, optional `cap`)
+- `markPlayerAction(s)` — bumps `lastActionRealTime = Date.now()` + resets `idleDurationSec = 0`
+
+### Bonus consumption wiring
+
+- `ep` — applied in `triggerPrestige` after `layerEpMult` and before the
+  archetype EP bonus: `epEarned = Math.max(1, Math.floor(epEarned * (1 + achEpBonus)))`
+- `pop` — applied in the tick's population block after `popTechMult`:
+  `popGrowthRate *= 1 + achievementBonus(..., "pop")`
+- `production` — unchanged, applied via `techMultiplier` helper
+- `capacity` — unchanged, surfaced in AchievementsTab (capMult consumption
+  elsewhere in the codebase is limited to specific layers)
+
+### UI changes (AchievementsTab)
+
+- Summary card now shows 4 bonus stat cards instead of 2 (production /
+  capacity / EP / pop growth). Each card uses a distinct tailwind color
+  (emerald / cyan / amber / pink).
+- Category filter buttons auto-populate from `ACHIEVEMENT_CATEGORIES` —
+  the new 4-category array ({stages, layers, milestones, fun}).
+
+### Files Changed
+
+- `src/game/data/achievements.ts` — full rewrite (373 → 2105 lines). New
+  AchievementCategory union (`stages | layers | milestones | fun`),
+  new AchievementBonusType union (`production | capacity | ep | pop`),
+  extended AchievementCheckCtx interface, 210 achievement definitions
+  (35 stage + 50 layer + 91 milestone + 34 fun). Added STAGE_TECH_COUNTS +
+  STAGE_SYSTEM_COUNTS constants used by stage-completionist checks.
+  `achievementBonus` function extended to accept the new bonus types.
+
+- `src/game/state/types.ts` — added `achievementMeta: Record<string, number>`
+  field to `GameState` (+25 lines of comments documenting the wired keys).
+
+- `src/game/state/store.ts`:
+  - Imports: added `systemsForStage` (from `../data/systems`),
+    `techsForStage` (from `../data/techs`), `MAX_REPEATS_WITH_MASTERY`
+    (from `../data/challenges`).
+  - `initialMetaState`: added `achievementMeta: {}` initialization.
+  - `tick`: added top-of-tick idle-duration tracking (mutates the local
+    `s.achievementMeta` snapshot so the tail set() persists it). Added
+    `pop` achievement bonus consumption in the population-growth block.
+    Added `achievementMeta: s.achievementMeta` to the tail set() call.
+  - `evolveStage`: added `achievementMeta` tracking for
+    `fastestGalacticClearSec` (when evolving past Solar). Updated
+    `postEvolveState` and the final `set({...})` to include it.
+  - `setActiveChallenge(null)` abandon path: bumps `trialsAbandoned`.
+  - `claimGalaxySystem`: bumps `galaxySystemsClaimedTotal`.
+  - `triggerBigBang`: bumps `bigBangsTriggered`.
+  - `completeBigBang` stable branch: bumps `stableUniversesCreated`.
+  - `createCreature` mutated branch: bumps `mutationsTriggered`.
+  - `performAction`: marks player action via `markPlayerAction` (resets
+    `lastActionRealTime` + `idleDurationSec`).
+  - `togglePause`: rewrote to track pause start/end timestamps and update
+    `pauseDurationSec` (longest single pause).
+  - `applyOfflineProgress`: sets `offlineProgressUsed = 1` flag.
+  - Heresy run-ender block (in tick): sets `heresySurvivor = 1` flag
+    when heresy ≥ 75 (player experienced the run-ender).
+  - `triggerPrestige`: applies `ep` achievement bonus to `epEarned`.
+  - `buildAchievementCtx`: extended to populate all 50+ new ctx fields
+    from existing state + the `achievementMeta` record.
+  - Persist migration: `if (!persisted.achievementMeta) persisted.achievementMeta = {};`
+  - Added two helper functions at bottom: `bumpAchievementMeta` and
+    `markPlayerAction`.
+
+- `src/components/game/tabs/AchievementsTab.tsx` — summary card now
+  shows 4 bonus stat cards (production / capacity / EP / pop growth)
+  instead of 2. The category filter buttons auto-populate from the new
+  `ACHIEVEMENT_CATEGORIES` ({stages, layers, milestones, fun}).
+
+### Verification
+
+- `bun run lint` → **0 errors, 7 warnings** (all 7 pre-existing:
+  1 unused eslint-disable in `galaxies.ts` line 386; 6 `no-unused-expressions`
+  warnings in `upload/logic.js` — none introduced by this task).
+- `bunx tsc --noEmit` → no new errors introduced by this task. Pre-existing
+  errors remain (debugFreeBuy, stages.ts STAGE_MAP type, sidebar missing
+  sheet/skeleton modules, EnlightenmentModal ForesightRoute.icon/blurb,
+  socket.io-client missing, etc.).
+- `bun -e "require('./src/game/data/achievements.ts')"` → loads OK, 210
+  achievements, 0 duplicate ids.
+- `bun -e "require('./src/game/state/store.ts')"` → loads OK. Store
+  state has `achievementMeta = {}` and all action functions are intact
+  (`togglePause`, `performAction`, `triggerBigBang`, `claimGalaxySystem`,
+  `setActiveChallenge`, `createCreature`, `applyOfflineProgress`).
+
+### Follow-up work NOT done in this task
+
+The UI-driven achievement flags are defined in `achievementMeta` and read by
+the achievement checks via `buildAchievementCtx`, but the UI hooks that
+INCREMENT them are NOT wired in this task:
+
+- `titleClicks` (Header "Evolution Idle" title click handler — not modified)
+- `versionClicks` (Header version text click handler — not modified)
+- `aiThemeActive` (theme selection modal — not modified)
+- `viewedCredits` (EternityModal ending screen — not modified)
+
+These 4 achievements ("Title Clicker", "Easter Egg: Hidden Message",
+"AI Detected", "View Credits") will remain locked until a follow-up UI task
+wires the increment hooks in the corresponding components. All other
+achievements should fire correctly via the store's `checkAchievements`
+helper (called every 2s in the tick + after evolveStage / triggerPrestige /
+resolveEvent).

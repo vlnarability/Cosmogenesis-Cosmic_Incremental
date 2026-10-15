@@ -3,6 +3,7 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
+import { GOVERNMENT_MAP } from "@/game/data/governments";
 import { formatNumber } from "../shared/format";
 import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,9 @@ export function StagePanel() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // GOVERNMENT-SYSTEMS — populated by evolveStage when entering Empire.
+  // Null until Empire+. Drives the government panel below the lineage.
+  const activeGovernment = useGameStore((s) => s.activeGovernment);
   // ARCHETYPES-REWORK — which archetypes the player has EVER locked in.
   // Persists across prestiges. Drives the ??? reveal state on the radar.
   const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
@@ -228,6 +232,13 @@ export function StagePanel() {
         )}
       </div>
 
+      {/* GOVERNMENT-SYSTEMS — government panel, shown below the lineage panel
+          once the player reaches Empire stage (stageIndex >= 4). Same compact
+          format as the lineage display. */}
+      {stageIndex >= 4 && activeGovernment && (
+        <ActiveGovernmentDisplay govId={activeGovernment} />
+      )}
+
       {/* Evolve progress */}
       <div className="space-y-1.5 mb-3">
         <ProgressRow label="Population" pct={popPct} color="bg-cyan-400" />
@@ -278,6 +289,38 @@ function LockedArchetypeDisplay({ archId }: { archId: string }) {
         <div className="text-[0.65rem] text-rose-300/90 leading-snug">
           <span className="text-muted-foreground">Disadvantages: </span>
           {debuff}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// GOVERNMENT-SYSTEMS — compact government panel. Mirrors the lineage panel's
+// shape (icon-name header + advantages / disadvantages lines).
+function ActiveGovernmentDisplay({ govId }: { govId: string }) {
+  const gov = GOVERNMENT_MAP[govId];
+  if (!gov) return null;
+  return (
+    <div className="stat-card mb-3 space-y-1">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+          <span className="text-sm leading-none">{gov.icon}</span>
+          <span className="uppercase tracking-wide">Government</span>
+        </div>
+      </div>
+      <div className="text-xs font-bold text-amber-300">
+        Government: {gov.name}
+      </div>
+      {gov.advantages.length > 0 && (
+        <div className="text-[0.65rem] text-emerald-300/90 leading-snug">
+          <span className="text-muted-foreground">Advantages: </span>
+          {gov.advantages.join(", ")}
+        </div>
+      )}
+      {gov.disadvantages.length > 0 && (
+        <div className="text-[0.65rem] text-rose-300/90 leading-snug">
+          <span className="text-muted-foreground">Disadvantages: </span>
+          {gov.disadvantages.join(", ")}
         </div>
       )}
     </div>

@@ -224,6 +224,11 @@ export interface GameState {
   technologies: Record<string, boolean>;
   archetypeAffinity: Record<string, number>; // drift during run
   lockedArchetype: string | null; // locked at Creature→Tribal
+  // GOVERNMENT-SYSTEMS — auto-assigned when the player enters Empire stage.
+  // Derived from locked archetype (forced archetype government) OR, when no
+  // archetype government applies, from the most-researched Civilization-stage
+  // tech branch (Military / Science / Culture / Economics). Null until Empire.
+  activeGovernment: string | null;
   log: string[];
 
   // Meta state
@@ -586,6 +591,32 @@ export interface GameState {
   // this map at fire-time and checks the action's layer-unlock gate.
   // Default values live in `DEFAULT_KEYBOARD_SHORTCUTS` (store.ts).
   keyboardShortcuts: Record<string, string>;
+
+  // ===== ACHIEVEMENT META (ACHIEVEMENT-EXPANSION) =====
+  // Persistent bag of counters + UI-driven flags that don't naturally have a
+  // home elsewhere on GameState. Each value is either a number (counter) or
+  // a boolean (encoded as 0/1). The bag is keyed by a small fixed set of
+  // string ids — see ACHIEVEMENT_META_KEYS in store.ts. buildAchievementCtx
+  // reads from this record to populate the AchievementCheckCtx.
+  //
+  // Wired keys (non-exhaustive):
+  //   bigBangsTriggered         — incremented when a Big Bang completes
+  //   stableUniversesCreated    — incremented when a stable universe emerges
+  //   mutationsTriggered         — incremented on each creature mutation
+  //   marketTradesTotal          — incremented on each market trade
+  //   galaxySystemsClaimedTotal  — incremented on each galaxy system claim
+  //   trialsAbandoned            — incremented when a challenge is abandoned
+  //   fastestTrialClearSec       — updated when a challenge completes quickly
+  //   fastestGalacticClearSec    — updated when Galactic ascension is reached
+  //   heresySurvivor             — set to 1 when a heresy run-ender is survived
+  //   titleClicks                — UI-driven (Header title click)
+  //   versionClicks              — UI-driven (Header version click)
+  //   aiThemeActive              — UI-driven (set when AI theme selected)
+  //   viewedCredits              — UI-driven (set when L10 ending screen shown)
+  //   offlineProgressUsed        — set when applyOfflineProgress runs
+  //   idleDurationSec            — incremented each tick without player action
+  //   pauseDurationSec           — incremented each tick while paused
+  achievementMeta: Record<string, number>;
 }
 
 export interface GameStore extends GameState {
