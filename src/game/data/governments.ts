@@ -340,25 +340,27 @@ interface ArchetypeGovCondition {
   science: number;
   culture: number;
   economics: number;
-  /** Which branch must be the highest (or null for balanced) */
+  /** Which branch must be the highest (or null for balanced/dual-focus) */
   dominantBranch?: PlaystyleBranch | null;
   /** Which branch must be the lowest (or null for any) */
   weakestBranch?: PlaystyleBranch | null;
+  /** If true, ALL branches must be nearly equal (max-min ≤ 1) — for Humanoid/Extremophile only */
+  requireBalance?: boolean;
 }
 
 export const ARCHETYPE_GOV_CONDITIONS: Record<string, ArchetypeGovCondition> = {
   // Humanoid → perfectly balanced across all 4 → Human Republic
-  humanoid:    { military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null },
-  // Mammalian → high Agriculture (Culture) + low Military → Pack Dominion
+  humanoid:    { military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null, requireBalance: true },
+  // Mammalian → high Culture + low Military → Pack Dominion
   mammalian:   { military: 0, science: 0, culture: 3, economics: 2, dominantBranch: "culture", weakestBranch: "military" },
   // Reptilian → high Military + low Culture → Reptilian Junta
-  reptilian:   { military: 4, science: 0, culture: 1, economics: 0, dominantBranch: "military", weakestBranch: "culture" },
+  reptilian:   { military: 4, science: 0, culture: 0, economics: 0, dominantBranch: "military", weakestBranch: "culture" },
   // Necroid → high Science + low Economics → Necrocracy
-  necroid:     { military: 0, science: 4, culture: 0, economics: 1, dominantBranch: "science", weakestBranch: "economics" },
+  necroid:     { military: 0, science: 4, culture: 0, economics: 0, dominantBranch: "science", weakestBranch: "economics" },
   // Arthropoid → high Economics + low Culture → Hive Collective
-  arthropoid:  { military: 0, science: 0, culture: 1, economics: 4, dominantBranch: "economics", weakestBranch: "culture" },
+  arthropoid:  { military: 0, science: 0, culture: 0, economics: 4, dominantBranch: "economics", weakestBranch: "culture" },
   // Plantoid → high Culture + low Military → Gaia Communion
-  plantoid:    { military: 1, science: 0, culture: 4, economics: 0, dominantBranch: "culture", weakestBranch: "military" },
+  plantoid:    { military: 0, science: 0, culture: 4, economics: 0, dominantBranch: "culture", weakestBranch: "military" },
   // Fungoid → high Economics + high Science (both ≥ 3) → Fungal Network
   fungoid:     { military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
   // Molluscoid → high Economics + high Culture (both ≥ 3) → Mollusc Syndicate
@@ -372,7 +374,7 @@ export const ARCHETYPE_GOV_CONDITIONS: Record<string, ArchetypeGovCondition> = {
   // Aquatic → high Science + high Economics (both ≥ 3) → Tidal Federation
   aquatic:     { military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
   // Extremophile → ALL branches exactly equal (perfect tie, all ≥ 2) → Extremophile Regime
-  extremophile:{ military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null },
+  extremophile:{ military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null, requireBalance: true },
 };
 
 /**
@@ -389,26 +391,26 @@ function matchesArchetypeCondition(
   if (counts.science < cond.science) return false;
   if (counts.culture < cond.culture) return false;
   if (counts.economics < cond.economics) return false;
-  // Check dominant branch (null = no single dominant required, e.g. balanced)
+  // Check dominant branch (only if specified)
   if (cond.dominantBranch) {
     const dom = counts[cond.dominantBranch];
-    // Must be strictly the highest
     for (const k of Object.keys(counts) as PlaystyleBranch[]) {
       if (k !== cond.dominantBranch && counts[k] > dom) return false;
     }
-  } else if (cond.dominantBranch === null) {
-    // For "balanced" conditions: check that the spread is tight (max - min ≤ 1)
-    const vals = Object.values(counts);
-    const max = Math.max(...vals);
-    const min = Math.min(...vals);
-    if (max - min > 1) return false;
   }
-  // Check weakest branch (if specified, must be the lowest)
+  // Check weakest branch (only if specified)
   if (cond.weakestBranch) {
     const weak = counts[cond.weakestBranch];
     for (const k of Object.keys(counts) as PlaystyleBranch[]) {
       if (k !== cond.weakestBranch && counts[k] < weak) return false;
     }
+  }
+  // Check perfect balance (only for Humanoid/Extremophile with requireBalance flag)
+  if (cond.requireBalance) {
+    const vals = Object.values(counts);
+    const max = Math.max(...vals);
+    const min = Math.min(...vals);
+    if (max - min > 1) return false;
   }
   return true;
 }
