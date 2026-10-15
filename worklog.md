@@ -5455,3 +5455,149 @@ Each theme has visually distinct oklch color palettes (background, foreground, c
 - **Organelles added**: 42 (6 universal + 36 drift across 9 archetypes), bringing Cell-stage total to 49.
 - **Themes added**: 20 (7 base mini-themes + 13 archetype mini-themes), each with its own `.theme-<id>` CSS class.
 - **Lint result**: 0 errors, 7 warnings (all pre-existing).
+
+---
+
+## Task ID: TECH-SYS-SOLAR-GALACTIC — Add Solar+Galactic techs & systems
+
+### Files Modified
+1. `src/game/data/techs.ts` — appended 60 new Solar techs (8 paths) + 46 new Galactic techs (6 paths).
+2. `src/game/data/systems.ts` — appended 46 new Solar systems (37 base + 9 archetype-drift) + 46 new Galactic systems (41 base + 5 archetype-drift).
+
+### Solar Techs (60 new across 8 paths; brings Solar total to 63 with 3 existing)
+- **Path 1 — Propulsion** (8): chemical_rockets, ion_drives, nuclear_thermal, solar_sails, fusion_drives, antimatter_drives, warp_theory, ftl_theory.
+- **Path 2 — Life Support** (8): basic_life_support, closed_loop_systems, hydroponic_farms, artificial_gravity, radiation_shielding, cryogenic_sleep, biome_domes, ecosystem_engineering.
+- **Path 3 — Orbital Construction** (8): space_stations, orbital_habitat_theory, space_elevator, orbital_factories, solar_power_arrays, orbital_defense_platforms, space_docks, megastructures.
+- **Path 4 — Planetary Colonization** (8): dome_cities, terraforming_basics, atmospheric_processors, subterranean_cities, ocean_cities, venus_floating_cities, mars_domes, gas_giant_platforms.
+- **Path 5 — Mining & Extraction** (8): asteroid_mining, lunar_mining, comet_harvesting, gas_giant_extraction, deep_core_mining, helium_3_mining, rare_element_refinery, antimatter_collection.
+- **Path 6 — Energy Generation** (6, trimmed to avoid overlap with existing `fusion_power` tech + `solar_array` system): antimatter_reactors, dyson_swarm, stellar_lifters, black_hole_engines, zero_point_energy, cosmic_strings.
+- **Path 7 — Military** (8): orbital_weapons, space_fleets, planetary_defense, asteroid_deflection, stellar_weapons, shield_technology, space_marines, warp_warfare.
+- **Path 8 — Communications** (6, trimmed to avoid overlap with `data_sanctum` system + comm systems): interplanetary_internet, quantum_entanglement_comms, subspace_radio, galactic_positioning, knowledge_crystals, mind_network.
+
+### Galactic Techs (46 new across 6 paths; brings Galactic total to 50 with 4 existing)
+- **Path 1 — FTL Drives** (8): warp_drive, hyperdrive, jump_drive, wormhole_network, slipstream, transwarp, spatial_folding, dimensional_jump.
+- **Path 2 — Governance** (7, dropped `intergalactic_relations` as duplicate of `galactic_law`): galactic_council, federation, diplomatic_corps, trade_federation, cultural_exchange, migration_treaties, galactic_law.
+- **Path 3 — Megastructures** (8): dyson_sphere, ringworld, habitat_world, stellar_engine, matter_transmitter, star_forge, galactic_computer, cosmic_web.
+- **Path 4 — Stellar Engineering** (7, dedup'd spec-listed `Star Forge` since it lives in Path 3): star_lifting, star_forging, nova_harvest, black_hole_mining, pulsar_tapping, quasar_energy, stellar_nursery.
+- **Path 5 — Cosmic Defense** (8): galactic_shield, planetary_cloaking, stellar_fortress, wormhole_defense, spacetime_distortion, reality_anchor, dimensional_barrier, cosmic_navy.
+- **Path 6 — Transcendence** (8): consciousness_upload, digital_ascension, cosmic_mind, universal_awareness, reality_engineering, universe_simulation, dimensional_escape, omega_point.
+
+### Solar Systems (46 new; total 50 with 4 existing)
+- **Base (37)**: fusion_reactor, orbital_station, space_elevator, mars_colony, venus_habitat, asteroid_mine, lunar_base, space_dock, orbital_factory, dyson_swarm_node, comm_relay, research_station, defense_platform, habitat_dome, hydroponic_farm, cryogenic_vault, radiation_shield, terraforming_plant, helium_3_refinery, antimatter_collector, stellar_lifter, deep_space_probe, gas_platform, subterranean_city, ocean_colony, spaceport, fusion_plant, antimatter_plant, orbital_defense, space_barracks, comm_hub, data_center, research_lab, space_factory, cargo_station, repair_dock, navigation_beacon. (Skipped `solar_panel_array`/`solar_collector`/`orbital_habitat` as duplicates of existing `solar_array`/`orbital_habitats` systems.)
+- **Archetype-drift (9)**: dyson_trees (plantoid+2), orbital_toxin_network (toxoid+2), mycelium_network (fungoid+2), crystal_lattice_station (lithoid+2), crypt_vault (necroid+2), vacuum_habitat (extremophile+2), sky_spire (avian+2), hive_station (arthropoid+2), ice_comet_tug (aquatic+2).
+
+### Galactic Systems (46 new; total 50 with 4 existing)
+- **Base (41)**: dyson_sphere, ringworld, galactic_council, warp_gate_network, stellar_forge, black_hole_generator, antimatter_factory, cultural_exchange, trade_hub, research_nexus, defense_fleet, habitat_world, terraforming_fleet, comm_relay_network, resource_processing_hub, military_academy, diplomatic_station, science_vessel, mining_fleet, cargo_fleet, navigation_array, sensor_array, shield_generator, stealth_field, temporal_research_station, quantum_lab, cosmic_observatory, dimensional_anchor, reality_stabilizer, star_lifter, nova_harvester, pulsar_energy_plant, quasar_tap, matter_synthesizer, energy_converter, knowledge_archive, mind_interface, digital_realm, consciousness_network, universal_library, omega_point_engine. (Skipped `data_center` and `colony_ship_fleet` and `energy_grid` as duplicates of existing systems.)
+- **Archetype-drift (5)**: venom_fleet_doctrine (toxoid+2), gaia_protocol (plantoid+2), spore_nebula (fungoid+2), crystal_siphon (lithoid+2), tomb_world_forge (necroid+2).
+
+### Balance Notes
+- Solar tier 1 techs: ~30–100 cost; tier 2: ~200–800; tier 3: ~1500–6000. Energy/alloys/science/data primary; military_power, food, water, production, influence used where thematic.
+- Galactic tier 1 techs: ~150–300 cost; tier 2: ~500–2000; tier 3: ~3000–50000. Adds influence as a primary resource; transcendence path scales up to +500% all production (omega_point, multiplier value 5.0).
+- Solar systems: tier-1 base cost 25–150; tier-2 200–500; tier-3 1000+ (Dyson swarm node, stellar lifter). Production rates tuned to ~10–20% return on base cost.
+- Galactic systems: tier-1 150–400; tier-2 800–2500; tier-3 5000+. Megastructures gated via `requiredTech` and `maxOwned` caps (e.g. dyson_sphere max 8, omega_point_engine max 1).
+
+### Lint Result
+- `bun run lint`: **0 errors, 7 warnings** (all pre-existing in unrelated files: `src/game/data/galaxies.ts`, `upload/logic.js`).
+- `bunx tsc --noEmit`: 0 errors in `techs.ts` or `systems.ts` (pre-existing TS errors in unrelated files untouched).
+
+---
+
+## Task: TECH-SYS-CIV-EMPIRE — Civ + Empire techs & systems
+
+**Date**: 2025-01-15 (sandbox session)
+**Task ID**: TECH-SYS-CIV-EMPIRE
+**Files modified**:
+- `/home/z/my-project/src/game/data/techs.ts` (+160 new techs: 70 civilization + 90 empire)
+- `/home/z/my-project/src/game/data/systems.ts` (+135 new systems: 65 civilization + 70 empire)
+
+### Civilization Techs (70 new; 7 paths × 10)
+All `stage: "civilization"`, branches per path, tier 1–3, with `requires` chains inside each path. Tech IDs prefixed `civ_` to avoid collisions with existing tribal techs that share names (e.g. `fortifications`, `bronze_weapons`, `crop_rotation`, `selective_breeding`, `plow_agriculture`).
+
+- **Path 1 — Agriculture**: civ_plow_agriculture, civ_irrigation_canals, civ_terraced_farming, civ_crop_rotation, civ_selective_breeding, civ_aqueducts_tech, civ_feudal_agriculture, civ_water_mill, civ_three_field_system, civ_fertilization.
+- **Path 2 — Industry**: civ_smithing, civ_metallurgy, civ_currency_minting, civ_workshop_organization, civ_iron_working, civ_steel_working, civ_guild_system, civ_glass_making, civ_water_power, civ_wind_power. (`civ_currency_minting` renamed from spec's "Currency" to avoid collision with existing `currency_system` tech.)
+- **Path 3 — Science**: civ_writing_system, civ_mathematics, civ_astronomy, civ_philosophy, civ_medicine, civ_engineering, civ_architecture, civ_anatomy, civ_alchemy, civ_printing_press.
+- **Path 4 — Military**: civ_professional_army, civ_fortifications_tech, civ_bronze_weapons_tech, civ_iron_weapons, civ_cavalry, civ_siege_engines, civ_naval_power, civ_castles, civ_crossbow, civ_trebuchet. (`civ_professional_army` replaces spec's "Standing Army" to avoid collision with existing `standing_army` tech.)
+- **Path 5 — Economics**: civ_barter, civ_fiat_currency, civ_banking, civ_trade_routes, civ_merchant_guilds, civ_marketplaces, civ_caravans, civ_maritime_trade, civ_taxation, civ_insurance. (`civ_fiat_currency` replaces spec's "Currency" duplicate.)
+- **Path 6 — Culture**: civ_theater_tech, civ_literature, civ_sculpture, civ_painting, civ_music_theory, civ_poetry, civ_festivals, civ_monuments_tech, civ_libraries_tech, civ_universities_tech.
+- **Path 7 — Government**: civ_tribal_council, civ_chiefdom, civ_monarchy, civ_code_of_laws, civ_bureaucracy_civ, civ_republic, civ_citizenship, civ_census, civ_tax_collection, civ_civil_service. (`civ_bureaucracy_civ` renamed to avoid collision with existing empire tech `bureaucracy`.)
+
+### Civilization Systems (65 new; 30 base + 35 archetype-drift)
+Base systems prefixed `civ_` (existing Market, Temple, Barracks, Workshop, Granary already present in civ stage are not duplicated). Archetype-drift prefixed `civ_arch_`.
+
+- **Base (30 new)**: civ_farm, civ_well, civ_library, civ_mint, civ_aqueduct, civ_harbor, civ_mill, civ_forge, civ_wall, civ_tower, civ_university, civ_theater, civ_arena, civ_monument, civ_treasury, civ_courthouse, civ_embassy, civ_shipyard, civ_stable, civ_siege_workshop, civ_observatory, civ_hospital, civ_garden, civ_plaza, civ_archive, civ_forum, civ_minting_house, civ_bath_house, civ_scriptorium, civ_cistern.
+- **Archetype-drift (35)**: 3 per archetype × 9 + 2 per archetype × 4 = 27 + 8 = 35.
+  - Humanoid (3): civ_arch_diplomatic_hall (+2), civ_arch_senate (+1), civ_arch_great_library (+1).
+  - Mammalian (3): civ_arch_hearth_hall (+2), civ_arch_kinship_lodge (+1), civ_arch_warm_forge (+1).
+  - Reptilian (3): civ_arch_war_altar (+2), civ_arch_scaled_garrison (+1), civ_arch_sun_basking_plaza (+1).
+  - Avian (3): civ_arch_sky_tower (+2), civ_arch_wind_roost (+1), civ_arch_migration_map (+1).
+  - Arthropoid (3): civ_arch_swarm_metropolis (+2), civ_arch_cocoon_foundry (+1), civ_arch_chitin_forge (+1).
+  - Molluscoid (3): civ_arch_tide_library (+2), civ_arch_pearl_exchange (+1), civ_arch_shell_archive (+1).
+  - Fungoid (3): civ_arch_mycelial_grid (+2), civ_arch_spore_vault (+1), civ_arch_decomposer_yard (+1).
+  - Plantoid (3): civ_arch_great_garden (+2), civ_arch_living_archive (+1), civ_arch_solar_sanctum (+1).
+  - Toxoid (3): civ_arch_toxic_refinery (+2), civ_arch_contagion_lab (+1), civ_arch_plague_cauldron (+1).
+  - Aquatic (2): civ_arch_coral_citadel (+2), civ_arch_abyssal_archive (+1).
+  - Necroid (2): civ_arch_tomb_cathedral (+2), civ_arch_bone_forge (+1).
+  - Lithoid (2): civ_arch_crystal_spire (+2), civ_arch_geode_vault (+1).
+  - Extremophile (2): civ_arch_volcanic_outpost (+2), civ_arch_frostvault (+1).
+
+### Empire Techs (90 new; 9 paths × 10)
+All `stage: "empire"`, branches per path, tier 1–3, with `requires` chains inside each path AND cross-path prereqs (e.g. `emp_railroads` requires both `emp_paved_roads` and `emp_steam_engine`). Tech IDs prefixed `emp_` to avoid collisions. Where the spec lists a name that already exists in another stage (e.g. "Scientific Method" already exists in civ stage, "Coal Power" appears in both Industrial and Energy paths, "Wind Power" appears in civ Industry path), renamed: `emp_modern_scientific_method`, `emp_coal_power_energy` (Energy path version), `emp_wind_power` (empire version, distinct from civ `civ_wind_power`).
+
+- **Path 1 — Industrial (10)**: emp_steam_engine, emp_coal_power, emp_petroleum, emp_electricity, emp_mass_production, emp_assembly_line, emp_petrochemicals, emp_automation, emp_robotics, emp_nanotechnology.
+- **Path 2 — Military (10)**: emp_rifled_muskets, emp_artillery, emp_ironclads, emp_submarines, emp_machine_guns, emp_tanks, emp_military_aircraft, emp_chemical_weapons, emp_radar, emp_nuclear_physics.
+- **Path 3 — Science (10)**: emp_modern_scientific_method, emp_chemistry, emp_physics, emp_biology, emp_thermodynamics, emp_electromagnetism, emp_quantum_theory, emp_relativity, emp_genetics, emp_computers.
+- **Path 4 — Transportation (10)**: emp_paved_roads, emp_railroads, emp_automobiles, emp_aviation, emp_steamships, emp_highways, emp_container_shipping, emp_pipelines, emp_air_travel, emp_space_launch.
+- **Path 5 — Communication (10)**: emp_telegraph, emp_telephone, emp_radio, emp_television, emp_satellite_communications, emp_internet, emp_mobile_networks, emp_fiber_optics, emp_gps, emp_quantum_communication.
+- **Path 6 — Medicine (10)**: emp_vaccines, emp_anesthesia, emp_antiseptics, emp_penicillin, emp_x_rays, emp_mri, emp_gene_therapy, emp_stem_cells, emp_artificial_organs, emp_life_extension.
+- **Path 7 — Energy (10)**: emp_coal_power_energy, emp_oil_power, emp_natural_gas, emp_nuclear_fission, emp_solar_power, emp_wind_power, emp_hydroelectric, emp_geothermal, emp_fusion_research, emp_antimatter. (`emp_fusion_research` distinct from existing solar `fusion_power`; `emp_antimatter` is empire-scale.)
+- **Path 8 — Naval (10)** — extended from spec's 6 by adding torpedo boats, destroyers, battleship, carrier strike group: emp_steam_navy, emp_torpedo_boats, emp_destroyers, emp_battleship, emp_dreadnoughts, emp_aircraft_carriers, emp_nuclear_submarines, emp_guided_missiles, emp_aegis_system, emp_carrier_strike_group.
+- **Path 9 — Aerospace (10)**: emp_balloons, emp_gliders, emp_propeller_aircraft, emp_jet_engines, emp_rockets, emp_artificial_satellites, emp_space_stations, emp_moon_landing, emp_mars_probes, emp_ftl_theory. (`emp_ftl_theory` provides +200% science and grants avian affinity; thematically unlocks Solar stage.)
+
+### Empire Systems (70 new; 35 base + 35 archetype-drift)
+Base systems prefixed `emp_` (existing provincial_capital, trade_route, legion_camp, fertility_program already present in empire stage are not duplicated). Archetype-drift prefixed `emp_arch_`.
+
+- **Base (35 new)**: emp_factory, emp_power_plant, emp_refinery, emp_railway, emp_airport, emp_laboratory, emp_hospital, emp_bank, emp_stock_exchange, emp_broadcast_tower, emp_satellite_dish, emp_nuclear_plant, emp_university, emp_military_base, emp_shipyard, emp_highway, emp_pipeline, emp_data_center, emp_research_lab, emp_space_center, emp_robot_factory, emp_automation_line, emp_solar_farm, emp_wind_farm, emp_dam, emp_oil_rig, emp_mine_complex, emp_steel_mill, emp_chemical_plant, emp_telecommunications_hub, emp_military_factory, emp_airbase, emp_naval_base, emp_space_agency, emp_research_campus.
+- **Archetype-drift (35)**: 3 per archetype × 9 + 2 per archetype × 4 = 27 + 8 = 35.
+  - Humanoid (3): emp_arch_diplomatic_palace (+2), emp_arch_imperial_senate (+1), emp_arch_global_library (+1).
+  - Mammalian (3): emp_arch_hearth_empire (+2), emp_arch_kinship_ministry (+1), emp_arch_warm_factory (+1).
+  - Reptilian (3): emp_arch_war_command (+2), emp_arch_scaled_legion (+1), emp_arch_predator_arena (+1).
+  - Avian (3): emp_arch_sky_fortress (+2), emp_arch_wind_fleet (+1), emp_arch_orbital_roost (+1).
+  - Arthropoid (3): emp_arch_hive_metropolis (+2), emp_arch_swarm_factory (+1), emp_arch_chitin_armory (+1).
+  - Molluscoid (3): emp_arch_tide_university (+2), emp_arch_pearl_bank (+1), emp_arch_shell_archive (+1).
+  - Fungoid (3): emp_arch_mycelial_grid_empire (+2), emp_arch_spore_reactor (+1), emp_arch_decomposer_plant (+1).
+  - Plantoid (3): emp_arch_hydroponic_empire (+2), emp_arch_solar_gardens (+1), emp_arch_planetary_forest (+1).
+  - Toxoid (3): emp_arch_bio_weapon_arsenal (+2), emp_arch_toxic_economy (+1), emp_arch_venom_infrastructure (+1).
+  - Aquatic (2): emp_arch_coral_empire (+2), emp_arch_abyssal_lab (+1).
+  - Necroid (2): emp_arch_tomb_capital (+2), emp_arch_bone_factory (+1).
+  - Lithoid (2): emp_arch_crystal_palace (+2), emp_arch_geode_reactor (+1).
+  - Extremophile (2): emp_arch_volcanic_reactor (+2), emp_arch_ice_station (+1).
+
+### Balance Notes
+- Civilization tech costs: tier 1 = 30–120 of (wood/stone/clay/materials/science/gold/happiness/knowledge); tier 2 = 100–400; tier 3 = 400–1000. Multipliers: tier 1 = 0.15–0.35; tier 2 = 0.30–0.55; tier 3 = 0.40–0.70. Population-target techs use `multiplier.target: "population"`; capacity-target techs (`civ_fortifications_tech`, `civ_castles`, `civ_monuments_tech`) use `target: "capacity"`; all others use `target: "production"` (which carries over to influence, gold, military_power, etc.).
+- Empire tech costs: tier 1 = 100–500 of (gold/production/materials/science/military_power/knowledge/happiness); tier 2 = 400–2000; tier 3 = 1500–30000. Multipliers: tier 1 = 0.30–0.70; tier 2 = 0.50–1.0; tier 3 = 1.0–2.0. Cross-path prereqs enable late-tech chaining (e.g. `emp_quantum_communication` requires `emp_quantum_theory` + `emp_fiber_optics` + `emp_internet`).
+- Civ systems: costGrowth 1.20–1.35; baseCost 10–300 of (production/gold/wood/stone/materials/knowledge/water/food/influence/organic_matter/happiness). Production rates ~0.5–4.0/s. Archetype-drift systems cost ~120–300 and produce ~2–5/s, providing 1–2 affinity drift per system (matching existing drift pattern in tribal stage).
+- Empire systems: costGrowth 1.24–1.40; baseCost 100–4000. Production rates 5–80/s. Many empire base systems gated via `requiredTech` referencing both new empire techs and (where appropriate) civ techs (e.g. `emp_bank` requires `civ_banking`, `emp_steel_mill` requires `civ_steel_working`, `emp_stock_exchange` requires `civ_insurance`). Nuclear plant carries `upkeep: { materials: 0.5 }` and data center carries `upkeep: { energy: 1.0 }`. Bio-weapon arsenal carries `upkeep: { gold: 5.0 }`.
+
+### Cross-Stage Prereq Highlights
+- `emp_bank` → `civ_banking` (empire builds on civ foundation).
+- `emp_steel_mill` → `civ_steel_working` (civ metallurgy gates empire scale).
+- `emp_stock_exchange` → `civ_insurance` (financial maturity prerequisite).
+- `emp_railroads` → `emp_paved_roads` + `emp_steam_engine` (cross-path Industrial+Transportation).
+- `emp_satellite_communications` → `emp_television` + `emp_space_launch` (cross-path Communication+Transportation).
+- `emp_internet` → `emp_computers` + `emp_satellite_communications` (Science+Communication).
+- `emp_quantum_communication` → `emp_quantum_theory` + `emp_fiber_optics` + `emp_internet` (three-path apex).
+- `emp_ftl_theory` → `emp_mars_probes` + `emp_relativity` + `emp_quantum_theory` (empire-stage apex unlocking Solar).
+
+### Affinity Drift Coverage
+Affinity grants balanced across the 13 archetypes — every archetype has both civ and empire drift systems. Total drift potential per archetype (civ + empire combined): 6 for the 9 "3+3" archetypes (humanoid, mammalian, reptilian, avian, arthropoid, molluscoid, fungoid, plantoid, toxoid); 4 for the 4 "2+2" archetypes (aquatic, necroid, lithoid, extremophile). Tech affinity grants: humanoid +5, reptilian +6, molluscoid +5, plantoid +4, avian +6, fungoid +4, arthropoid +4, toxoid +4, necroid +4, lithoid +4, extremophile +4 (civ) + aquatic +4 (civ); empire adds arthropoid+2, fungoid+2, humanoid+4, molluscoid+4, plantoid+4, avian+4, aquatic+4, lithoid+4, necroid+4, reptilian+4, extremophile+4, toxoid+2.
+
+### Lint Result
+- `bun run lint`: **0 errors, 7 warnings** (all pre-existing in unrelated files: `src/game/data/galaxies.ts`, `upload/logic.js`).
+- No new errors or warnings introduced by the new techs.ts / systems.ts additions.
+
+### Verification
+- All 160 new tech IDs unique (no collisions with existing techs in cell/creature/tribal/civ/empire/solar/galactic stages).
+- All 135 new system IDs unique (no collisions with existing systems).
+- All `requires` / `requiredTech` references resolve to existing tech IDs (verified by inspection — all prereqs are either new civ/empire techs in this batch or pre-existing tribal techs like `bureaucracy`).
+- All resource IDs in `cost` / `baseCost` / `produces` / `capacityBoost` / `upkeep` match the `ResourceId` union type in `types.ts`.
+- All `multiplier.target` values are valid: `"production"`, `"capacity"`, `"population"`, `"manual"` (existing tribal/civ pattern).
