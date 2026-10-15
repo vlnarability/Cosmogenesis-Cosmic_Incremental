@@ -5671,15 +5671,13 @@ export const useGameStore = create<GameStore>()(
             eternity: true,
           },
           evolutionPoints: (s.evolutionPoints || 0) + 1000,
-          divinity: (s.divinity || 0) + 5000,
-          faith: (s.faith || 0) + 200,
+          divinity: (s.divinity || 0) + 50000,
+          faith: (s.faith || 0) + 5000,
           divineRelics: [...currentRelics, ...starterRelics],
-          // BACKGROUND-SIMULATION — seed a non-zero peak so the Divine Engine
-          // panel has visible Divinity generation when debug-unlocked.
-          // (backgroundSimulations is computed from stars lit, not set here.)
-          peakProductionRate: Math.max(s.peakProductionRate || 0, 100),
+          // Seed enough for L10 testing: high peak + some constellation stars lit
+          peakProductionRate: Math.max(s.peakProductionRate || 0, 5000),
         });
-        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +5000 Divinity, +200 Faith granted. 3 starter relics seeded.");
+        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +50000 Divinity, +5000 Faith granted. 3 starter relics seeded. Peak production set to 5000/s for L10 testing.");
       },
 
       // DEBUG: Free Buy — when enabled, all purchases cost 0 resources.
