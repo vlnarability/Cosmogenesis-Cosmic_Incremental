@@ -60,6 +60,10 @@ export interface SystemDef {
   maxOwned?: number;
   requiredTech?: string;
   grantsAffinity?: { archetype: string; amount: number };
+  // If set, the system is only visible/buildable when the player's
+  // `lockedArchetype` matches this archetype id (archetype-locked
+  // systems in Tribal→Galactic stages).
+  requiredArchetype?: string;
   // Population-growth systems: flat per-second contribution to
   // `populationProgress` (independent of resource production).
   popGrowth?: number;
@@ -77,6 +81,9 @@ export interface TechDef {
   effects: string;
   multiplier?: { target: "production" | "manual" | "capacity" | "population"; value: number };
   grantsAffinity?: { archetype: string; amount: number };
+  // If set, the tech is only visible/researchable when the player's
+  // `lockedArchetype` matches this archetype id.
+  requiredArchetype?: string;
 }
 
 export interface StageDef {
@@ -388,6 +395,11 @@ export interface GameState {
   chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
   cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
+  // L10-ENDING-L5-UI-UNLOCKTECH — dimensions the player has visited (always
+  // starts with ["mundane"]). Future: unlocks additional dimensions by
+  // finishing L10 in each one. Currently only "mundane" is selectable on the
+  // ending-screen dimension picker.
+  visitedDimensions: string[];
   // NEW: Genesis Engine state
   //   divineRelics        — inventory of relics (each with rules + revealed state)
   //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)

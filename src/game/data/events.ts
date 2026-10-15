@@ -12,6 +12,11 @@ export interface EventChoice {
   populationChange?: number;
   happinessChange?: number;
   affinityChange?: { archetype: string; amount: number }[];
+  // L10-ENDING-L5-UI-UNLOCKTECH — when set, resolving this choice also
+  // unlocks the named tech (sets `technologies[unlockTech] = true`). Useful
+  // for narrative "discovery" events that should grant a tech without
+  // the player having to spend science on the Tech tab.
+  unlockTech?: string;
   // Log message to add after choosing
   logMsg?: string;
 }
@@ -28,6 +33,13 @@ export interface GameEvent {
   // Weight for random selection (higher = more common)
   weight: number;
   choices: EventChoice[];
+  // ARCHETYPES-REWORK — if set, the event only fires when the player's locked
+  // archetype matches this id (used by the 90 archetype-specific lineage events).
+  requiredArchetype?: string;
+  // IMMUNITY-TECHS — if set, the event is excluded from the possible pool when
+  // the player has researched the tech with this id (e.g. dna_repair blocks
+  // mutation events).
+  immuneTech?: string;
 }
 
 export const EVENTS: GameEvent[] = [
@@ -64,6 +76,7 @@ export const EVENTS: GameEvent[] = [
     desc: "Something larger moves in the dark. The cell feels the pressure of a predator's presence.",
     icon: "🌑",
     stages: ["cell"],
+    immuneTech: "camouflage",
     minTime: 60,
     weight: 8,
     choices: [
@@ -145,8 +158,9 @@ export const EVENTS: GameEvent[] = [
       {
         id: "fight",
         label: "Deploy restriction enzymes",
-        desc: "−6 proteins, but destroy the phages. +2 ATP from the victory.",
+        desc: "−6 proteins, but destroy the phages. +2 ATP from the victory. Unlocks DNA Repair.",
         resourceChanges: { proteins: -6, atp: 2 },
+        unlockTech: "dna_repair",
         logMsg: "Fought off the viral attack with restriction enzymes.",
       },
       {
@@ -170,8 +184,9 @@ export const EVENTS: GameEvent[] = [
       {
         id: "harvest",
         label: "Harvest the surge",
-        desc: "+18 ATP, −4 glucose (burned as fuel).",
+        desc: "+18 ATP, −4 glucose (burned as fuel). Unlocks Aerobic Respiration.",
         resourceChanges: { atp: 18, glucose: -4 },
+        unlockTech: "aerobic_respiration",
         logMsg: "Harvested the ATP surge. Burned glucose.",
       },
       {
@@ -220,10 +235,11 @@ export const EVENTS: GameEvent[] = [
       {
         id: "accept",
         label: "Merge with the smaller cell",
-        desc: "+6 proteins, +4 ATP, +1 population. Mammalian drift.",
+        desc: "+6 proteins, +4 ATP, +1 population. Mammalian drift. Unlocks Organelle Specialization.",
         resourceChanges: { proteins: 6, atp: 4 },
         populationChange: 1,
         affinityChange: [{ archetype: "mammalian", amount: 1 }],
+        unlockTech: "organelle_specialization",
         logMsg: "Accepted the symbiotic offer. Gained resources and population.",
       },
       {
@@ -241,6 +257,7 @@ export const EVENTS: GameEvent[] = [
     desc: "Sulfur compounds bubble up from the deep. The water turns acrid. Most cells flee; some adapt.",
     icon: "☣️",
     stages: ["cell"],
+    immuneTech: "osmoregulation",
     minTime: 120,
     weight: 5,
     choices: [
@@ -299,9 +316,10 @@ export const EVENTS: GameEvent[] = [
       {
         id: "embrace",
         label: "Embrace the light",
-        desc: "+12 glucose, +2 ATP. Plantoid drift.",
+        desc: "+12 glucose, +2 ATP. Plantoid drift. Unlocks Photosynthesis.",
         resourceChanges: { glucose: 12, atp: 2 },
         affinityChange: [{ archetype: "plantoid", amount: 2 }],
+        unlockTech: "photosynthesis",
         logMsg: "Embraced the sunlight. Plantoid drift.",
       },
       {
@@ -320,6 +338,7 @@ export const EVENTS: GameEvent[] = [
     desc: "A small organism flees from your cell. Chase it down or let it escape?",
     icon: "🦈",
     stages: ["cell"],
+    immuneTech: "camouflage",
     minTime: 90,
     weight: 6,
     choices: [
@@ -353,9 +372,10 @@ export const EVENTS: GameEvent[] = [
       {
         id: "integrate",
         label: "Integrate the spores",
-        desc: "+5 proteins, +3 glucose. Fungoid drift.",
+        desc: "+5 proteins, +3 glucose. Fungoid drift. Unlocks Horizontal Transfer.",
         resourceChanges: { proteins: 5, glucose: 3 },
         affinityChange: [{ archetype: "fungoid", amount: 2 }],
+        unlockTech: "horizontal_transfer",
         logMsg: "Integrated the fungal spores. Fungoid drift.",
       },
       {
@@ -431,9 +451,10 @@ export const EVENTS: GameEvent[] = [
       {
         id: "divide",
         label: "Divide now",
-        desc: "+1 population, −8 glucose, −4 ATP.",
+        desc: "+1 population, −8 glucose, −4 ATP. Unlocks Cellular Division.",
         resourceChanges: { glucose: -8, atp: -4 },
         populationChange: 1,
+        unlockTech: "cellular_division",
         logMsg: "Completed the first cell division. Population grew.",
       },
       {
@@ -578,15 +599,17 @@ export const EVENTS: GameEvent[] = [
     desc: "Cosmic rays strike the cell's DNA. Something will change — but what?",
     icon: "🌀",
     stages: ["cell"],
+    immuneTech: "dna_repair",
     minTime: 140,
     weight: 5,
     choices: [
       {
         id: "embrace",
         label: "Embrace the mutation",
-        desc: "+2 proteins, +1 ATP, reptilian drift.",
+        desc: "+2 proteins, +1 ATP, reptilian drift. Unlocks Epigenetic Memory.",
         resourceChanges: { proteins: 2, atp: 1 },
         affinityChange: [{ archetype: "reptilian", amount: 1 }],
+        unlockTech: "epigenetic_memory",
         logMsg: "Embraced the mutation. Reptilian drift.",
       },
       {
@@ -687,6 +710,7 @@ export const EVENTS: GameEvent[] = [
     desc: "A predator springs from the brush. The pack must react — fast.",
     icon: "🐅",
     stages: ["creature"],
+    immuneTech: "camouflage",
     minTime: 110,
     weight: 7,
     choices: [
@@ -879,6 +903,7 @@ export const EVENTS: GameEvent[] = [
     desc: "A spring bubbles up with water that smells of sulfur. Some creatures drink; others shun it.",
     icon: "🧪",
     stages: ["creature"],
+    immuneTech: "osmoregulation",
     minTime: 160,
     weight: 4,
     choices: [
@@ -1708,6 +1733,7 @@ export const EVENTS: GameEvent[] = [
   // ===== TRIBAL: ARCHETYPE-SPECIFIC EVENTS (18: 2 per basic archetype) =====
   {
     id: "humanoid_tool_innovation_tribal",
+    requiredArchetype: "humanoid",
     name: "Tool Innovation",
     desc: "A clever artisan devises a way to haft stone blades to wooden handles. The tribe marvels.",
     icon: "🛠️",
@@ -1735,6 +1761,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "humanoid_social_bonding_tribal",
+    requiredArchetype: "humanoid",
     name: "Social Bonding",
     desc: "A new custom of communal meals brings the tribe together each evening.",
     icon: "🍲",
@@ -1764,6 +1791,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_kin_bond_tribal",
+    requiredArchetype: "mammalian",
     name: "Kin Bond",
     desc: "A wave of births brings new life to the tribe. The mothers demand extra care.",
     icon: "👶",
@@ -1793,6 +1821,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_warmth_of_pack_tribal",
+    requiredArchetype: "mammalian",
     name: "Warmth of the Pack",
     desc: "The cold season tests the tribe. Huddling together brings warmth — and bonds.",
     icon: "🫂",
@@ -1821,6 +1850,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_cold_blood_tribal",
+    requiredArchetype: "reptilian",
     name: "Cold Blood",
     desc: "The warriors of the tribe have always basked in the sun before battle. They ask to formalize it.",
     icon: "🦎",
@@ -1849,6 +1879,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_predator_cull_tribal",
+    requiredArchetype: "reptilian",
     name: "Predator Cull",
     desc: "Wolves have been taking the tribe's goats. The hunters want to cull them.",
     icon: "🐺",
@@ -1876,6 +1907,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_sky_omens_tribal",
+    requiredArchetype: "avian",
     name: "Sky Omens",
     desc: "A great flock of birds wheels overhead at dawn. The shamans see meaning in their flight.",
     icon: "🕊️",
@@ -1902,6 +1934,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_migration_trail_tribal",
+    requiredArchetype: "avian",
     name: "Migration Trail",
     desc: "A trail of bird droppings marks an old migration route. The tribe could follow it south.",
     icon: "🦅",
@@ -1929,6 +1962,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_hive_labor_tribal",
+    requiredArchetype: "arthropoid",
     name: "Hive Labor",
     desc: "The tribe's workers propose dividing labor into specialized castes.",
     icon: "🐜",
@@ -1956,6 +1990,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_molt_season_tribal",
+    requiredArchetype: "arthropoid",
     name: "Molt Season",
     desc: "The tribe's chitin-bearing members begin to molt. The shed shells could be useful.",
     icon: "🐞",
@@ -1983,6 +2018,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_tide_pool_wisdom_tribal",
+    requiredArchetype: "molluscoid",
     name: "Tide Pool Wisdom",
     desc: "An elder claims the tide pools speak to those who listen. The tribe gathers at the shore.",
     icon: "🐚",
@@ -2010,6 +2046,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_shell_armor_tribal",
+    requiredArchetype: "molluscoid",
     name: "Shell Armor",
     desc: "A craftsman proposes fashioning armor from the shells of giant sea snails.",
     icon: "🛡️",
@@ -2037,6 +2074,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_spore_blessing_tribal",
+    requiredArchetype: "fungoid",
     name: "Spore Blessing",
     desc: "A ring of edible mushrooms springs up overnight around the fire. The shaman sees blessing.",
     icon: "🍄",
@@ -2064,6 +2102,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_rot_circle_tribal",
+    requiredArchetype: "fungoid",
     name: "Rot Circle",
     desc: "The composting pit is teeming with new growth. The cycle of decay fascinates.",
     icon: "🍂",
@@ -2091,6 +2130,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_great_bloom_tribal",
+    requiredArchetype: "plantoid",
     name: "Great Bloom",
     desc: "An unusual season of sun and rain triggers a massive bloom across the tribe's fields.",
     icon: "🌸",
@@ -2118,6 +2158,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_rooted_ritual_tribal",
+    requiredArchetype: "plantoid",
     name: "Rooted Ritual",
     desc: "The shamans propose a ritual where the tribe plants a sacred grove and meditates among the roots.",
     icon: "🌳",
@@ -2145,6 +2186,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_monsoon_season_tribal",
+    requiredArchetype: "aquatic",
     name: "Monsoon Season",
     desc: "The rains come early and heavy. The rivers swell and the floodplains turn green.",
     icon: "🌧️",
@@ -2173,6 +2215,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_river_spirits_tribal",
+    requiredArchetype: "aquatic",
     name: "River Spirits",
     desc: "The shamans claim the river spirits have spoken. They demand offerings.",
     icon: "🌊",
@@ -2208,6 +2251,7 @@ export const EVENTS: GameEvent[] = [
     desc: "Reports of a spreading sickness reach the capital. The council debates action.",
     icon: "🦠",
     stages: ["civilization", "empire"],
+    immuneTech: "immune_system",
     minTime: 300,
     weight: 6,
     choices: [
@@ -2526,6 +2570,7 @@ export const EVENTS: GameEvent[] = [
     desc: "The rains fail. The granaries will be tested as the harvest withers.",
     icon: "🏜️",
     stages: ["civilization"],
+    immuneTech: "hibernation",
     minTime: 330,
     weight: 5,
     choices: [
@@ -2738,6 +2783,7 @@ export const EVENTS: GameEvent[] = [
   // ===== CIVILIZATION: ARCHETYPE-SPECIFIC EVENTS (18) =====
   {
     id: "humanoid_adaptable_governance_civ",
+    requiredArchetype: "humanoid",
     name: "Adaptable Governance",
     desc: "Reformers propose a flexible new system of governance that adapts to local needs.",
     icon: "⚖️",
@@ -2766,6 +2812,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "humanoid_creative_festival_civ",
+    requiredArchetype: "humanoid",
     name: "Creative Festival",
     desc: "Artisans propose a festival celebrating innovation in every craft.",
     icon: "🎨",
@@ -2793,6 +2840,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_kindergarten_civ",
+    requiredArchetype: "mammalian",
     name: "Kindergarten Movement",
     desc: "Reformers propose public nurseries to care for young children while mothers work.",
     icon: "🧸",
@@ -2821,6 +2869,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_empathy_movement_civ",
+    requiredArchetype: "mammalian",
     name: "Empathy Movement",
     desc: "A philosophical movement emphasizes compassion in governance.",
     icon: "💛",
@@ -2849,6 +2898,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_legion_drill_civ",
+    requiredArchetype: "reptilian",
     name: "Legion Drill",
     desc: "The general proposes a new system of disciplined drill for the legions.",
     icon: "🛡️",
@@ -2877,6 +2927,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_cold_strategy_civ",
+    requiredArchetype: "reptilian",
     name: "Cold Strategy",
     desc: "A general proposes a doctrine of calculated, patient warfare.",
     icon: "♟️",
@@ -2904,6 +2955,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_scholar_tower_civ",
+    requiredArchetype: "avian",
     name: "Scholar's Tower",
     desc: "Wealthy patrons offer to endow a tower dedicated to far-seeing scholarship.",
     icon: "🗼",
@@ -2931,6 +2983,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_watchtower_civ",
+    requiredArchetype: "avian",
     name: "Watchtower Network",
     desc: "Engineers propose a network of watchtowers across the realm.",
     icon: "🗼",
@@ -2957,6 +3010,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_factory_district_civ",
+    requiredArchetype: "arthropoid",
     name: "Factory District",
     desc: "Industrialists propose a dedicated factory district with division of labor.",
     icon: "🏭",
@@ -2985,6 +3039,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_collective_labor_civ",
+    requiredArchetype: "arthropoid",
     name: "Collective Labor",
     desc: "A workers' guild proposes collective ownership of the largest workshops.",
     icon: "🤝",
@@ -3013,6 +3068,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_ancient_library_civ",
+    requiredArchetype: "molluscoid",
     name: "Ancient Library",
     desc: "Scholars propose to gather every written text into a single great library.",
     icon: "📚",
@@ -3039,6 +3095,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_pearl_trade_civ",
+    requiredArchetype: "molluscoid",
     name: "Pearl Trade",
     desc: "Divers discover a pearl bed off the coast. The pearls are exquisite.",
     icon: "🫧",
@@ -3066,6 +3123,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_composting_yards_civ",
+    requiredArchetype: "fungoid",
     name: "Composting Yards",
     desc: "Engineers propose vast composting yards to convert city waste into fertilizer.",
     icon: "🌱",
@@ -3093,6 +3151,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_mycelium_network_civ",
+    requiredArchetype: "fungoid",
     name: "Mycelium Network",
     desc: "Botanists discover a vast underground fungal network connecting distant forests.",
     icon: "🌐",
@@ -3120,6 +3179,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_granary_grove_civ",
+    requiredArchetype: "plantoid",
     name: "Granary Grove",
     desc: "Druids propose cultivating sacred groves that produce food year-round.",
     icon: "🌳",
@@ -3147,6 +3207,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_photosynthesis_district_civ",
+    requiredArchetype: "plantoid",
     name: "Photosynthesis District",
     desc: "Architects propose a city district where buildings are living plants.",
     icon: "🌿",
@@ -3173,6 +3234,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_canal_network_civ",
+    requiredArchetype: "aquatic",
     name: "Canal Network",
     desc: "Engineers propose a network of canals to crisscross the realm.",
     icon: "🚣",
@@ -3199,6 +3261,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_marine_science_civ",
+    requiredArchetype: "aquatic",
     name: "Marine Science",
     desc: "Naturalists propose a dedicated institute for the study of the sea.",
     icon: "🐠",
@@ -3610,8 +3673,9 @@ export const EVENTS: GameEvent[] = [
       {
         id: "welcome",
         label: "Welcome the scholars",
-        desc: "+8 science, +5 culture, +3 knowledge.",
+        desc: "+8 science, +5 culture, +3 knowledge. Unlocks Mathematics.",
         resourceChanges: { science: 8, culture: 5, knowledge: 3 },
+        unlockTech: "civ_mathematics",
         logMsg: "Welcomed the foreign scholars. Knowledge flowed both ways.",
       },
       {
@@ -3762,6 +3826,7 @@ export const EVENTS: GameEvent[] = [
   // ===== EMPIRE: ARCHETYPE-SPECIFIC EVENTS (18) =====
   {
     id: "humanoid_constitutional_reform_empire",
+    requiredArchetype: "humanoid",
     name: "Constitutional Reform",
     desc: "Reformers propose a written constitution limiting imperial power.",
     icon: "📜",
@@ -3790,6 +3855,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "humanoid_diplomatic_corps_empire",
+    requiredArchetype: "humanoid",
     name: "Diplomatic Corps",
     desc: "Foreign ministers propose a professional diplomatic corps for the empire.",
     icon: "🤝",
@@ -3816,6 +3882,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_welfare_state_empire",
+    requiredArchetype: "mammalian",
     name: "Welfare State",
     desc: "Reformers propose a comprehensive welfare system for the empire's poor.",
     icon: "❤️",
@@ -3845,6 +3912,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_social_programs_empire",
+    requiredArchetype: "mammalian",
     name: "Social Programs",
     desc: "Ministers propose an array of social programs for healthcare and education.",
     icon: "🏥",
@@ -3873,6 +3941,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_imperial_legion_empire",
+    requiredArchetype: "reptilian",
     name: "Imperial Legion",
     desc: "The general staff proposes a massive expansion of the imperial legions.",
     icon: "⚔️",
@@ -3901,6 +3970,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_predator_doctrine_empire",
+    requiredArchetype: "reptilian",
     name: "Predator Doctrine",
     desc: "The general staff proposes a doctrine of preemptive strikes against rivals.",
     icon: "🦅",
@@ -3928,6 +3998,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_imperial_observatory_empire",
+    requiredArchetype: "avian",
     name: "Imperial Observatory",
     desc: "Astronomers propose a great observatory to chart the heavens.",
     icon: "🔭",
@@ -3954,6 +4025,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_air_corps_empire",
+    requiredArchetype: "avian",
     name: "Air Corps",
     desc: "Inventors propose an experimental air corps using hot-air balloons.",
     icon: "🎈",
@@ -3980,6 +4052,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_industrial_revolution_empire",
+    requiredArchetype: "arthropoid",
     name: "Industrial Revolution",
     desc: "Inventors demonstrate a steam engine that could transform industry.",
     icon: "🚂",
@@ -4008,6 +4081,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_swarm_logistics_empire",
+    requiredArchetype: "arthropoid",
     name: "Swarm Logistics",
     desc: "Quartermasters propose a swarm-style logistics system for the legions.",
     icon: "📦",
@@ -4035,6 +4109,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_deep_thought_school_empire",
+    requiredArchetype: "molluscoid",
     name: "Deep Thought School",
     desc: "Philosophers propose a school dedicated to profound contemplation.",
     icon: "🧘",
@@ -4062,6 +4137,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_ink_diplomacy_empire",
+    requiredArchetype: "molluscoid",
     name: "Ink Diplomacy",
     desc: "The diplomatic corps proposes to codify every treaty in indelible ink.",
     icon: "🖋️",
@@ -4088,6 +4164,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_composting_imperial_empire",
+    requiredArchetype: "fungoid",
     name: "Imperial Composting",
     desc: "Engineers propose scaling the composting yards to imperial size.",
     icon: "🍂",
@@ -4114,6 +4191,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_spore_diplomacy_empire",
+    requiredArchetype: "fungoid",
     name: "Spore Diplomacy",
     desc: "Druids propose using fungal spores to spread good will across the empire.",
     icon: "🍄",
@@ -4140,6 +4218,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_imperial_gardens_empire",
+    requiredArchetype: "plantoid",
     name: "Imperial Gardens Expansion",
     desc: "Druids propose vastly expanding the imperial gardens into living temples.",
     icon: "🌳",
@@ -4168,6 +4247,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_terraform_frontier_empire",
+    requiredArchetype: "plantoid",
     name: "Terraform the Frontier",
     desc: "Druids propose terraforming the barren frontier provinces into fertile land.",
     icon: "🌱",
@@ -4195,6 +4275,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_imperial_navy_empire",
+    requiredArchetype: "aquatic",
     name: "Imperial Navy",
     desc: "Admirals propose a vast expansion of the imperial fleet.",
     icon: "🚢",
@@ -4222,6 +4303,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_oceanic_research_empire",
+    requiredArchetype: "aquatic",
     name: "Oceanic Research",
     desc: "Naturalists propose a great expedition to chart the ocean depths.",
     icon: "🌊",
@@ -4802,6 +4884,7 @@ export const EVENTS: GameEvent[] = [
   // ===== SOLAR: ARCHETYPE-SPECIFIC EVENTS (18) =====
   {
     id: "humanoid_solar_diaspora_solar",
+    requiredArchetype: "humanoid",
     name: "Solar Diaspora",
     desc: "Settlers propose a vast diaspora, colonizing every habitable rock in the system.",
     icon: "🌍",
@@ -4830,6 +4913,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "humanoid_adaptive_biomes_solar",
+    requiredArchetype: "humanoid",
     name: "Adaptive Biomes",
     desc: "Biologists propose engineered biomes adapted to each colony's environment.",
     icon: "🌱",
@@ -4857,6 +4941,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_generation_fleet_solar",
+    requiredArchetype: "mammalian",
     name: "Generation Fleet",
     desc: "Engineers propose a fleet of generation ships to seed distant stars.",
     icon: "🚀",
@@ -4885,6 +4970,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_kinship_networks_solar",
+    requiredArchetype: "mammalian",
     name: "Kinship Networks",
     desc: "Sociologists propose vast kinship networks linking every colony.",
     icon: "🌐",
@@ -4912,6 +4998,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_void_predator_fleet_solar",
+    requiredArchetype: "reptilian",
     name: "Void Predator Fleet",
     desc: "Admirals propose a strike fleet optimized for ambush tactics.",
     icon: "🛸",
@@ -4939,6 +5026,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_cold_void_doctrine_solar",
+    requiredArchetype: "reptilian",
     name: "Cold Void Doctrine",
     desc: "Strategists propose a doctrine of patient, cold warfare across the system.",
     icon: "❄️",
@@ -4966,6 +5054,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_star_chart_academy_solar",
+    requiredArchetype: "avian",
     name: "Star Chart Academy",
     desc: "Navigators propose a great academy to chart every star in reach.",
     icon: "🗺️",
@@ -4992,6 +5081,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_skywatch_drones_solar",
+    requiredArchetype: "avian",
     name: "Skywatch Drones",
     desc: "Engineers propose a vast network of surveillance drones.",
     icon: "🛰️",
@@ -5019,6 +5109,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_swarm_mining_fleet_solar",
+    requiredArchetype: "arthropoid",
     name: "Swarm Mining Fleet",
     desc: "Industrialists propose a swarm of autonomous mining drones.",
     icon: "🐝",
@@ -5046,6 +5137,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_hive_orbital_factory_solar",
+    requiredArchetype: "arthropoid",
     name: "Hive Orbital Factory",
     desc: "Engineers propose a vast orbital factory complex operated by swarm labor.",
     icon: "🏭",
@@ -5073,6 +5165,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_void_archives_solar",
+    requiredArchetype: "molluscoid",
     name: "Void Archives",
     desc: "Scholars propose a vast archive station in deep space.",
     icon: "📜",
@@ -5099,6 +5192,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_ink_tribute_solar",
+    requiredArchetype: "molluscoid",
     name: "Ink Tribute",
     desc: "Diplomats propose to seal every treaty in indelible void-ink.",
     icon: "🖋️",
@@ -5126,6 +5220,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_mycelium_voidweb_solar",
+    requiredArchetype: "fungoid",
     name: "Mycelium Voidweb",
     desc: "Biologists propose a vast mycelium network linking every station.",
     icon: "🍄",
@@ -5153,6 +5248,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_spore_terraforming_solar",
+    requiredArchetype: "fungoid",
     name: "Spore Terraforming",
     desc: "Druids propose terraforming worlds with engineered fungal spores.",
     icon: "🌱",
@@ -5179,6 +5275,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_orbital_gardens_solar",
+    requiredArchetype: "plantoid",
     name: "Orbital Gardens",
     desc: "Druids propose vast orbital gardens that feed the colonies.",
     icon: "🌳",
@@ -5206,6 +5303,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_photosynth_sats_solar",
+    requiredArchetype: "plantoid",
     name: "Photosynthesis Satellites",
     desc: "Engineers propose vast solar-collection satellites that beam energy via microwave.",
     icon: "🛰️",
@@ -5232,6 +5330,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_ocean_world_colony_solar",
+    requiredArchetype: "aquatic",
     name: "Ocean World Colony",
     desc: "Surveyors discover an ocean-rich moon ripe for colonization.",
     icon: "🌊",
@@ -5259,6 +5358,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_void_current_navy_solar",
+    requiredArchetype: "aquatic",
     name: "Void Current Navy",
     desc: "Admirals propose a navy trained to ride the cosmic currents.",
     icon: "⛵",
@@ -5403,8 +5503,9 @@ export const EVENTS: GameEvent[] = [
       {
         id: "study",
         label: "Study the relic",
-        desc: "+10 data, +8 science, −5 energy (research).",
+        desc: "+10 data, +8 science, −5 energy (research). Unlocks Astronomy.",
         resourceChanges: { data: 10, science: 8, energy: -5 },
+        unlockTech: "civ_astronomy",
         logMsg: "Studied the precursor relic. Knowledge flooded in.",
       },
       {
@@ -5463,9 +5564,10 @@ export const EVENTS: GameEvent[] = [
       {
         id: "synthetic",
         label: "Pursue synthetic ascension",
-        desc: "+10 production, +6 science, −4 happiness (philosophical crisis).",
+        desc: "+10 production, +6 science, −4 happiness (philosophical crisis). Unlocks Ascension Theory.",
         resourceChanges: { production: 10, science: 6 },
         happinessChange: -4,
+        unlockTech: "ascension_theory",
         logMsg: "Pursued synthetic ascension. Industry transformed.",
       },
     ],
@@ -5482,8 +5584,9 @@ export const EVENTS: GameEvent[] = [
       {
         id: "connect",
         label: "Build the network",
-        desc: "+10 influence, +8 data, −12 energy.",
+        desc: "+10 influence, +8 data, −12 energy. Unlocks Wormhole Network.",
         resourceChanges: { influence: 10, data: 8, energy: -12 },
+        unlockTech: "wormhole_network",
         logMsg: "Built the wormhole network. Connectivity surged.",
       },
       {
@@ -5554,6 +5657,7 @@ export const EVENTS: GameEvent[] = [
     desc: "A genetic plague engineered by an unknown foe is sweeping the colonies.",
     icon: "🦠",
     stages: ["galactic"],
+    immuneTech: "immune_system",
     minTime: 400,
     weight: 4,
     choices: [
@@ -5814,6 +5918,7 @@ export const EVENTS: GameEvent[] = [
   // ===== GALACTIC: ARCHETYPE-SPECIFIC EVENTS (18) =====
   {
     id: "humanoid_galactic_federation_galactic",
+    requiredArchetype: "humanoid",
     name: "Galactic Federation",
     desc: "Diplomats propose founding a galactic federation of equal species.",
     icon: "🪐",
@@ -5840,6 +5945,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "humanoid_pan_species_council_galactic",
+    requiredArchetype: "humanoid",
     name: "Pan-Species Council",
     desc: "Reformers propose a pan-species council to govern the empire's diverse peoples.",
     icon: "👥",
@@ -5867,6 +5973,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_kindred_alliance_galactic",
+    requiredArchetype: "mammalian",
     name: "Kindred Alliance",
     desc: "Diplomats propose a kindred alliance with neighboring species.",
     icon: "🤝",
@@ -5895,6 +6002,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "mammalian_refuge_fleet_galactic",
+    requiredArchetype: "mammalian",
     name: "Refuge Fleet",
     desc: "A vast fleet of refugees from a dying star system requests asylum.",
     icon: "🚀",
@@ -5923,6 +6031,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_predator_sovereignty_galactic",
+    requiredArchetype: "reptilian",
     name: "Predator Sovereignty",
     desc: "Strategists propose asserting predator sovereignty over lesser species.",
     icon: "🦅",
@@ -5950,6 +6059,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "reptilian_cold_war_doctrine_galactic",
+    requiredArchetype: "reptilian",
     name: "Cold War Doctrine",
     desc: "Strategists propose a doctrine of cold warfare across the galaxy.",
     icon: "❄️",
@@ -5977,6 +6087,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_galactic_star_charts_galactic",
+    requiredArchetype: "avian",
     name: "Galactic Star Charts",
     desc: "Navigators propose compiling complete star charts of the galaxy.",
     icon: "🗺️",
@@ -6003,6 +6114,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "avian_far_sight_observatory_galactic",
+    requiredArchetype: "avian",
     name: "Far Sight Observatory",
     desc: "Astronomers propose a vast galaxy-spanning observatory.",
     icon: "🔭",
@@ -6029,6 +6141,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_swarm_imperium_galactic",
+    requiredArchetype: "arthropoid",
     name: "Swarm Imperium",
     desc: "Strategists propose declaring a vast swarm imperium.",
     icon: "🐝",
@@ -6056,6 +6169,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "arthropoid_hive_construction_nexus_galactic",
+    requiredArchetype: "arthropoid",
     name: "Hive Construction Nexus",
     desc: "Engineers propose a vast hive-construction nexus to build megastructures.",
     icon: "🏗️",
@@ -6082,6 +6196,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_galactic_memory_vault_galactic",
+    requiredArchetype: "molluscoid",
     name: "Galactic Memory Vault",
     desc: "Scholars propose a vast memory vault preserving the galaxy's knowledge.",
     icon: "🧠",
@@ -6108,6 +6223,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "molluscoid_elder_conclave_galactic",
+    requiredArchetype: "molluscoid",
     name: "Elder Conclave",
     desc: "An ancient conclave of elders from many species convenes to advise the empire.",
     icon: "🧙",
@@ -6135,6 +6251,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_galactic_mycelium_galactic",
+    requiredArchetype: "fungoid",
     name: "Galactic Mycelium",
     desc: "Biologists propose extending the mycelium network across the galaxy.",
     icon: "🍄",
@@ -6162,6 +6279,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "fungoid_spore_diaspora_galactic",
+    requiredArchetype: "fungoid",
     name: "Spore Diaspora",
     desc: "Druids propose launching vast spore diasporas to seed distant worlds.",
     icon: "🌱",
@@ -6190,6 +6308,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_gaia_world_galactic",
+    requiredArchetype: "plantoid",
     name: "Gaia World",
     desc: "Druids propose seeding a perfect gaia world teeming with life.",
     icon: "🌍",
@@ -6218,6 +6337,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "plantoid_terraform_initiative_galactic",
+    requiredArchetype: "plantoid",
     name: "Terraform Initiative",
     desc: "Druids propose a vast initiative to terraform barren worlds across the galaxy.",
     icon: "🌱",
@@ -6245,6 +6365,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_ocean_world_ark_galactic",
+    requiredArchetype: "aquatic",
     name: "Ocean World Ark",
     desc: "Engineers propose vast arks to settle ocean worlds across the galaxy.",
     icon: "🚢",
@@ -6272,6 +6393,7 @@ export const EVENTS: GameEvent[] = [
   },
   {
     id: "aquatic_void_current_exploration_galactic",
+    requiredArchetype: "aquatic",
     name: "Void Current Exploration",
     desc: "Navigators propose following the cosmic currents to uncharted systems.",
     icon: "🌊",
@@ -6306,6 +6428,7 @@ export const EVENTS: GameEvent[] = [
     desc: "The land withers. Water grows scarce. The civilization braces for hardship.",
     icon: "🏜️",
     stages: ["creature", "tribal", "civilization", "empire"],
+    immuneTech: "hibernation",
     minTime: 240,
     weight: 3,
     choices: [

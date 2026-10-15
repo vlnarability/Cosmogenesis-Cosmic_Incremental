@@ -522,6 +522,9 @@ function initialMetaState(): Partial<GameState> {
     chosenEnding: null,
     cosmicBoonStacks: 0,
     showEternity: false,
+    // L10-ENDING-L5-UI-UNLOCKTECH — always starts with the mundane dimension.
+    // Future: unlock dimensions by finishing L10 in each one.
+    visitedDimensions: ["mundane"],
     // NEW: Genesis Engine state
     divineRelics: [],
     crucibleRelicIds: [],
@@ -738,6 +741,16 @@ export const useGameStore = create<GameStore>()(
         // (their boost is implicit: they sit on systems with stronger bonuses).
         const galaxySummary = summarizeGalaxyBonuses(s.galaxySystems || []);
 
+        // FIX-ARCHETYPE-LOCKED — horizontal_transfer tech (Cell) grants
+        // +5% production per system owned (additive). Computed early so it
+        // can be folded into `layerProdBonus` below. `totalOwnedSystems` is
+        // also re-declared later for the archetype-all-prod block, but the
+        // value is identical.
+        const totalOwnedSystemsEarly = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
+        const horizontalTransferBonus = s.technologies["horizontal_transfer"]
+          ? totalOwnedSystemsEarly * 0.05
+          : 0;
+
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult + ritualProd +
@@ -745,7 +758,8 @@ export const useGameStore = create<GameStore>()(
           hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
-          galaxySummary.productionMult;  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
+          galaxySummary.productionMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
+          horizontalTransferBonus;       // FIX-ARCHETYPE-LOCKED — +5% prod per system
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult + ritualCap + wCap +
@@ -1225,9 +1239,21 @@ export const useGameStore = create<GameStore>()(
           // ARCHETYPES-REWORK — filter out events the locked archetype is
           // immune to (Mammalian→cold, Fungoid/Toxoid→plague, Lithoid→disaster,
           // Extremophile/Lithoid Titan→all). See isArchetypeImmuneToEvent.
-          const possible = eventsForStage(stageId, newTime).filter(
-            (ev) => !isArchetypeImmuneToEvent(s.lockedArchetype, ev.id)
-          );
+          //
+          // FIX-EVENTS-IMMUNITY-POPUPS — two more filters:
+          //   • requiredArchetype: 90 archetype-specific lineage events
+          //     (humanoid_tool_innovation_tribal, plantoid_gaia_world_galactic,
+          //     …) only fire when the player's locked archetype matches.
+          //   • immuneTech: events blocked by immunity techs (dna_repair→
+          //     mutations, osmoregulation→water, camouflage→predators,
+          //     hibernation→droughts, immune_system→plagues) are excluded
+          //     once the player has researched that tech.
+          const possible = eventsForStage(stageId, newTime).filter((ev) => {
+            if (isArchetypeImmuneToEvent(s.lockedArchetype, ev.id)) return false;
+            if (ev.requiredArchetype && ev.requiredArchetype !== s.lockedArchetype) return false;
+            if (ev.immuneTech && s.technologies[ev.immuneTech]) return false;
+            return true;
+          });
           if (possible.length > 0) {
             const totalWeight = possible.reduce((sum, e) => sum + e.weight, 0);
             const roll = Math.random() * totalWeight;
@@ -2718,7 +2744,19 @@ export const useGameStore = create<GameStore>()(
         if (!sys) return;
         if (sys.stage !== STAGES[s.stageIndex].id) return;
         // Check tech prerequisite
-        if (sys.requiredTech && !s.technologies[sys.requiredTech]) return;
+        if (sys.requiredTech && !s.technologies[sys.requiredTech]) {
+          const techName = TECH_MAP[sys.requiredTech]?.name || sys.requiredTech;
+          get().notifyPurchaseError(`Requires tech: ${techName}`);
+          return;
+        }
+        // FIX-ARCHETYPE-LOCKED — archetype-locked systems are only buildable
+        // by the matching locked archetype (Tribal→Galactic archetype-drift
+        // systems). Refuse purchase with an inline error.
+        if (sys.requiredArchetype && s.lockedArchetype !== sys.requiredArchetype) {
+          const archName = ARCHETYPE_MAP[sys.requiredArchetype]?.name || sys.requiredArchetype;
+          get().notifyPurchaseError(`Requires ${archName} archetype`);
+          return;
+        }
 
         // ---- Active challenge restrictions ----
         let challengeDebuff: ChallengeEffects = {};
@@ -2862,6 +2900,13 @@ export const useGameStore = create<GameStore>()(
         if (!tech) return;
         if (s.technologies[techId]) return;
         if (tech.stage !== STAGES[s.stageIndex].id) return;
+        // FIX-ARCHETYPE-LOCKED — archetype-locked techs are only researchable
+        // by the matching locked archetype.
+        if (tech.requiredArchetype && s.lockedArchetype !== tech.requiredArchetype) {
+          const archName = ARCHETYPE_MAP[tech.requiredArchetype]?.name || tech.requiredArchetype;
+          get().notifyPurchaseError(`Requires ${archName} archetype`);
+          return;
+        }
         if (tech.requires) {
           for (const req of tech.requires) {
             if (!s.technologies[req]) return;
@@ -3064,12 +3109,22 @@ export const useGameStore = create<GameStore>()(
           ? [...(s.newAchievements || []), ...achResult.newOnes]
           : s.newAchievements;
 
+        // FIX-EVENTS-IMMUNITY-POPUPS — stage-evolution story popups fire
+        // ONLY during the first playthrough (before the player's first
+        // Galactic-stage win). After the first win the player has seen
+        // the storyline once; subsequent runs evolve silently. We still
+        // preserve any pre-existing activeStoryPopup (e.g. a STORY_TRIGGERS
+        // popup fired earlier in the same tick).
+        const nextStoryPopup = s.galacticWins === 0
+          ? (storyId?.id || s.activeStoryPopup)
+          : s.activeStoryPopup;
+
         set({
           stageIndex: nextStageIdx,
           resources,
           capacities,
           storyUnlocked: newStory,
-          activeStoryPopup: storyId?.id || s.activeStoryPopup,
+          activeStoryPopup: nextStoryPopup,
           stageClearCounts,
           fastestCellClear,
           lockedArchetype,
@@ -3123,6 +3178,16 @@ export const useGameStore = create<GameStore>()(
           : 0;
         if (archEpBonus > 0) {
           epEarned = Math.max(1, Math.floor(epEarned * (1 + archEpBonus)));
+        }
+
+        // FIX-ARCHETYPE-LOCKED — EP-from-prestige techs (stack additively):
+        //   • epigenetic_memory (Cell)        → +10% EP from prestige
+        //   • memory_formation  (Creature)    → +10% EP from prestige
+        let techEpMult = 0;
+        if (s.technologies["epigenetic_memory"]) techEpMult += 0.10;
+        if (s.technologies["memory_formation"])  techEpMult += 0.10;
+        if (techEpMult > 0) {
+          epEarned = Math.max(1, Math.floor(epEarned * (1 + techEpMult)));
         }
 
         // ---- Layer 2 (Enlightenment): grant Divinity based on score ----
@@ -5465,6 +5530,23 @@ export const useGameStore = create<GameStore>()(
             archetypeAffinity[ac.archetype] = (archetypeAffinity[ac.archetype] || 0) + ac.amount;
           }
         }
+        // L10-ENDING-L5-UI-UNLOCKTECH — grant optional tech unlock from
+        // the resolved EventChoice. We set `technologies[unlockTech] = true`
+        // (idempotent — re-unlocking an already-known tech is a no-op) and
+        // log a clear message so the player can see what they earned.
+        let technologies = s.technologies;
+        if (choice.unlockTech) {
+          if (!technologies[choice.unlockTech]) {
+            technologies = { ...technologies, [choice.unlockTech]: true };
+            // Find the tech name for a readable log message.
+            const techName = TECHS.find((t) => t.id === choice.unlockTech)?.name || choice.unlockTech;
+            get().addToLog(`Event unlocked tech: ${techName}`);
+          } else {
+            // Already unlocked — note it but don't duplicate the log line.
+            const techName = TECHS.find((t) => t.id === choice.unlockTech)?.name || choice.unlockTech;
+            get().addToLog(`Event unlocked tech: ${techName} (already known)`);
+          }
+        }
         // Record in event history
         const eventHistory = [
           {
@@ -5483,6 +5565,7 @@ export const useGameStore = create<GameStore>()(
           population: pop,
           maxPopulation: Math.max(s.maxPopulation || 0, pop),
           archetypeAffinity,
+          technologies,
           activeEvent: null,
           eventHistory,
           totalEventsResolved: (s.totalEventsResolved || 0) + 1,
@@ -5936,6 +6019,15 @@ export const useGameStore = create<GameStore>()(
         if (persisted.cosmicBoonStacks === undefined) persisted.cosmicBoonStacks = 0;
         if (persisted.showEternity === undefined) persisted.showEternity = false;
         if (persisted.unlockedLayers.eternity === undefined) persisted.unlockedLayers.eternity = false;
+        // L10-ENDING-L5-UI-UNLOCKTECH — visitedDimensions always includes
+        // "mundane" at minimum (the player starts there). Old saves without
+        // the field get the default; saves that somehow lost "mundane" get
+        // it re-added.
+        if (!persisted.visitedDimensions || !Array.isArray(persisted.visitedDimensions)) {
+          persisted.visitedDimensions = ["mundane"];
+        } else if (!persisted.visitedDimensions.includes("mundane")) {
+          persisted.visitedDimensions = ["mundane", ...persisted.visitedDimensions];
+        }
         // NEW: Genesis Engine state migration (v12).
         //   - Legacy `universeRules` (8-slot array) and `keptGods` (god ids) are
         //     dropped — the Genesis Engine does not use them. Old saves simply

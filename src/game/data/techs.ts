@@ -780,7 +780,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+60% military power",
     multiplier: { target: "production", value: 0.60 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "midwifery",
@@ -863,7 +862,6 @@ export const TECHS: TechDef[] = [
     requires: ["metalworking", "fire_making"],
     effects: "+30% materials & military power",
     multiplier: { target: "production", value: 0.30 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "wheel",
@@ -912,7 +910,6 @@ export const TECHS: TechDef[] = [
     requires: ["metalworking"],
     effects: "+30% stone & materials production",
     multiplier: { target: "production", value: 0.30 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "woodworking",
@@ -937,7 +934,6 @@ export const TECHS: TechDef[] = [
     requires: ["bronze_working", "mining_tools"],
     effects: "+40% materials & military power",
     multiplier: { target: "production", value: 0.40 },
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
 
   // ===== TRIBAL — WARFARE PATH (Hunting & Warfare) =====
@@ -984,7 +980,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+15% food & military power",
     multiplier: { target: "production", value: 0.15 },
-    grantsAffinity: { archetype: "mammalian", amount: 2 },
   },
   {
     id: "fishing_nets",
@@ -1009,7 +1004,6 @@ export const TECHS: TechDef[] = [
     requires: ["spear_hunting"],
     effects: "+35% military power",
     multiplier: { target: "production", value: 0.35 },
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "fortifications",
@@ -1046,7 +1040,6 @@ export const TECHS: TechDef[] = [
     requires: ["bronze_working", "warrior_training"],
     effects: "+50% military power",
     multiplier: { target: "production", value: 0.50 },
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "war_tactics",
@@ -1083,7 +1076,6 @@ export const TECHS: TechDef[] = [
     requires: ["military_organization", "wheel"],
     effects: "+45% military power",
     multiplier: { target: "production", value: 0.45 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
 
   // ===== TRIBAL — AGRICULTURE PATH (Agriculture & Food) =====
@@ -1097,7 +1089,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+15% food production",
     multiplier: { target: "production", value: 0.15 },
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "basic_agriculture",
@@ -1120,7 +1111,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+25% food production",
     multiplier: { target: "production", value: 0.25 },
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   {
     id: "crop_rotation",
@@ -1144,7 +1134,6 @@ export const TECHS: TechDef[] = [
     requires: ["gathering"],
     effects: "+25% food & materials",
     multiplier: { target: "production", value: 0.25 },
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   {
     id: "fishing",
@@ -1157,7 +1146,6 @@ export const TECHS: TechDef[] = [
     requires: ["gathering"],
     effects: "+20% food production",
     multiplier: { target: "production", value: 0.20 },
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   {
     id: "food_preservation",
@@ -1182,7 +1170,6 @@ export const TECHS: TechDef[] = [
     requires: ["gathering"],
     effects: "+15% happiness & culture",
     multiplier: { target: "production", value: 0.15 },
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "selective_breeding",
@@ -1231,7 +1218,6 @@ export const TECHS: TechDef[] = [
     requires: ["selective_breeding", "crop_rotation", "animal_husbandry"],
     effects: "+50% food production",
     multiplier: { target: "production", value: 0.50 },
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
 
   // ===== TRIBAL — CONSTRUCTION PATH (Shelter & Construction) =====
@@ -1267,7 +1253,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+25% storage capacity",
     multiplier: { target: "capacity", value: 0.25 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "timber_framing",
@@ -1315,7 +1300,6 @@ export const TECHS: TechDef[] = [
     requires: ["timber_framing"],
     effects: "+15% knowledge, +20% military power",
     multiplier: { target: "production", value: 0.20 },
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   {
     id: "granaries_tech",
@@ -1340,7 +1324,6 @@ export const TECHS: TechDef[] = [
     requires: ["timber_framing", "defensive_walls"],
     effects: "+35% materials production",
     multiplier: { target: "production", value: 0.35 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "monument",
@@ -1353,7 +1336,6 @@ export const TECHS: TechDef[] = [
     requires: ["stone_masonry", "defensive_walls"],
     effects: "+25% culture & happiness",
     multiplier: { target: "production", value: 0.25 },
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "stone_masonry",
@@ -1378,7 +1360,6 @@ export const TECHS: TechDef[] = [
     requires: ["stone_masonry", "watchtowers"],
     effects: "+40% all production",
     multiplier: { target: "production", value: 0.40 },
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
 
   // ===== TRIBAL — CULTURE PATH (Culture & Spirituality) =====
@@ -1403,7 +1384,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+20% culture & knowledge",
     multiplier: { target: "production", value: 0.20 },
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "music",
@@ -1415,7 +1395,6 @@ export const TECHS: TechDef[] = [
     tier: 1,
     effects: "+18% happiness & culture",
     multiplier: { target: "production", value: 0.18 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "dance",
@@ -1439,7 +1418,6 @@ export const TECHS: TechDef[] = [
     requires: ["storytelling"],
     effects: "+25% culture & happiness",
     multiplier: { target: "production", value: 0.25 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "ancestor_worship",
@@ -1452,7 +1430,6 @@ export const TECHS: TechDef[] = [
     requires: ["storytelling"],
     effects: "+20% culture, +15% happiness",
     multiplier: { target: "production", value: 0.20 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "shamanism",
@@ -1465,7 +1442,6 @@ export const TECHS: TechDef[] = [
     requires: ["ancestor_worship", "storytelling"],
     effects: "+25% culture, +20% knowledge",
     multiplier: { target: "production", value: 0.25 },
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "rituals",
@@ -1490,7 +1466,6 @@ export const TECHS: TechDef[] = [
     requires: ["cave_painting", "shamanism"],
     effects: "+20% culture, +15% military power",
     multiplier: { target: "production", value: 0.20 },
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "pottery_decoration",
@@ -1515,7 +1490,6 @@ export const TECHS: TechDef[] = [
     requires: ["storytelling", "rituals"],
     effects: "+30% knowledge & culture",
     multiplier: { target: "production", value: 0.30 },
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "early_writing",
@@ -1528,7 +1502,6 @@ export const TECHS: TechDef[] = [
     requires: ["oral_tradition", "storytelling", "ancestor_worship"],
     effects: "+40% knowledge & science",
     multiplier: { target: "production", value: 0.40 },
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
 
   // ===== CIVILIZATION =====

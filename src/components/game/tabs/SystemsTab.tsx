@@ -36,6 +36,7 @@ export function SystemsTab() {
   const technologies = useGameStore((s) => s.technologies);
   const upgrades = useGameStore((s) => s.upgrades);
   const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
   const buySystem = useGameStore((s) => s.buySystem);
   const toggleSystem = useGameStore((s) => s.toggleSystem);
   const enableAllSystems = useGameStore((s) => s.enableAllSystems);
@@ -45,7 +46,15 @@ export function SystemsTab() {
   const isL5Plus = isAtLeast("apotheosis");
 
   const stage = STAGES[stageIndex];
-  const currentSystems = systemsForStage(stage.id);
+  // FIX-ARCHETYPE-LOCKED — hide systems whose requiredArchetype doesn't
+  // match the player's locked archetype. They aren't visible at all.
+  const currentSystems = useMemo(
+    () =>
+      systemsForStage(stage.id).filter(
+        (sys) => !sys.requiredArchetype || lockedArchetype === sys.requiredArchetype
+      ),
+    [stage.id, lockedArchetype]
+  );
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
   const hasAutoBalancer = (upgrades["auto_balancer"] || 0) > 0;
 

@@ -187,7 +187,7 @@ export function StagePanel() {
         {showArchInfo && (
           <div className="mb-2 text-xs text-muted-foreground bg-muted/30 border border-border rounded p-2 leading-relaxed">
             <p className="font-semibold text-foreground mb-1">Lineage & Archetypes</p>
-            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants 3 buffs + 1 debuff.</p>
+            <p>Buying certain systems and techs in Cell and Creature stages shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve into <span className="text-foreground">Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants 3 buffs + 1 debuff. Unique systems and techs unlock for your archetype.</p>
             <p className="mt-1">Undiscovered archetypes appear as <span className="text-foreground">???</span> on the radar. Lock one in once to reveal its name forever — even across resets.</p>
             <p className="mt-1">Choose your path deliberately — or let it emerge from how you play.</p>
           </div>
@@ -196,10 +196,9 @@ export function StagePanel() {
         {isLocked ? (
           <LockedArchetypeDisplay archId={lockedArchetype!} />
         ) : stageIndex >= 2 ? (
-          // After Tribal evolution but somehow no locked archetype — shouldn't happen
-          // but handle gracefully
+          // At Tribal+, archetype should be locked. If somehow not, show fallback.
           <div className="text-xs text-muted-foreground italic">
-            Lineage not locked — this shouldn't happen after Tribal.
+            Archetype not locked — restarting the run may fix this.
           </div>
         ) : hasAffinity ? (
           <div className="space-y-2">
@@ -211,7 +210,7 @@ export function StagePanel() {
             />
             {stageIndex < 1 && (
               <p className="text-[0.65rem] text-muted-foreground italic text-center">
-                Drift locks at Creature → Tribal evolution
+                Drift locks when entering Tribal
               </p>
             )}
             {stageIndex >= 1 && domArch && (
@@ -223,7 +222,7 @@ export function StagePanel() {
         ) : (
           <div className="text-xs text-muted-foreground italic">
             {stageIndex < 1
-              ? "Drift begins as you build. Locked at Creature → Tribal."
+              ? "Drift begins as you build. Locks when entering Tribal."
               : "No drift yet — build systems or research tech to find your path."}
           </div>
         )}

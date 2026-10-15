@@ -90,6 +90,10 @@ export function EternityContent() {
   const discoveredCount = Object.values(discoveredArchetypes).filter(Boolean).length;
   const allDiscovered = discoveredCount >= ARCHETYPE_COUNT;
   const boon = cosmicBoonBonus(cosmicBoonStacks);
+  // L10-ENDING-L5-UI-UNLOCKTECH — visited dimensions always starts with
+  // ["mundane"]; we read it here so the EndingScreen's dimension picker
+  // can determine which dimensions are selectable.
+  const visitedDimensions = useGameStore((s) => s.visitedDimensions || ["mundane"]);
 
   // Compute crucible rule view (recomputed each render — cheap).
   const crucibleRelics: DivineRelic[] = useMemo(() => {
@@ -185,6 +189,7 @@ export function EternityContent() {
             finalScore={finalScore}
             boon={boon}
             cosmicBoonStacks={cosmicBoonStacks}
+            visitedDimensions={visitedDimensions}
             onChooseEnding={(id) => setPendingEnding(id)}
           />
         ) : chosenEnding !== null ? (
@@ -560,6 +565,68 @@ export function EternityContent() {
 
 // ----- Ending screen -----
 
+// L10-ENDING-L5-UI-UNLOCKTECH — Dimension picker data.
+// Only "mundane" is selectable on the dimension picker; all others are
+// rendered as locked. `visitedDimensions` (from GameState, always starts
+// with `["mundane"]`) is the source-of-truth for which dimensions have
+// been visited — when more dimensions become unlockable in future
+// updates, the picker will read from this list to decide which
+// radio buttons are enabled.
+interface DimensionOption {
+  id: string;
+  name: string;
+  desc: string;
+  // Special "locked" reason text. If omitted, locked dimensions just show
+  // "Locked" with the standard lock icon. The "random" entry uses this to
+  // explain the unlock condition (finish a dimension first).
+  lockedNote?: string;
+}
+
+// Future: unlock dimensions by finishing L10 in each one
+const DIMENSION_OPTIONS: DimensionOption[] = [
+  {
+    id: "mundane",
+    name: "Mundane Realm",
+    desc: "The familiar world you began in. Earth, history, the ordinary cosmos.",
+  },
+  {
+    id: "random",
+    name: "Random Dimension",
+    desc: "Let the multiverse choose for you.",
+    lockedNote: "finish a dimension first",
+  },
+  {
+    id: "fantasy",
+    name: "Fantasy Realm",
+    desc: "Swords, sorcery, dragons, and ancient magics.",
+  },
+  {
+    id: "cyberpunk",
+    name: "Cyberpunk Neon",
+    desc: "Rain-slick megacity streets, chrome augments, and digital ghosts.",
+  },
+  {
+    id: "ancient_egypt",
+    name: "Ancient Egypt",
+    desc: "Pharaohs, pyramids, and the long gaze of Ra across the Nile.",
+  },
+  {
+    id: "norse",
+    name: "Norse Mythology",
+    desc: "Frost giants, the World Tree, and a serpent circling the seas.",
+  },
+  {
+    id: "greek",
+    name: "Greek Mythology",
+    desc: "Mount Olympus, the wine-dark sea, and the wrath of the gods.",
+  },
+  {
+    id: "post_apoc",
+    name: "Post-Apocalyptic",
+    desc: "Ash, rust, the long quiet after the end of all things.",
+  },
+];
+
 function EndingScreen({
   discoveredCount,
   totalPlayTime,
@@ -568,6 +635,7 @@ function EndingScreen({
   finalScore,
   boon,
   cosmicBoonStacks,
+  visitedDimensions,
   onChooseEnding,
 }: {
   discoveredCount: number;
@@ -577,8 +645,32 @@ function EndingScreen({
   finalScore: number;
   boon: number;
   cosmicBoonStacks: number;
+  visitedDimensions: string[];
   onChooseEnding: (id: "preserve" | "reset") => void;
 }) {
+  // L10-ENDING-L5-UI-UNLOCKTECH — the EndingScreen has two views:
+  //   - "main"  : the default cosmic viz + stats + two ending buttons.
+  //   - "picker" : shown after the player clicks "Explore another
+  //                Dimension". Lists the available dimensions; only the
+  //                mundane realm is selectable today.
+  const [view, setView] = useState<"main" | "picker">("main");
+  const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
+
+  if (view === "picker") {
+    return (
+      <DimensionPicker
+        visitedDimensions={visitedDimensions}
+        selected={selectedDimension}
+        onSelect={setSelectedDimension}
+        onConfirm={() => onChooseEnding("reset")}
+        onBack={() => {
+          setSelectedDimension(null);
+          setView("main");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Cosmic visualization */}
@@ -617,7 +709,18 @@ function EndingScreen({
         {ENDING_CHOICES.map((e) => (
           <button
             key={e.id}
-            onClick={() => onChooseEnding(e.id)}
+            onClick={() => {
+              // The "Explore another Dimension" choice opens the dimension
+              // picker view instead of immediately confirming the reset.
+              // "Continue in this realm" still goes straight through the
+              // parent's confirmation flow.
+              if (e.id === "reset") {
+                setSelectedDimension(null);
+                setView("picker");
+              } else {
+                onChooseEnding(e.id);
+              }
+            }}
             className={`stat-card text-left p-3 hover:border-amber-400/60 ${e.id === "reset" ? "border-rose-400/50" : "border-amber-400/40"}`}
           >
             <div className="flex items-center gap-2 mb-1">
@@ -627,6 +730,123 @@ function EndingScreen({
             <div className="text-[0.65rem] text-muted-foreground leading-snug">{e.desc}</div>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ----- Dimension picker view -----
+// Shown after the player clicks "Explore another Dimension" on the main
+// ending screen. Lists the dimensions; only the mundane realm is
+// selectable today. All others render as greyed-out, locked options.
+
+function DimensionPicker({
+  visitedDimensions,
+  selected,
+  onSelect,
+  onConfirm,
+  onBack,
+}: {
+  visitedDimensions: string[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onConfirm: () => void;
+  onBack: () => void;
+}) {
+  // Future: unlock dimensions by finishing L10 in each one.
+  // For now only "mundane" is ever in visitedDimensions, so only that row
+  // is enabled; every other row is locked + greyed out with a lock icon.
+  return (
+    <div className="space-y-3">
+      <div className="text-center">
+        <div className="text-sm font-bold text-amber-200 flex items-center justify-center gap-1.5">
+          <Sparkles className="w-4 h-4" />
+          Choose Your Next Dimension
+        </div>
+        <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+          The crucible shatters; the cosmos rearranges itself around you. Pick a realm to begin anew.
+        </div>
+      </div>
+
+      <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+        {DIMENSION_OPTIONS.map((d) => {
+          // Only the mundane realm (visited) is selectable. "random" is a
+          // special case — it's locked with a custom note ("finish a
+          // dimension first") so the player understands the unlock path.
+          const isUnlocked = visitedDimensions.includes(d.id);
+          const isLocked = !isUnlocked;
+          const isSelected = selected === d.id;
+          return (
+            <button
+              key={d.id}
+              disabled={isLocked}
+              onClick={() => onSelect(d.id)}
+              className={`w-full text-left p-2 rounded-md border transition-colors flex items-start gap-2 ${
+                isLocked
+                  ? "border-slate-700/40 bg-slate-900/40 opacity-50 cursor-not-allowed"
+                  : isSelected
+                    ? "border-amber-400/70 bg-amber-500/10 ring-1 ring-amber-400/40"
+                    : "border-slate-600/40 bg-card/40 hover:bg-card/70 hover:border-amber-400/50"
+              }`}
+            >
+              <span
+                className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center text-[0.55rem] shrink-0 ${
+                  isLocked
+                    ? "border-muted-foreground/30"
+                    : isSelected
+                      ? "border-amber-400 bg-amber-400 text-slate-900"
+                      : "border-slate-500"
+                }`}
+                aria-hidden
+              >
+                {!isLocked && isSelected ? "✓" : ""}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`text-xs font-medium truncate ${
+                      isLocked ? "text-muted-foreground" : "text-amber-100"
+                    }`}
+                  >
+                    {isLocked && d.id === "random"
+                      ? `Random Dimension`
+                      : d.id === "mundane"
+                        ? `Start again in this Dimension: ${d.name}`
+                        : d.name}
+                  </span>
+                  {isLocked && (
+                    <Lock className="w-3 h-3 text-muted-foreground/70 shrink-0" />
+                  )}
+                </div>
+                <div className="text-[0.6rem] text-muted-foreground leading-snug mt-0.5">
+                  {d.desc}
+                  {isLocked && d.lockedNote && (
+                    <span className="ml-1 text-rose-300/80">({d.lockedNote})</span>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+          ← Back
+        </Button>
+        <Button
+          size="sm"
+          className="h-8 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white"
+          disabled={!selected}
+          onClick={onConfirm}
+        >
+          <Sparkles className="w-3 h-3 mr-1" />
+          {selected ? `Reset into: ${DIMENSION_OPTIONS.find((d) => d.id === selected)?.name}` : "Select a dimension"}
+        </Button>
+      </div>
+      {/* Future: unlock dimensions by finishing L10 in each one. Today, only the Mundane Realm is selectable. */}
+      <div className="text-[0.55rem] text-muted-foreground/70 text-center">
+        Today, only the Mundane Realm is selectable. Future dimensions will unlock by finishing L10 in each one.
       </div>
     </div>
   );

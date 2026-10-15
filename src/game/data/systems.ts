@@ -1482,7 +1482,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.22,
     produces: { lumber: 0.8 },
     upkeep: { wood: 0.3 },
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "quarry",
@@ -1668,7 +1667,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.20,
     produces: { food: 0.8, culture: 0.05 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "tool_maker",
@@ -1719,7 +1717,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: { materials: 0.9, military_power: 0.2 },
     upkeep: { wood: 0.05 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "lumber_camp",
@@ -1756,7 +1753,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { gold: 0.3, culture: 0.1, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "council_hall",
@@ -1769,7 +1765,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.28,
     produces: { knowledge: 0.8, culture: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "training_ground",
@@ -1783,7 +1778,6 @@ export const SYSTEMS: SystemDef[] = [
     produces: { military_power: 1.0, knowledge: 0.05 },
     upkeep: { food: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "burial_ground",
@@ -1796,13 +1790,13 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { happiness: 0.3, culture: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
 
   // ===== TRIBAL — ARCHETYPE-DRIFT SYSTEMS (4 per archetype × 13 = 52) =====
   // --- Humanoid ---
   {
     id: "humanoid_council_tent",
+    requiredArchetype: "humanoid",
     name: "Council Tent",
     desc: "A great tent where the wise gather. Trade, talk, and treaty.",
     stage: "tribal",
@@ -1812,10 +1806,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { knowledge: 0.8, culture: 0.4 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 2 },
   },
   {
     id: "humanoid_trade_post",
+    requiredArchetype: "humanoid",
     name: "Trade Post",
     desc: "Goods change hands. The tribe learns the value of strangers.",
     stage: "tribal",
@@ -1825,10 +1819,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { gold: 0.5, materials: 0.4, knowledge: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "humanoid_diplomacy_hut",
+    requiredArchetype: "humanoid",
     name: "Diplomacy Hut",
     desc: "Where words turn enemies into allies, and allies into kin.",
     stage: "tribal",
@@ -1838,10 +1832,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { happiness: 0.4, culture: 0.3, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   {
     id: "humanoid_language_school",
+    requiredArchetype: "humanoid",
     name: "Language School",
     desc: "Where speech is taught and meaning is sharpened.",
     stage: "tribal",
@@ -1851,11 +1845,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { knowledge: 0.7, science: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "humanoid", amount: 1 },
   },
   // --- Mammalian ---
   {
     id: "mammalian_pack_lodge",
+    requiredArchetype: "mammalian",
     name: "Pack Lodge",
     desc: "A den for the bonded pack. Kinship makes the tribe strong.",
     stage: "tribal",
@@ -1866,10 +1860,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { food: 1.0, happiness: 0.3 },
     popGrowth: 0.08,
     maxOwned: 25,
-    grantsAffinity: { archetype: "mammalian", amount: 2 },
   },
   {
     id: "mammalian_nursing_quarters",
+    requiredArchetype: "mammalian",
     name: "Nursing Quarters",
     desc: "Warm rooms where the young and sick are tended. Fewer are lost.",
     stage: "tribal",
@@ -1880,10 +1874,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { happiness: 0.5, food: 0.2 },
     popGrowth: 0.05,
     maxOwned: 25,
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   {
     id: "mammalian_warm_hearth",
+    requiredArchetype: "mammalian",
     name: "Warm Hearth",
     desc: "A well-tended fire in a snug den. Blood runs warm.",
     stage: "tribal",
@@ -1893,10 +1887,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.23,
     produces: { happiness: 0.5, food: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   {
     id: "mammalian_hunting_pack",
+    requiredArchetype: "mammalian",
     name: "Hunting Pack",
     desc: "Bonded hunters who run together and bring down game as one.",
     stage: "tribal",
@@ -1906,11 +1900,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { food: 0.9, military_power: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "mammalian", amount: 1 },
   },
   // --- Reptilian ---
   {
     id: "reptilian_sun_temple",
+    requiredArchetype: "reptilian",
     name: "Sun Temple",
     desc: "A temple oriented to the sun. Cold blood finds warmth and meaning.",
     stage: "tribal",
@@ -1920,10 +1914,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { military_power: 0.6, happiness: 0.3, culture: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "reptilian", amount: 2 },
   },
   {
     id: "reptilian_egg_hatchery",
+    requiredArchetype: "reptilian",
     name: "Egg Hatchery",
     desc: "Warm sands where eggs incubate in safety. Hatches swell the tribe.",
     stage: "tribal",
@@ -1934,10 +1928,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { food: 0.4 },
     popGrowth: 0.07,
     maxOwned: 25,
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "reptilian_cold_blood_camp",
+    requiredArchetype: "reptilian",
     name: "Cold Blood Camp",
     desc: "Patient, slow, and disciplined. Warriors bide their time.",
     stage: "tribal",
@@ -1947,10 +1941,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { military_power: 0.7, happiness: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   {
     id: "reptilian_reptile_guard",
+    requiredArchetype: "reptilian",
     name: "Reptile Guard",
     desc: "Scaled sentinels who watch the walls with unblinking eyes.",
     stage: "tribal",
@@ -1960,11 +1954,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { military_power: 0.9, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "reptilian", amount: 1 },
   },
   // --- Necroid ---
   {
     id: "necroid_necropolis",
+    requiredArchetype: "necroid",
     name: "Necropolis",
     desc: "A city of the dead where the ancestors dwell among the living.",
     stage: "tribal",
@@ -1974,10 +1968,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { culture: 0.6, military_power: 0.3, happiness: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "necroid", amount: 2 },
   },
   {
     id: "necroid_bone_shrine",
+    requiredArchetype: "necroid",
     name: "Bone Shrine",
     desc: "Built of ancestor bones. Death itself becomes sacred.",
     stage: "tribal",
@@ -1987,10 +1981,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { culture: 0.5, military_power: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "necroid_death_ritual_site",
+    requiredArchetype: "necroid",
     name: "Death Ritual Site",
     desc: "Where the dead are honored and the living are bound to them.",
     stage: "tribal",
@@ -2000,10 +1994,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { culture: 0.6, happiness: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   {
     id: "necroid_soul_pillar",
+    requiredArchetype: "necroid",
     name: "Soul Pillar",
     desc: "A pillar raised to anchor the dead to the living world.",
     stage: "tribal",
@@ -2013,11 +2007,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { culture: 0.4, knowledge: 0.5 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "necroid", amount: 1 },
   },
   // --- Arthropoid ---
   {
     id: "arthropoid_hive_city",
+    requiredArchetype: "arthropoid",
     name: "Hive City",
     desc: "A great hive where many limbs labor as one. Materials multiply.",
     stage: "tribal",
@@ -2027,10 +2021,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { materials: 0.9, food: 0.4, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "arthropoid", amount: 2 },
   },
   {
     id: "arthropoid_silk_workshop",
+    requiredArchetype: "arthropoid",
     name: "Silk Workshop",
     desc: "Where silk is spun into cloth, rope, and trade goods.",
     stage: "tribal",
@@ -2040,10 +2034,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { culture: 0.4, materials: 0.4, gold: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "arthropoid_swarm_barracks",
+    requiredArchetype: "arthropoid",
     name: "Swarm Barracks",
     desc: "Where the swarm learns to swarm in war.",
     stage: "tribal",
@@ -2053,10 +2047,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { military_power: 0.8, food: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   {
     id: "arthropoid_chitin_forge",
+    requiredArchetype: "arthropoid",
     name: "Chitin Forge",
     desc: "Shed chitin is reshaped into armor and tools.",
     stage: "tribal",
@@ -2066,11 +2060,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { materials: 0.8, military_power: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "arthropoid", amount: 1 },
   },
   // --- Plantoid ---
   {
     id: "plantoid_sacred_grove",
+    requiredArchetype: "plantoid",
     name: "Sacred Grove",
     desc: "A grove tended as holy ground. The trees themselves are kin.",
     stage: "tribal",
@@ -2080,10 +2074,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { food: 1.2, happiness: 0.4, culture: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "plantoid", amount: 2 },
   },
   {
     id: "plantoid_root_cellar",
+    requiredArchetype: "plantoid",
     name: "Root Cellar",
     desc: "Below the roots, food stays fresh through the longest winter.",
     stage: "tribal",
@@ -2094,10 +2088,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { food: 0.3 },
     capacityBoost: { food: 40, water: 20, materials: 15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "plantoid_sun_temple",
+    requiredArchetype: "plantoid",
     name: "Sun Temple",
     desc: "A clearing oriented to the light, where the tribe photosynthesizes together.",
     stage: "tribal",
@@ -2107,10 +2101,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { happiness: 0.5, food: 0.4, culture: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   {
     id: "plantoid_forest_garden",
+    requiredArchetype: "plantoid",
     name: "Forest Garden",
     desc: "A managed forest where food grows without planting.",
     stage: "tribal",
@@ -2120,11 +2114,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { food: 0.9, wood: 0.4, happiness: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "plantoid", amount: 1 },
   },
   // --- Fungoid ---
   {
     id: "fungoid_spore_village",
+    requiredArchetype: "fungoid",
     name: "Spore Village",
     desc: "A village seeded in spores. The waste of one feeds another.",
     stage: "tribal",
@@ -2134,10 +2128,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { organic_matter: 0.8, food: 0.5, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "fungoid", amount: 2 },
   },
   {
     id: "fungoid_mycelial_network",
+    requiredArchetype: "fungoid",
     name: "Mycelial Network",
     desc: "Threads beneath the soil that bind the tribe together unseen.",
     stage: "tribal",
@@ -2147,10 +2141,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { organic_matter: 0.5, knowledge: 0.4, culture: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "fungoid_decomposer_pit",
+    requiredArchetype: "fungoid",
     name: "Decomposer Pit",
     desc: "Where the dead and wasted become new soil and new food.",
     stage: "tribal",
@@ -2160,10 +2154,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { organic_matter: 0.6, materials: 0.3, food: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   {
     id: "fungoid_mushroom_hall",
+    requiredArchetype: "fungoid",
     name: "Mushroom Hall",
     desc: "A great mushroom cap shelters the tribe's gatherings.",
     stage: "tribal",
@@ -2173,11 +2167,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { happiness: 0.4, food: 0.3, culture: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "fungoid", amount: 1 },
   },
   // --- Molluscoid ---
   {
     id: "molluscoid_pearl_market",
+    requiredArchetype: "molluscoid",
     name: "Pearl Market",
     desc: "Pearls and shells trade hands. Culture and wealth accumulate.",
     stage: "tribal",
@@ -2187,10 +2181,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { culture: 0.6, gold: 0.4, science: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "molluscoid", amount: 2 },
   },
   {
     id: "molluscoid_tide_mill",
+    requiredArchetype: "molluscoid",
     name: "Tide Mill",
     desc: "The tides turn the wheel. Patient, slow, productive labor.",
     stage: "tribal",
@@ -2200,10 +2194,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { materials: 0.6, science: 0.2, food: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "molluscoid_shell_fortress",
+    requiredArchetype: "molluscoid",
     name: "Shell Fortress",
     desc: "A fortress built of layered shell and stone. Slow, patient, impervious.",
     stage: "tribal",
@@ -2213,10 +2207,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { military_power: 0.7, happiness: 0.2, science: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   {
     id: "molluscoid_ink_scribe",
+    requiredArchetype: "molluscoid",
     name: "Ink Scribe",
     desc: "Ink-stained hands record what speech would forget.",
     stage: "tribal",
@@ -2226,11 +2220,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { science: 0.5, culture: 0.3, knowledge: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "molluscoid", amount: 1 },
   },
   // --- Lithoid ---
   {
     id: "lithoid_crystal_city",
+    requiredArchetype: "lithoid",
     name: "Crystal City",
     desc: "A city grown from crystal, patient and enduring.",
     stage: "tribal",
@@ -2241,10 +2235,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { stone: 0.8, science: 0.4, knowledge: 0.1 },
     capacityBoost: { stone: 50, materials: 25 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "lithoid", amount: 2 },
   },
   {
     id: "lithoid_mine_network",
+    requiredArchetype: "lithoid",
     name: "Mine Network",
     desc: "Tunnels and shafts through the living stone.",
     stage: "tribal",
@@ -2254,10 +2248,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { stone: 1.2, clay: 0.3, materials: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "lithoid_stone_temple",
+    requiredArchetype: "lithoid",
     name: "Stone Temple",
     desc: "A temple carved from a single block. The stone itself is holy.",
     stage: "tribal",
@@ -2267,10 +2261,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { happiness: 0.4, culture: 0.3, knowledge: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   {
     id: "lithoid_tectonic_pillar",
+    requiredArchetype: "lithoid",
     name: "Tectonic Pillar",
     desc: "A pillar that resonates with the deep earth.",
     stage: "tribal",
@@ -2280,11 +2274,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.28,
     produces: { culture: 0.4, happiness: 0.3, science: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "lithoid", amount: 1 },
   },
   // --- Toxoid ---
   {
     id: "toxoid_venom_works",
+    requiredArchetype: "toxoid",
     name: "Venom Works",
     desc: "A workshop that distills venom into weapon, medicine, and science.",
     stage: "tribal",
@@ -2294,10 +2288,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { science: 0.6, military_power: 0.4, materials: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "toxoid", amount: 2 },
   },
   {
     id: "toxoid_toxic_swamp",
+    requiredArchetype: "toxoid",
     name: "Toxic Swamp",
     desc: "Where others die, the tribe thrives. Waste becomes plenty.",
     stage: "tribal",
@@ -2307,10 +2301,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { organic_matter: 0.7, science: 0.2, food: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   {
     id: "toxoid_plague_cauldron",
+    requiredArchetype: "toxoid",
     name: "Plague Cauldron",
     desc: "A bubbling pot that brews sickness and strength alike.",
     stage: "tribal",
@@ -2320,10 +2314,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { military_power: 0.5, science: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   {
     id: "toxoid_acid_refinery",
+    requiredArchetype: "toxoid",
     name: "Acid Refinery",
     desc: "Acid dissolves what fire cannot. New materials emerge.",
     stage: "tribal",
@@ -2333,11 +2327,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { materials: 0.8, science: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "toxoid", amount: 1 },
   },
   // --- Avian ---
   {
     id: "avian_aerie_nest",
+    requiredArchetype: "avian",
     name: "Aerie Nest",
     desc: "A nest built high on a cliff. Far sight and quick wings.",
     stage: "tribal",
@@ -2347,10 +2341,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { knowledge: 0.9, science: 0.3, military_power: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "avian", amount: 2 },
   },
   {
     id: "avian_sky_shrine",
+    requiredArchetype: "avian",
     name: "Sky Shrine",
     desc: "A shrine raised to the open sky and the winds that carry prayer.",
     stage: "tribal",
@@ -2360,10 +2354,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.26,
     produces: { happiness: 0.5, science: 0.2, culture: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   {
     id: "avian_feather_market",
+    requiredArchetype: "avian",
     name: "Feather Market",
     desc: "Plumes and songbirds trade hands. Beauty has value.",
     stage: "tribal",
@@ -2373,10 +2367,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.25,
     produces: { culture: 0.5, gold: 0.3, knowledge: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   {
     id: "avian_wind_rider_camp",
+    requiredArchetype: "avian",
     name: "Wind Rider Camp",
     desc: "Tamed mounts that ride the thermals. Scouts range far.",
     stage: "tribal",
@@ -2386,11 +2380,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { knowledge: 0.4, military_power: 0.4, happiness: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "avian", amount: 1 },
   },
   // --- Aquatic ---
   {
     id: "aquatic_coral_city",
+    requiredArchetype: "aquatic",
     name: "Coral City",
     desc: "A city coaxed from living coral. The sea remembers.",
     stage: "tribal",
@@ -2400,10 +2394,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { water: 1.0, science: 0.4, food: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "aquatic", amount: 2 },
   },
   {
     id: "aquatic_tide_pool_farm",
+    requiredArchetype: "aquatic",
     name: "Tide Pool Farm",
     desc: "Tended pools where the sea's bounty is grown and gathered.",
     stage: "tribal",
@@ -2413,10 +2407,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { food: 1.0, water: 0.3, science: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   {
     id: "aquatic_deep_sanctuary",
+    requiredArchetype: "aquatic",
     name: "Deep Sanctuary",
     desc: "A sanctuary in the cold dark, where the deep holds its old knowledge.",
     stage: "tribal",
@@ -2426,10 +2420,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { science: 0.6, happiness: 0.3, culture: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   {
     id: "aquatic_pearl_fishery",
+    requiredArchetype: "aquatic",
     name: "Pearl Fishery",
     desc: "Divers bring up pearls and shell, wealth from below.",
     stage: "tribal",
@@ -2439,11 +2433,11 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.24,
     produces: { culture: 0.4, gold: 0.4, food: 0.3 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "aquatic", amount: 1 },
   },
   // --- Extremophile ---
   {
     id: "extremophile_vent_city",
+    requiredArchetype: "extremophile",
     name: "Vent City",
     desc: "A city clinging to hydrothermal vents. Energy where none should be.",
     stage: "tribal",
@@ -2454,10 +2448,10 @@ export const SYSTEMS: SystemDef[] = [
     produces: { science: 0.6, materials: 0.6, food: 0.3 },
     capacityBoost: { food: 50, water: 50, materials: 25 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "extremophile", amount: 2 },
   },
   {
     id: "extremophile_radiation_shrine",
+    requiredArchetype: "extremophile",
     name: "Radiation Shrine",
     desc: "A shrine glowing with strange light. The unseen becomes holy.",
     stage: "tribal",
@@ -2467,10 +2461,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.28,
     produces: { science: 0.7, happiness: 0.3, culture: 0.15 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
   {
     id: "extremophile_pressure_mine",
+    requiredArchetype: "extremophile",
     name: "Pressure Mine",
     desc: "Shafts carved into stone under crushing pressure.",
     stage: "tribal",
@@ -2480,10 +2474,10 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.28,
     produces: { stone: 1.0, materials: 0.5, science: 0.1 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
   {
     id: "extremophile_extreme_outpost",
+    requiredArchetype: "extremophile",
     name: "Extreme Outpost",
     desc: "An outpost where nothing should survive. Life finds a way.",
     stage: "tribal",
@@ -2493,7 +2487,6 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.27,
     produces: { science: 0.4, military_power: 0.4, knowledge: 0.2 },
     maxOwned: 25,
-    grantsAffinity: { archetype: "extremophile", amount: 1 },
   },
 
   // ===== CIVILIZATION =====
@@ -2936,6 +2929,7 @@ export const SYSTEMS: SystemDef[] = [
   // Humanoid (3)
   {
     id: "civ_arch_diplomatic_hall",
+    requiredArchetype: "humanoid",
     name: "Diplomatic Hall",
     desc: "Ambassadors received in style; the humanoid gift for compromise institutionalized.",
     stage: "civilization",
@@ -2947,6 +2941,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_senate",
+    requiredArchetype: "humanoid",
     name: "Senate",
     desc: "Elected elders debate; the republic's voice made institution.",
     stage: "civilization",
@@ -2958,6 +2953,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_great_library",
+    requiredArchetype: "humanoid",
     name: "Great Library",
     desc: "Every scroll known to the world, gathered under one roof.",
     stage: "civilization",
@@ -2970,6 +2966,7 @@ export const SYSTEMS: SystemDef[] = [
   // Mammalian (3)
   {
     id: "civ_arch_hearth_hall",
+    requiredArchetype: "mammalian",
     name: "Hearth Hall",
     desc: "A warm common room where the clan gathers; kinship formalized.",
     stage: "civilization",
@@ -2981,6 +2978,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_kinship_lodge",
+    requiredArchetype: "mammalian",
     name: "Kinship Lodge",
     desc: "Where bloodlines are recorded and bonds reaffirmed.",
     stage: "civilization",
@@ -2994,6 +2992,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_warm_forge",
+    requiredArchetype: "mammalian",
     name: "Warm Forge",
     desc: "A forge kept ever-lit; the clan's craft never sleeps.",
     stage: "civilization",
@@ -3006,6 +3005,7 @@ export const SYSTEMS: SystemDef[] = [
   // Reptilian (3)
   {
     id: "civ_arch_war_altar",
+    requiredArchetype: "reptilian",
     name: "War Altar",
     desc: "Blood and incense; where the warrior caste prays.",
     stage: "civilization",
@@ -3017,6 +3017,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_scaled_garrison",
+    requiredArchetype: "reptilian",
     name: "Scaled Garrison",
     desc: "Barracks for the cold-blooded soldiery; discipline scales.",
     stage: "civilization",
@@ -3028,6 +3029,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_sun_basking_plaza",
+    requiredArchetype: "reptilian",
     name: "Sun-Basking Plaza",
     desc: "Warm stone where the city's cold-blooded citizens gather heat.",
     stage: "civilization",
@@ -3040,6 +3042,7 @@ export const SYSTEMS: SystemDef[] = [
   // Avian (3)
   {
     id: "civ_arch_sky_tower",
+    requiredArchetype: "avian",
     name: "Sky Tower",
     desc: "A spire tall enough to roost the city's winged messengers.",
     stage: "civilization",
@@ -3051,6 +3054,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_wind_roost",
+    requiredArchetype: "avian",
     name: "Wind Roost",
     desc: "Open-air perches where the windborne gather and trade news.",
     stage: "civilization",
@@ -3062,6 +3066,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_migration_map",
+    requiredArchetype: "avian",
     name: "Migration Map",
     desc: "A great chart of seasonal routes; the flock's memory made artifact.",
     stage: "civilization",
@@ -3074,6 +3079,7 @@ export const SYSTEMS: SystemDef[] = [
   // Arthropoid (3)
   {
     id: "civ_arch_swarm_metropolis",
+    requiredArchetype: "arthropoid",
     name: "Swarm Metropolis",
     desc: "A hive-scaled urban complex; thousands of chambers for thousands of workers.",
     stage: "civilization",
@@ -3085,6 +3091,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_cocoon_foundry",
+    requiredArchetype: "arthropoid",
     name: "Cocoon Foundry",
     desc: "Vats where larvae are nurtured into specialized castes.",
     stage: "civilization",
@@ -3098,6 +3105,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_chitin_forge",
+    requiredArchetype: "arthropoid",
     name: "Chitin Forge",
     desc: "Workshops that shape chitin into armor, tool, and weapon.",
     stage: "civilization",
@@ -3110,6 +3118,7 @@ export const SYSTEMS: SystemDef[] = [
   // Molluscoid (3)
   {
     id: "civ_arch_tide_library",
+    requiredArchetype: "molluscoid",
     name: "Tide Library",
     desc: "Tidal-calculated archives; the sea's rhythm organizes knowledge.",
     stage: "civilization",
@@ -3121,6 +3130,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_pearl_exchange",
+    requiredArchetype: "molluscoid",
     name: "Pearl Exchange",
     desc: "Market where pearls are currency; soft luxury for soft bodies.",
     stage: "civilization",
@@ -3132,6 +3142,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_shell_archive",
+    requiredArchetype: "molluscoid",
     name: "Shell Archive",
     desc: "Inscribed shells stacked deep; the soft people's memory.",
     stage: "civilization",
@@ -3144,6 +3155,7 @@ export const SYSTEMS: SystemDef[] = [
   // Fungoid (3)
   {
     id: "civ_arch_mycelial_grid",
+    requiredArchetype: "fungoid",
     name: "Mycelial Grid",
     desc: "The city itself is one organism; hyphae lace the streets.",
     stage: "civilization",
@@ -3155,6 +3167,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_spore_vault",
+    requiredArchetype: "fungoid",
     name: "Spore Vault",
     desc: "Sealed chambers where reproductive spores ripen.",
     stage: "civilization",
@@ -3168,6 +3181,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_decomposer_yard",
+    requiredArchetype: "fungoid",
     name: "Decomposer Yard",
     desc: "Where the city's waste becomes the city's food.",
     stage: "civilization",
@@ -3180,6 +3194,7 @@ export const SYSTEMS: SystemDef[] = [
   // Plantoid (3)
   {
     id: "civ_arch_great_garden",
+    requiredArchetype: "plantoid",
     name: "Great Garden",
     desc: "A cultivated forest at the city's heart; the rooted people's cathedral.",
     stage: "civilization",
@@ -3191,6 +3206,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_living_archive",
+    requiredArchetype: "plantoid",
     name: "Living Archive",
     desc: "Trees whose bark holds inscriptions; knowledge that grows.",
     stage: "civilization",
@@ -3202,6 +3218,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_solar_sanctum",
+    requiredArchetype: "plantoid",
     name: "Solar Sanctum",
     desc: "A clear-roofed hall where the photosynthetic citizens drink the sun.",
     stage: "civilization",
@@ -3214,6 +3231,7 @@ export const SYSTEMS: SystemDef[] = [
   // Toxoid (3)
   {
     id: "civ_arch_toxic_refinery",
+    requiredArchetype: "toxoid",
     name: "Toxic Refinery",
     desc: "Vats that concentrate venom into commerce and weapon.",
     stage: "civilization",
@@ -3225,6 +3243,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_contagion_lab",
+    requiredArchetype: "toxoid",
     name: "Contagion Lab",
     desc: "Where plague is studied, weaponized, and sometimes cured.",
     stage: "civilization",
@@ -3236,6 +3255,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_plague_cauldron",
+    requiredArchetype: "toxoid",
     name: "Plague Cauldron",
     desc: "Bubbling brew; the city's defense lies in what it spreads.",
     stage: "civilization",
@@ -3248,6 +3268,7 @@ export const SYSTEMS: SystemDef[] = [
   // Aquatic (2)
   {
     id: "civ_arch_coral_citadel",
+    requiredArchetype: "aquatic",
     name: "Coral Citadel",
     desc: "A fortress coaxed from living reef; the sea's own masonry.",
     stage: "civilization",
@@ -3259,6 +3280,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_abyssal_archive",
+    requiredArchetype: "aquatic",
     name: "Abyssal Archive",
     desc: "Pressure-cooled vaults beneath the thermocline; data preserved in the deep.",
     stage: "civilization",
@@ -3271,6 +3293,7 @@ export const SYSTEMS: SystemDef[] = [
   // Necroid (2)
   {
     id: "civ_arch_tomb_cathedral",
+    requiredArchetype: "necroid",
     name: "Tomb Cathedral",
     desc: "A vaulted hall where the dead are honored, feared, and consulted.",
     stage: "civilization",
@@ -3282,6 +3305,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_bone_forge",
+    requiredArchetype: "necroid",
     name: "Bone Forge",
     desc: "Crafts from the city's ancestors; their substance endures in tool and blade.",
     stage: "civilization",
@@ -3294,6 +3318,7 @@ export const SYSTEMS: SystemDef[] = [
   // Lithoid (2)
   {
     id: "civ_arch_crystal_spire",
+    requiredArchetype: "lithoid",
     name: "Crystal Spire",
     desc: "A growing tower of crystalline habit; the lithoid's monument.",
     stage: "civilization",
@@ -3305,6 +3330,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_geode_vault",
+    requiredArchetype: "lithoid",
     name: "Geode Vault",
     desc: "A hollow crystal lined with finer crystals; the city's treasury.",
     stage: "civilization",
@@ -3318,6 +3344,7 @@ export const SYSTEMS: SystemDef[] = [
   // Extremophile (2)
   {
     id: "civ_arch_volcanic_outpost",
+    requiredArchetype: "extremophile",
     name: "Volcanic Outpost",
     desc: "A settlement on the caldera's lip; what should kill, feeds.",
     stage: "civilization",
@@ -3329,6 +3356,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "civ_arch_frostvault",
+    requiredArchetype: "extremophile",
     name: "Frostvault",
     desc: "An insulated granary in the permafrost; food that never spoils.",
     stage: "civilization",
@@ -3820,6 +3848,7 @@ export const SYSTEMS: SystemDef[] = [
   // Humanoid (3)
   {
     id: "emp_arch_diplomatic_palace",
+    requiredArchetype: "humanoid",
     name: "Diplomatic Palace",
     desc: "Marble halls where the empire receives the world's ambassadors.",
     stage: "empire",
@@ -3831,6 +3860,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_imperial_senate",
+    requiredArchetype: "humanoid",
     name: "Imperial Senate",
     desc: "Elected representatives from every province; the empire's deliberative body.",
     stage: "empire",
@@ -3842,6 +3872,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_global_library",
+    requiredArchetype: "humanoid",
     name: "Global Library",
     desc: "Every book, every scroll, every data set; the empire's memory in one place.",
     stage: "empire",
@@ -3854,6 +3885,7 @@ export const SYSTEMS: SystemDef[] = [
   // Mammalian (3)
   {
     id: "emp_arch_hearth_empire",
+    requiredArchetype: "mammalian",
     name: "Hearth Empire",
     desc: "A network of warm halls binding the empire's scattered kin.",
     stage: "empire",
@@ -3865,6 +3897,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_kinship_ministry",
+    requiredArchetype: "mammalian",
     name: "Kinship Ministry",
     desc: "A government department devoted to family welfare and lineage records.",
     stage: "empire",
@@ -3878,6 +3911,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_warm_factory",
+    requiredArchetype: "mammalian",
     name: "Warm Factory",
     desc: "A factory kept ever-lit and ever-heated; the clan's industry never sleeps.",
     stage: "empire",
@@ -3890,6 +3924,7 @@ export const SYSTEMS: SystemDef[] = [
   // Reptilian (3)
   {
     id: "emp_arch_war_command",
+    requiredArchetype: "reptilian",
     name: "War Command",
     desc: "A bunker complex directing the empire's every campaign.",
     stage: "empire",
@@ -3901,6 +3936,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_scaled_legion",
+    requiredArchetype: "reptilian",
     name: "Scaled Legion",
     desc: "A standing army of cold-blooded soldiers; patient, disciplined, deadly.",
     stage: "empire",
@@ -3912,6 +3948,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_predator_arena",
+    requiredArchetype: "reptilian",
     name: "Predator Arena",
     desc: "Bloodsport at imperial scale; the cold-blooded citizens roar.",
     stage: "empire",
@@ -3924,6 +3961,7 @@ export const SYSTEMS: SystemDef[] = [
   // Avian (3)
   {
     id: "emp_arch_sky_fortress",
+    requiredArchetype: "avian",
     name: "Sky Fortress",
     desc: "An airborne citadel; bombers launch from above the weather.",
     stage: "empire",
@@ -3935,6 +3973,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_wind_fleet",
+    requiredArchetype: "avian",
     name: "Wind Fleet",
     desc: "A squadron of high-altitude gliders; messengers that cross the empire in hours.",
     stage: "empire",
@@ -3946,6 +3985,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_orbital_roost",
+    requiredArchetype: "avian",
     name: "Orbital Roost",
     desc: "A station in low orbit where the winged citizens rest between flights.",
     stage: "empire",
@@ -3958,6 +3998,7 @@ export const SYSTEMS: SystemDef[] = [
   // Arthropoid (3)
   {
     id: "emp_arch_hive_metropolis",
+    requiredArchetype: "arthropoid",
     name: "Hive Metropolis",
     desc: "A single urban organism; millions of chambers, billions of workers.",
     stage: "empire",
@@ -3969,6 +4010,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_swarm_factory",
+    requiredArchetype: "arthropoid",
     name: "Swarm Factory",
     desc: "A factory staffed entirely by specialized castes; no human hands.",
     stage: "empire",
@@ -3980,6 +4022,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_chitin_armory",
+    requiredArchetype: "arthropoid",
     name: "Chitin Armory",
     desc: "Workshops forging chitin-alloy armor and weapons for the swarm legions.",
     stage: "empire",
@@ -3992,6 +4035,7 @@ export const SYSTEMS: SystemDef[] = [
   // Molluscoid (3)
   {
     id: "emp_arch_tide_university",
+    requiredArchetype: "molluscoid",
     name: "Tide University",
     desc: "An institution organized by tidal cycles; the soft people's academy.",
     stage: "empire",
@@ -4003,6 +4047,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_pearl_bank",
+    requiredArchetype: "molluscoid",
     name: "Pearl Bank",
     desc: "A vault of pearls and mother-of-pearl; the soft people's reserve currency.",
     stage: "empire",
@@ -4014,6 +4059,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_shell_archive",
+    requiredArchetype: "molluscoid",
     name: "Shell Archive",
     desc: "Inscribed shells indexed by the billion; the empire's deep memory.",
     stage: "empire",
@@ -4026,6 +4072,7 @@ export const SYSTEMS: SystemDef[] = [
   // Fungoid (3)
   {
     id: "emp_arch_mycelial_grid_empire",
+    requiredArchetype: "fungoid",
     name: "Mycelial Grid",
     desc: "The empire itself is one organism; hyphae lace every province.",
     stage: "empire",
@@ -4037,6 +4084,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_spore_reactor",
+    requiredArchetype: "fungoid",
     name: "Spore Reactor",
     desc: "A power plant fueled by hyphal decomposition; the dead feed the living.",
     stage: "empire",
@@ -4048,6 +4096,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_decomposer_plant",
+    requiredArchetype: "fungoid",
     name: "Decomposer Plant",
     desc: "Industrial-scale recycling; the empire's waste becomes its food.",
     stage: "empire",
@@ -4060,6 +4109,7 @@ export const SYSTEMS: SystemDef[] = [
   // Plantoid (3)
   {
     id: "emp_arch_hydroponic_empire",
+    requiredArchetype: "plantoid",
     name: "Hydroponic Empire",
     desc: "Vertical farms in every city; food without soil, without season.",
     stage: "empire",
@@ -4071,6 +4121,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_solar_gardens",
+    requiredArchetype: "plantoid",
     name: "Solar Gardens",
     desc: "Parks of giant leaves catching every photon; beauty and power at once.",
     stage: "empire",
@@ -4082,6 +4133,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_planetary_forest",
+    requiredArchetype: "plantoid",
     name: "Planetary Forest",
     desc: "A continent re-wilded; the rooted people's masterpiece.",
     stage: "empire",
@@ -4094,6 +4146,7 @@ export const SYSTEMS: SystemDef[] = [
   // Toxoid (3)
   {
     id: "emp_arch_bio_weapon_arsenal",
+    requiredArchetype: "toxoid",
     name: "Bio-Weapon Arsenal",
     desc: "Engineered pathogens in cooled vaults; the empire's last argument.",
     stage: "empire",
@@ -4106,6 +4159,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_toxic_economy",
+    requiredArchetype: "toxoid",
     name: "Toxic Economy",
     desc: "An economy built on poison's trade; venom as currency and product.",
     stage: "empire",
@@ -4117,6 +4171,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_venom_infrastructure",
+    requiredArchetype: "toxoid",
     name: "Venom Infrastructure",
     desc: "Pipes of venom threading the empire; defense and industry in one fluid.",
     stage: "empire",
@@ -4129,6 +4184,7 @@ export const SYSTEMS: SystemDef[] = [
   // Aquatic (2)
   {
     id: "emp_arch_coral_empire",
+    requiredArchetype: "aquatic",
     name: "Coral Empire",
     desc: "A continent-spanning reef coaxed into city, fortress, and farm.",
     stage: "empire",
@@ -4140,6 +4196,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_abyssal_lab",
+    requiredArchetype: "aquatic",
     name: "Abyssal Lab",
     desc: "A laboratory in the lightless deep; pressure and cold enable rare science.",
     stage: "empire",
@@ -4152,6 +4209,7 @@ export const SYSTEMS: SystemDef[] = [
   // Necroid (2)
   {
     id: "emp_arch_tomb_capital",
+    requiredArchetype: "necroid",
     name: "Tomb Capital",
     desc: "A city of the dead, ruled by the dead, where the living come to work.",
     stage: "empire",
@@ -4163,6 +4221,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_bone_factory",
+    requiredArchetype: "necroid",
     name: "Bone Factory",
     desc: "Industrial recycling of the dead; their substance becomes the empire's tools.",
     stage: "empire",
@@ -4175,6 +4234,7 @@ export const SYSTEMS: SystemDef[] = [
   // Lithoid (2)
   {
     id: "emp_arch_crystal_palace",
+    requiredArchetype: "lithoid",
     name: "Crystal Palace",
     desc: "A palace grown from a single crystal; the lithoid emperor's seat.",
     stage: "empire",
@@ -4186,6 +4246,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_geode_reactor",
+    requiredArchetype: "lithoid",
     name: "Geode Reactor",
     desc: "A pressure-stressed geode that yields vast energy from crystalline resonance.",
     stage: "empire",
@@ -4198,6 +4259,7 @@ export const SYSTEMS: SystemDef[] = [
   // Extremophile (2)
   {
     id: "emp_arch_volcanic_reactor",
+    requiredArchetype: "extremophile",
     name: "Volcanic Reactor",
     desc: "A power plant on the caldera's lip; what should kill, generates.",
     stage: "empire",
@@ -4209,6 +4271,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "emp_arch_ice_station",
+    requiredArchetype: "extremophile",
     name: "Ice Station",
     desc: "A research outpost in the deep freeze; the cold itself is the experiment.",
     stage: "empire",
@@ -4751,6 +4814,7 @@ export const SYSTEMS: SystemDef[] = [
   // ===== SOLAR — ARCHETYPE-DRIFT SYSTEMS =====
   {
     id: "dyson_trees",
+    requiredArchetype: "plantoid",
     name: "Dyson Trees",
     desc: "Grown collectors that leaf outward toward the star.",
     stage: "solar",
@@ -4763,6 +4827,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "orbital_toxin_network",
+    requiredArchetype: "toxoid",
     name: "Orbital Toxin Network",
     desc: "A lattice of warheads that turns orbit into a killing field.",
     stage: "solar",
@@ -4774,6 +4839,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "mycelium_network",
+    requiredArchetype: "fungoid",
     name: "Mycelium Network",
     desc: "A web of decomposers that turns waste back to food across the system.",
     stage: "solar",
@@ -4785,6 +4851,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "crystal_lattice_station",
+    requiredArchetype: "lithoid",
     name: "Crystal Lattice Station",
     desc: "Grown-crystal stations that double as memory and metal.",
     stage: "solar",
@@ -4796,6 +4863,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "crypt_vault",
+    requiredArchetype: "necroid",
     name: "Crypt Vault",
     desc: "Orbital tombs for the dead who refuse to leave.",
     stage: "solar",
@@ -4807,6 +4875,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "vacuum_habitat",
+    requiredArchetype: "extremophile",
     name: "Vacuum Habitat",
     desc: "Hard-vacuum shelters where life thrives by brute force.",
     stage: "solar",
@@ -4820,6 +4889,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "sky_spire",
+    requiredArchetype: "avian",
     name: "Sky Spire",
     desc: "Towers that scratch the edge of atmosphere, eyes on the dark.",
     stage: "solar",
@@ -4831,6 +4901,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "hive_station",
+    requiredArchetype: "arthropoid",
     name: "Hive Station",
     desc: "A station that thinks with a thousand bodies at once.",
     stage: "solar",
@@ -4842,6 +4913,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "ice_comet_tug",
+    requiredArchetype: "aquatic",
     name: "Ice Comet Tug",
     desc: "Tugs that pull ice-balls into the inner system for water.",
     stage: "solar",
@@ -5339,6 +5411,7 @@ export const SYSTEMS: SystemDef[] = [
   // ===== GALACTIC — ARCHETYPE-DRIFT SYSTEMS =====
   {
     id: "venom_fleet_doctrine",
+    requiredArchetype: "toxoid",
     name: "Venom Fleet Doctrine",
     desc: "A doctrine of poisoned shots and irradiated kills.",
     stage: "galactic",
@@ -5350,6 +5423,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "gaia_protocol",
+    requiredArchetype: "plantoid",
     name: "Gaia Protocol",
     desc: "Terraforms every world toward paradise, by photosynthesis.",
     stage: "galactic",
@@ -5362,6 +5436,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "spore_nebula",
+    requiredArchetype: "fungoid",
     name: "Spore Nebula",
     desc: "A nebula-seeded mycelial network spanning star systems.",
     stage: "galactic",
@@ -5373,6 +5448,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "crystal_siphon",
+    requiredArchetype: "lithoid",
     name: "Crystal Siphon",
     desc: "Draws alloys and memory from crystalline lattice worlds.",
     stage: "galactic",
@@ -5384,6 +5460,7 @@ export const SYSTEMS: SystemDef[] = [
   },
   {
     id: "tomb_world_forge",
+    requiredArchetype: "necroid",
     name: "Tomb World Forge",
     desc: "Reanimates dead worlds with the labor of the unquiet dead.",
     stage: "galactic",

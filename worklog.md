@@ -5601,3 +5601,351 @@ Affinity grants balanced across the 13 archetypes — every archetype has both c
 - All `requires` / `requiredTech` references resolve to existing tech IDs (verified by inspection — all prereqs are either new civ/empire techs in this batch or pre-existing tribal techs like `bureaucracy`).
 - All resource IDs in `cost` / `baseCost` / `produces` / `capacityBoost` / `upkeep` match the `ResourceId` union type in `types.ts`.
 - All `multiplier.target` values are valid: `"production"`, `"capacity"`, `"population"`, `"manual"` (existing tribal/civ pattern).
+
+---
+
+## Task ID: FIX-EVENTS-IMMUNITY-POPUPS — 2025
+
+### Summary
+
+Three independent fixes to the Evolution Idle game loop, addressing the long-
+standing gaps where (a) archetype-specific lineage events fired for everyone,
+(b) immunity techs claimed to block event categories but never did, and
+(c) stage-evolution story popups kept interrupting every playthrough.
+
+### Fix 1: Archetype-specific events only fire for matching locked archetype
+
+**Problem**: The 90 archetype-specific lineage events (IDs ending in
+`_tribal` / `_civ` / `_empire` / `_solar` / `_galactic` with `affinityChange`
+in their choices) used to fire for *all* players regardless of which lineage
+they had locked in at the Creature→Tribal transition. A player who locked
+Mammalian could be offered `plantoid_gaia_world_galactic`, etc.
+
+**Files touched**:
+- `src/game/data/events.ts`
+- `src/game/state/store.ts`
+
+**Implementation**:
+1. Added `requiredArchetype?: string` to the `GameEvent` interface in
+   `events.ts` (alongside a comment block explaining the contract).
+2. Used a one-shot Node.js transform script (`scripts/patch-events-immunity.mjs`)
+   to walk `events.ts` and stamp `requiredArchetype: "<arch>"` onto every
+   event whose id matches the pattern
+   `^(humanoid|mammalian|reptilian|avian|arthropoid|molluscoid|fungoid|plantoid|aquatic)_.*_(tribal|civ|empire|solar|galactic)$`.
+   The script reported **90 events patched** — exactly matching the 5 stages
+   × 9 archetypes × 2 events/archetype/stage expected count.
+3. In `store.ts` event-firing site (`useGameStore` tick, the
+   `eventsForStage(...).filter(...)` block), added a second predicate:
+   ```ts
+   if (ev.requiredArchetype && ev.requiredArchetype !== s.lockedArchetype) return false;
+   ```
+   This runs alongside the existing `isArchetypeImmuneToEvent` filter — the
+   two are complementary (one is per-event, the other is per-archetype).
+
+### Fix 2: Wire immunity techs
+
+**Problem**: Five techs in `techs.ts` advertise event immunity in their
+`effects` text but never actually excluded those events from the firing pool:
+- `dna_repair` (Cell, Genetics T2) → "Immune to mutation events"
+- `osmoregulation` (Cell, Membrane T3) → "Immune to water events"
+- `camouflage` (Creature, Evolution T2) → "Immune to predator events"
+- `hibernation` (Creature, Evolution T4) → "Survive resource droughts"
+- `immune_system` (Creature, Anatomy T4) → "Immune to plague events"
+
+**Implementation**:
+1. Added `immuneTech?: string` to the `GameEvent` interface in `events.ts`
+   (the tech id that, once researched, suppresses the event).
+2. The same transform script stamped `immuneTech: "<techId>"` onto the
+   matching events (inserted after the `stages:` line, before `minTime:`).
+   Wired **10 events** total:
+   - `dna_repair` ← `mutation_drift` (1)
+   - `osmoregulation` ← `toxic_tide`, `toxic_spring` (2)
+   - `camouflage` ← `predator_shadow`, `predatory_pursuit`, `predator_ambush` (3)
+   - `immune_system` ← `plague_rumor`, `genetic_plague` (2; intentionally
+     excluded `plague_of_locusts` because locusts are not pathogens)
+   - `hibernation` ← `drought_year`, `resource_drought` (2)
+3. In `store.ts`, the event-firing filter gained a third predicate:
+   ```ts
+   if (ev.immuneTech && s.technologies[ev.immuneTech]) return false;
+   ```
+   `s.technologies` is `Record<string, boolean>`, so a truthy lookup means
+   the player has researched the immunity tech.
+
+**Initial script bug**: the first version of the regex captured the optional
+`name:`/`desc:`/`icon:` lines with a non-capturing group `(?:...)` and then
+didn't re-emit them — TypeScript caught the resulting `{ id, stages,
+immuneTech, minTime, weight, choices }` objects missing `name/desc/icon`.
+Caught by `bunx tsc --noEmit` on the touched files; fixed by promoting the
+middle lines to a real capture group and emitting them in the replacement.
+The intermediate `git checkout` of `events.ts` reverted both the broken
+patch AND the interface edit, so the interface was re-applied by hand before
+re-running the patched script.
+
+### Fix 3: Stage popups only fire during first playthrough
+
+**Problem**: Every call to `evolveStage()` set
+`activeStoryPopup: storyId?.id || s.activeStoryPopup`, so the storyline
+(`first_body_stirs`, `fire_remembered`, `cities_learn_to_dream`, …,
+`galaxy_takes_a_shape`) replayed on every single playthrough. The user
+wanted the storyline to be a one-time introduction; subsequent runs (after
+the first Galactic-stage win) should evolve silently.
+
+**Implementation**: In `evolveStage`, replaced the inline assignment with
+a precomputed `nextStoryPopup` constant that gates on `s.galacticWins`:
+```ts
+const nextStoryPopup = s.galacticWins === 0
+  ? (storyId?.id || s.activeStoryPopup)
+  : s.activeStoryPopup;
+```
+`galacticWins` starts at `0` (`initialMetaState`) and only increments on
+a Galactic-stage prestige, so the first playthrough (the intended
+"onboarding" run) gets the full storyline, and every run after evolves
+straight through with no popup spam.
+
+Other setter sites for `activeStoryPopup` were intentionally left alone:
+- `initialMetaState` (`"first_spark"`) — runs once at first-ever load.
+- The STORY_TRIGGERS loops in `tick` and `buySystem` — these are
+  achievement/state-driven, not stage-evolution-driven.
+- The post-prestige `"god_opens_its_eyes"` is already gated by
+  `s.totalRuns === 0`, which is consistent with the first-run-only intent.
+
+### Lint Result
+- `bun run lint`: **0 errors, 7 warnings** (all pre-existing in unrelated
+  files: `src/game/data/galaxies.ts` unused eslint-disable, and
+  `upload/logic.js` no-unused-expressions × 6).
+- No new lint errors or warnings introduced by this task.
+- `bunx tsc --noEmit src/game/data/events.ts src/game/state/store.ts` was
+  used as a sanity check during development. Pre-existing TypeScript errors
+  in the working directory (4 in HEAD, +7 from prior uncommitted work on
+  `unlockTech`/`debugFreeBuy`/etc.) are NOT caused by this task — verified
+  by `git stash` comparison. My changes added **zero** new tsc errors.
+
+### Files Modified
+- `src/game/data/events.ts` — interface extended with `requiredArchetype?`
+  and `immuneTech?`; 90 events stamped with `requiredArchetype`, 10 with
+  `immuneTech`. Diffstat: +134 insertions, +0 deletions to event data.
+- `src/game/state/store.ts` — event-firing filter gained 2 new predicates
+  (lines ~1243-1256); `evolveStage` gained `nextStoryPopup` constant
+  (lines ~3108-3120).
+
+### Files Added
+- `scripts/patch-events-immunity.mjs` — one-shot transform script that
+  stamps `requiredArchetype` on the 90 lineage events and `immuneTech` on
+  the 10 immunity events. Kept for reference / re-runs if events.ts is
+  regenerated. Idempotent (re-running on a patched file is a no-op because
+  the regex anchors on `^(\s*)id: "..."$` and the new field lines don't
+  match that pattern).
+
+### Verification
+- `grep -c 'requiredArchetype:' events.ts` → **90** (matches 9 archetypes ×
+  2 events × 5 stages).
+- `grep -c 'immuneTech:' events.ts` → **10** (matches the 5 immunity techs
+  × their assigned event counts).
+- The archetype-prefix mapping is correct: every `humanoid_*_tribal`,
+  `humanoid_*_civ`, …, `aquatic_*_galactic` event has
+  `requiredArchetype: "humanoid"` / `"aquatic"` / etc. (verified by spot-
+  reading the diff for all 9 archetypes).
+- The 5 immunity techs in `techs.ts` are unchanged — only the events side
+  was wired. The techs already say "Immune to X events" in their
+  `effects`; that text now reflects actual game behavior.
+- Stage popups: a player with `galacticWins >= 1` evolving Creature→Tribal
+  will NOT see `fire_remembered` (verified by reading the
+  `nextStoryPopup` logic).
+
+
+---
+
+## FIX-ARCHETYPE-LOCKED-TECH-GATING — $(date -Iseconds)
+
+**Goal**: Archetype-locked systems/techs (only correct archetype can see/build),
+tech-gating enforcement, EP-from-prestige techs, and production-per-system tech.
+
+### Fix 1: Archetype-locked systems/techs (Tribal→Galactic)
+- `src/game/state/types.ts` — Added optional `requiredArchetype?: string`
+  field to both `SystemDef` (line 66) and `TechDef` (line 86).
+- `src/game/data/systems.ts` — Inserted `requiredArchetype: "<archetype>"`
+  into every Tribal→Galactic archetype-drift system (136 systems total:
+  Tribal 52, Civilization 35, Empire 35, Solar 9, Galactic 5). Bulk-inserted
+  via a Python script that walked the file using the
+  `// ===== STAGE — ARCHETYPE-DRIFT SYSTEMS` markers (case-insensitive) and
+  per-archetype comment markers (`// --- Humanoid ---` for Tribal,
+  `// Humanoid (3)` for Civ/Empire). Solar/Galactic have no per-archetype
+  markers, so an explicit ID→archetype mapping was used (9 + 5 systems).
+  - Tribal IDs use `${archetype}_` prefix (e.g. `toxoid_venom_works`).
+  - Civ/Emp IDs use `civ_arch_*` / `emp_arch_*` prefixes, archetype from marker.
+  - Solar: `dyson_trees`→plantoid, `orbital_toxin_network`→toxoid,
+    `mycelium_network`→fungoid, `crystal_lattice_station`→lithoid,
+    `crypt_vault`→necroid, `vacuum_habitat`→extremophile, `sky_spire`→avian,
+    `hive_station`→arthropoid, `ice_comet_tug`→aquatic.
+  - Galactic: `venom_fleet_doctrine`→toxoid, `gaia_protocol`→plantoid,
+    `spore_nebula`→fungoid, `crystal_siphon`→lithoid, `tomb_world_forge`→necroid.
+- `src/game/data/techs.ts` — No archetype-specific techs exist in Tribal+
+  stages (only Cell/Creature techs have `grantsAffinity`); no `requiredArchetype`
+  values were set on techs. The infrastructure is in place for future use.
+- `src/game/state/store.ts` — `buySystem` (line ~2730) and `buyTech`
+  (line ~2886) now check `sys.requiredArchetype && s.lockedArchetype !==
+  sys.requiredArchetype` and refuse with a `notifyPurchaseError("Requires
+  {archetype} archetype")` call + early return.
+- `src/components/game/tabs/SystemsTab.tsx` — `currentSystems` now filters out
+  systems where `sys.requiredArchetype && lockedArchetype !== sys.requiredArchetype`.
+- `src/components/game/tabs/TechTab.tsx` — `currentTechs` applies the same
+  filter for techs.
+
+### Fix 2: Tech-gating (requiredTech enforcement)
+- Verified the existing `buySystem` action already enforces
+  `sys.requiredTech` at the top (was line 2736). It silently returned
+  without UX feedback.
+- Added a `notifyPurchaseError("Requires tech: {techName}")` call before
+  the early return, so the player sees an inline error banner when they
+  somehow try to buy a tech-locked system (the UI hides the button, but
+  this guards against stale state / programmatic calls).
+
+### Fix 3: EP-from-prestige techs wired
+- `src/game/state/store.ts` — In `triggerPrestige`, after the archetype
+  EP-from-prestige bonus, added a tech-multiplier block:
+  - `epigenetic_memory` (Cell)  → +10% EP from prestige
+  - `memory_formation` (Creature) → +10% EP from prestige
+  - Stack additively (`techEpMult`), applied via
+    `epEarned = Math.max(1, Math.floor(epEarned * (1 + techEpMult)))`.
+
+### Fix 4: Production-per-system tech wired
+- `src/game/state/store.ts` — In the tick, computed
+  `totalOwnedSystemsEarly = sum(ownedSystems)` and
+  `horizontalTransferBonus = (technologies["horizontal_transfer"] ? 1 : 0)
+   * totalOwnedSystemsEarly * 0.05`.
+- Folded `horizontalTransferBonus` into the existing `layerProdBonus`
+  summation (it was already wired through `autoMult *= (1 + layerProdBonusApplied)`
+  downstream), so `horizontal_transfer` now grants +5% production per owned
+  system (additive, multiplicatively applied via the layerProd channel).
+
+### Lint / type-check
+- `bun run lint` → **0 errors**, 7 pre-existing warnings
+  (in `galaxies.ts` and `upload/logic.js`, both unrelated to this task).
+- `bunx tsc --noEmit` → 0 new errors introduced by this task. Pre-existing
+  errors in `EnlightenmentModal.tsx`, `sidebar.tsx`, `stages.ts`, and the
+  `debugFreeBuy` GameState plumbing remain (untouched).
+
+---
+
+## Task L10-ENDING-L5-UI-UNLOCKTECH (2026-10-15)
+
+**Agent**: general-purpose sub-agent
+**Scope**: L10 ending screen dimension picker, L5 ApotheosisModal review,
+unlockTech event support.
+
+### Task 1 — L10 Ending Screen Dimension Picker
+
+Updated `/home/z/my-project/src/components/game/modals/EternityModal.tsx`:
+- Added `DimensionOption` interface + `DIMENSION_OPTIONS` constant (8 entries:
+  mundane, random, fantasy, cyberpunk, ancient_egypt, norse, greek,
+  post_apoc).
+- Added `visitedDimensions` selector in `EternityContent` (always starts with
+  `["mundane"]`).
+- Added `EndingScreen` `view` state (`"main" | "picker"`) — the "Explore
+  another Dimension" button now switches to the picker view instead of
+  immediately opening the confirm dialog. "Continue in this realm" still
+  flows straight to the AlertDialog as before.
+- Added `DimensionPicker` component — radio-button list of dimensions,
+  only `mundane` is selectable (others greyed out with `<Lock />` icon +
+  custom `lockedNote` for the random entry: "finish a dimension first").
+  Includes a Back button (returns to main view) and a Confirm button
+  (calls `onChooseEnding("reset")`, only enabled when a dimension is
+  selected).
+- Added the spec-required comment `// Future: unlock dimensions by
+  finishing L10 in each one` (placed both in the data-table comment and
+  in the DimensionPicker JSX).
+
+Updated `/home/z/my-project/src/game/state/types.ts`:
+- Added `visitedDimensions: string[]` field to `GameState` (always starts
+  with `["mundane"]`).
+
+Updated `/home/z/my-project/src/game/state/store.ts`:
+- Initial state: `visitedDimensions: ["mundane"]`.
+- Migration shim in the persist `merge` path: if a save lacks the field
+  (or it's not an array), default to `["mundane"]`; if "mundane" is
+  somehow missing, prepend it.
+
+### Task 2 — L5 ApotheosisModal Review
+
+Reviewed `/home/z/my-project/src/components/game/modals/ApotheosisModal.tsx`
+(~592 lines). All required features are present and working — **no code
+changes needed**:
+
+1. ✅ **Cosmic map with rival galaxies** — `<section>` at line ~197 with a
+   `RIVAL_GALAXIES.map(...)` sidebar showing all rival galaxies with
+   `selectedGalaxyId` ring highlight.
+2. ✅ **Galaxy tabs pulse yellow/orange/red based on heresy severity** —
+   `severityBorderClass(sev)` returns `border-l-amber-400` / `border-l-orange-500`
+   / `border-l-red-500 heresy-pulse-red` (subtle pulse only on the
+   run-ending red tier, intentionally avoiding the pulsing-border cliché
+   per the inline design note at lines 40-46).
+3. ✅ **Attack Galaxy button works** — `attackGalaxy(selectedGalaxy.id)`
+   bound at line 299; store action at line 4363 of store.ts handles the
+   cost/claim logic.
+4. ✅ **Per-galaxy heresy grid shows** — `selectedIsOwned &&` block at
+   line 314 renders an 8×4 grid (32 cells) for the selected galaxy with
+   Convert/Purge/Prophet interactions per cell.
+5. ✅ **Divine laws + miracles panels work** — `enactDivineLaw` and
+   `performMiracle` actions wired (lines 505 and 552); both panels render
+   below the cosmic-map section.
+
+L5 was already redesigned away from the old shared 8×4 grid — the per-
+galaxy layout is in place. No fix/redesign needed.
+
+### Task 3 — unlockTech Event Support
+
+Updated `/home/z/my-project/src/game/data/events.ts`:
+- Added `unlockTech?: string` field to `EventChoice` interface (with
+  inline doc comment explaining it sets `technologies[unlockTech] = true`
+  on resolution).
+- Stamped `unlockTech` on 11 event choices (5-10 requested, 11 delivered):
+
+  | Event | Choice | Tech unlocked | Stage |
+  |---|---|---|---|
+  | `viral_attack` | fight | `dna_repair` | cell |
+  | `mitochondrial_boom` | harvest | `aerobic_respiration` | cell |
+  | `symbiotic_offer` | accept | `organelle_specialization` | cell |
+  | `photosynthesis_discovery` | embrace | `photosynthesis` | cell |
+  | `spore_drift` | integrate | `horizontal_transfer` | cell |
+  | `first_division` | divide | `cellular_division` | cell |
+  | `mutation_drift` | embrace | `epigenetic_memory` | cell |
+  | `foreign_scholars` | welcome | `civ_mathematics` | empire |
+  | `precursor_relic` | study | `civ_astronomy` | galactic |
+  | `ascension_path` | synthetic | `ascension_theory` | galactic |
+  | `wormhole_network` | connect | `wormhole_network` | galactic |
+
+  Each choice's `desc` was also updated to mention "Unlocks <TechName>"
+  so the player sees the reward in the choice UI.
+
+Updated `/home/z/my-project/src/game/state/store.ts` `resolveEvent` action
+(line ~5424):
+- Reads `choice.unlockTech`; if set and the tech is not already known,
+  sets `technologies[unlockTech] = true` and logs
+  `"Event unlocked tech: <techName>"` (using `TECHS.find(...).name` for a
+  readable name). If the tech is already known, logs the same line with
+  an "(already known)" suffix.
+- Added `technologies` to the `set({...})` call so the unlock persists.
+
+### Verification
+
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing in
+  `galaxies.ts` line 386 unused eslint-disable directive and 6
+  `no-unused-expressions` warnings in `upload/logic.js`).
+- `bunx tsc --noEmit` → 0 new errors introduced by these changes (the
+  previous `Property 'unlockTech' does not exist on type 'EventChoice'`
+  errors at store.ts:5498-5506 are resolved). Remaining TS errors are
+  all pre-existing (socket.io-client missing, sidebar missing sheet/
+  skeleton modules, ForesightRoute icon/blurb, debugFreeBuy, etc.).
+- `grep -c 'unlockTech' src/game/data/events.ts` → **13** (1 interface
+  field + 1 comment line + 11 choice stamps).
+
+### Files Changed
+- `src/components/game/modals/EternityModal.tsx` — added DimensionPicker
+  component + EndingScreen view state; +262 lines, ~10 modified.
+- `src/game/data/events.ts` — added `unlockTech?` field + 11 event
+  choice stamps; +18 lines.
+- `src/game/state/store.ts` — added visitedDimensions initial state +
+  migration + unlockTech handling in `resolveEvent`; +24 lines.
+- `src/game/state/types.ts` — added `visitedDimensions: string[]` to
+  `GameState`; +5 lines.
+

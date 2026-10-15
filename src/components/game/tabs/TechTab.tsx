@@ -26,13 +26,22 @@ function legacyStageRange(stageIndex: number, isL2Plus: boolean, isL5Plus: boole
 export function TechTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
   const technologies = useGameStore((s) => s.technologies);
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
 
   const { isAtLeast } = useActiveLayer();
   const isL2Plus = isAtLeast("enlightenment");
   const isL5Plus = isAtLeast("apotheosis");
 
   const stage = STAGES[stageIndex];
-  const currentTechs = techsForStage(stage.id);
+  // FIX-ARCHETYPE-LOCKED — hide techs whose requiredArchetype doesn't
+  // match the player's locked archetype. They aren't visible at all.
+  const currentTechs = useMemo(
+    () =>
+      techsForStage(stage.id).filter(
+        (t) => !t.requiredArchetype || lockedArchetype === t.requiredArchetype
+      ),
+    [stage.id, lockedArchetype]
+  );
 
   const legacyRange = useMemo(
     () => legacyStageRange(stageIndex, isL2Plus, isL5Plus),
