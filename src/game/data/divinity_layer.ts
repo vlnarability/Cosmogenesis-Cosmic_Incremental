@@ -43,8 +43,8 @@ export const MINOR_GODS: MinorGod[] = [
     personality: "cunning",
     powerLevel: 70,
     demand: { resource: "divinity", amount: 30 },
-    reward: { resource: "prayer", amount: 25 },
-    desc: "Ancient and sly. Trades divinity for prayer secrets.",
+    reward: { resource: "faith", amount: 25 },
+    desc: "Ancient and sly. Trades divinity for faith secrets.",
     startingRelationship: 15,
   },
   {
@@ -66,9 +66,9 @@ export const MINOR_GODS: MinorGod[] = [
     icon: "🍃",
     personality: "mystic",
     powerLevel: 50,
-    demand: { resource: "prayer", amount: 15 },
+    demand: { resource: "faith", amount: 15 },
     reward: { resource: "divinity", amount: 18 },
-    desc: "Ethereal and quiet. Trades prayer for divinity.",
+    desc: "Ethereal and quiet. Trades faith for divinity.",
     startingRelationship: 25,
   },
   {
@@ -90,9 +90,9 @@ export const MINOR_GODS: MinorGod[] = [
     icon: "🎲",
     personality: "chaotic",
     powerLevel: 90,
-    demand: { resource: "prayer", amount: 30 },
+    demand: { resource: "divinity", amount: 30 },
     reward: { resource: "faith", amount: 35 },
-    desc: "Unpredictable and powerful. Demands prayer; rewards faith.",
+    desc: "Unpredictable and powerful. Demands divinity; rewards faith.",
     startingRelationship: 5,
   },
 ];
@@ -163,71 +163,4 @@ export function canFormAlliance(
 export function isDivinityComplete(alliances: Record<string, boolean>): boolean {
   const count = Object.values(alliances || {}).filter(Boolean).length;
   return count >= 2;
-}
-
-/**
- * Bonus from the active Worship Polarity — preserved for backwards compat.
- * (Legacy field; the new Divinity layer uses alliance bonuses.)
- */
-export function worshipPolarityBonus(
-  activePolarity: string | null | undefined
-): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-  prayerMult: number;
-} {
-  void activePolarity;
-  return { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0, prayerMult: 0 };
-}
-
-/**
- * Aggregated prayer-channel bonus — preserved for backwards compat.
- * Returns zero bonuses (the new Divinity layer doesn't use channels).
- */
-export function prayerChannelBonus(
-  levels: Record<string, number>
-): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-  prayerMult: number;
-  totalLevels: number;
-} {
-  void levels;
-  return { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0, prayerMult: 0, totalLevels: 0 };
-}
-
-/**
- * Divine mask bonus — preserved for backwards compat. Returns zero.
- */
-export function divineMaskBonus(
-  activeMask: string | null | undefined
-): {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
-  prayerMult: number;
-} {
-  void activeMask;
-  return { productionMult: 0, capMult: 0, epMult: 0, popGrowthMult: 0, prayerMult: 0 };
-}
-
-/**
- * Compute Prayer/sec generated. Base = population × 0.001/s.
- * (Preserved for legacy code that still reads prayer.)
- */
-export function prayerRate(
-  population: number,
-  channelLevels: Record<string, number>,
-  activeMask: string | null | undefined,
-  activePolarity: string | null | undefined
-): number {
-  void channelLevels;
-  void activeMask;
-  void activePolarity;
-  return population * 0.001;
 }

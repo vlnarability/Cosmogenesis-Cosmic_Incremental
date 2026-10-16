@@ -146,28 +146,17 @@
 }
 
 /* ============================================================
-   GLASS / PANEL — less frosted, more "stamped card"
+   GLASS / PANEL — solid panels, no blur (removed AI-tell glassmorphism)
    ============================================================ */
 
 .glass-panel {
-  background: oklch(0.16 0.018 260 / 0.85);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid oklch(0.26 0.015 260 / 0.7);
-  /* subtle top highlight line — like paper edge */
-  box-shadow:
-    inset 0 1px 0 0 oklch(0.35 0.02 260 / 0.15),
-    0 1px 2px oklch(0 0 0 / 0.2);
+  background: oklch(0.16 0.018 260 / 0.95);
+  border: 1px solid oklch(0.28 0.015 260 / 0.8);
 }
 
 .glass-strong {
-  background: oklch(0.15 0.02 260 / 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid oklch(0.28 0.015 260 / 0.8);
-  box-shadow:
-    inset 0 1px 0 0 oklch(0.38 0.02 260 / 0.2),
-    0 4px 24px oklch(0 0 0 / 0.4);
+  background: oklch(0.13 0.02 260 / 0.98);
+  border: 1px solid oklch(0.30 0.015 260 / 0.85);
 }
 
 /* ============================================================
@@ -370,8 +359,7 @@
 .story-popup-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(0.05 0.01 260 / 0.5);
-  backdrop-filter: blur(2px);
+  background: oklch(0.05 0.01 260 / 0.7);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -612,7 +600,44 @@
   right: 0;
   bottom: 0;
   z-index: 30;
-  backdrop-filter: blur(8px);
+}
+
+/* ============================================================
+   HERESY SEVERITY ACCENT — left-border bar (replaces rainbow dots)
+   The bar is a single border-left on a card; calm cards have no
+   accent. Only the run-ending red tier gets a subtle pulse.
+   ============================================================ */
+
+@keyframes heresy-pulse-red-keyframes {
+  0%, 100% { border-left-color: oklch(0.55 0.20 25); }
+  50%      { border-left-color: oklch(0.70 0.22 25); }
+}
+.heresy-pulse-red {
+  animation: heresy-pulse-red-keyframes 1.6s ease-in-out infinite;
+}
+
+/* ============================================================
+   STAT CARD VARIANTS — vary the borders so cards don't look identical.
+   Some get a left-accent border, some are borderless text blocks.
+   The base `.stat-card` keeps a soft border + panel background.
+   ============================================================ */
+
+.stat-card-accent {
+  border-left: 2px solid var(--primary);
+}
+.stat-card-accent-amber {
+  border-left: 2px solid oklch(0.70 0.14 55);
+}
+.stat-card-accent-emerald {
+  border-left: 2px solid oklch(0.68 0.14 155);
+}
+.stat-card-accent-violet {
+  border-left: 2px solid oklch(0.65 0.14 295);
+}
+.stat-card-plain {
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0;
 }
 
 /* ============================================================
@@ -896,6 +921,532 @@ h1, h2, h3 {
   50%  { --primary: oklch(0.72 0.18 60);   --accent: oklch(0.72 0.18 320); }
   75%  { --primary: oklch(0.72 0.18 280);  --accent: oklch(0.72 0.18 165); }
   100% { --primary: oklch(0.72 0.18 320);  --accent: oklch(0.72 0.18 195); }
+}
+
+/* ---------- MINI THEMES (20) — ORGANELLES-THEMES ----------
+   Full overrides. Each declared here mirrors the `vars` block in
+   themes.ts so the CSS class is self-contained (the JS `vars` field
+   is documentation-only; only `.theme-<id>` classes actually apply).
+*/
+
+/* 1. mini-terminal — punchier phosphor + scanline bg */
+.theme-mini-terminal {
+  --background: oklch(0.08 0.014 150);
+  --foreground: oklch(0.84 0.16 150);
+  --card: oklch(0.11 0.014 150);
+  --card-foreground: oklch(0.84 0.16 150);
+  --popover: oklch(0.12 0.014 150);
+  --popover-foreground: oklch(0.84 0.16 150);
+  --primary: oklch(0.80 0.18 150);
+  --primary-foreground: oklch(0.08 0.02 150);
+  --secondary: oklch(0.17 0.02 150);
+  --secondary-foreground: oklch(0.82 0.14 150);
+  --muted: oklch(0.15 0.014 150);
+  --muted-foreground: oklch(0.55 0.10 150);
+  --accent: oklch(0.74 0.15 150);
+  --accent-foreground: oklch(0.08 0.02 150);
+  --border: oklch(0.26 0.02 150);
+  --input: oklch(0.20 0.015 150);
+  --ring: oklch(0.64 0.15 150);
+  --destructive: oklch(0.65 0.16 25);
+}
+
+/* 2. mini-void — explicit alias of special-void */
+.theme-mini-void {
+  --background: oklch(0.06 0 0);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.10 0 0);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.11 0 0);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.88 0 0);
+  --primary-foreground: oklch(0.08 0 0);
+  --secondary: oklch(0.16 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.14 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.78 0 0);
+  --accent-foreground: oklch(0.08 0 0);
+  --border: oklch(0.22 0 0);
+  --input: oklch(0.18 0 0);
+  --ring: oklch(0.65 0 0);
+}
+
+/* 3. mini-solar-flare */
+.theme-mini-solar-flare {
+  --background: oklch(0.10 0.03 35);
+  --foreground: oklch(0.90 0.04 45);
+  --card: oklch(0.14 0.035 35);
+  --card-foreground: oklch(0.92 0.04 45);
+  --popover: oklch(0.15 0.035 35);
+  --popover-foreground: oklch(0.92 0.04 45);
+  --primary: oklch(0.72 0.18 40);
+  --primary-foreground: oklch(0.10 0.02 35);
+  --secondary: oklch(0.18 0.04 35);
+  --secondary-foreground: oklch(0.92 0.04 45);
+  --muted: oklch(0.18 0.03 35);
+  --muted-foreground: oklch(0.66 0.04 45);
+  --accent: oklch(0.68 0.20 25);
+  --accent-foreground: oklch(0.95 0.02 45);
+  --border: oklch(0.26 0.04 35);
+  --input: oklch(0.20 0.035 35);
+  --ring: oklch(0.62 0.16 40);
+}
+
+/* 4. mini-forest */
+.theme-mini-forest {
+  --background: oklch(0.11 0.025 150);
+  --foreground: oklch(0.88 0.03 100);
+  --card: oklch(0.15 0.028 150);
+  --card-foreground: oklch(0.90 0.03 100);
+  --popover: oklch(0.16 0.028 150);
+  --popover-foreground: oklch(0.90 0.03 100);
+  --primary: oklch(0.70 0.16 140);
+  --primary-foreground: oklch(0.10 0.02 140);
+  --secondary: oklch(0.18 0.03 80);
+  --secondary-foreground: oklch(0.92 0.03 100);
+  --muted: oklch(0.18 0.022 150);
+  --muted-foreground: oklch(0.62 0.03 100);
+  --accent: oklch(0.66 0.12 70);
+  --accent-foreground: oklch(0.10 0.02 70);
+  --border: oklch(0.25 0.025 150);
+  --input: oklch(0.20 0.022 150);
+  --ring: oklch(0.58 0.14 140);
+}
+
+/* 5. mini-ice */
+.theme-mini-ice {
+  --background: oklch(0.12 0.025 230);
+  --foreground: oklch(0.92 0.02 200);
+  --card: oklch(0.16 0.028 230);
+  --card-foreground: oklch(0.94 0.02 200);
+  --popover: oklch(0.17 0.028 230);
+  --popover-foreground: oklch(0.94 0.02 200);
+  --primary: oklch(0.82 0.10 200);
+  --primary-foreground: oklch(0.10 0.02 220);
+  --secondary: oklch(0.20 0.025 220);
+  --secondary-foreground: oklch(0.92 0.02 200);
+  --muted: oklch(0.18 0.022 230);
+  --muted-foreground: oklch(0.66 0.025 200);
+  --accent: oklch(0.76 0.14 210);
+  --accent-foreground: oklch(0.10 0.02 210);
+  --border: oklch(0.28 0.03 220);
+  --input: oklch(0.22 0.025 220);
+  --ring: oklch(0.70 0.14 200);
+}
+
+/* 6. mini-volcanic */
+.theme-mini-volcanic {
+  --background: oklch(0.09 0.025 25);
+  --foreground: oklch(0.86 0.04 35);
+  --card: oklch(0.13 0.028 25);
+  --card-foreground: oklch(0.88 0.04 35);
+  --popover: oklch(0.14 0.028 25);
+  --popover-foreground: oklch(0.88 0.04 35);
+  --primary: oklch(0.62 0.22 25);
+  --primary-foreground: oklch(0.95 0.02 35);
+  --secondary: oklch(0.18 0.03 25);
+  --secondary-foreground: oklch(0.88 0.04 35);
+  --muted: oklch(0.16 0.025 25);
+  --muted-foreground: oklch(0.60 0.035 35);
+  --accent: oklch(0.72 0.18 50);
+  --accent-foreground: oklch(0.10 0.02 35);
+  --border: oklch(0.24 0.03 25);
+  --input: oklch(0.20 0.025 25);
+  --ring: oklch(0.58 0.18 25);
+}
+
+/* 7. mini-ai — MAXIMALLY AI-looking. Color vars are the indigo/violet
+   set; the actual glassmorphism / glow / icon-in-box / rainbow-dots
+   styling lives in the `.ai-cringe-mode` block below. */
+.theme-mini-ai {
+  --background: oklch(0.13 0.045 280);
+  --foreground: oklch(0.92 0.03 270);
+  --card: oklch(0.17 0.05 275);
+  --card-foreground: oklch(0.93 0.025 270);
+  --popover: oklch(0.18 0.05 275);
+  --popover-foreground: oklch(0.93 0.025 270);
+  --primary: oklch(0.62 0.20 285);
+  --primary-foreground: oklch(0.95 0.02 280);
+  --secondary: oklch(0.20 0.045 270);
+  --secondary-foreground: oklch(0.92 0.03 270);
+  --muted: oklch(0.19 0.04 280);
+  --muted-foreground: oklch(0.72 0.04 270);
+  --accent: oklch(0.66 0.18 320);
+  --accent-foreground: oklch(0.95 0.02 320);
+  --border: oklch(0.28 0.025 275);
+  --input: oklch(0.22 0.045 280);
+  --ring: oklch(0.66 0.18 285);
+}
+
+/* The "AI" mode — extra class applied to root when the mini-ai special
+   theme is active. Hits every AI tell on the user's list:
+   - backdrop-filter: blur for glassmorphism
+   - box-shadow with primary/accent glow on every card / button
+   - low-contrast card borders (already in vars)
+   - icon-in-box styling (forces emoji / lucide icons into bordered boxes)
+   - rainbow status dots
+   - curly quotes are baked into the theme's name + desc in themes.ts
+   - aspirational copy is baked into the theme's desc
+   - PULSING GRADIENT BACKGROUND (the AI loves animated gradients)
+   - "Powered by AI" watermark
+*/
+.ai-cringe-mode {
+  animation: ai-bg-pulse 8s ease-in-out infinite;
+}
+
+@keyframes ai-bg-pulse {
+  0%, 100% {
+    background: linear-gradient(135deg,
+      oklch(0.13 0.045 280) 0%,
+      oklch(0.16 0.05 300) 30%,
+      oklch(0.15 0.04 260) 60%,
+      oklch(0.14 0.06 320) 100%);
+  }
+  50% {
+    background: linear-gradient(135deg,
+      oklch(0.16 0.05 300) 0%,
+      oklch(0.13 0.045 280) 30%,
+      oklch(0.14 0.06 320) 60%,
+      oklch(0.15 0.04 260) 100%);
+  }
+}
+
+/* "Powered by AI" watermark — fixed in bottom-right corner */
+.ai-cringe-mode::after {
+  content: "Powered by AI \1F916";
+  position: fixed;
+  bottom: 8px;
+  right: 8px;
+  font-size: 0.6rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: oklch(0.72 0.04 270);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ai-cringe-mode .stat-card,
+.ai-cringe-mode [class*="rounded"] {
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 25%, transparent),
+              0 0 24px color-mix(in oklch, var(--primary) 18%, transparent),
+              0 0 48px color-mix(in oklch, var(--accent) 10%, transparent);
+  background: color-mix(in oklch, var(--card) 70%, transparent);
+}
+
+.ai-cringe-mode button {
+  box-shadow: 0 0 16px color-mix(in oklch, var(--primary) 22%, transparent);
+}
+
+.ai-cringe-mode [class*="icon"],
+.ai-cringe-mode svg.lucide,
+.ai-cringe-mode span[class*="text-"]:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid color-mix(in oklch, var(--primary) 35%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+/* Force more emojis into UI text — prepend emoji to common UI elements */
+.ai-cringe-mode h1::before { content: "\1F680 "; }
+.ai-cringe-mode h2::before { content: "\2728 "; }
+.ai-cringe-mode h3::before { content: "\1F4A1 "; }
+
+/* Rainbow status dots — applied to any element with class "status-dot"
+   in the UI when AI mode is active. */
+.ai-cringe-mode .status-dot,
+.ai-cringe-mode .dot {
+  background: conic-gradient(
+    from 0deg,
+    #ef4444 0%, #f59e0b 16%, #eab308 33%, #22c55e 50%, #3b82f6 66%, #8b5cf6 83%, #ef4444 100%
+  );
+  animation: ai-rainbow-spin 4s linear infinite;
+}
+
+@keyframes ai-rainbow-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== 13 ARCHETYPE MINI THEMES ===== */
+
+/* 8. arch-humanoid */
+.theme-arch-humanoid {
+  --background: oklch(0.13 0.025 65);
+  --foreground: oklch(0.90 0.022 70);
+  --card: oklch(0.17 0.028 65);
+  --card-foreground: oklch(0.92 0.022 70);
+  --popover: oklch(0.18 0.028 65);
+  --popover-foreground: oklch(0.92 0.022 70);
+  --primary: oklch(0.74 0.13 60);
+  --primary-foreground: oklch(0.10 0.02 60);
+  --secondary: oklch(0.20 0.028 55);
+  --secondary-foreground: oklch(0.92 0.022 70);
+  --muted: oklch(0.19 0.022 65);
+  --muted-foreground: oklch(0.64 0.025 60);
+  --accent: oklch(0.68 0.10 40);
+  --accent-foreground: oklch(0.10 0.02 40);
+  --border: oklch(0.27 0.025 65);
+  --input: oklch(0.21 0.025 65);
+  --ring: oklch(0.62 0.12 60);
+}
+
+/* 9. arch-mammalian */
+.theme-arch-mammalian {
+  --background: oklch(0.13 0.028 45);
+  --foreground: oklch(0.90 0.025 50);
+  --card: oklch(0.17 0.03 45);
+  --card-foreground: oklch(0.92 0.025 50);
+  --popover: oklch(0.18 0.03 45);
+  --popover-foreground: oklch(0.92 0.025 50);
+  --primary: oklch(0.70 0.15 45);
+  --primary-foreground: oklch(0.10 0.02 45);
+  --secondary: oklch(0.20 0.03 40);
+  --secondary-foreground: oklch(0.92 0.025 50);
+  --muted: oklch(0.19 0.025 45);
+  --muted-foreground: oklch(0.62 0.03 45);
+  --accent: oklch(0.66 0.16 30);
+  --accent-foreground: oklch(0.95 0.02 40);
+  --border: oklch(0.27 0.028 45);
+  --input: oklch(0.21 0.028 45);
+  --ring: oklch(0.58 0.14 45);
+}
+
+/* 10. arch-reptilian */
+.theme-arch-reptilian {
+  --background: oklch(0.12 0.03 140);
+  --foreground: oklch(0.90 0.03 95);
+  --card: oklch(0.16 0.032 140);
+  --card-foreground: oklch(0.92 0.03 95);
+  --popover: oklch(0.17 0.032 140);
+  --popover-foreground: oklch(0.92 0.03 95);
+  --primary: oklch(0.70 0.16 135);
+  --primary-foreground: oklch(0.10 0.02 135);
+  --secondary: oklch(0.20 0.032 90);
+  --secondary-foreground: oklch(0.92 0.03 95);
+  --muted: oklch(0.18 0.028 140);
+  --muted-foreground: oklch(0.62 0.03 95);
+  --accent: oklch(0.78 0.16 90);
+  --accent-foreground: oklch(0.10 0.02 90);
+  --border: oklch(0.26 0.03 140);
+  --input: oklch(0.20 0.028 140);
+  --ring: oklch(0.58 0.14 135);
+}
+
+/* 11. arch-necroid */
+.theme-arch-necroid {
+  --background: oklch(0.10 0.04 295);
+  --foreground: oklch(0.86 0.04 140);
+  --card: oklch(0.14 0.045 295);
+  --card-foreground: oklch(0.88 0.04 140);
+  --popover: oklch(0.15 0.045 295);
+  --popover-foreground: oklch(0.88 0.04 140);
+  --primary: oklch(0.55 0.18 295);
+  --primary-foreground: oklch(0.92 0.04 295);
+  --secondary: oklch(0.18 0.035 280);
+  --secondary-foreground: oklch(0.86 0.04 140);
+  --muted: oklch(0.17 0.035 295);
+  --muted-foreground: oklch(0.58 0.05 140);
+  --accent: oklch(0.62 0.16 145);
+  --accent-foreground: oklch(0.10 0.02 145);
+  --border: oklch(0.24 0.04 295);
+  --input: oklch(0.20 0.04 295);
+  --ring: oklch(0.50 0.16 295);
+}
+
+/* 12. arch-arthropoid */
+.theme-arch-arthropoid {
+  --background: oklch(0.12 0.028 55);
+  --foreground: oklch(0.88 0.028 65);
+  --card: oklch(0.16 0.032 55);
+  --card-foreground: oklch(0.90 0.028 65);
+  --popover: oklch(0.17 0.032 55);
+  --popover-foreground: oklch(0.90 0.028 65);
+  --primary: oklch(0.72 0.15 55);
+  --primary-foreground: oklch(0.10 0.02 55);
+  --secondary: oklch(0.20 0.028 45);
+  --secondary-foreground: oklch(0.90 0.028 65);
+  --muted: oklch(0.18 0.025 55);
+  --muted-foreground: oklch(0.62 0.028 60);
+  --accent: oklch(0.62 0.14 35);
+  --accent-foreground: oklch(0.95 0.02 45);
+  --border: oklch(0.26 0.028 55);
+  --input: oklch(0.20 0.025 55);
+  --ring: oklch(0.60 0.14 55);
+}
+
+/* 13. arch-plantoid */
+.theme-arch-plantoid {
+  --background: oklch(0.11 0.03 155);
+  --foreground: oklch(0.90 0.03 130);
+  --card: oklch(0.15 0.032 155);
+  --card-foreground: oklch(0.92 0.03 130);
+  --popover: oklch(0.16 0.032 155);
+  --popover-foreground: oklch(0.92 0.03 130);
+  --primary: oklch(0.70 0.16 155);
+  --primary-foreground: oklch(0.10 0.02 155);
+  --secondary: oklch(0.20 0.03 140);
+  --secondary-foreground: oklch(0.92 0.03 130);
+  --muted: oklch(0.18 0.028 155);
+  --muted-foreground: oklch(0.62 0.03 140);
+  --accent: oklch(0.74 0.15 130);
+  --accent-foreground: oklch(0.10 0.02 130);
+  --border: oklch(0.26 0.028 155);
+  --input: oklch(0.20 0.025 155);
+  --ring: oklch(0.58 0.14 155);
+}
+
+/* 14. arch-fungoid */
+.theme-arch-fungoid {
+  --background: oklch(0.11 0.032 310);
+  --foreground: oklch(0.88 0.03 290);
+  --card: oklch(0.15 0.035 310);
+  --card-foreground: oklch(0.90 0.03 290);
+  --popover: oklch(0.16 0.035 310);
+  --popover-foreground: oklch(0.90 0.03 290);
+  --primary: oklch(0.62 0.18 310);
+  --primary-foreground: oklch(0.92 0.03 310);
+  --secondary: oklch(0.20 0.032 300);
+  --secondary-foreground: oklch(0.90 0.03 290);
+  --muted: oklch(0.18 0.028 310);
+  --muted-foreground: oklch(0.60 0.04 290);
+  --accent: oklch(0.66 0.16 330);
+  --accent-foreground: oklch(0.10 0.02 330);
+  --border: oklch(0.26 0.03 310);
+  --input: oklch(0.20 0.03 310);
+  --ring: oklch(0.56 0.16 310);
+}
+
+/* 15. arch-molluscoid */
+.theme-arch-molluscoid {
+  --background: oklch(0.11 0.03 220);
+  --foreground: oklch(0.90 0.025 190);
+  --card: oklch(0.15 0.032 220);
+  --card-foreground: oklch(0.92 0.025 190);
+  --popover: oklch(0.16 0.032 220);
+  --popover-foreground: oklch(0.92 0.025 190);
+  --primary: oklch(0.68 0.14 190);
+  --primary-foreground: oklch(0.10 0.02 200);
+  --secondary: oklch(0.20 0.03 230);
+  --secondary-foreground: oklch(0.92 0.025 190);
+  --muted: oklch(0.18 0.028 220);
+  --muted-foreground: oklch(0.62 0.025 200);
+  --accent: oklch(0.66 0.16 240);
+  --accent-foreground: oklch(0.92 0.02 240);
+  --border: oklch(0.26 0.03 220);
+  --input: oklch(0.20 0.028 220);
+  --ring: oklch(0.56 0.14 190);
+}
+
+/* 16. arch-lithoid */
+.theme-arch-lithoid {
+  --background: oklch(0.14 0.012 240);
+  --foreground: oklch(0.86 0.025 200);
+  --card: oklch(0.18 0.014 240);
+  --card-foreground: oklch(0.88 0.025 200);
+  --popover: oklch(0.19 0.014 240);
+  --popover-foreground: oklch(0.88 0.025 200);
+  --primary: oklch(0.66 0.10 240);
+  --primary-foreground: oklch(0.95 0.02 240);
+  --secondary: oklch(0.22 0.012 240);
+  --secondary-foreground: oklch(0.88 0.025 200);
+  --muted: oklch(0.20 0.012 240);
+  --muted-foreground: oklch(0.62 0.025 200);
+  --accent: oklch(0.74 0.14 195);
+  --accent-foreground: oklch(0.10 0.02 200);
+  --border: oklch(0.28 0.015 240);
+  --input: oklch(0.22 0.012 240);
+  --ring: oklch(0.58 0.12 195);
+}
+
+/* 17. arch-toxoid */
+.theme-arch-toxoid {
+  --background: oklch(0.12 0.035 125);
+  --foreground: oklch(0.90 0.04 95);
+  --card: oklch(0.16 0.038 125);
+  --card-foreground: oklch(0.92 0.04 95);
+  --popover: oklch(0.17 0.038 125);
+  --popover-foreground: oklch(0.92 0.04 95);
+  --primary: oklch(0.74 0.20 125);
+  --primary-foreground: oklch(0.10 0.02 125);
+  --secondary: oklch(0.20 0.035 90);
+  --secondary-foreground: oklch(0.92 0.04 95);
+  --muted: oklch(0.18 0.03 125);
+  --muted-foreground: oklch(0.62 0.04 95);
+  --accent: oklch(0.82 0.18 95);
+  --accent-foreground: oklch(0.10 0.02 95);
+  --border: oklch(0.26 0.035 125);
+  --input: oklch(0.20 0.032 125);
+  --ring: oklch(0.62 0.18 125);
+}
+
+/* 18. arch-avian */
+.theme-arch-avian {
+  --background: oklch(0.13 0.03 230);
+  --foreground: oklch(0.92 0.015 220);
+  --card: oklch(0.17 0.032 230);
+  --card-foreground: oklch(0.94 0.015 220);
+  --popover: oklch(0.18 0.032 230);
+  --popover-foreground: oklch(0.94 0.015 220);
+  --primary: oklch(0.72 0.13 230);
+  --primary-foreground: oklch(0.10 0.02 230);
+  --secondary: oklch(0.20 0.028 240);
+  --secondary-foreground: oklch(0.94 0.015 220);
+  --muted: oklch(0.18 0.025 230);
+  --muted-foreground: oklch(0.66 0.022 220);
+  --accent: oklch(0.90 0.02 220);
+  --accent-foreground: oklch(0.10 0.02 220);
+  --border: oklch(0.28 0.03 230);
+  --input: oklch(0.20 0.028 230);
+  --ring: oklch(0.62 0.12 230);
+}
+
+/* 19. arch-aquatic */
+.theme-arch-aquatic {
+  --background: oklch(0.10 0.035 245);
+  --foreground: oklch(0.88 0.03 200);
+  --card: oklch(0.14 0.038 245);
+  --card-foreground: oklch(0.90 0.03 200);
+  --popover: oklch(0.15 0.038 245);
+  --popover-foreground: oklch(0.90 0.03 200);
+  --primary: oklch(0.62 0.16 245);
+  --primary-foreground: oklch(0.92 0.02 245);
+  --secondary: oklch(0.18 0.035 220);
+  --secondary-foreground: oklch(0.90 0.03 200);
+  --muted: oklch(0.17 0.03 245);
+  --muted-foreground: oklch(0.60 0.03 200);
+  --accent: oklch(0.70 0.18 25);
+  --accent-foreground: oklch(0.10 0.02 25);
+  --border: oklch(0.24 0.035 245);
+  --input: oklch(0.20 0.032 245);
+  --ring: oklch(0.54 0.14 245);
+}
+
+/* 20. arch-extremophile */
+.theme-arch-extremophile {
+  --background: oklch(0.12 0.035 40);
+  --foreground: oklch(0.90 0.035 30);
+  --card: oklch(0.16 0.038 40);
+  --card-foreground: oklch(0.92 0.035 30);
+  --popover: oklch(0.17 0.038 40);
+  --popover-foreground: oklch(0.92 0.035 30);
+  --primary: oklch(0.74 0.18 50);
+  --primary-foreground: oklch(0.10 0.02 50);
+  --secondary: oklch(0.20 0.035 30);
+  --secondary-foreground: oklch(0.92 0.035 30);
+  --muted: oklch(0.18 0.03 40);
+  --muted-foreground: oklch(0.62 0.035 30);
+  --accent: oklch(0.60 0.22 20);
+  --accent-foreground: oklch(0.95 0.02 40);
+  --border: oklch(0.26 0.035 40);
+  --input: oklch(0.20 0.032 40);
+  --ring: oklch(0.58 0.18 30);
 }
 
 /* ============================================================

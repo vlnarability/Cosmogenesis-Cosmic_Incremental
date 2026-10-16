@@ -12,13 +12,14 @@ import {
   canFormAlliance,
   isDivinityComplete,
 } from "@/game/data/divinity_layer";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Handshake, CheckCircle2, Sparkles, Radio } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { formatNumber } from "../shared/format";
+import { OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 
 const PERSONALITY_COLORS: Record<string, string> = {
   warm: "text-amber-300 border-amber-400/40",
@@ -31,19 +32,16 @@ const PERSONALITY_COLORS: Record<string, string> = {
 
 const RESOURCE_ICON: Record<string, string> = {
   divinity: "💎",
-  prayer: "🕯️",
   faith: "✨",
 };
 
-export function DivinityLayerModal() {
-  const show = useGameStore((s) => s.showDivinityLayer);
-  const setShow = useGameStore((s) => s.setShowDivinityLayer);
+export function DivinityLayerContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const minorGods = useGameStore((s) => s.minorGods || MINOR_GODS);
   const godRelationships = useGameStore((s) => s.godRelationships || {});
   const alliances = useGameStore((s) => s.alliances || {});
   const divinity = useGameStore((s) => s.divinity || 0);
-  const prayer = useGameStore((s) => s.prayer || 0);
   const faith = useGameStore((s) => s.faith || 0);
 
   const negotiateWithGod = useGameStore((s) => s.negotiateWithGod);
@@ -60,25 +58,23 @@ export function DivinityLayerModal() {
 
   const getResourceAmount = (res: string): number => {
     if (res === "divinity") return divinity;
-    if (res === "prayer") return prayer;
     if (res === "faith") return faith;
     return 0;
   };
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Handshake className="w-5 h-5" />
-            Layer 8 — Divinity (Divine Alliance)
-            <BackgroundLayerBadge layerId="divinity" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between">
-            <span>
-              Negotiate with minor gods, trade resources, and form alliances. 2+ alliances unlocks Divine War.
-            </span>
-            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Handshake className="w-5 h-5" />
+          Layer 8 — Divinity (Divine Alliance)
+          <BackgroundLayerBadge layerId="divinity" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between">
+          <span>
+            Negotiate with minor gods, trade resources, and form alliances. 2+ alliances unlocks Divine War.
+          </span>
+          <Badge variant="outline" className="text-amber-300 border-amber-400/40">
               {alliedCount}/{MINOR_GODS.length} alliances
             </Badge>
           </DialogDescription>
@@ -88,7 +84,7 @@ export function DivinityLayerModal() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The Diplomacy Network is sealed.</p>
-            <p className="text-xs mt-1">Reach peak instability ≥ 80 (Layer 7 — Omnipotence) to unlock Divinity.</p>
+            <p className="text-xs mt-1">Repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids (Layer 7 — Omnipotence) to unlock Divinity.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -97,7 +93,7 @@ export function DivinityLayerModal() {
               <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
                 <span>{alliedCount}/6 alliances · {Object.keys(godRelationships).length} minor gods</span>
                 <span className="text-amber-300/80">
-                  💎 {formatNumber(divinity, 0)} · 🕯️ {formatNumber(prayer, 0)} · ✨ {formatNumber(faith, 0)}
+                  💎 {formatNumber(divinity, 0)} · ✨ {formatNumber(faith, 0)}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1">
@@ -241,10 +237,9 @@ export function DivinityLayerModal() {
           Form 2+ alliances to unlock Layer 9 (Divine War). Allied gods grant passive bonuses and can be called into battle against the Old Gods.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 

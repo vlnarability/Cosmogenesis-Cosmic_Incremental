@@ -1,0 +1,811 @@
+     1→"use client";
+     2→
+     3→import { useGameStore, TRIAL_REALMS_REQUIRED_FOR_LAYER_2 } from "@/game/state/store";
+     4→import { PRESTIGE_LAYERS, isLayerUnlocked, countChallengesCompleted, type PrestigeLayer } from "@/game/data/prestigeLayers";
+     5→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+     6→import { Badge } from "@/components/ui/badge";
+     7→import { Button } from "@/components/ui/button";
+     8→import { Crown, Lock, CheckCircle2, ChevronRight, Eye, Triangle, Egg, Sparkles, Circle, Atom, Church, Infinity as InfinityIcon, Star, Zap, ArrowRight } from "lucide-react";
+     9→import { CHALLENGES, getMaxRepeats } from "@/game/data/challenges";
+    10→import { countForesightNodes } from "@/game/data/foresight";
+    11→import {
+    12→  CONSTELLATIONS,
+    13→  CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+    14→  countCompletedConstellations,
+    15→  countLitStars,
+    16→  type ConstellationState,
+    17→} from "@/game/data/constellations";
+    18→import { BLOOD_PACTS } from "@/game/data/transcendence";
+    19→import { DIVINE_LAWS } from "@/game/data/apotheosis";
+    20→import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES } from "@/game/data/omnipotence";
+    21→import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
+    22→import { OLD_GODS, ECHO_TYPES, FORK_SCENARIOS, FUTURE_DEBT_TIERS } from "@/game/data/infinity";
+    23→import { ENDING_CHOICES, TESTAMENT_CLAUSES, CANONIZATIONS, PERMANENCE_WEAVES } from "@/game/data/eternity";
+    24→import { ACTIVE_ABILITIES } from "@/game/data/activeAbilities";
+    25→import { formatNumber } from "../shared/format";
+    26→
+    27→// ===== Part 6 — Layer-progress helpers =====
+    28→// Per-layer (L_n → L_n+1) unlock progress. Returns the current count and the max (target) count.
+    29→// nextLayerKey uses the runtime unlockedLayers keys (e.g. "enlightenment" for L2).
+    30→interface NextLayerProgressDef {
+    31→  currentLayerName: string; // L_n name (the layer the player needs to have unlocked to progress)
+    32→  nextLayerName: string;    // L_n+1 name (the layer the progress bar points toward)
+    33→  nextLayerKey: string;     // key in unlockedLayers (or "evolution" for L1)
+    34→  current: number;
+    35→  max: number;
+    36→  metricLabel: string;      // description of the metric (e.g. "Trials completed")
+    37→}
+    38→
+    39→// ===== Part 6 — Layer-next-progress component =====
+    40→// Renders a progress bar showing how close the player is to unlocking the NEXT layer (L_(n+1)).
+    41→// - If next layer is already unlocked: "✓ {nextLayerName} Unlocked"
+    42→// - If current layer (prereq for next) is NOT unlocked: "Requires {currentLayerName}"
+    43→// - Otherwise: progress bar with the layer-unlock metric (e.g. "5/10 Foresight nodes").
+    44→function LayerNextProgress({
+    45→  progress,
+    46→  currentLayerUnlocked,
+    47→  nextLayerUnlocked,
+    48→}: {
+    49→  progress: NextLayerProgressDef;
+    50→  currentLayerUnlocked: boolean;
+    51→  nextLayerUnlocked: boolean;
+    52→}) {
+    53→  if (nextLayerUnlocked) {
+    54→    return (
+    55→      <div className="mt-2 flex items-center gap-1.5 text-[0.65rem] text-emerald-300">
+    56→        <CheckCircle2 className="w-3 h-3" />
+    57→        <span className="font-semibold">{progress.nextLayerName} Unlocked</span>
+    58→      </div>
+    59→    );
+    60→  }
+    61→  if (!currentLayerUnlocked) {
+    62→    return (
+    63→      <div className="mt-2 flex items-center gap-1.5 text-[0.65rem] text-muted-foreground">
+    64→        <Lock className="w-3 h-3" />
+    65→        <span>Requires <span className="font-semibold text-foreground/80">{progress.currentLayerName}</span> to be unlocked first</span>
+    66→      </div>
+    67→    );
+    68→  }
+    69→  const pct = progress.max > 0 ? Math.min(100, (progress.current / progress.max) * 100) : 0;
+    70→  return (
+    71→    <div className="mt-2">
+    72→      <div className="flex items-center justify-between text-[0.6rem] text-muted-foreground">
+    73→        <span className="flex items-center gap-1">
+    74→          <ArrowRight className="w-2.5 h-2.5" />
+    75→          Toward {progress.nextLayerName}
+    76→          <span className="text-muted-foreground/70">· {progress.metricLabel}</span>
+    77→        </span>
+    78→        <span className="tabular-nums">{progress.current}/{progress.max}</span>
+    79→      </div>
+    80→      <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden mt-0.5">
+    81→        <div className="h-full bg-emerald-400/70 transition-all" style={{ width: `${pct}%` }} />
+    82→      </div>
+    83→    </div>
+    84→  );
+    85→}
+    86→
+    87→export function PrestigeTab() {
+    88→  const galacticWins = useGameStore((s) => s.galacticWins);
+    89→  const totalRuns = useGameStore((s) => s.totalRuns);
+    90→  const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+    91→  const completedChallenges = useGameStore((s) => s.completedChallenges || {});
+    92→  const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
+    93→  const upgrades = useGameStore((s) => s.upgrades);
+    94→  const setShowChallenges = useGameStore((s) => s.setShowChallenges);
+    95→  const setShowShop = useGameStore((s) => s.setShowShop);
+    96→
+    97→  // Layer 2-6 state
+    98→  const divinity = useGameStore((s) => s.divinity);
+    99→  const foresightNodes = useGameStore((s) => s.foresightNodes || {});
+   100→  // L2 — Constellation Map (new design)
+   101→  const constellationStars = useGameStore((s) => s.constellationStars || {});
+   102→  const constellationProgress = useGameStore((s) => s.constellationProgress || {});
+   103→  const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
+   104→  const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
+   105→  const activeForesightRoute = useGameStore((s) => s.activeForesightRoute);
+   106→  const setShowEnlightenment = useGameStore((s) => s.setShowEnlightenment);
+   107→
+   108→  const bloodPactsUsed = useGameStore((s) => s.bloodPactsUsed || {});
+   109→  const setShowTranscendence = useGameStore((s) => s.setShowTranscendence);
+   110→
+   111→  const genesisSeeds = useGameStore((s) => s.genesisSeeds);
+   112→  const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
+   113→  const setShowGenesis = useGameStore((s) => s.setShowGenesis);
+   114→
+   115→  const faith = useGameStore((s) => s.faith);
+   116→  const heresy = useGameStore((s) => s.heresy);
+   117→  const enactedDivineLaws = useGameStore((s) => s.enactedDivineLaws || {});
+   118→  const setShowApotheosis = useGameStore((s) => s.setShowApotheosis);
+   119→
+   120→  const singularityCores = useGameStore((s) => s.singularityCores);
+   121→  const equippedRelics = useGameStore((s) => s.equippedRelics || {});
+   122→  const activeLogicCores = useGameStore((s) => s.activeLogicCores || {});
+   123→  const setShowSingularity = useGameStore((s) => s.setShowSingularity);
+   124→
+   125→  // Layer 7-10 state (new narrative)
+   126→  const creatures = useGameStore((s) => s.creatures || []);
+   127→  const legions = useGameStore((s) => s.legions || []);
+   128→  const instability = useGameStore((s) => s.instability || 0);
+   129→  const peakInstability = useGameStore((s) => s.peakInstability || 0);
+   130→  const setShowOmnipotence = useGameStore((s) => s.setShowOmnipotence);
+   131→
+   132→  const prayer = useGameStore((s) => s.prayer);
+   133→  const godRelationships = useGameStore((s) => s.godRelationships || {});
+   134→  const alliances = useGameStore((s) => s.alliances || {});
+   135→  const setShowDivinityLayer = useGameStore((s) => s.setShowDivinityLayer);
+   136→
+   137→  const divineFragments = useGameStore((s) => s.divineFragments || 0);
+   138→  const oldGodBattles = useGameStore((s) => s.oldGodBattles || {});
+   139→  const setShowInfinity = useGameStore((s) => s.setShowInfinity);
+   140→
+   141→  const discoveredArchetypes = useGameStore((s) => s.discoveredArchetypes || {});
+   142→  const chosenEnding = useGameStore((s) => s.chosenEnding);
+   143→  const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
+   144→  const setShowEternity = useGameStore((s) => s.setShowEternity);
+   145→
+   146→  // Legacy state (kept for migration; unused by new logic)
+   147→  const echoes = useGameStore((s) => s.echoes);
+   148→  const testamentClauses = useGameStore((s) => s.testamentClauses);
+   149→
+   150→  // Part 6 — trial realms completed count (for L1→L2 progress)
+   151→  const trialRealmsCompleted = useGameStore((s) => s.trialRealmsCompleted || {});
+   152→  const trialRealmsCompletedCount = Object.values(trialRealmsCompleted).filter(Boolean).length;
+   153→
+   154→  // QUICK WIN 2 — Active abilities state
+   155→  const activeAbilityCooldowns = useGameStore((s) => s.activeAbilityCooldowns || {});
+   156→  const triggerActiveAbility = useGameStore((s) => s.useActiveAbility);
+   157→  // QUICK WIN 5 — Prestige Points (universal currency)
+   158→  const prestigePoints = useGameStore((s) => s.prestigePoints);
+   159→
+   160→  const challengesCompletedCount = countChallengesCompleted(completedChallenges);
+   161→  const totalRepeats = Object.values(completedChallenges).reduce((a, b) => a + (b || 0), 0);
+   162→  const hasMastery = (upgrades["challenge_mastery"] || 0) > 0;
+   163→  const maxRepeats = getMaxRepeats(hasMastery);
+   164→
+   165→  const foresightCount = countForesightNodes(foresightNodes);
+   166→  // L2 — Constellation Map counts
+   167→  const constellationState: ConstellationState = {
+   168→    constellationStars,
+   169→    constellationProgress,
+   170→    constellationsStarted,
+   171→    constellationsCompleted,
+   172→  };
+   173→  const constellationsCompletedCount = countCompletedConstellations(constellationState);
+   174→  const litStarsCount = countLitStars(constellationState);
+   175→  const constellationsStartedCount = Object.values(constellationsStarted).filter(Boolean).length;
+   176→  const pactsUsedCount = BLOOD_PACTS.filter((p) => bloodPactsUsed[p.id]).length;
+   177→  const lawsEnactedCount = DIVINE_LAWS.filter((l) => enactedDivineLaws[l.id]).length;
+   178→  const relicsCount = Object.values(equippedRelics).filter(Boolean).length;
+   179→  const coresCount = Object.values(activeLogicCores).filter(Boolean).length;
+   180→  // NEW: Layer 7-10 derived counts
+   181→  const creaturesCount = creatures.length;
+   182→  const legionsCount = legions.length;
+   183→  const alliedCount = Object.values(alliances).filter(Boolean).length;
+   184→  const godsAtThreshold = MINOR_GODS.filter((g) => (godRelationships[g.id] || 0) >= RELATIONSHIP_ALLIANCE_THRESHOLD).length;
+   185→  const oldGodsDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
+   186→  const archetypesDiscovered = Object.values(discoveredArchetypes).filter(Boolean).length;
+   187→  // Legacy counts (kept for backwards compat — all 0 in new logic)
+   188→  const hybridsCount = 0;
+   189→  const channelsLeveled = 0;
+   190→  const totalChannelLevels = 0;
+   191→  const purchasedEchoCount = 0;
+   192→  const resolvedForkCount = 0;
+   193→  const debtTakenCount = 0;
+   194→  const debtRepaidCount = 0;
+   195→  const purchasedClauseCount = 0;
+   196→  const canonCount = 0;
+   197→  const weaveCount = 0;
+   198→
+   199→  return (
+   200→    <div className="space-y-4">
+   201→      {/* Auto-running banner — shown when the player owns any auto-buyer upgrade */}
+   202→      {(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
+   203→        <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-3 flex items-start gap-3">
+   204→          <div className="text-2xl shrink-0">🌌</div>
+   205→          <div className="flex-1 min-w-0">
+   206→            <div className="text-sm font-semibold text-emerald-300">
+   207→              Your civilization runs itself now. Focus on your next trial.
+   208→            </div>
+   209→            <div className="text-xs text-emerald-200/80 mt-0.5 leading-relaxed">
+   210→              The base game (Cell → Galactic) auto-progresses via your purchased auto-buyer upgrades.
+   211→              Prestige speed bonus scales with each run (+50% per run). Direct your attention to the prestige layers below.
+   212→            </div>
+   213→          </div>
+   214→        </div>
+   215→      )}
+   216→
+   217→      {/* QUICK WIN 2 — Active Abilities (one per unlocked layer) */}
+   218→      {unlockedChallenges && (
+   219→        <Card className="glass-panel">
+   220→          <CardHeader className="pb-2">
+   221→            <CardTitle className="text-sm flex items-center gap-2">
+   222→              <Zap className="w-4 h-4 text-amber-300" />
+   223→              Active Abilities
+   224→            </CardTitle>
+   225→            <CardDescription>
+   226→              Click an ability to trigger its effect. Each ability then enters a cooldown. Earned from each unlocked prestige layer.
+   227→              <span className="ml-2 text-amber-300/90 font-medium">Prestige Points: {formatNumber(prestigePoints, 0)}</span>
+   228→            </CardDescription>
+   229→          </CardHeader>
+   230→          <CardContent>
+   231→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+   232→              {ACTIVE_ABILITIES.map((ab) => {
+   233→                // Layer 1 (Evolution) requires unlockedChallenges; others require unlockedLayers
+   234→                const isUnlocked = ab.layerId === "evolution"
+   235→                  ? !!unlockedChallenges
+   236→                  : !!unlockedLayers?.[ab.layerId];
+   237→                if (!isUnlocked) return null;
+   238→                const cd = activeAbilityCooldowns[ab.id] || 0;
+   239→                const onCooldown = cd > 0;
+   240→                const pct = onCooldown ? ((ab.cooldownSec - cd) / ab.cooldownSec) * 100 : 100;
+   241→                return (
+   242→                  <div key={ab.id} className="stat-card p-2.5 flex flex-col gap-1.5">
+   243→                    <div className="flex items-center gap-2">
+   244→                      <span className="text-lg shrink-0">{ab.icon}</span>
+   245→                      <div className="min-w-0 flex-1">
+   246→                        <div className="text-sm font-semibold truncate">{ab.name}</div>
+   247→                        <div className="text-[0.6rem] text-muted-foreground truncate">{ab.layerId}</div>
+   248→                      </div>
+   249→                    </div>
+   250→                    <p className="text-[0.65rem] text-muted-foreground leading-snug">{ab.desc}</p>
+   251→                    {onCooldown ? (
+   252→                      <div>
+   253→                        <div className="flex items-center justify-between text-[0.6rem] text-amber-300/80 mb-0.5">
+   254→                          <span>Cooldown</span>
+   255→                          <span>{Math.ceil(cd)}s / {ab.cooldownSec}s</span>
+   256→                        </div>
+   257→                        <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+   258→                          <div className="h-full bg-amber-400/70 transition-all" style={{ width: `${pct}%` }} />
+   259→                        </div>
+   260→                        <Button size="sm" className="h-7 w-full mt-1.5" disabled>
+   261→                          Cooldown…
+   262→                        </Button>
+   263→                      </div>
+   264→                    ) : (
+   265→                      <Button size="sm" className="h-7 w-full mt-auto" onClick={() => triggerActiveAbility(ab.layerId)}>
+   266→                        Activate
+   267→                      </Button>
+   268→                    )}
+   269→                  </div>
+   270→                );
+   271→              })}
+   272→            </div>
+   273→            {ACTIVE_ABILITIES.every((ab) => ab.layerId !== "evolution" && !unlockedLayers?.[ab.layerId]) && (
+   274→              <p className="text-xs text-muted-foreground text-center mt-2">
+   275→                Unlock prestige layers to gain active abilities.
+   276→              </p>
+   277→            )}
+   278→          </CardContent>
+   279→        </Card>
+   280→      )}
+   281→
+   282→      {/* Header card */}
+   283→      <Card className="glass-panel">
+   284→        <CardHeader className="pb-2">
+   285→          <CardTitle className="text-base flex items-center gap-2">
+   286→            <Crown className="w-4 h-4 text-amber-300" />
+   287→            The Ten Ages of Becoming
+   288→          </CardTitle>
+   289→          <CardDescription>
+   290→            Each layer is a long saga of cosmic ascent. Layer 1 (Evolution) is the base game; later layers unlock as you prove your lineage.
+   291→          </CardDescription>
+   292→        </CardHeader>
+   293→        <CardContent>
+   294→          <div className="flex flex-wrap gap-2">
+   295→            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+   296→              {galacticWins} Galactic wins
+   297→            </Badge>
+   298→            <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
+   299→              {totalRuns} total runs
+   300→            </Badge>
+   301→            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+   302→              {challengesCompletedCount}/{CHALLENGES.length} trials mastered
+   303→            </Badge>
+   304→            <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
+   305→              {totalRepeats} total repeats
+   306→            </Badge>
+   307→          </div>
+   308→        </CardContent>
+   309→      </Card>
+   310→
+   311→      {/* Layer progress cards (1 per layer) */}
+   312→      <Card className="glass-panel">
+   313→        <CardHeader className="pb-2">
+   314→          <CardTitle className="text-sm">Prestige Layer Progress</CardTitle>
+   315→          <CardDescription>
+   316→            Each layer has its own unlock condition, currency, and bonuses. View a layer to interact with its systems.
+   317→          </CardDescription>
+   318→        </CardHeader>
+   319→        <CardContent className="space-y-2">
+   320→          {/* Layer 1 — Evolution (Challenges) */}
+   321→          <LayerCard
+   322→            order={1}
+   323→            name="Evolution"
+   324→            tagline="The first spark learns to climb"
+   325→            icon="🌱"
+   326→            unlocked={!!unlockedChallenges}
+   327→            unlockText="First Galactic win"
+   328→            currencyName="Evolution Points"
+   329→            onView={() => setShowChallenges(true)}
+   330→            viewLabel="View Trials"
+   331→          >
+   332→            <ProgressRow label="Trials mastered" value={challengesCompletedCount} max={CHALLENGES.length} />
+   333→            <ProgressRow label="Total repeats" value={totalRepeats} max={maxRepeats * CHALLENGES.length} />
+   334→            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 mt-1">
+   335→              {CHALLENGES.map((ch) => {
+   336→                const done = (completedChallenges[ch.id] || 0) > 0;
+   337→                const count = completedChallenges[ch.id] || 0;
+   338→                return (
+   339→                  <div key={ch.id} className={`stat-card py-1 px-1.5 ${done ? "border-emerald-400/40" : ""}`}>
+   340→                    <div className="flex items-center gap-1">
+   341→                      <span className="text-sm">{ch.icon}</span>
+   342→                      {done ? (
+   343→                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+   344→                      ) : (
+   345→                        <Lock className="w-2.5 h-2.5 text-muted-foreground/50" />
+   346→                      )}
+   347→                    </div>
+   348→                    <div className="text-[0.55rem] text-muted-foreground mt-0.5">{count}/{maxRepeats}</div>
+   349→                  </div>
+   350→                );
+   351→              })}
+   352→            </div>
+   353→            <LayerNextProgress
+   354→              progress={{
+   355→                currentLayerName: "Evolution",
+   356→                nextLayerName: "Enlightenment",
+   357→                nextLayerKey: "enlightenment",
+   358→                current: Math.max(trialRealmsCompletedCount, challengesCompletedCount >= 3 ? TRIAL_REALMS_REQUIRED_FOR_LAYER_2 : Math.ceil(challengesCompletedCount * TRIAL_REALMS_REQUIRED_FOR_LAYER_2 / 3)),
+   359→                max: TRIAL_REALMS_REQUIRED_FOR_LAYER_2,
+   360→                metricLabel: `${trialRealmsCompletedCount}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} trial realms · or ${challengesCompletedCount}/3 challenges`,
+   361→              }}
+   362→              currentLayerUnlocked={!!unlockedChallenges}
+   363→              nextLayerUnlocked={!!unlockedLayers?.enlightenment}
+   364→            />
+   365→          </LayerCard>
+   366→
+   367→          {/* Layer 2 — Enlightenment (Foresight) */}
+   368→          <LayerCard
+   369→            order={2}
+   370→            name="Enlightenment"
+   371→            tagline="The first truth is remembered"
+   372→            icon="👁️"
+   373→            unlocked={!!unlockedLayers.enlightenment}
+   374→            unlockText="3 trials mastered"
+   375→            currencyName={`Divinity: ${formatNumber(divinity, 0)}`}
+   376→            onView={() => setShowEnlightenment(true)}
+   377→            viewLabel="View Foresight"
+   378→            viewIcon={<Eye className="w-3 h-3 mr-1" />}
+   379→          >
+   380→            <ProgressRow label="Constellations completed" value={constellationsCompletedCount} max={CONSTELLATIONS_REQUIRED_FOR_LAYER_3} />
+   381→            <ProgressRow label="Stars illuminated" value={litStarsCount} max={CONSTELLATIONS.reduce((a, c) => a + c.stars.length, 0)} />
+   382→            <ProgressRow label="Constellations started" value={constellationsStartedCount} max={CONSTELLATIONS.length} />
+   383→            <div className="text-[0.6rem] text-amber-300/80 mt-1">
+   384→              Route: {activeForesightRoute || "none chosen"}
+   385→            </div>
+   386→            <LayerNextProgress
+   387→              progress={{
+   388→                currentLayerName: "Enlightenment",
+   389→                nextLayerName: "Transcendence",
+   390→                nextLayerKey: "transcendence",
+   391→                current: constellationsCompletedCount,
+   392→                max: CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+   393→                metricLabel: "constellations completed",
+   394→              }}
+   395→              currentLayerUnlocked={!!unlockedLayers?.enlightenment}
+   396→              nextLayerUnlocked={!!unlockedLayers?.transcendence}
+   397→            />
+   398→          </LayerCard>
+   399→
+   400→          {/* Layer 3 — Transcendence */}
+   401→          <LayerCard
+   402→            order={3}
+   403→            name="Transcendence"
+   404→            tagline="Form becomes optional"
+   405→            icon="🔺"
+   406→            unlocked={!!unlockedLayers.transcendence}
+   407→            unlockText="10 Foresight nodes purchased"
+   408→            currencyName={`Divinity: ${formatNumber(divinity, 0)}`}
+   409→            onView={() => setShowTranscendence(true)}
+   410→            viewLabel="View Sacrifice"
+   411→            viewIcon={<Triangle className="w-3 h-3 mr-1" />}
+   412→          >
+   413→            <ProgressRow label="Blood Pacts used (toward Genesis)" value={pactsUsedCount} max={BLOOD_PACTS.length} />
+   414→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   415→              Offerings + rituals + scripts + blood pacts available.
+   416→            </div>
+   417→            <LayerNextProgress
+   418→              progress={{
+   419→                currentLayerName: "Transcendence",
+   420→                nextLayerName: "Genesis",
+   421→                nextLayerKey: "genesis",
+   422→                current: pactsUsedCount,
+   423→                max: BLOOD_PACTS.length,
+   424→                metricLabel: "Blood pacts performed",
+   425→              }}
+   426→              currentLayerUnlocked={!!unlockedLayers?.transcendence}
+   427→              nextLayerUnlocked={!!unlockedLayers?.genesis}
+   428→            />
+   429→          </LayerCard>
+   430→
+   431→          {/* Layer 4 — Genesis */}
+   432→          <LayerCard
+   433→            order={4}
+   434→            name="Genesis"
+   435→            tagline="A new universe, seeded"
+   436→            icon="🥚"
+   437→            unlocked={!!unlockedLayers.genesis}
+   438→            unlockText="All 4 Blood Pacts performed"
+   439→            currencyName={`Genesis Seeds: ${formatNumber(genesisSeeds, 0)}`}
+   440→            onView={() => setShowGenesis(true)}
+   441→            viewLabel="View Genesis"
+   442→            viewIcon={<Egg className="w-3 h-3 mr-1" />}
+   443→          >
+   444→            <ProgressRow label="Authored worlds" value={authoredWorlds.length} max={99} />
+   445→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   446→              Each authored world grants permanent production / capacity / EP / pop bonuses.
+   447→            </div>
+   448→            <LayerNextProgress
+   449→              progress={{
+   450→                currentLayerName: "Genesis",
+   451→                nextLayerName: "Apotheosis",
+   452→                nextLayerKey: "apotheosis",
+   453→                current: authoredWorlds.length,
+   454→                max: 1,
+   455→                metricLabel: "Worlds authored (1 needed)",
+   456→              }}
+   457→              currentLayerUnlocked={!!unlockedLayers?.genesis}
+   458→              nextLayerUnlocked={!!unlockedLayers?.apotheosis}
+   459→            />
+   460→          </LayerCard>
+   461→
+   462→          {/* Layer 5 — Apotheosis */}
+   463→          <LayerCard
+   464→            order={5}
+   465→            name="Apotheosis"
+   466→            tagline="The god of gods"
+   467→            icon="👑"
+   468→            unlocked={!!unlockedLayers.apotheosis}
+   469→            unlockText="Author 1 Genesis world"
+   470→            currencyName={`Faith: ${formatNumber(faith, 0)} · Heresy: ${heresy.toFixed(0)}/100`}
+   471→            onView={() => setShowApotheosis(true)}
+   472→            viewLabel="View Divine"
+   473→            viewIcon={<Sparkles className="w-3 h-3 mr-1" />}
+   474→          >
+   475→            <ProgressRow label="Divine Laws enacted (toward Singularity)" value={lawsEnactedCount} max={DIVINE_LAWS.length} />
+   476→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   477→              Watch heresy — at 100 the run ends.
+   478→            </div>
+   479→            <LayerNextProgress
+   480→              progress={{
+   481→                currentLayerName: "Apotheosis",
+   482→                nextLayerName: "Singularity",
+   483→                nextLayerKey: "singularity",
+   484→                current: lawsEnactedCount,
+   485→                max: 3,
+   486→                metricLabel: "Divine laws enacted (3 needed)",
+   487→              }}
+   488→              currentLayerUnlocked={!!unlockedLayers?.apotheosis}
+   489→              nextLayerUnlocked={!!unlockedLayers?.singularity}
+   490→            />
+   491→          </LayerCard>
+   492→
+   493→          {/* Layer 6 — Singularity */}
+   494→          <LayerCard
+   495→            order={6}
+   496→            name="Singularity"
+   497→            tagline="All paths converge"
+   498→            icon="🌀"
+   499→            unlocked={!!unlockedLayers.singularity}
+   500→            unlockText="Enact 3+ Divine Laws"
+   501→            currencyName={`Singularity Cores: ${formatNumber(singularityCores, 0)}`}
+   502→            onView={() => setShowSingularity(true)}
+   503→            viewLabel="View System"
+   504→            viewIcon={<Circle className="w-3 h-3 mr-1" />}
+   505→          >
+   506→            <ProgressRow label="Relics equipped" value={relicsCount} max={8} />
+   507→            <ProgressRow label="Logic Cores active" value={coresCount} max={6} />
+   508→            <LayerNextProgress
+   509→              progress={{
+   510→                currentLayerName: "Singularity",
+   511→                nextLayerName: "Omnipotence",
+   512→                nextLayerKey: "omnipotence",
+   513→                current: coresCount,
+   514→                max: 3,
+   515→                metricLabel: "Logic cores active (3 needed)",
+   516→              }}
+   517→              currentLayerUnlocked={!!unlockedLayers?.singularity}
+   518→              nextLayerUnlocked={!!unlockedLayers?.omnipotence}
+   519→            />
+   520→          </LayerCard>
+   521→
+   522→          {/* Layer 7 — Omnipotence (Bio-engineering) */}
+   523→          <LayerCard
+   524→            order={7}
+   525→            name="Omnipotence"
+   526→            tagline="Create life; forge legions"
+   527→            icon="⚛️"
+   528→            unlocked={!!unlockedLayers.omnipotence}
+   529→            unlockText="3+ Logic Cores active"
+   530→            currencyName={`Instability: ${instability.toFixed(1)}/100 (peak ${peakInstability.toFixed(1)})`}
+   531→            onView={() => setShowOmnipotence(true)}
+   532→            viewLabel="View Lab"
+   533→            viewIcon={<Atom className="w-3 h-3 mr-1" />}
+   534→          >
+   535→            <ProgressRow label="Creatures designed" value={creaturesCount} max={20} />
+   536→            <ProgressRow label="Legions formed" value={legionsCount} max={5} />
+   537→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   538→              Design creatures → combine into Legions. At instability 100, they go rogue. Peak ≥ 80 unlocks Divinity.
+   539→            </div>
+   540→            <LayerNextProgress
+   541→              progress={{
+   542→                currentLayerName: "Omnipotence",
+   543→                nextLayerName: "Divinity",
+   544→                nextLayerKey: "divinity",
+   545→                current: Math.min(80, Math.round(peakInstability)),
+   546→                max: 80,
+   547→                metricLabel: "Peak instability (80 needed)",
+   548→              }}
+   549→              currentLayerUnlocked={!!unlockedLayers?.omnipotence}
+   550→              nextLayerUnlocked={!!unlockedLayers?.divinity}
+   551→            />
+   552→          </LayerCard>
+   553→
+   554→          {/* Layer 8 — Divinity (Divine Alliance) */}
+   555→          <LayerCard
+   556→            order={8}
+   557→            name="Divinity"
+   558→            tagline="Alliances with minor gods"
+   559→            icon="⛪"
+   560→            unlocked={!!unlockedLayers.divinity}
+   561→            unlockText="Peak instability ≥ 80"
+   562→            currencyName={`Alliances: ${alliedCount}/${MINOR_GODS.length}`}
+   563→            onView={() => setShowDivinityLayer(true)}
+   564→            viewLabel="View Diplomacy"
+   565→            viewIcon={<Church className="w-3 h-3 mr-1" />}
+   566→          >
+   567→            <ProgressRow label="Alliances formed (toward Infinity)" value={alliedCount} max={2} />
+   568→            <ProgressRow label="Gods at alliance threshold" value={godsAtThreshold} max={MINOR_GODS.length} />
+   569→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   570→              Negotiate, trade, and form alliances. 2+ alliances unlocks Divine War.
+   571→            </div>
+   572→            <LayerNextProgress
+   573→              progress={{
+   574→                currentLayerName: "Divinity",
+   575→                nextLayerName: "Infinity",
+   576→                nextLayerKey: "infinity",
+   577→                current: alliedCount,
+   578→                max: 2,
+   579→                metricLabel: `Alliances formed (2 of ${MINOR_GODS.length} possible)`,
+   580→              }}
+   581→              currentLayerUnlocked={!!unlockedLayers?.divinity}
+   582→              nextLayerUnlocked={!!unlockedLayers?.infinity}
+   583→            />
+   584→          </LayerCard>
+   585→
+   586→          {/* Layer 9 — Infinity (Divine War) */}
+   587→          <LayerCard
+   588→            order={9}
+   589→            name="Infinity"
+   590→            tagline="War against the Old Gods"
+   591→            icon="∞"
+   592→            unlocked={!!unlockedLayers.infinity}
+   593→            unlockText="2+ alliances formed"
+   594→            currencyName={`Divine Fragments: ${divineFragments}`}
+   595→            onView={() => setShowInfinity(true)}
+   596→            viewLabel="View Battles"
+   597→            viewIcon={<InfinityIcon className="w-3 h-3 mr-1" />}
+   598→          >
+   599→            <ProgressRow label="Old Gods defeated (toward Eternity)" value={oldGodsDefeated} max={OLD_GODS.length} />
+   600→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   601→              Deploy Legions, call Allies, defeat all 3 Old Gods to ascend.
+   602→            </div>
+   603→            <LayerNextProgress
+   604→              progress={{
+   605→                currentLayerName: "Infinity",
+   606→                nextLayerName: "Eternity",
+   607→                nextLayerKey: "eternity",
+   608→                current: oldGodsDefeated,
+   609→                max: OLD_GODS.length,
+   610→                metricLabel: "Old Gods defeated (all 3 needed)",
+   611→              }}
+   612→              currentLayerUnlocked={!!unlockedLayers?.infinity}
+   613→              nextLayerUnlocked={!!unlockedLayers?.eternity}
+   614→            />
+   615→          </LayerCard>
+   616→
+   617→          {/* Layer 10 — Eternity (Genesis Engine) */}
+   618→          <LayerCard
+   619→            order={10}
+   620→            name="Eternity"
+   621→            tagline="Forge universes in the Genesis Engine"
+   622→            icon="🌠"
+   623→            unlocked={!!unlockedLayers.eternity}
+   624→            unlockText="All 3 Old Gods defeated"
+   625→            currencyName={`Archetypes: ${archetypesDiscovered}/100 · Boons: ${cosmicBoonStacks}`}
+   626→            onView={() => setShowEternity(true)}
+   627→            viewLabel="View Genesis Engine"
+   628→            viewIcon={<Star className="w-3 h-3 mr-1" />}
+   629→          >
+   630→            <ProgressRow label="Archetypes discovered" value={archetypesDiscovered} max={100} />
+   631→            <ProgressRow label="Cosmic Boon stacks" value={cosmicBoonStacks} max={Math.max(10, cosmicBoonStacks)} />
+   632→            <div className="text-[0.6rem] text-muted-foreground mt-1">
+   633→              {chosenEnding ? `Ending chosen: ${chosenEnding}` : "Discover all 100 archetypes to unlock the ending screen."}
+   634→            </div>
+   635→            <div className="mt-2 flex items-center gap-1.5 text-[0.65rem] text-amber-300">
+   636→              <Star className="w-3 h-3" />
+   637→              <span className="font-semibold">Max layer reached — end-game ascension content.</span>
+   638→            </div>
+   639→          </LayerCard>
+   640→        </CardContent>
+   641→      </Card>
+   642→
+   643→      {/* Layer roadmap (full 10-layer overview) */}
+   644→      <Card className="glass-panel">
+   645→        <CardHeader className="pb-2">
+   646→          <CardTitle className="text-sm">Prestige Roadmap (Long-term)</CardTitle>
+   647→          <CardDescription>
+   648→            Ten ages, from the first spark to Eternity. Each layer unlocks a new prestige currency and a new saga.
+   649→          </CardDescription>
+   650→        </CardHeader>
+   651→        <CardContent>
+   652→          <div className="space-y-1.5">
+   653→            {PRESTIGE_LAYERS.map((layer, idx) => {
+   654→              const unlocked = isLayerUnlocked(layer, {
+   655→                galacticWins,
+   656→                totalRuns,
+   657→                unlockedLayers,
+   658→                challengesCompletedCount,
+   659→              });
+   660→              return (
+   661→                <LayerRow
+   662→                  key={layer.id}
+   663→                  layer={layer}
+   664→                  unlocked={unlocked}
+   665→                  isLast={idx === PRESTIGE_LAYERS.length - 1}
+   666→                />
+   667→              );
+   668→            })}
+   669→          </div>
+   670→        </CardContent>
+   671→      </Card>
+   672→
+   673→      {/* Quick actions */}
+   674→      <div className="flex gap-2 justify-end">
+   675→        <Button variant="outline" onClick={() => setShowShop(true)}>
+   676→          Open Evolution Shop
+   677→        </Button>
+   678→      </div>
+   679→    </div>
+   680→  );
+   681→}
+   682→
+   683→function LayerCard({
+   684→  order,
+   685→  name,
+   686→  tagline,
+   687→  icon,
+   688→  unlocked,
+   689→  unlockText,
+   690→  currencyName,
+   691→  onView,
+   692→  viewLabel,
+   693→  viewIcon,
+   694→  children,
+   695→}: {
+   696→  order: number;
+   697→  name: string;
+   698→  tagline: string;
+   699→  icon: string;
+   700→  unlocked: boolean;
+   701→  unlockText: string;
+   702→  currencyName: string;
+   703→  onView: () => void;
+   704→  viewLabel: string;
+   705→  viewIcon?: React.ReactNode;
+   706→  children?: React.ReactNode;
+   707→}) {
+   708→  return (
+   709→    <div className={`stat-card p-3 ${unlocked ? "" : "opacity-70"}`}>
+   710→      <div className="flex items-start gap-3">
+   711→        <div
+   712→          className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0 ${unlocked ? "" : "grayscale"}`}
+   713→          style={{ background: unlocked ? "rgba(252, 211, 77, 0.1)" : "rgba(115, 115, 115, 0.05)" }}
+   714→        >
+   715→          {unlocked ? icon : <Lock className="w-4 h-4 text-muted-foreground" />}
+   716→        </div>
+   717→        <div className="flex-1 min-w-0">
+   718→          <div className="flex items-center gap-2 flex-wrap">
+   719→            <span className="text-sm font-semibold">
+   720→              <span className="text-muted-foreground mr-1">#{order}</span>
+   721→              {name}
+   722→            </span>
+   723→            <Badge variant="outline" className="text-[0.6rem]">{currencyName}</Badge>
+   724→            {unlocked ? (
+   725→              <Badge className="text-[0.6rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">Unlocked</Badge>
+   726→            ) : (
+   727→              <Badge variant="outline" className="text-[0.6rem] text-muted-foreground">{unlockText}</Badge>
+   728→            )}
+   729→          </div>
+   730→          <p className="text-xs text-muted-foreground italic mt-0.5">{tagline}</p>
+   731→          {children}
+   732→        </div>
+   733→        <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" disabled={!unlocked} onClick={onView}>
+   734→          {viewIcon}
+   735→          {viewLabel}
+   736→        </Button>
+   737→      </div>
+   738→    </div>
+   739→  );
+   740→}
+   741→
+   742→function ProgressRow({ label, value, max }: { label: string; value: number; max: number }) {
+   743→  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+   744→  return (
+   745→    <div className="mt-1">
+   746→      <div className="flex items-center justify-between text-[0.6rem] text-muted-foreground">
+   747→        <span>{label}</span>
+   748→        <span>{value}/{max}</span>
+   749→      </div>
+   750→      <div className="h-1 bg-muted/40 rounded-full overflow-hidden mt-0.5">
+   751→        <div className="h-full bg-amber-400/70 transition-all" style={{ width: `${pct}%` }} />
+   752→      </div>
+   753→    </div>
+   754→  );
+   755→}
+   756→
+   757→function LayerRow({
+   758→  layer,
+   759→  unlocked,
+   760→  isLast,
+   761→}: {
+   762→  layer: PrestigeLayer;
+   763→  unlocked: boolean;
+   764→  isLast: boolean;
+   765→}) {
+   766→  return (
+   767→    <div className={`relative flex items-start gap-3 p-3 rounded-lg border ${unlocked ? "border-border bg-muted/20" : "border-border/40 opacity-60"}`}>
+   768→      <div
+   769→        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0 ${unlocked ? "" : "grayscale"}`}
+   770→        style={{ background: unlocked ? "rgba(252, 211, 77, 0.1)" : "rgba(115, 115, 115, 0.05)" }}
+   771→      >
+   772→        {unlocked ? layer.icon : <Lock className="w-4 h-4 text-muted-foreground" />}
+   773→      </div>
+   774→      <div className="flex-1 min-w-0">
+   775→        <div className="flex items-center gap-2 flex-wrap">
+   776→          <span className="text-sm font-semibold">
+   777→            <span className="text-muted-foreground mr-1">#{layer.order}</span>
+   778→            {layer.name}
+   779→          </span>
+   780→          <Badge variant="outline" className="text-[0.6rem]">{layer.currencyName}</Badge>
+   781→          {unlocked ? (
+   782→            <Badge className="text-[0.6rem] bg-emerald-500/20 text-emerald-300 border-emerald-400/40">Unlocked</Badge>
+   783→          ) : (
+   784→            <Badge variant="outline" className="text-[0.6rem] text-muted-foreground">{formatUnlock(layer)}</Badge>
+   785→          )}
+   786→        </div>
+   787→        <p className="text-xs text-muted-foreground italic mt-0.5">{layer.tagline}</p>
+   788→        <p className="text-xs text-foreground/80 leading-snug mt-1">{layer.story}</p>
+   789→      </div>
+   790→      {!isLast && (
+   791→        <ChevronRight className="w-3 h-3 text-muted-foreground/40 absolute -bottom-2 left-7 rotate-90" />
+   792→      )}
+   793→    </div>
+   794→  );
+   795→}
+   796→
+   797→function formatUnlock(layer: PrestigeLayer): string {
+   798→  switch (layer.unlockCondition.type) {
+   799→    case "default":
+   800→      return "Default";
+   801→    case "galacticWins":
+   802→      return `${layer.unlockCondition.value} wins`;
+   803→    case "challengesCompleted":
+   804→      return `${layer.unlockCondition.value} trials`;
+   805→    case "totalRuns":
+   806→      return `${layer.unlockCondition.value} runs`;
+   807→    default:
+   808→      return "Locked";
+   809→  }
+   810→}
+   811→

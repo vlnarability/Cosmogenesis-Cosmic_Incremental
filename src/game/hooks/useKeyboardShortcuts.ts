@@ -4,11 +4,21 @@ import { useEffect } from "react";
 import { useGameStore } from "../state/store";
 import type { TabId } from "../state/types";
 
-// Keyboard shortcuts for power users
-// Space = pause/resume
-// 1-4 = speed
-// Q/W/E/R/T/Y/U/I = tabs (Actions, Systems, Production, Tech, Story, Codex, Awards, Archive)
-// S = shop, Esc = close modals
+// ============================================================
+// DEBUG-SHORTCUTS — rebindable keyboard shortcuts.
+//
+// Reads the active keybinds from `state.keyboardShortcuts` (set in
+// Settings → Shortcuts). Layer-gated actions (trials, constellations,
+// market, galaxy, heresy, universal, creatures, diplomacy, war, genesis)
+// only fire when their layer is unlocked — see SHORTCUT_LAYER_GATE for
+// the layer-id mapping. Locked shortcuts silently no-op so the player
+// doesn't accidentally open a modal they haven't unlocked yet.
+//
+// Non-layer shortcuts (pause, speed1-8, save, shop, prestige, close)
+// always fire. close (Esc) is handled specially: it dismisses the active
+// story popup, then closes Shop / Evolve / Settings modals.
+// ============================================================
+
 export function useKeyboardShortcuts() {
   const togglePause = useGameStore((s) => s.togglePause);
   const setSpeed = useGameStore((s) => s.setSpeed);
@@ -16,10 +26,18 @@ export function useKeyboardShortcuts() {
   const setShowShop = useGameStore((s) => s.setShowShop);
   const setShowEvolve = useGameStore((s) => s.setShowEvolve);
   const setShowSettings = useGameStore((s) => s.setShowSettings);
+  const openLayerModal = useGameStore((s) => s.openLayerModal);
   const dismissStory = useGameStore((s) => s.dismissStory);
-  const resolveEvent = useGameStore((s) => s.resolveEvent);
+  const saveGame = useGameStore((s) => s.saveGame);
+
   const activeStoryPopup = useGameStore((s) => s.activeStoryPopup);
   const activeEvent = useGameStore((s) => s.activeEvent);
+  const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
+  const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+  // Subscribe to keyboardShortcuts so the handler re-binds when the player
+  // rebinds a key in Settings. (We don't read it inside the handler — we
+  // pull the latest value via the selector each event.)
+  const keyboardShortcuts = useGameStore((s) => s.keyboardShortcuts);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -28,8 +46,15 @@ export function useKeyboardShortcuts() {
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
       if (target.isContentEditable) return;
 
-      // Escape closes modals/story
-      if (e.key === "Escape") {
+      const binds = keyboardShortcuts || {};
+      const key = e.key;
+
+      // Helper: returns true if `key` matches the bind for the given action.
+      const matches = (actionId: string) => binds[actionId] === key;
+
+      // === close (Escape) — handled before the modal-blocking gate ===
+      // Always fires (regardless of story/event active state).
+      if (matches("close")) {
         if (activeStoryPopup) {
           dismissStory(activeStoryPopup);
           return;
@@ -43,56 +68,68 @@ export function useKeyboardShortcuts() {
       // If a story popup or event is active, don't process other shortcuts
       if (activeStoryPopup || activeEvent) return;
 
-      const speeds = [1, 2, 4, 8];
-      const tabs: { key: string; tab: TabId }[] = [
-        { key: "q", tab: "actions" },
-        { key: "w", tab: "systems" },
-        { key: "e", tab: "production" },
-        { key: "r", tab: "tech" },
-        { key: "t", tab: "story" },
-        { key: "y", tab: "codex" },
-        { key: "u", tab: "achievements" },
-        { key: "i", tab: "archive" },
-        { key: "o", tab: "log" },
-      ];
-
-      const key = e.key.toLowerCase();
-
-      if (key === " ") {
+      // === Pause / speed ===
+      if (matches("pause")) {
         e.preventDefault();
         togglePause();
         return;
       }
+      if (matches("speed1")) { setSpeed(1); return; }
+      if (matches("speed2")) { setSpeed(2); return; }
+      if (matches("speed4")) { setSpeed(4); return; }
+      if (matches("speed8")) { setSpeed(8); return; }
 
-      if (["1", "2", "3", "4"].includes(key)) {
-        const idx = parseInt(key) - 1;
-        if (speeds[idx]) setSpeed(speeds[idx]);
+      // === Universal actions ===
+      if (matches("save")) {
+        saveGame();
         return;
       }
-
-      if (key === "s") {
+      if (matches("shop")) {
         setShowShop(true);
         return;
       }
-
-      if (key === "b") {
-        setShowEvolve(true);
+      if (matches("prestige")) {
+        setTab("prestige" as TabId);
         return;
       }
 
-      if (key === ",") {
-        setShowSettings(true);
-        return;
-      }
-
-      const tabMatch = tabs.find((t) => t.key === key);
-      if (tabMatch) {
-        setTab(tabMatch.tab);
+      // === Layer-gated actions ===
+      // Walk each layer-action id. For each, check (a) the key matches the
+      // bind, and (b) the layer is unlocked. Locked layers silently no-op so
+      // the player doesn't accidentally open a modal they haven't unlocked yet.
+      const layerActions: Record<string, string> = {
+        trials: "challenges",
+        constellations: "enlightenment",
+        market: "transcendence",
+        galaxy: "genesis",
+        heresy: "apotheosis",
+        universal: "singularity",
+        creatures: "omnipotence",
+        diplomacy: "divinity",
+        war: "infinity",
+        genesis: "eternity",
+      };
+      for (const actionId of Object.keys(layerActions)) {
+        if (!matches(actionId)) continue;
+        const layerId = layerActions[actionId];
+        let unlocked = false;
+        if (layerId === "challenges") {
+          unlocked = !!unlockedChallenges;
+        } else {
+          unlocked = !!unlockedLayers?.[layerId as keyof typeof unlockedLayers];
+        }
+        if (!unlocked) return; // locked — silently no-op (don't fall through to other actions)
+        openLayerModal(layerId);
         return;
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [togglePause, setSpeed, setTab, setShowShop, setShowEvolve, setShowSettings, dismissStory, resolveEvent, activeStoryPopup, activeEvent]);
+  }, [
+    togglePause, setSpeed, setTab, setShowShop, setShowEvolve, setShowSettings,
+    openLayerModal, dismissStory, saveGame,
+    activeStoryPopup, activeEvent, unlockedChallenges, unlockedLayers,
+    keyboardShortcuts,
+  ]);
 }

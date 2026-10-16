@@ -25,22 +25,21 @@ import {
   creatureLevel,
   creatureLevelBonus,
 } from "@/game/data/omnipotence";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles, Swords, Zap, Target } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 
-export function OmnipotenceModal() {
-  const show = useGameStore((s) => s.showOmnipotence);
-  const setShow = useGameStore((s) => s.setShowOmnipotence);
+export function OmnipotenceContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const creatures = useGameStore((s) => s.creatures || []);
   const legions = useGameStore((s) => s.legions || []);
   const activeStance = useGameStore((s) => s.activeOmnipotenceStance || "balanced");
   const instability = useGameStore((s) => s.instability || 0);
-  const peakInstability = useGameStore((s) => s.peakInstability || 0);
   const draft = useGameStore((s) => s.creatureDesignDraft);
   // L7 FIX Bug 1 — cost & capacity state for Create Creature button.
   // L10-GENESIS-ENGINE: capacity now scales with discovered archetypes
@@ -94,20 +93,19 @@ export function OmnipotenceModal() {
     : null;
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Dna className="w-5 h-5" />
-            Layer 7 — Omnipotence (Bio-engineering)
-            <BackgroundLayerBadge layerId="omnipotence" />
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center justify-between">
-            <span>
-              Design creatures, combine them into Legions. Each active creature adds instability — at 100, they go rogue.
-            </span>
-            <div className="flex gap-1">
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Dna className="w-5 h-5" />
+          Layer 7 — Omnipotence (Bio-engineering)
+          <BackgroundLayerBadge layerId="omnipotence" />
+        </DialogTitle>
+        <DialogDescription asChild>
+          <div className="flex items-center justify-between">
+          <span>
+            Design creatures, combine them into Legions. Each active creature adds instability — at 100, they go rogue.
+          </span>
+          <div className="flex gap-1">
               <Badge variant="outline" className="text-violet-300 border-violet-400/40">
                 {creatures.length}/{maxCreatures} creatures
               </Badge>
@@ -138,7 +136,7 @@ export function OmnipotenceModal() {
                   <AlertTriangle className="w-3 h-3" /> Genetic Instability (creatures go rogue at 100)
                 </div>
                 <div className="text-[0.65rem] text-rose-300/80">
-                  rate ×{stanceRateMult.toFixed(2)} · {rate.toFixed(3)}/s · peak {peakInstability.toFixed(1)}
+                  rate ×{stanceRateMult.toFixed(2)} · {rate.toFixed(3)}/s · current {instability.toFixed(1)}
                 </div>
               </div>
               <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">
@@ -382,6 +380,18 @@ export function OmnipotenceModal() {
                 Each victory: +1 Divine Fragment (total {divineFragments}) + {CREATURE_XP_PER_RAID} XP per deployed creature. Creatures level up every {CREATURE_XP_PER_LEVEL} XP (+10% ATK/DEF/SPD per level).
               </div>
 
+              {/* P7 — Empty state: shown until the player repels their first
+                  outpost raid. The "no active raids" message below handles
+                  the "waiting for the next raid" case. */}
+              {raidsRepelled === 0 && outpostRaids.filter((r) => r.status === "active").length === 0 && (
+                <EmptyState
+                  compact
+                  icon={<Swords className="w-6 h-6" />}
+                  title="No raids repelled yet."
+                  description='Deploy a legion and attack an outpost. Click "Summon Outpost Raid" below to spawn your first target.'
+                />
+              )}
+
               <div className="space-y-1.5">
                 {outpostRaids.length === 0 && (
                   <div className="text-center text-muted-foreground py-3 text-xs">
@@ -582,10 +592,9 @@ export function OmnipotenceModal() {
           Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Layer 8 (Divine Alliance). At 100 instability, creatures go rogue and raid YOUR galaxies.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 

@@ -1,9 +1,14 @@
 // ===========================================================================
-// QUICK WINS — ACTIVE ABILITIES (one per prestige layer)
+// QUICK WINS — ACTIVE ABILITIES (REMOVED — save-compat stubs only)
 // ===========================================================================
-// Each unlocked prestige layer grants one clickable active ability. Click to
-// trigger an instant effect (or temporary buff); the ability then enters a
-// cooldown before it can be used again.
+// Active abilities were cut from the game (Task REMOVE-ABILITIES-REPLACE-
+// CHALLENGES) — they were cluttering the screen and overwhelming the player.
+//
+// The `ActiveAbilityDef` type and `ActiveAbilityEffectKind` union are kept
+// here purely so existing TypeScript imports and old saves continue to type-
+// check. The runtime arrays/maps are intentionally empty. The store still
+// carries `activeAbilityCooldowns` and `activeAbilityEffects` for save-compat
+// (old saves may have lingering timers); the tick decay self-cleans them.
 // ===========================================================================
 
 export type ActiveAbilityEffectKind =
@@ -16,7 +21,7 @@ export type ActiveAbilityEffectKind =
 
 export interface ActiveAbilityDef {
   id: string;          // matches prestige layer id (e.g. "evolution", "enlightenment", ...)
-  layerId: string;    // prestige layer this ability belongs to
+  layerId: string;     // prestige layer this ability belongs to
   name: string;
   desc: string;
   icon: string;
@@ -28,68 +33,12 @@ export interface ActiveAbilityDef {
   };
 }
 
-export const ACTIVE_ABILITIES: ActiveAbilityDef[] = [
-  {
-    id: "ability_inspire",
-    layerId: "evolution",
-    name: "Inspire",
-    desc: "Instantly gain +5 population.",
-    icon: "✨",
-    cooldownSec: 60,
-    effect: { kind: "instant_pop", magnitude: 5 },
-  },
-  {
-    id: "ability_cosmic_insight",
-    layerId: "enlightenment",
-    name: "Cosmic Insight",
-    desc: "Instantly gain +25 Divinity to fuel constellation illumination.",
-    icon: "🌟",
-    cooldownSec: 60,
-    effect: { kind: "instant_divinity", magnitude: 25 },
-  },
-  {
-    id: "ability_surge",
-    layerId: "transcendence",
-    name: "Surge",
-    desc: "×3 production for 10 seconds.",
-    icon: "⚡",
-    cooldownSec: 90,
-    effect: { kind: "temp_surge", durationSec: 10 },
-  },
-  {
-    id: "ability_seed_bloom",
-    layerId: "genesis",
-    name: "Seed Bloom",
-    desc: "Instantly gain +1 Genesis Seed (awaken dormant seeds).",
-    icon: "🥚",
-    cooldownSec: 120,
-    effect: { kind: "instant_genesis_seed", magnitude: 1 },
-  },
-  {
-    id: "ability_smite_heretics",
-    layerId: "apotheosis",
-    name: "Smite Heretics",
-    desc: "Reduce heresy by 25 instantly.",
-    icon: "⚔️",
-    cooldownSec: 45,
-    effect: { kind: "reduce_heresy", magnitude: 25 },
-  },
-  {
-    id: "ability_overclock",
-    layerId: "singularity",
-    name: "Overclock",
-    desc: "×2 all prestige-layer bonuses for 15 seconds.",
-    icon: "🌀",
-    cooldownSec: 90,
-    effect: { kind: "temp_overclock", durationSec: 15 },
-  },
-];
+// REMOVED — no active abilities ship with the game anymore.
+export const ACTIVE_ABILITIES: ActiveAbilityDef[] = [];
+export const ACTIVE_ABILITY_MAP: Record<string, ActiveAbilityDef> = {};
 
-export const ACTIVE_ABILITY_MAP: Record<string, ActiveAbilityDef> = Object.fromEntries(
-  ACTIVE_ABILITIES.map((a) => [a.layerId, a])
-);
-
-/** Returns the active ability for a given prestige layer id, or null. */
-export function abilityForLayer(layerId: string): ActiveAbilityDef | null {
-  return ACTIVE_ABILITY_MAP[layerId] || null;
+/** Returns the active ability for a given prestige layer id, or null.
+ *  REMOVED — always returns null. Kept for save-compat imports. */
+export function abilityForLayer(_layerId: string): ActiveAbilityDef | null {
+  return null;
 }

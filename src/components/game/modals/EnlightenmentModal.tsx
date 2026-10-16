@@ -24,7 +24,7 @@ import {
   FORESIGHT_ROUTES,
   routeBonus,
 } from "@/game/data/foresight";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -50,9 +50,8 @@ const MAP_H = 600;
  * L2 active abilities (Stargaze / Supernova / Black Hole / Cosmic Bridge)
  * were removed — stars are lit only by purchasing with Divinity.
  */
-export function EnlightenmentModal() {
-  const show = useGameStore((s) => s.showEnlightenment);
-  const setShow = useGameStore((s) => s.setShowEnlightenment);
+export function EnlightenmentContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity);
   // L2 state
@@ -160,23 +159,22 @@ export function EnlightenmentModal() {
   );
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden glass-strong flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Eye className="w-5 h-5" />
-            Layer 2 — Enlightenment (Constellation Map)
-            <BackgroundLayerBadge layerId="enlightenment" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
-            <span>
-              Illuminate stars within {CONSTELLATIONS.length} IAU constellations. Completing a constellation grants a permanent bonus.
-            </span>
-            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
-              {formatNumber(divinity, 0)} Divinity
-            </Badge>
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Eye className="w-5 h-5" />
+          Layer 2 — Enlightenment (Constellation Map)
+          <BackgroundLayerBadge layerId="enlightenment" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Illuminate stars within {CONSTELLATIONS.length} IAU constellations. Completing a constellation grants a permanent bonus.
+          </span>
+          <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+            {formatNumber(divinity, 0)} Divinity
+          </Badge>
+        </DialogDescription>
+      </DialogHeader>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -546,9 +544,8 @@ export function EnlightenmentModal() {
           Click any star to illuminate it. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per star already lit in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}^{startedCount > 0 ? 'N' : '0'}={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per other started constellation (the penalty sticks for every star in a started constellation). Complete <span className="text-emerald-300">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> constellations to advance to Layer 3.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }

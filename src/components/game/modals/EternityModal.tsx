@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   ENDING_CHOICES,
@@ -21,7 +21,7 @@ import {
   computeCrucibleRules,
   type DivineRelic,
 } from "@/game/data/genesisEngine";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Lock, Sparkles, CheckCircle2, Star, RefreshCw, AlertTriangle, Atom, Eye, Plus } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { EmptyState } from "../shared/EmptyState";
 import { formatNumber, formatTime } from "../shared/format";
 import { DIMENSIONS } from "@/game/data/dimensions";
 
@@ -59,9 +60,8 @@ function amountLabel(amt: number): string {
 
 // ----- main component -----
 
-export function EternityModal() {
-  const show = useGameStore((s) => s.showEternity);
-  const setShow = useGameStore((s) => s.setShowEternity);
+export function EternityContent() {
+  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity || 0);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
@@ -86,11 +86,31 @@ export function EternityModal() {
   const revealRelicAmount = useGameStore((s) => s.revealRelicAmount);
   const triggerBigBang = useGameStore((s) => s.triggerBigBang);
   const chooseEnding = useGameStore((s) => s.chooseEnding);
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "View Credits" achievement
+  // checks `viewedCredits >= 1`. We set the flag (encoded as 0/1) the
+  // first time the EndingScreen renders (all 100 archetypes discovered
+  // and no ending yet chosen). Using the store action because the flag
+  // lives on `achievementMeta` alongside the other UI-driven counters.
+  const bumpAchievementMeta = useGameStore((s) => s.bumpAchievementMeta);
 
   const isUnlocked = !!unlockedLayers.eternity;
   const discoveredCount = Object.values(discoveredArchetypes).filter(Boolean).length;
   const allDiscovered = discoveredCount >= ARCHETYPE_COUNT;
   const boon = cosmicBoonBonus(cosmicBoonStacks);
+  // L10-ENDING-L5-UI-UNLOCKTECH — visited dimensions always starts with
+  // ["mundane"]; we read it here so the EndingScreen's dimension picker
+  // can determine which dimensions are selectable.
+  const visitedDimensions = useGameStore((s) => s.visitedDimensions || ["mundane"]);
+
+  // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — set `viewedCredits` once
+  // the ending screen actually renders (all 100 archetypes discovered
+  // and no ending chosen yet). Idempotent — `replace: 1` keeps the
+  // flag pinned at 1 even if the player re-opens the modal later.
+  useEffect(() => {
+    if (isUnlocked && allDiscovered && chosenEnding === null) {
+      bumpAchievementMeta("viewedCredits", 0, { replace: 1 });
+    }
+  }, [isUnlocked, allDiscovered, chosenEnding, bumpAchievementMeta]);
 
   // Compute crucible rule view (recomputed each render — cheap).
   const crucibleRelics: DivineRelic[] = useMemo(() => {
@@ -105,7 +125,8 @@ export function EternityModal() {
   );
 
   const simElapsed = universeSimulating ? Math.min(BIG_BANG_DURATION_SEC, time - simulationStartTime) : 0;
-  const simProgressPct = universeSimulating ? Math.min(100, (simElapsed / BIG_BANG_DURATION_SEC) * 100) : 0;
+  // P7 — simProgressPct removed; Big Bang now shows a skeleton screen instead
+  // of a progress bar. simElapsed is still used for the seconds-remaining count.
   const simRemainingSec = universeSimulating ? Math.max(0, BIG_BANG_DURATION_SEC - simElapsed) : 0;
 
   // Ending confirmation dialog
@@ -143,33 +164,32 @@ export function EternityModal() {
   }, [discoveredCount, allDiscovered]);
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto glass-strong">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
-            <Star className="w-5 h-5" />
-            Layer 10 — Eternity (Genesis Engine)
-            <BackgroundLayerBadge layerId="eternity" />
-          </DialogTitle>
-          <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
-            <span>
-              Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-violet-300 border-violet-400/40">
-                ✨ {formatNumber(divinity, 0)} Divinity
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+          <Star className="w-5 h-5" />
+          Layer 10 — Eternity (Genesis Engine)
+          <BackgroundLayerBadge layerId="eternity" />
+        </DialogTitle>
+        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+          <span>
+            Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+              ✨ {formatNumber(divinity, 0)} Divinity
+            </Badge>
+            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+              🌟 {discoveredCount}/{ARCHETYPE_COUNT}
+            </Badge>
+            {cosmicBoonStacks > 0 && (
+              <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
+                🌠 {cosmicBoonStacks} Boon{cosmicBoonStacks !== 1 ? "s" : ""}
               </Badge>
-              <Badge variant="outline" className="text-amber-300 border-amber-400/40">
-                🌟 {discoveredCount}/{ARCHETYPE_COUNT}
-              </Badge>
-              {cosmicBoonStacks > 0 && (
-                <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
-                  🌠 {cosmicBoonStacks} Boon{cosmicBoonStacks !== 1 ? "s" : ""}
-                </Badge>
-              )}
-            </div>
-          </DialogDescription>
-        </DialogHeader>
+            )}
+          </div>
+        </DialogDescription>
+      </DialogHeader>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -186,6 +206,7 @@ export function EternityModal() {
             finalScore={finalScore}
             boon={boon}
             cosmicBoonStacks={cosmicBoonStacks}
+            visitedDimensions={visitedDimensions}
             onChooseEnding={(id) => setPendingEnding(id)}
           />
         ) : chosenEnding !== null ? (
@@ -195,7 +216,7 @@ export function EternityModal() {
             <p className="text-xs mt-1 text-muted-foreground">
               {ENDING_CHOICES.find((e) => e.id === chosenEnding)?.desc}
             </p>
-            <Button variant="outline" className="mt-4" onClick={() => setShow(false)}>Close</Button>
+            <Button variant="outline" className="mt-4" onClick={() => closeLayerModal()}>Close</Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -210,12 +231,21 @@ export function EternityModal() {
                 </span>
               </div>
               {divineRelics.length === 0 ? (
-                <div className="text-center text-muted-foreground py-4 text-sm">
-                  No relics yet. Trigger your first Big Bang with a starter relic to gain more.
+                // P7 — Empty state: no relics yet. Use the shared EmptyState
+                // component for consistent styling. The StarterRelicHint below
+                // points the player at the Big Bang button (which grants the
+                // first relic without needing a prior simulation).
+                <>
+                  <EmptyState
+                    compact
+                    icon={<Atom className="w-6 h-6" />}
+                    title="No relics yet."
+                    description="Complete a universe simulation (Big Bang) to earn relics. Use the starter relic below to trigger your first Big Bang."
+                  />
                   <div className="mt-2">
                     <StarterRelicHint />
                   </div>
-                </div>
+                </>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                   {divineRelics.map((r) => {
@@ -375,16 +405,32 @@ export function EternityModal() {
               {/* Big Bang button */}
               <div className="mt-2">
                 {universeSimulating ? (
-                  <div className="stat-card p-2">
-                    <div className="flex items-center justify-between text-[0.7rem] mb-1">
-                      <span className="text-amber-200 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 animate-pulse" /> Simulating the cosmos...
+                  // P7 — Loading state: skeleton screen during the 30-second
+                  // Big Bang simulation. Show pulsing placeholder relic slots
+                  // (instead of just a progress bar) + a "Simulating universe..."
+                  // status line. Keep the seconds-remaining indicator so the
+                  // player knows roughly how long is left.
+                  <div className="stat-card p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[0.7rem]">
+                      <span className="text-amber-200 flex items-center gap-1 animate-pulse">
+                        <Sparkles className="w-3 h-3" /> Simulating universe…
                       </span>
                       <span className="font-mono text-amber-300">{simRemainingSec.toFixed(0)}s</span>
                     </div>
-                    <Progress value={simProgressPct} className="h-2 bg-slate-800/60" />
-                    <div className="text-[0.6rem] text-muted-foreground mt-1 text-center">
-                      The crucible blazes — reality crystallizes...
+                    {/* Pulsing placeholder cards — match the relic grid layout
+                        so the layout doesn't shift when the result returns. */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="h-12 rounded-md border border-amber-400/20 bg-amber-500/5 animate-pulse"
+                          style={{ animationDelay: `${i * 150}ms` }}
+                          aria-hidden
+                        />
+                      ))}
+                    </div>
+                    <div className="text-[0.6rem] text-muted-foreground text-center">
+                      The crucible blazes — reality crystallizes…
                     </div>
                   </div>
                 ) : (
@@ -503,39 +549,100 @@ export function EternityModal() {
           Discover all {ARCHETYPE_COUNT} archetypes to unlock the ending screen. Each archetype grants +1% production.
         </div>
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
-      </DialogContent>
 
-      {/* Ending-screen confirmation dialog */}
-      <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingEnding === "preserve" ? "Continue in this Realm?" : "Explore another Dimension?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingEnding === "preserve"
-                ? "Continue playing with all bonuses intact. The Genesis Engine remains open for further experiments."
-                : "Reset the universe and begin a new dimension. You keep all discovered archetypes and gain a permanent Cosmic Boon stack (+10% all production). This cannot be undone."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmEnding}
-              className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
-            >
-              {pendingEnding === "preserve" ? "Continue" : "Reset"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Dialog>
+        {/* Ending-screen confirmation dialog */}
+        <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingEnding === "preserve" ? "Continue in this Realm?" : "Explore another Dimension?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingEnding === "preserve"
+                  ? "Continue playing with all bonuses intact. The Genesis Engine remains open for further experiments."
+                  : "Reset the universe and begin a new dimension. You keep all discovered archetypes and gain a permanent Cosmic Boon stack (+10% all production). This cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmEnding}
+                className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
+              >
+                {pendingEnding === "preserve" ? "Continue" : "Reset"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+    </>
   );
 }
 
 // ----- Ending screen -----
+
+// L10-ENDING-L5-UI-UNLOCKTECH — Dimension picker data.
+// Only "mundane" is selectable on the dimension picker; all others are
+// rendered as locked. `visitedDimensions` (from GameState, always starts
+// with `["mundane"]`) is the source-of-truth for which dimensions have
+// been visited — when more dimensions become unlockable in future
+// updates, the picker will read from this list to decide which
+// radio buttons are enabled.
+interface DimensionOption {
+  id: string;
+  name: string;
+  desc: string;
+  // Special "locked" reason text. If omitted, locked dimensions just show
+  // "Locked" with the standard lock icon. The "random" entry uses this to
+  // explain the unlock condition (finish a dimension first).
+  lockedNote?: string;
+}
+
+// Future: unlock dimensions by finishing L10 in each one
+const DIMENSION_OPTIONS: DimensionOption[] = [
+  {
+    id: "mundane",
+    name: "Mundane Realm",
+    desc: "The familiar world you began in. Earth, history, the ordinary cosmos.",
+  },
+  {
+    id: "random",
+    name: "Random Dimension",
+    desc: "Let the multiverse choose for you.",
+    lockedNote: "finish a dimension first",
+  },
+  {
+    id: "fantasy",
+    name: "Fantasy Realm",
+    desc: "Swords, sorcery, dragons, and ancient magics.",
+  },
+  {
+    id: "cyberpunk",
+    name: "Cyberpunk Neon",
+    desc: "Rain-slick megacity streets, chrome augments, and digital ghosts.",
+  },
+  {
+    id: "ancient_egypt",
+    name: "Ancient Egypt",
+    desc: "Pharaohs, pyramids, and the long gaze of Ra across the Nile.",
+  },
+  {
+    id: "norse",
+    name: "Norse Mythology",
+    desc: "Frost giants, the World Tree, and a serpent circling the seas.",
+  },
+  {
+    id: "greek",
+    name: "Greek Mythology",
+    desc: "Mount Olympus, the wine-dark sea, and the wrath of the gods.",
+  },
+  {
+    id: "post_apoc",
+    name: "Post-Apocalyptic",
+    desc: "Ash, rust, the long quiet after the end of all things.",
+  },
+];
 
 function EndingScreen({
   discoveredCount,
@@ -545,6 +652,7 @@ function EndingScreen({
   finalScore,
   boon,
   cosmicBoonStacks,
+  visitedDimensions,
   onChooseEnding,
 }: {
   discoveredCount: number;
@@ -554,8 +662,32 @@ function EndingScreen({
   finalScore: number;
   boon: number;
   cosmicBoonStacks: number;
+  visitedDimensions: string[];
   onChooseEnding: (id: "preserve" | "reset") => void;
 }) {
+  // L10-ENDING-L5-UI-UNLOCKTECH — the EndingScreen has two views:
+  //   - "main"  : the default cosmic viz + stats + two ending buttons.
+  //   - "picker" : shown after the player clicks "Explore another
+  //                Dimension". Lists the available dimensions; only the
+  //                mundane realm is selectable today.
+  const [view, setView] = useState<"main" | "picker">("main");
+  const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
+
+  if (view === "picker") {
+    return (
+      <DimensionPicker
+        visitedDimensions={visitedDimensions}
+        selected={selectedDimension}
+        onSelect={setSelectedDimension}
+        onConfirm={() => onChooseEnding("reset")}
+        onBack={() => {
+          setSelectedDimension(null);
+          setView("main");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Cosmic visualization */}
@@ -591,6 +723,7 @@ function EndingScreen({
 
       {/* Choice buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+<<<<<<< HEAD
         {/* Continue in this Realm */}
         <button
           onClick={() => onChooseEnding("preserve")}
@@ -674,6 +807,149 @@ function DimensionPicker() {
       </div>
       <div className="text-[0.6rem] text-muted-foreground/60 italic">
         Future dimensions (Norse, Greek, Egypt, Post-Apocalyptic) will be added in content updates.
+=======
+        {ENDING_CHOICES.map((e) => (
+          <button
+            key={e.id}
+            onClick={() => {
+              // The "Explore another Dimension" choice opens the dimension
+              // picker view instead of immediately confirming the reset.
+              // "Continue in this realm" still goes straight through the
+              // parent's confirmation flow.
+              if (e.id === "reset") {
+                setSelectedDimension(null);
+                setView("picker");
+              } else {
+                onChooseEnding(e.id);
+              }
+            }}
+            className={`stat-card text-left p-3 hover:border-amber-400/60 ${e.id === "reset" ? "border-rose-400/50" : "border-amber-400/40"}`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">{e.icon}</span>
+              <span className="text-sm font-bold">{e.name}</span>
+            </div>
+            <div className="text-[0.65rem] text-muted-foreground leading-snug">{e.desc}</div>
+          </button>
+        ))}
+>>>>>>> origin/main
+      </div>
+    </div>
+  );
+}
+
+// ----- Dimension picker view -----
+// Shown after the player clicks "Explore another Dimension" on the main
+// ending screen. Lists the dimensions; only the mundane realm is
+// selectable today. All others render as greyed-out, locked options.
+
+function DimensionPicker({
+  visitedDimensions,
+  selected,
+  onSelect,
+  onConfirm,
+  onBack,
+}: {
+  visitedDimensions: string[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onConfirm: () => void;
+  onBack: () => void;
+}) {
+  // Future: unlock dimensions by finishing L10 in each one.
+  // For now only "mundane" is ever in visitedDimensions, so only that row
+  // is enabled; every other row is locked + greyed out with a lock icon.
+  return (
+    <div className="space-y-3">
+      <div className="text-center">
+        <div className="text-sm font-bold text-amber-200 flex items-center justify-center gap-1.5">
+          <Sparkles className="w-4 h-4" />
+          Choose Your Next Dimension
+        </div>
+        <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+          The crucible shatters; the cosmos rearranges itself around you. Pick a realm to begin anew.
+        </div>
+      </div>
+
+      <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+        {DIMENSION_OPTIONS.map((d) => {
+          // Only the mundane realm (visited) is selectable. "random" is a
+          // special case — it's locked with a custom note ("finish a
+          // dimension first") so the player understands the unlock path.
+          const isUnlocked = visitedDimensions.includes(d.id);
+          const isLocked = !isUnlocked;
+          const isSelected = selected === d.id;
+          return (
+            <button
+              key={d.id}
+              disabled={isLocked}
+              onClick={() => onSelect(d.id)}
+              className={`w-full text-left p-2 rounded-md border transition-colors flex items-start gap-2 ${
+                isLocked
+                  ? "border-slate-700/40 bg-slate-900/40 opacity-50 cursor-not-allowed"
+                  : isSelected
+                    ? "border-amber-400/70 bg-amber-500/10 ring-1 ring-amber-400/40"
+                    : "border-slate-600/40 bg-card/40 hover:bg-card/70 hover:border-amber-400/50"
+              }`}
+            >
+              <span
+                className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center text-[0.55rem] shrink-0 ${
+                  isLocked
+                    ? "border-muted-foreground/30"
+                    : isSelected
+                      ? "border-amber-400 bg-amber-400 text-slate-900"
+                      : "border-slate-500"
+                }`}
+                aria-hidden
+              >
+                {!isLocked && isSelected ? "✓" : ""}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`text-xs font-medium truncate ${
+                      isLocked ? "text-muted-foreground" : "text-amber-100"
+                    }`}
+                  >
+                    {isLocked && d.id === "random"
+                      ? `Random Dimension`
+                      : d.id === "mundane"
+                        ? `Start again in this Dimension: ${d.name}`
+                        : d.name}
+                  </span>
+                  {isLocked && (
+                    <Lock className="w-3 h-3 text-muted-foreground/70 shrink-0" />
+                  )}
+                </div>
+                <div className="text-[0.6rem] text-muted-foreground leading-snug mt-0.5">
+                  {d.desc}
+                  {isLocked && d.lockedNote && (
+                    <span className="ml-1 text-rose-300/80">({d.lockedNote})</span>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+          ← Back
+        </Button>
+        <Button
+          size="sm"
+          className="h-8 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white"
+          disabled={!selected}
+          onClick={onConfirm}
+        >
+          <Sparkles className="w-3 h-3 mr-1" />
+          {selected ? `Reset into: ${DIMENSION_OPTIONS.find((d) => d.id === selected)?.name}` : "Select a dimension"}
+        </Button>
+      </div>
+      {/* Future: unlock dimensions by finishing L10 in each one. Today, only the Mundane Realm is selectable. */}
+      <div className="text-[0.55rem] text-muted-foreground/70 text-center">
+        Today, only the Mundane Realm is selectable. Future dimensions will unlock by finishing L10 in each one.
       </div>
     </div>
   );

@@ -59,3 +59,7 @@ export function resourceIcon(id: string): string {
 export function resourceName(id: string): string {
   return RESOURCE_MAP[id]?.name || id;
 }
+// IMPORTANT: If you use formatCompact, formatNumber, or formatTime in any component,
+// you MUST import them from this file: import { formatCompact } from '../shared/format';
+// Do NOT use these functions without importing — it will cause a runtime crash.
+

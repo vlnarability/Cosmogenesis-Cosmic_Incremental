@@ -1,0 +1,555 @@
+     1→"use client";
+     2→
+     3→import { useState, useMemo, useCallback } from "react";
+     4→import { useGameStore } from "@/game/state/store";
+     5→import {
+     6→  CONSTELLATIONS,
+     7→  CONSTELLATION_MAP,
+     8→  constellationBonus,
+     9→  starCost,
+    10→  countCompletedConstellations,
+    11→  countLitStars,
+    12→  canAdvanceToTranscendence,
+    13→  CONSTELLATIONS_REQUIRED_FOR_LAYER_3,
+    14→  CONSTELLATION_BASE_COST,
+    15→  WITHIN_CONSTELLATION_GROWTH,
+    16→  COST_GROWTH_PER_STARTED,
+    17→  NEW_CONSTELLATION_PENALTY,
+    18→  CATEGORY_LABEL,
+    19→  CATEGORY_ACCENT,
+    20→  type ConstellationState,
+    21→  type ConstellationCategory,
+    22→} from "@/game/data/constellations";
+    23→import {
+    24→  FORESIGHT_ROUTES,
+    25→  routeBonus,
+    26→} from "@/game/data/foresight";
+    27→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+    28→import { Button } from "@/components/ui/button";
+    29→import { Badge } from "@/components/ui/badge";
+    30→import { Separator } from "@/components/ui/separator";
+    31→import { ScrollArea } from "@/components/ui/scroll-area";
+    32→import { Lock, Eye, Sparkles, Crosshair, Zap, Orbit } from "lucide-react";
+    33→import { formatNumber } from "../shared/format";
+    34→import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+    35→
+    36→// SVG viewBox dimensions for the star map.
+    37→const MAP_W = 1000;
+    38→const MAP_H = 600;
+    39→
+    40→/**
+    41→ * Layer 2 — Enlightenment (Constellation Map).
+    42→ *
+    43→ * Renders a star-map SVG (1000×600 viewBox) of all curated constellations.
+    44→ * Each star is a dim dot by default; lit stars glow. Constellation connection
+    45→ * lines appear dim until started, then bright. Click a star to illuminate it
+    46→ * (calls `illuminateStar` — the only purchase action on this layer). Sidebar
+    47→ * shows progress stats, a focused-constellation selector that pans/zooms the
+    48→ * SVG, a cost-formula explainer, and the constellation list.
+    49→ *
+    50→ * L2 active abilities (Stargaze / Supernova / Black Hole / Cosmic Bridge)
+    51→ * were removed — stars are lit only by purchasing with Divinity.
+    52→ */
+    53→export function EnlightenmentModal() {
+    54→  const show = useGameStore((s) => s.showEnlightenment);
+    55→  const setShow = useGameStore((s) => s.setShowEnlightenment);
+    56→  const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+    57→  const divinity = useGameStore((s) => s.divinity);
+    58→  // L2 state
+    59→  const constellationStars = useGameStore((s) => s.constellationStars || {});
+    60→  const constellationProgress = useGameStore((s) => s.constellationProgress || {});
+    61→  const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
+    62→  const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
+    63→  const constellationRevealed = useGameStore((s) => s.constellationRevealed || {});
+    64→  const activeRoute = useGameStore((s) => s.activeForesightRoute);
+    65→  // Layer shop upgrades
+    66→  const upgrades = useGameStore((s) => s.upgrades || {});
+    67→
+    68→  // Actions
+    69→  const illuminateStar = useGameStore((s) => s.illuminateStar);
+    70→  const setForesightRoute = useGameStore((s) => s.setForesightRoute);
+    71→
+    72→  // Local UI state
+    73→  const [focusedConstellationId, setFocusedConstellationId] = useState<string | null>(null);
+    74→  const [hoveredStar, setHoveredStar] = useState<string | null>(null);
+    75→
+    76→  const isUnlocked = !!unlockedLayers.enlightenment;
+    77→
+    78→  const constellationState: ConstellationState = useMemo(
+    79→    () => ({
+    80→      constellationStars,
+    81→      constellationProgress,
+    82→      constellationsStarted,
+    83→      constellationsCompleted,
+    84→    }),
+    85→    [constellationStars, constellationProgress, constellationsStarted, constellationsCompleted]
+    86→  );
+    87→
+    88→  const rb = routeBonus(activeRoute);
+    89→  const cb = constellationBonus(constellationState);
+    90→  const completedCount = countCompletedConstellations(constellationState);
+    91→  const litStarsCount = countLitStars(constellationState);
+    92→  const startedCount = Object.values(constellationsStarted).filter(Boolean).length;
+    93→  const totalStars = useMemo(
+    94→    () => CONSTELLATIONS.reduce((acc, c) => acc + c.stars.length, 0),
+    95→    []
+    96→  );
+    97→
+    98→  // Foresight discount level (shop upgrade)
+    99→  const fdLvl = (upgrades?.foresight_discount as number) || 0;
+   100→  const foresightDiscountMult = Math.pow(0.80, fdLvl);
+   101→
+   102→  // Compute the cost for the focused constellation's next star (or first star).
+   103→  const focusedNextCost = useMemo(() => {
+   104→    const cid = focusedConstellationId;
+   105→    if (!cid) return null;
+   106→    const cdef = CONSTELLATION_MAP[cid];
+   107→    if (!cdef) return null;
+   108→    // First unlit star in the focused constellation
+   109→    const nextStar = cdef.stars.find((st) => !constellationStars[st.id]);
+   110→    if (!nextStar) return { starId: null, cost: 0, isNew: false, constellationId: cid, name: cdef.name };
+   111→    const cost = starCost(cid, constellationState, nextStar.id, { foresightDiscountMult });
+   112→    const isNew = (constellationProgress[cid] || 0) === 0;
+   113→    return { starId: nextStar.id, cost, isNew, constellationId: cid, name: cdef.name };
+   114→  }, [focusedConstellationId, constellationStars, constellationState, foresightDiscountMult, constellationProgress]);
+   115→
+   116→  // Compute a "first star of any unstarted constellation" cost preview (for the
+   117→  // "new constellation penalty" tooltip).
+   118→  const newConstellationPreview = useMemo(() => {
+   119→    const cid = CONSTELLATIONS.find((c) => !constellationsStarted[c.id])?.id;
+   120→    if (!cid) return null;
+   121→    const cdef = CONSTELLATION_MAP[cid];
+   122→    if (!cdef) return null;
+   123→    const firstStar = cdef.stars[0];
+   124→    const cost = starCost(cid, constellationState, firstStar.id, { foresightDiscountMult });
+   125→    return { constellationId: cid, name: cdef.name, cost };
+   126→  }, [constellationsStarted, constellationState, foresightDiscountMult]);
+   127→
+   128→  // SVG pan/zoom target based on focused constellation.
+   129→  const viewBox = useMemo(() => {
+   130→    if (!focusedConstellationId) return `0 0 ${MAP_W} ${MAP_H}`;
+   131→    const cdef = CONSTELLATION_MAP[focusedConstellationId];
+   132→    if (!cdef) return `0 0 ${MAP_W} ${MAP_H}`;
+   133→    const xs = cdef.stars.map((s) => s.x);
+   134→    const ys = cdef.stars.map((s) => s.y);
+   135→    const minX = Math.min(...xs);
+   136→    const maxX = Math.max(...xs);
+   137→    const minY = Math.min(...ys);
+   138→    const maxY = Math.max(...ys);
+   139→    const pad = 6;
+   140→    const w = (maxX - minX + pad * 2) * (MAP_W / 100);
+   141→    const h = (maxY - minY + pad * 2) * (MAP_H / 100);
+   142→    const cx = (minX + maxX) / 2 * (MAP_W / 100);
+   143→    const cy = (minY + maxY) / 2 * (MAP_H / 100);
+   144→    // Clamp to map bounds.
+   145→    const halfW = w / 2;
+   146→    const halfH = h / 2;
+   147→    const x0 = Math.max(0, Math.min(MAP_W - w, cx - halfW));
+   148→    const y0 = Math.max(0, Math.min(MAP_H - h, cy - halfH));
+   149→    return `${x0} ${y0} ${w} ${h}`;
+   150→  }, [focusedConstellationId]);
+   151→
+   152→  // Click a star: illuminate it (the only L2 purchase action — Divinity cost
+   153→  // is validated inside the store action).
+   154→  const onStarClick = useCallback(
+   155→    (constellationId: string, starId: string) => {
+   156→      if (!isUnlocked) return;
+   157→      illuminateStar(constellationId, starId);
+   158→    },
+   159→    [illuminateStar, isUnlocked]
+   160→  );
+   161→
+   162→  return (
+   163→    <Dialog open={show} onOpenChange={setShow}>
+   164→      <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden glass-strong flex flex-col">
+   165→        <DialogHeader>
+   166→          <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+   167→            <Eye className="w-5 h-5" />
+   168→            Layer 2 — Enlightenment (Constellation Map)
+   169→            <BackgroundLayerBadge layerId="enlightenment" />
+   170→          </DialogTitle>
+   171→          <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+   172→            <span>
+   173→              Illuminate stars within {CONSTELLATIONS.length} IAU constellations. Completing a constellation grants a permanent bonus.
+   174→            </span>
+   175→            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+   176→              {formatNumber(divinity, 0)} Divinity
+   177→            </Badge>
+   178→          </DialogDescription>
+   179→        </DialogHeader>
+   180→
+   181→        {!isUnlocked ? (
+   182→          <div className="text-center text-muted-foreground py-10">
+   183→            <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   184→            <p className="text-sm">Enlightenment is sealed.</p>
+   185→            <p className="text-xs mt-1">Master 3 distinct Layer 1 trials to unlock the constellation map.</p>
+   186→          </div>
+   187→        ) : (
+   188→          <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 min-h-0">
+   189→            {/* ===== STAR MAP ===== */}
+   190→            <div className="relative rounded-lg overflow-hidden border border-violet-500/20 bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518]">
+   191→              {/* Subtle starfield background */}
+   192→              <div
+   193→                className="absolute inset-0 opacity-60 pointer-events-none"
+   194→                style={{
+   195→                  backgroundImage: `
+   196→                    radial-gradient(1px 1px at 12% 18%, #fff, transparent),
+   197→                    radial-gradient(1px 1px at 28% 42%, #fff, transparent),
+   198→                    radial-gradient(1.5px 1.5px at 47% 12%, #fff, transparent),
+   199→                    radial-gradient(1px 1px at 63% 56%, #fff, transparent),
+   200→                    radial-gradient(1px 1px at 78% 28%, #fff, transparent),
+   201→                    radial-gradient(1.5px 1.5px at 88% 70%, #fff, transparent),
+   202→                    radial-gradient(1px 1px at 8% 72%, #fff, transparent),
+   203→                    radial-gradient(1px 1px at 33% 88%, #fff, transparent),
+   204→                    radial-gradient(1px 1px at 70% 85%, #fff, transparent),
+   205→                    radial-gradient(1px 1px at 95% 8%, #fff, transparent),
+   206→                    radial-gradient(1px 1px at 18% 50%, #fff, transparent),
+   207→                    radial-gradient(1px 1px at 53% 75%, #fff, transparent)
+   208→                  `,
+   209→                  backgroundRepeat: "no-repeat",
+   210→                  backgroundSize: "100% 100%",
+   211→                }}
+   212→              />
+   213→              <svg
+   214→                viewBox={viewBox}
+   215→                className="relative w-full h-full"
+   216→                style={{ aspectRatio: `${MAP_W} / ${MAP_H}`, transition: "viewBox 0.6s ease" as any }}
+   217→                preserveAspectRatio="xMidYMid meet"
+   218→              >
+   219→                {/* Connection lines */}
+   220→                {CONSTELLATIONS.flatMap((c) =>
+   221→                  c.connections.map(([aId, bId], i) => {
+   222→                    const aStar = c.stars.find((s) => s.id === aId);
+   223→                    const bStar = c.stars.find((s) => s.id === bId);
+   224→                    if (!aStar || !bStar) return null;
+   225→                    const x1 = (aStar.x / 100) * MAP_W;
+   226→                    const y1 = (aStar.y / 100) * MAP_H;
+   227→                    const x2 = (bStar.x / 100) * MAP_W;
+   228→                    const y2 = (bStar.y / 100) * MAP_H;
+   229→                    const isCompleted = !!constellationsCompleted[c.id];
+   230→                    const isStarted = !!constellationsStarted[c.id];
+   231→                    const isRevealed = !!constellationRevealed[c.id];
+   232→                    const dim = !isStarted && !isRevealed;
+   233→                    const stroke = isCompleted
+   234→                      ? CATEGORY_ACCENT[c.category]
+   235→                      : isStarted
+   236→                        ? `${CATEGORY_ACCENT[c.category]}80`
+   237→                        : "#1e293b";
+   238→                    return (
+   239→                      <line
+   240→                        key={`${c.id}-${i}`}
+   241→                        x1={x1}
+   242→                        y1={y1}
+   243→                        x2={x2}
+   244→                        y2={y2}
+   245→                        stroke={stroke}
+   246→                        strokeWidth={isCompleted ? 2.2 : 1}
+   247→                        strokeLinecap="round"
+   248→                        opacity={dim ? 0.35 : 0.9}
+   249→                      />
+   250→                    );
+   251→                  })
+   252→                )}
+   253→                {/* Stars */}
+   254→                {CONSTELLATIONS.map((c) =>
+   255→                  c.stars.map((star) => {
+   256→                    const cx = (star.x / 100) * MAP_W;
+   257→                    const cy = (star.y / 100) * MAP_H;
+   258→                    const lit = !!constellationStars[star.id];
+   259→                    const isStarted = !!constellationsStarted[c.id];
+   260→                    const accent = CATEGORY_ACCENT[c.category];
+   261→                    const isFocused = focusedConstellationId === c.id;
+   262→                    const isHovered = hoveredStar === star.id;
+   263→                    const isNewConstellation = (constellationProgress[c.id] || 0) === 0;
+   264→                    const cost = starCost(c.id, constellationState, star.id, { foresightDiscountMult });
+   265→                    const canAfford = divinity >= cost;
+   266→                    const clickable = !lit && canAfford;
+   267→                    const r = lit ? 4.5 : 2.2;
+   268→                    return (
+   269→                      <g
+   270→                        key={star.id}
+   271→                        transform={`translate(${cx},${cy})`}
+   272→                        style={{ cursor: clickable ? "pointer" : "default" }}
+   273→                        onClick={() => clickable && onStarClick(c.id, star.id)}
+   274→                        onMouseEnter={() => setHoveredStar(star.id)}
+   275→                        onMouseLeave={() => setHoveredStar(null)}
+   276→                      >
+   277→                        {/* Glow halo for lit/hovered */}
+   278→                        {lit && (
+   279→                          <circle r={r * 3} fill={accent} opacity={0.18} />
+   280→                        )}
+   281→                        {isHovered && !lit && (
+   282→                          <circle r={r * 2.5} fill={accent} opacity={0.12} />
+   283→                        )}
+   284→                        {/* The star itself */}
+   285→                        <circle
+   286→                          r={r}
+   287→                          fill={lit ? accent : isStarted ? "#475569" : "#1e293b"}
+   288→                          stroke={lit ? "#fff" : isFocused ? accent : "transparent"}
+   289→                          strokeWidth={lit || isFocused ? 0.8 : 0}
+   290→                          opacity={lit ? 1 : isStarted ? 0.8 : 0.55}
+   291→                        />
+   292→                        {/* Cost label on hover for unlit affordable stars */}
+   293→                        {isHovered && !lit && (
+   294→                          <text
+   295→                            y={-8}
+   296→                            textAnchor="middle"
+   297→                            fill={canAfford ? "#a3e635" : "#f87171"}
+   298→                            fontSize="9"
+   299→                            fontFamily="monospace"
+   300→                            pointerEvents="none"
+   301→                          >
+   302→                            {isNewConstellation && startedCount > 0 ? `${cost}✦` : cost}
+   303→                          </text>
+   304→                        )}
+   305→                      </g>
+   306→                    );
+   307→                  })
+   308→                )}
+   309→                {/* Constellation labels */}
+   310→                {CONSTELLATIONS.map((c) => {
+   311→                  const xs = c.stars.map((s) => s.x);
+   312→                  const ys = c.stars.map((s) => s.y);
+   313→                  const maxX = Math.max(...xs);
+   314→                  const minY = Math.min(...ys);
+   315→                  const lx = (maxX / 100) * MAP_W + 8;
+   316→                  const ly = (minY / 100) * MAP_H + 4;
+   317→                  const isCompleted = !!constellationsCompleted[c.id];
+   318→                  const isStarted = !!constellationsStarted[c.id];
+   319→                  const isRevealed = !!constellationRevealed[c.id];
+   320→                  const dim = !isStarted && !isRevealed;
+   321→                  return (
+   322→                    <text
+   323→                      key={`label-${c.id}`}
+   324→                      x={lx}
+   325→                      y={ly}
+   326→                      fill={isCompleted ? CATEGORY_ACCENT[c.category] : isStarted ? "#cbd5e1" : "#475569"}
+   327→                      fontSize="10"
+   328→                      fontFamily="serif"
+   329→                      fontStyle="italic"
+   330→                      opacity={dim ? 0.35 : 0.95}
+   331→                      pointerEvents="none"
+   332→                    >
+   333→                      {c.i18nName}
+   334→                    </text>
+   335→                  );
+   336→                })}
+   337→              </svg>
+   338→              {/* Map legend */}
+   339→              <div className="absolute bottom-2 left-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-700/50 bg-slate-950/70 px-2.5 py-1 text-[0.6rem] text-slate-300 backdrop-blur">
+   340→                {(["zodiac", "northern", "equatorial", "southern"] as ConstellationCategory[]).map((cat) => (
+   341→                  <span key={cat} className="flex items-center gap-1">
+   342→                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: CATEGORY_ACCENT[cat] }} />
+   343→                    {CATEGORY_LABEL[cat]}
+   344→                  </span>
+   345→                ))}
+   346→              </div>
+   347→            </div>
+   348→
+   349→            {/* ===== SIDEBAR ===== */}
+   350→            <div className="flex flex-col gap-2 overflow-hidden min-h-0">
+   351→              <ScrollArea className="flex-1 pr-2">
+   352→                <div className="space-y-3">
+   353→                  {/* Progress stats */}
+   354→                  <div className="stat-card">
+   355→                    <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
+   356→                      Constellation progress
+   357→                    </div>
+   358→                    <div className="grid grid-cols-2 gap-2 text-xs">
+   359→                      <div className="flex flex-col">
+   360→                        <span className="text-[0.6rem] text-muted-foreground">Completed</span>
+   361→                        <span className="text-amber-300 font-semibold">
+   362→                          {completedCount} / {CONSTELLATIONS_REQUIRED_FOR_LAYER_3}
+   363→                          <span className="text-muted-foreground text-[0.6rem] ml-1">→ L3</span>
+   364→                        </span>
+   365→                      </div>
+   366→                      <div className="flex flex-col">
+   367→                        <span className="text-[0.6rem] text-muted-foreground">Stars lit</span>
+   368→                        <span className="text-cyan-300 font-semibold">
+   369→                          {litStarsCount} / {totalStars}
+   370→                        </span>
+   371→                      </div>
+   372→                      <div className="flex flex-col">
+   373→                        <span className="text-[0.6rem] text-muted-foreground">Started</span>
+   374→                        <span className="text-violet-300 font-semibold">
+   375→                          {startedCount} / {CONSTELLATIONS.length}
+   376→                        </span>
+   377→                      </div>
+   378→                      <div className="flex flex-col">
+   379→                        <span className="text-[0.6rem] text-muted-foreground">Divinity</span>
+   380→                        <span className="text-violet-300 font-semibold">
+   381→                          {formatNumber(divinity, 0)}
+   382→                        </span>
+   383→                      </div>
+   384→                    </div>
+   385→                    <Separator className="my-2" />
+   386→                    <div className="flex flex-wrap gap-1">
+   387→                      <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(cb.productionMult * 100).toFixed(1)}% prod</Badge>
+   388→                      <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(cb.capMult * 100).toFixed(1)}% cap</Badge>
+   389→                      <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(cb.epMult * 100).toFixed(1)}% EP</Badge>
+   390→                      <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(cb.popGrowthMult * 100).toFixed(1)}% pop</Badge>
+   391→                      {cb.costMult < 0 && (
+   392→                        <Badge variant="outline" className="text-pink-300 border-pink-400/40">{(cb.costMult * 100).toFixed(1)}% cost</Badge>
+   393→                      )}
+   394→                      {cb.divinityMult > 0 && (
+   395→                        <Badge variant="outline" className="text-yellow-300 border-yellow-400/40">+{(cb.divinityMult * 100).toFixed(0)}% Divinity</Badge>
+   396→                      )}
+   397→                    </div>
+   398→                    <div className="mt-2 text-[0.6rem] text-muted-foreground">
+   399→                      Per-star bonus: <span className="text-cyan-300">+0.5% prod</span> × {litStarsCount} lit star{litStarsCount === 1 ? "" : "s"} = <span className="text-cyan-300">+{(litStarsCount * 0.5).toFixed(1)}%</span>
+   400→                    </div>
+   401→                    <Badge
+   402→                      variant="outline"
+   403→                      className={`mt-2 ${canAdvanceToTranscendence(constellationState) ? "text-emerald-300 border-emerald-400/40" : "text-muted-foreground"}`}
+   404→                    >
+   405→                      {canAdvanceToTranscendence(constellationState)
+   406→                        ? "Transcendence unlocked!"
+   407→                        : `${CONSTELLATIONS_REQUIRED_FOR_LAYER_3 - completedCount} more constellation(s) to advance`}
+   408→                    </Badge>
+   409→                  </div>
+   410→
+   411→                  {/* Cost preview for focused constellation */}
+   412→                  {focusedNextCost && (
+   413→                    <div className="stat-card">
+   414→                      <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+   415→                        <Crosshair className="w-3 h-3" /> Focused: {focusedNextCost.name}
+   416→                      </div>
+   417→                      {focusedNextCost.starId ? (
+   418→                        <div className="text-xs space-y-1">
+   419→                          <div className="flex items-center justify-between">
+   420→                            <span className="text-muted-foreground">Next star:</span>
+   421→                            <Badge variant="outline" className={divinity >= focusedNextCost.cost ? "text-cyan-300 border-cyan-400/40" : "text-rose-300 border-rose-400/40"}>
+   422→                              {focusedNextCost.cost} Div
+   423→                            </Badge>
+   424→                          </div>
+   425→                          {focusedNextCost.isNew && startedCount > 0 && (
+   426→                            <div className="text-[0.6rem] text-amber-300/80 flex items-center gap-1">
+   427→                              <Zap className="w-3 h-3" /> new-constellation penalty (×{Math.pow(NEW_CONSTELLATION_PENALTY, startedCount).toFixed(1)} = {NEW_CONSTELLATION_PENALTY}^{startedCount})
+   428→                            </div>
+   429→                          )}
+   430→                          <Button
+   431→                            size="sm"
+   432→                            className="w-full mt-1"
+   433→                            disabled={divinity < focusedNextCost.cost}
+   434→                            onClick={() => illuminateStar(focusedNextCost.constellationId, focusedNextCost.starId!)}
+   435→                          >
+   436→                            Illuminate star ({focusedNextCost.cost} Div)
+   437→                          </Button>
+   438→                        </div>
+   439→                      ) : (
+   440→                        <div className="text-xs text-emerald-300 flex items-center gap-1">
+   441→                          <Sparkles className="w-3 h-3" /> Constellation complete.
+   442→                        </div>
+   443→                      )}
+   444→                    </div>
+   445→                  )}
+   446→
+   447→                  {/* Cost preview: starting a NEW constellation */}
+   448→                  {newConstellationPreview && (
+   449→                    <div className="stat-card">
+   450→                      <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1">
+   451→                        <Orbit className="w-3 h-3" /> Start a new constellation
+   452→                      </div>
+   453→                      <div className="text-xs flex items-center justify-between">
+   454→                        <span className="text-muted-foreground">{newConstellationPreview.name}</span>
+   455→                        <Badge variant="outline" className={divinity >= newConstellationPreview.cost ? "text-amber-300 border-amber-400/40" : "text-rose-300 border-rose-400/40"}>
+   456→                          {newConstellationPreview.cost} Div
+   457→                        </Badge>
+   458→                      </div>
+   459→                      <div className="text-[0.6rem] text-amber-300/70 mt-1">
+   460→                        ×{COST_GROWTH_PER_STARTED}^{startedCount} = ×{Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)} new-constellation multiplier
+   461→                      </div>
+   462→                    </div>
+   463→                  )}
+   464→
+   465→                  {/* Cost model explainer */}
+   466→                  <details className="stat-card">
+   467→                    <summary className="text-[0.7rem] uppercase tracking-wide text-muted-foreground cursor-pointer">
+   468→                      Cost formula (expand)
+   469→                    </summary>
+   470→                    <div className="text-[0.6rem] text-muted-foreground mt-1.5 space-y-1 leading-snug">
+   471→                      <div>cost = <span className="text-cyan-300 font-mono">{CONSTELLATION_BASE_COST}</span> × {WITHIN_CONSTELLATION_GROWTH}^(stars lit in this constellation) × {COST_GROWTH_PER_STARTED}^(started constellations) {`(new: ×${NEW_CONSTELLATION_PENALTY})`}</div>
+   472→                      <div className="text-amber-300/70">Tip: finish a constellation before starting another — the penalty compounds.</div>
+   473→                    </div>
+   474→                  </details>
+   475→
+   476→                  {/* Constellation list */}
+   477→                  <div className="stat-card">
+   478→                    <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
+   479→                      Constellations ({CONSTELLATIONS.length})
+   480→                    </div>
+   481→                    <div className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
+   482→                      {CONSTELLATIONS.map((c) => {
+   483→                        const prog = constellationProgress[c.id] || 0;
+   484→                        const total = c.stars.length;
+   485→                        const started = !!constellationsStarted[c.id];
+   486→                        const completed = !!constellationsCompleted[c.id];
+   487→                        const isFocused = focusedConstellationId === c.id;
+   488→                        return (
+   489→                          <button
+   490→                            key={c.id}
+   491→                            onClick={() => setFocusedConstellationId(isFocused ? null : c.id)}
+   492→                            className={`w-full text-left px-2 py-1 rounded text-[0.65rem] flex items-center justify-between gap-1 transition-colors
+   493→                              ${isFocused ? "bg-violet-500/20 border border-violet-400/60" : "hover:bg-muted/30 border border-transparent"}
+   494→                            `}
+   495→                          >
+   496→                            <span className="flex items-center gap-1.5 min-w-0">
+   497→                              <span
+   498→                                className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+   499→                                style={{ background: completed ? CATEGORY_ACCENT[c.category] : started ? "#64748b" : "#334155" }}
+   500→                              />
+   501→                              <span className={`truncate ${completed ? "text-amber-300" : started ? "text-slate-200" : "text-muted-foreground"}`}>
+   502→                                {c.i18nName}
+   503→                              </span>
+   504→                            </span>
+   505→                            <span className="text-[0.55rem] text-muted-foreground font-mono shrink-0">
+   506→                              {prog}/{total}
+   507→                            </span>
+   508→                          </button>
+   509→                        );
+   510→                      })}
+   511→                    </div>
+   512→                  </div>
+   513→
+   514→                  {/* Route picker (preserved from classic foresight) */}
+   515→                  <details className="stat-card">
+   516→                    <summary className="text-[0.7rem] uppercase tracking-wide text-muted-foreground cursor-pointer">
+   517→                      Route (cosmetic bonus layer)
+   518→                    </summary>
+   519→                    <div className="grid grid-cols-2 gap-1 mt-2">
+   520→                      {FORESIGHT_ROUTES.map((r) => (
+   521→                        <button
+   522→                          key={r.id}
+   523→                          onClick={() => setForesightRoute(activeRoute === r.id ? null : r.id)}
+   524→                          className={`stat-card text-left p-1.5 ${activeRoute === r.id ? "border-amber-400/60 bg-amber-500/10" : ""}`}
+   525→                        >
+   526→                          <div className="flex items-center gap-1">
+   527→                            <span className="text-sm">{r.icon}</span>
+   528→                            <span className="text-[0.65rem] font-medium">{r.name}</span>
+   529→                          </div>
+   530→                          <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-snug">{r.blurb}</div>
+   531→                        </button>
+   532→                      ))}
+   533→                    </div>
+   534→                    <div className="text-[0.6rem] text-amber-300/80 mt-1">
+   535→                      Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.epMult * 100).toFixed(0)}% EP, +{(rb.popGrowthMult * 100).toFixed(0)}% pop
+   536→                    </div>
+   537→                  </details>
+   538→                </div>
+   539→              </ScrollArea>
+   540→            </div>
+   541→          </div>
+   542→        )}
+   543→
+   544→        <Separator className="my-2" />
+   545→        <div className="text-[0.65rem] text-muted-foreground px-1">
+   546→          Click any star to illuminate it. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per star already lit in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}^{startedCount > 0 ? 'N' : '0'}={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per other started constellation (the penalty sticks for every star in a started constellation). Complete <span className="text-emerald-300">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> constellations to advance to Layer 3.
+   547→        </div>
+   548→        <div className="flex justify-end pt-2">
+   549→          <Button variant="outline" onClick={() => setShow(false)}>Close</Button>
+   550→        </div>
+   551→      </DialogContent>
+   552→    </Dialog>
+   553→  );
+   554→}
+   555→

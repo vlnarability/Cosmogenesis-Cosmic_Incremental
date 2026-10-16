@@ -3,7 +3,9 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
+import { GOVERNMENT_MAP } from "@/game/data/governments";
 import { formatNumber } from "../shared/format";
+import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +24,12 @@ export function StagePanel() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // GOVERNMENT-SYSTEMS — populated by evolveStage when entering Empire.
+  // Null until Empire+. Drives the government panel below the lineage.
+  const activeGovernment = useGameStore((s) => s.activeGovernment);
+  // ARCHETYPES-REWORK — which archetypes the player has EVER locked in.
+  // Persists across prestiges. Drives the ??? reveal state on the radar.
+  const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
   const galacticWins = useGameStore((s) => s.galacticWins);
   const totalRuns = useGameStore((s) => s.totalRuns);
 
@@ -44,7 +52,9 @@ export function StagePanel() {
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);
   const domArch = dominantArchetype(archetypeAffinity);
   const totalAffinity = Object.values(archetypeAffinity).reduce((a, b) => a + b, 0);
-  const archInsight = true; // always visible — players should see their drift building
+  // ARCHETYPES-REWORK — all 13 archetypes render on the radar; discovery
+  // (revealed via first lock-in) controls ??? vs. full label display.
+  // The player can always see their affinity polygon drift.
   const isLocked = !!lockedArchetype;
 
   return (
@@ -181,64 +191,53 @@ export function StagePanel() {
         {showArchInfo && (
           <div className="mb-2 text-xs text-muted-foreground bg-muted/30 border border-border rounded p-2 leading-relaxed">
             <p className="font-semibold text-foreground mb-1">Lineage & Archetypes</p>
-            <p>Buying certain systems and techs shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve from <span className="text-foreground">Creature → Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants a permanent bonus.</p>
+            <p>Buying certain systems and techs in Cell and Creature stages shifts your <span className="text-foreground">lineage drift</span> toward one of 13 archetypes. When you evolve into <span className="text-foreground">Tribal</span>, the dominant archetype <span className="text-foreground">locks in</span> for the rest of the run and grants 3 buffs + 1 debuff. Unique systems and techs unlock for your archetype.</p>
+            <p className="mt-1">Undiscovered archetypes appear as <span className="text-foreground">???</span> on the radar. Lock one in once to reveal its name forever — even across resets.</p>
             <p className="mt-1">Choose your path deliberately — or let it emerge from how you play.</p>
           </div>
         )}
 
         {isLocked ? (
           <LockedArchetypeDisplay archId={lockedArchetype!} />
-        ) : hasAffinity && archInsight ? (
-          <div className="space-y-1.5">
-            {ARCHETYPES
-              .filter((a) => (archetypeAffinity[a.id] || 0) > 0)
-              .sort((a, b) => (archetypeAffinity[b.id] || 0) - (archetypeAffinity[a.id] || 0))
-              .map((a) => {
-                const v = archetypeAffinity[a.id] || 0;
-                const pct = totalAffinity > 0 ? (v / totalAffinity) * 100 : 0;
-                const isDom = a.id === domArch;
-                return (
-                  <div key={a.id} className="flex items-center gap-2">
-                    <span
-                      className="text-xs font-mono w-5 text-center"
-                      style={{ color: a.color }}
-                    >
-                      {a.glyph}
-                    </span>
-                    <span className={`text-xs w-20 shrink-0 ${isDom ? "font-bold" : ""}`} style={{ color: isDom ? a.color : undefined }}>
-                      {a.name}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                      <div
-                        className="h-full transition-all"
-                        style={{ width: `${pct}%`, background: a.color }}
-                      />
-                    </div>
-                    <span className="text-[0.65rem] text-muted-foreground w-8 text-right tabular-nums">
-                      {v.toFixed(0)}
-                    </span>
-                  </div>
-                );
-              })}
+        ) : stageIndex >= 2 ? (
+          // At Tribal+, archetype should be locked. If somehow not, show fallback.
+          <div className="text-xs text-muted-foreground italic">
+            Archetype not locked — restarting the run may fix this.
+          </div>
+        ) : hasAffinity ? (
+          <div className="space-y-2">
+            <ArchetypeRadar
+              affinity={archetypeAffinity}
+              lockedArchetype={lockedArchetype}
+              discoveredArchetypes={revealedLineageArchetypes}
+              size={180}
+            />
             {stageIndex < 1 && (
-              <p className="text-[0.65rem] text-muted-foreground italic mt-1">
-                Lineage locks at Creature → Tribal evolution
+              <p className="text-[0.65rem] text-muted-foreground italic text-center">
+                Drift locks when entering Tribal
               </p>
             )}
-            {stageIndex >= 1 && (
-              <p className="text-[0.65rem] text-amber-400 italic mt-1">
-                Will lock as {ARCHETYPE_MAP[domArch!]?.name} on evolution
+            {stageIndex >= 1 && domArch && (
+              <p className="text-[0.65rem] text-amber-400 italic text-center">
+                Will lock as {ARCHETYPE_MAP[domArch]?.name} on evolution
               </p>
             )}
           </div>
         ) : (
           <div className="text-xs text-muted-foreground italic">
             {stageIndex < 1
-              ? "Drift begins as you build. Locked at Creature → Tribal."
+              ? "Drift begins as you build. Locks when entering Tribal."
               : "No drift yet — build systems or research tech to find your path."}
           </div>
         )}
       </div>
+
+      {/* GOVERNMENT-SYSTEMS — government panel, shown below the lineage panel
+          once the player reaches Empire stage (stageIndex >= 4). Same compact
+          format as the lineage display. */}
+      {stageIndex >= 4 && activeGovernment && (
+        <ActiveGovernmentDisplay govId={activeGovernment} />
+      )}
 
       {/* Evolve progress */}
       <div className="space-y-1.5 mb-3">
@@ -273,19 +272,57 @@ export function StagePanel() {
 function LockedArchetypeDisplay({ archId }: { archId: string }) {
   const arch = ARCHETYPE_MAP[archId];
   if (!arch) return null;
+  const buffs = arch.bonus.buffs ?? [];
+  const debuff = arch.bonus.debuff;
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-mono" style={{ color: arch.color }}>{arch.glyph}</span>
-        <div>
-          <div className="text-sm font-bold" style={{ color: arch.color }}>{arch.name}</div>
-          <div className="text-[0.65rem] text-muted-foreground">{arch.rarity} · locked</div>
-        </div>
-        <Badge variant="outline" className="ml-auto text-[0.6rem] text-emerald-400 border-emerald-500/30">
-          {arch.bonus.label}
-        </Badge>
+    <div className="space-y-1">
+      <div className="text-xs font-bold" style={{ color: arch.color }}>
+        Species Archetype: {arch.name}
       </div>
-      <p className="text-xs text-muted-foreground italic leading-snug">{arch.bonus.desc}</p>
+      {buffs.length > 0 && (
+        <div className="text-[0.65rem] text-emerald-300/90 leading-snug">
+          <span className="text-muted-foreground">Advantages: </span>
+          {buffs.join(", ")}
+        </div>
+      )}
+      {debuff && (
+        <div className="text-[0.65rem] text-rose-300/90 leading-snug">
+          <span className="text-muted-foreground">Disadvantages: </span>
+          {debuff}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// GOVERNMENT-SYSTEMS — compact government panel. Mirrors the lineage panel's
+// shape (icon-name header + advantages / disadvantages lines).
+function ActiveGovernmentDisplay({ govId }: { govId: string }) {
+  const gov = GOVERNMENT_MAP[govId];
+  if (!gov) return null;
+  return (
+    <div className="stat-card mb-3 space-y-1">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+          <span className="text-sm leading-none">{gov.icon}</span>
+          <span className="uppercase tracking-wide">Government</span>
+        </div>
+      </div>
+      <div className="text-xs font-bold text-amber-300">
+        Government: {gov.name}
+      </div>
+      {gov.advantages.length > 0 && (
+        <div className="text-[0.65rem] text-emerald-300/90 leading-snug">
+          <span className="text-muted-foreground">Advantages: </span>
+          {gov.advantages.join(", ")}
+        </div>
+      )}
+      {gov.disadvantages.length > 0 && (
+        <div className="text-[0.65rem] text-rose-300/90 leading-snug">
+          <span className="text-muted-foreground">Disadvantages: </span>
+          {gov.disadvantages.join(", ")}
+        </div>
+      )}
     </div>
   );
 }

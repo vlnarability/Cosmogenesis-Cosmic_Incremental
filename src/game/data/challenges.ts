@@ -49,165 +49,173 @@ export interface Challenge {
 }
 
 export const CHALLENGES: Challenge[] = [
+  // ===========================================================================
+  // THE TEN TRIALS — cosmic gauntlets that bend the rules of the run.
+  // Each trial constrains a different dimension of play (population, cost,
+  // production, military, tech, capacity, structure, luck, etc.) and grants a
+  // permanent mastery bonus upon completion. Repeats intensify the debuff
+  // (existing helpers handle linear scaling on productionMult / costMult /
+  // popGrowthMult / capMult / epMult; trial-specific flags pass through).
+  // ===========================================================================
   {
-    id: "pacifist_run",
-    name: "Pacifist Run",
-    desc: "Reach the Galactic stage without building any military systems or researching any war tech.",
-    icon: "🕊️",
-    category: "combat",
-    debuff: {
-      label: "No military systems or techs may be built/researched.",
-      effects: { disableMilitary: true },
-    },
-    mastery: {
-      label: "+5% population growth, permanently.",
-      bonus: { popGrowthMult: 0.05 },
-    },
-    completeWhen: { type: "reachGalactic" },
-  },
-  {
-    id: "speed_demon",
-    name: "Speed Demon",
-    desc: "Reach the Civilization stage as fast as you can. Population growth is stunted.",
-    icon: "⚡",
+    id: "trial_of_discontent",
+    name: "Trial of Discontent",
+    desc: "A growing wave of discontent sweeps your civilization. Keep happiness above unhappiness — if it eclipses happiness, the trial ends in failure. Manage with festivals, entertainment, and temples. Higher levels: unhappiness grows faster.",
+    icon: "🎭",
     category: "growth",
     debuff: {
-      label: "Population growth reduced 40%.",
-      effects: { popGrowthMult: 0.6 },
+      label: "Unhappiness grows steadily; if it exceeds happiness, you lose. Manage with festivals / entertainment / temples. Scales faster per level.",
+      effects: { productionMult: 0.85 },
     },
     mastery: {
       label: "+5% all production, permanently.",
       bonus: { productionMult: 0.05 },
     },
-    completeWhen: { type: "reachStage", stage: "civilization" },
+    completeWhen: { type: "reachStage", stage: "galactic" },
   },
   {
-    id: "hermit",
-    name: "Hermit",
-    desc: "Grow a population of 100 with no random events and reduced starting pop.",
-    icon: "🧙",
+    id: "trial_of_the_plague",
+    name: "Trial of the Plague",
+    desc: "Start with 5000 population (1.0× production multiplier) and CANNOT grow it. Plagues periodically slash your numbers — at 2500 pop you produce 0.5×, at 1250 pop only 0.25×. Medical techs and systems block plagues. No population requirement to evolve. Reach Solar to win. Higher levels: plagues strike more frequently.",
+    icon: "🦠",
     category: "growth",
     debuff: {
-      label: "No events; start with 3 population.",
-      effects: { disableEvents: true, startPop: 3 },
-    },
-    mastery: {
-      label: "+10% EP earned from prestige.",
-      bonus: { epMult: 0.10 },
-    },
-    completeWhen: { type: "reachPopulation", value: 100 },
-  },
-  {
-    id: "hoarder",
-    name: "Hoarder",
-    desc: "Stockpile 1000 of a single resource while your capacities are halved.",
-    icon: "💰",
-    category: "economy",
-    debuff: {
-      label: "All resource capacities -50%.",
-      effects: { capMult: 0.5 },
-    },
-    mastery: {
-      label: "+10% all capacities, permanently.",
-      bonus: { capMult: 0.10 },
-    },
-    completeWhen: { type: "stockpileResource", resource: "gold", value: 1000 },
-  },
-  {
-    id: "technophobe",
-    name: "Technophobe",
-    desc: "Grow a population of 50 with no research whatsoever.",
-    icon: "🚫",
-    category: "structure",
-    debuff: {
-      label: "All tech research is forbidden.",
-      effects: { disableTech: true },
-    },
-    mastery: {
-      label: "+8% all production, permanently.",
-      bonus: { productionMult: 0.08 },
-    },
-    completeWhen: { type: "reachPopulation", value: 50 },
-  },
-  {
-    id: "minimalist",
-    name: "Minimalist",
-    desc: "Clear the Tribal stage with no more than 6 systems total.",
-    icon: "🪶",
-    category: "structure",
-    debuff: {
-      label: "Hard cap: max 6 systems owned at any time.",
-      effects: { maxSystems: 6 },
-    },
-    mastery: {
-      label: "+6% all production, -5% all costs.",
-      bonus: { productionMult: 0.06, costMult: -0.05 },
-    },
-    completeWhen: { type: "clearStage", stage: "tribal" },
-  },
-  {
-    id: "warmonger",
-    name: "Warmonger",
-    desc: "Clear the Empire stage while happiness steadily drains.",
-    icon: "⚔️",
-    category: "combat",
-    debuff: {
-      label: "All production -25%; happiness drains -0.5/s.",
-      effects: { productionMult: 0.75 },
-    },
-    mastery: {
-      label: "+10% military production, +5% all production.",
-      bonus: { productionMult: 0.05 },
-    },
-    completeWhen: { type: "clearStage", stage: "empire" },
-  },
-  {
-    id: "time_trial",
-    name: "Time Trial",
-    desc: "Reach the Galactic stage with population growth cut to a trickle.",
-    icon: "⏳",
-    category: "growth",
-    debuff: {
-      label: "Population growth reduced 70%.",
-      effects: { popGrowthMult: 0.3 },
+      label: "Start pop locked at 5000 (no growth). Plagues halve output as pop falls. Med-techs block plagues. No pop requirement to evolve.",
+      effects: { startPop: 5000, popGrowthMult: 0, productionMult: 0.5 },
     },
     mastery: {
       label: "+10% population growth, permanently.",
       bonus: { popGrowthMult: 0.10 },
     },
-    completeWhen: { type: "reachGalactic" },
+    completeWhen: { type: "reachStage", stage: "solar" },
   },
   {
-    id: "catalyst",
-    name: "Catalyst",
-    desc: "Grow a population of 200 with all production halved.",
-    icon: "🔥",
+    id: "trial_of_the_rival",
+    name: "Trial of the Rival",
+    desc: "A rival civilization attacks periodically. Lose a raid and they destroy systems and pillage resources. At L3+, small skirmishes erupt between the big raids. Reach Galactic to triumph. Higher levels: stronger and more frequent raids.",
+    icon: "⚔️",
+    category: "combat",
+    debuff: {
+      label: "Rival attacks periodically; losses destroy systems + pillage resources. L3+: small skirmishes between big raids.",
+      effects: { productionMult: 0.9 },
+    },
+    mastery: {
+      label: "+5% all production, +5% military production, permanently.",
+      bonus: { productionMult: 0.05 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_mutation",
+    name: "Trial of Mutation",
+    desc: "Five rolling mutations cycle — every 60s a new one spawns, the oldest expires after 5 minutes. Each mutation doubles OR halves a random system's output. At L5+, mutations stop resetting and all become permanent. Reach Galactic. Higher levels: faster mutation frequency.",
+    icon: "🧬",
     category: "production",
     debuff: {
-      label: "All production -50%.",
+      label: "Rolling 5 mutations (new every 60s, oldest expires in 5 min). Each doubles or halves a random system. L5+: all permanent.",
+      effects: {},
+    },
+    mastery: {
+      label: "+10% EP earned from prestige.",
+      bonus: { epMult: 0.10 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_gold_rush",
+    name: "Trial of the Gold Rush",
+    desc: "All production converts to gold at a 10:1 ratio. All costs are paid in gold. The production ratio stays 10:1 at every level, but costs climb higher per level. Reach Galactic.",
+    icon: "💰",
+    category: "economy",
+    debuff: {
+      label: "Production → gold at 10:1; all costs paid in gold (effectively 10× harder on the gold standard). Costs scale per level.",
+      effects: { costMult: 10 },
+    },
+    mastery: {
+      label: "+10% all capacities, permanently.",
+      bonus: { capMult: 0.10 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_the_taxman",
+    name: "Trial of the Taxman",
+    desc: "Every 60 seconds, lose X% of ALL resources. L5 = 50% per minute, L10 = 100% per minute. Linear scaling from L1 to L10. Reach Galactic to escape the collector.",
+    icon: "🏛️",
+    category: "economy",
+    debuff: {
+      label: "Every 60s lose X% of all resources (linear L1→L10). L5=50%/min, L10=100%/min. Production is heavily drained.",
+      effects: { productionMult: 0.7 },
+    },
+    mastery: {
+      label: "+10% all capacities, permanently.",
+      bonus: { capMult: 0.10 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_the_minimalist",
+    name: "Trial of the Minimalist",
+    desc: "You may build only one of each system type. L1 = 10 systems max; each level drops the cap by 1; L10 = 1 system max. Reach Galactic with the absolute minimum. The purest test of focus.",
+    icon: "1️⃣",
+    category: "structure",
+    debuff: {
+      label: "Only 1 of each system type. L1: 10 systems max; cap drops by 1 per level; L10: 1 system max.",
+      effects: { maxSystems: 10 },
+    },
+    mastery: {
+      label: "-10% all costs, permanently.",
+      bonus: { costMult: -0.10 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_the_black_market",
+    name: "Trial of the Black Market",
+    desc: "Systems cost 2× but produce 3×. At L1, techs are free but random. At L2+, techs cost resources — the amount scales per level. Reach Galactic through the underground.",
+    icon: "🃏",
+    category: "economy",
+    debuff: {
+      label: "Systems cost 2× but produce 3×. L1: techs free + random. L2+: techs cost resources (scales per level).",
+      effects: { costMult: 2 },
+    },
+    mastery: {
+      label: "+5% all production, permanently.",
+      bonus: { productionMult: 0.05 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_the_gambler",
+    name: "Trial of the Gambler",
+    desc: "Each system has a 50% chance to produce 2× output, and a 50% chance to produce 0. Techs reduce variance. L1 = 50/50; L5 = 30/70; L10 = 10/90. Reach Galactic on a coin-flip.",
+    icon: "🎲",
+    category: "production",
+    debuff: {
+      label: "Each system: 50% chance 2× output, 50% chance 0. Techs reduce variance. L1=50/50, L5=30/70, L10=10/90.",
+      effects: {},
+    },
+    mastery: {
+      label: "+10% EP earned from prestige.",
+      bonus: { epMult: 0.10 },
+    },
+    completeWhen: { type: "reachStage", stage: "galactic" },
+  },
+  {
+    id: "trial_of_the_philosopher",
+    name: "Trial of the Philosopher",
+    desc: "Your main focus is techs and manual actions. L1: systems produce 50%. L5: systems produce 0%. L6: techs cost 20% more. L10: techs cost 100% more than original. Reach Galactic through wisdom alone.",
+    icon: "♻️",
+    category: "structure",
+    debuff: {
+      label: "Focus on techs + manual actions. L1: systems produce 50%. L5: 0%. L6+: techs cost +20% per level.",
       effects: { productionMult: 0.5 },
     },
     mastery: {
-      label: "+12% all production, permanently.",
-      bonus: { productionMult: 0.12 },
+      label: "+15% EP earned from prestige, permanently.",
+      bonus: { epMult: 0.15 },
     },
-    completeWhen: { type: "reachPopulation", value: 200 },
-  },
-  {
-    id: "endurance",
-    name: "Endurance",
-    desc: "Clear the Galactic stage while everything costs 80% more.",
-    icon: "🏔️",
-    category: "economy",
-    debuff: {
-      label: "All system/tech costs +80%.",
-      effects: { costMult: 1.8 },
-    },
-    mastery: {
-      label: "-10% all costs, +5% all production, permanently.",
-      bonus: { costMult: -0.10, productionMult: 0.05 },
-    },
-    completeWhen: { type: "clearStage", stage: "galactic" },
+    completeWhen: { type: "reachStage", stage: "galactic" },
   },
 ];
 

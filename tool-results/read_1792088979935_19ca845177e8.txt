@@ -1,0 +1,876 @@
+     1→"use client";
+     2→
+     3→import { useMemo, useState } from "react";
+     4→import { useGameStore } from "@/game/state/store";
+     5→import {
+     6→  ENDING_CHOICES,
+     7→  cosmicBoonBonus,
+     8→} from "@/game/data/eternity";
+     9→import {
+    10→  UNIVERSE_RULES,
+    11→  RULE_BASE,
+    12→  RULE_TOTAL_TARGET,
+    13→  RULE_STABLE_MIN,
+    14→  RULE_STABLE_MAX,
+    15→  BIG_BANG_DURATION_SEC,
+    16→  REVEAL_COST_RULE,
+    17→  REVEAL_COST_AMOUNT,
+    18→  ARCHETYPES,
+    19→  ARCHETYPE_MAP,
+    20→  ARCHETYPE_COUNT,
+    21→  computeCrucibleRules,
+    22→  type DivineRelic,
+    23→} from "@/game/data/genesisEngine";
+    24→import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+    25→import {
+    26→  AlertDialog,
+    27→  AlertDialogAction,
+    28→  AlertDialogCancel,
+    29→  AlertDialogContent,
+    30→  AlertDialogDescription,
+    31→  AlertDialogFooter,
+    32→  AlertDialogHeader,
+    33→  AlertDialogTitle,
+    34→} from "@/components/ui/alert-dialog";
+    35→import { Button } from "@/components/ui/button";
+    36→import { Badge } from "@/components/ui/badge";
+    37→import { Separator } from "@/components/ui/separator";
+    38→import { Progress } from "@/components/ui/progress";
+    39→import { Lock, Sparkles, CheckCircle2, Star, RefreshCw, AlertTriangle, Atom, Eye, Plus } from "lucide-react";
+    40→import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+    41→import { EmptyState } from "../shared/EmptyState";
+    42→import { formatNumber, formatTime } from "../shared/format";
+    43→
+    44→// ----- helpers -----
+    45→
+    46→function ruleShortName(ruleId: string): string {
+    47→  const r = UNIVERSE_RULES.find((x) => x.id === ruleId);
+    48→  return r ? r.shortName : ruleId;
+    49→}
+    50→
+    51→function ruleIcon(ruleId: string): string {
+    52→  const r = UNIVERSE_RULES.find((x) => x.id === ruleId);
+    53→  return r ? r.icon : "?";
+    54→}
+    55→
+    56→function amountLabel(amt: number): string {
+    57→  return `${amt >= 0 ? "+" : ""}${amt}`;
+    58→}
+    59→
+    60→// ----- main component -----
+    61→
+    62→export function EternityContent() {
+    63→  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
+    64→  const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+    65→  const divinity = useGameStore((s) => s.divinity || 0);
+    66→  const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
+    67→  const chosenEnding = useGameStore((s) => s.chosenEnding);
+    68→
+    69→  // Genesis Engine state
+    70→  const divineRelics = useGameStore((s) => s.divineRelics || []);
+    71→  const crucibleRelicIds = useGameStore((s) => s.crucibleRelicIds || []);
+    72→  const discoveredArchetypes = useGameStore((s) => s.discoveredArchetypes || {});
+    73→  const universeSimulating = useGameStore((s) => s.universeSimulating);
+    74→  const simulationStartTime = useGameStore((s) => s.simulationStartTime || 0);
+    75→  const lastSimResult = useGameStore((s) => s.lastSimulationResult);
+    76→  // Subscribe to time so the progress bar updates each tick.
+    77→  const time = useGameStore((s) => s.time || 0);
+    78→  const totalPlayTime = useGameStore((s) => s.totalPlayTime || 0);
+    79→  const totalRuns = useGameStore((s) => s.totalRuns || 0);
+    80→
+    81→  // Actions
+    82→  const addRelicToCrucible = useGameStore((s) => s.addRelicToCrucible);
+    83→  const clearCrucible = useGameStore((s) => s.clearCrucible);
+    84→  const revealRelicRule = useGameStore((s) => s.revealRelicRule);
+    85→  const revealRelicAmount = useGameStore((s) => s.revealRelicAmount);
+    86→  const triggerBigBang = useGameStore((s) => s.triggerBigBang);
+    87→  const chooseEnding = useGameStore((s) => s.chooseEnding);
+    88→
+    89→  const isUnlocked = !!unlockedLayers.eternity;
+    90→  const discoveredCount = Object.values(discoveredArchetypes).filter(Boolean).length;
+    91→  const allDiscovered = discoveredCount >= ARCHETYPE_COUNT;
+    92→  const boon = cosmicBoonBonus(cosmicBoonStacks);
+    93→  // L10-ENDING-L5-UI-UNLOCKTECH — visited dimensions always starts with
+    94→  // ["mundane"]; we read it here so the EndingScreen's dimension picker
+    95→  // can determine which dimensions are selectable.
+    96→  const visitedDimensions = useGameStore((s) => s.visitedDimensions || ["mundane"]);
+    97→
+    98→  // Compute crucible rule view (recomputed each render — cheap).
+    99→  const crucibleRelics: DivineRelic[] = useMemo(() => {
+   100→    return crucibleRelicIds
+   101→      .map((id) => divineRelics.find((r) => r.id === id))
+   102→      .filter((r): r is DivineRelic => !!r);
+   103→  }, [crucibleRelicIds, divineRelics]);
+   104→
+   105→  const crucibleComp = useMemo(
+   106→    () => computeCrucibleRules(crucibleRelics),
+   107→    [crucibleRelics]
+   108→  );
+   109→
+   110→  const simElapsed = universeSimulating ? Math.min(BIG_BANG_DURATION_SEC, time - simulationStartTime) : 0;
+   111→  // P7 — simProgressPct removed; Big Bang now shows a skeleton screen instead
+   112→  // of a progress bar. simElapsed is still used for the seconds-remaining count.
+   113→  const simRemainingSec = universeSimulating ? Math.max(0, BIG_BANG_DURATION_SEC - simElapsed) : 0;
+   114→
+   115→  // Ending confirmation dialog
+   116→  const [pendingEnding, setPendingEnding] = useState<"preserve" | "reset" | null>(null);
+   117→  const confirmEnding = () => {
+   118→    if (pendingEnding) {
+   119→      chooseEnding(pendingEnding);
+   120→      setPendingEnding(null);
+   121→    }
+   122→  };
+   123→
+   124→  // Total score for the ending screen
+   125→  const finalScore = useMemo(() => {
+   126→    // Resources: sum of all primary resources.
+   127→    const resourceIds: Array<string> = ["atp", "glucose", "proteins", "lipids", "elements",
+   128→      "food", "water", "materials", "organic_matter", "knowledge", "culture",
+   129→      "wood", "lumber", "stone", "clay", "science", "happiness", "military_power",
+   130→      "production", "gold", "influence", "energy", "alloys", "data",
+   131→      "divinity", "evolution_points", "enlightenment_points", "transcendence_points"];
+   132→    const resources = useGameStore.getState().resources || {};
+   133→    let sum = 0;
+   134→    for (const id of resourceIds) {
+   135→      sum += (resources as any)[id] || 0;
+   136→    }
+   137→    // Layers completed count
+   138→    const unlocked = useGameStore.getState().unlockedLayers || {};
+   139→    const layersCompleted = Object.values(unlocked).filter(Boolean).length;
+   140→    // Worlds: authored worlds + claimed galaxy systems
+   141→    const authoredWorlds = (useGameStore.getState() as any).authoredWorlds || [];
+   142→    const galaxySystems = (useGameStore.getState() as any).galaxySystems || [];
+   143→    const claimedGalaxies = galaxySystems.filter((g: any) => g?.claimed).length;
+   144→    const worldCount = authoredWorlds.length + claimedGalaxies;
+   145→    // Final score: weighted sum
+   146→    return Math.floor(sum * 0.01 + worldCount * 100 + layersCompleted * 500 + discoveredCount * 1000);
+   147→  }, [discoveredCount, allDiscovered]);
+   148→
+   149→  return (
+   150→    <>
+   151→      <DialogHeader>
+   152→        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+   153→          <Star className="w-5 h-5" />
+   154→          Layer 10 — Eternity (Genesis Engine)
+   155→          <BackgroundLayerBadge layerId="eternity" />
+   156→        </DialogTitle>
+   157→        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+   158→          <span>
+   159→            Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
+   160→          </span>
+   161→          <div className="flex items-center gap-1.5">
+   162→            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+   163→              ✨ {formatNumber(divinity, 0)} Divinity
+   164→            </Badge>
+   165→            <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+   166→              🌟 {discoveredCount}/{ARCHETYPE_COUNT}
+   167→            </Badge>
+   168→            {cosmicBoonStacks > 0 && (
+   169→              <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
+   170→                🌠 {cosmicBoonStacks} Boon{cosmicBoonStacks !== 1 ? "s" : ""}
+   171→              </Badge>
+   172→            )}
+   173→          </div>
+   174→        </DialogDescription>
+   175→      </DialogHeader>
+   176→
+   177→        {!isUnlocked ? (
+   178→          <div className="text-center text-muted-foreground py-10">
+   179→            <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   180→            <p className="text-sm">The Genesis Engine lies dormant.</p>
+   181→            <p className="text-xs mt-1">Defeat all 3 Old Gods (Layer 9 — Divine War) to ignite the Crucible.</p>
+   182→          </div>
+   183→        ) : allDiscovered && chosenEnding === null ? (
+   184→          <EndingScreen
+   185→            discoveredCount={discoveredCount}
+   186→            totalPlayTime={totalPlayTime}
+   187→            thisRunTime={time}
+   188→            totalRuns={totalRuns}
+   189→            finalScore={finalScore}
+   190→            boon={boon}
+   191→            cosmicBoonStacks={cosmicBoonStacks}
+   192→            visitedDimensions={visitedDimensions}
+   193→            onChooseEnding={(id) => setPendingEnding(id)}
+   194→          />
+   195→        ) : chosenEnding !== null ? (
+   196→          <div className="text-center py-10">
+   197→            <Sparkles className="w-8 h-8 mx-auto mb-2 text-amber-300" />
+   198→            <p className="text-sm">Ending chosen: {ENDING_CHOICES.find((e) => e.id === chosenEnding)?.name}</p>
+   199→            <p className="text-xs mt-1 text-muted-foreground">
+   200→              {ENDING_CHOICES.find((e) => e.id === chosenEnding)?.desc}
+   201→            </p>
+   202→            <Button variant="outline" className="mt-4" onClick={() => closeLayerModal()}>Close</Button>
+   203→          </div>
+   204→        ) : (
+   205→          <div className="space-y-4">
+   206→            {/* Relic Inventory */}
+   207→            <section>
+   208→              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1 justify-between">
+   209→                <span className="flex items-center gap-1">
+   210→                  <Sparkles className="w-3 h-3" /> Divine Relic Inventory ({divineRelics.length})
+   211→                </span>
+   212→                <span className="text-[0.6rem] normal-case">
+   213→                  Reveal rule name: {REVEAL_COST_RULE} Div · amount: {REVEAL_COST_AMOUNT} Div
+   214→                </span>
+   215→              </div>
+   216→              {divineRelics.length === 0 ? (
+   217→                // P7 — Empty state: no relics yet. Use the shared EmptyState
+   218→                // component for consistent styling. The StarterRelicHint below
+   219→                // points the player at the Big Bang button (which grants the
+   220→                // first relic without needing a prior simulation).
+   221→                <>
+   222→                  <EmptyState
+   223→                    compact
+   224→                    icon={<Atom className="w-6 h-6" />}
+   225→                    title="No relics yet."
+   226→                    description="Complete a universe simulation (Big Bang) to earn relics. Use the starter relic below to trigger your first Big Bang."
+   227→                  />
+   228→                  <div className="mt-2">
+   229→                    <StarterRelicHint />
+   230→                  </div>
+   231→                </>
+   232→              ) : (
+   233→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+   234→                  {divineRelics.map((r) => {
+   235→                    const inCrucible = crucibleRelicIds.includes(r.id);
+   236→                    return (
+   237→                      <div
+   238→                        key={r.id}
+   239→                        className={`stat-card p-2 ${inCrucible ? "border-amber-400/70 bg-amber-500/10" : "border-slate-600/40"}`}
+   240→                      >
+   241→                        <div className="flex items-center gap-1 mb-1">
+   242→                          <Atom className="w-3 h-3 text-amber-300" />
+   243→                          <span className="text-xs font-medium truncate flex-1">{r.name}</span>
+   244→                          {inCrucible && (
+   245→                            <Badge variant="outline" className="text-[0.55rem] text-amber-300 border-amber-400/60">in crucible</Badge>
+   246→                          )}
+   247→                        </div>
+   248→                        <div className="space-y-1">
+   249→                          {r.rules.map((rr, idx) => {
+   250→                            const showRule = rr.revealed.rule;
+   251→                            const showAmt = rr.revealed.amount;
+   252→                            return (
+   253→                              <div key={idx} className="flex items-center gap-1 text-[0.65rem]">
+   254→                                <span className="w-4 text-center">{showRule ? ruleIcon(rr.ruleId) : "?"}</span>
+   255→                                <span className={`flex-1 truncate ${showRule ? "text-foreground" : "text-muted-foreground/70"}`}>
+   256→                                  {showRule ? ruleShortName(rr.ruleId) : "???"}
+   257→                                </span>
+   258→                                <span className={`font-mono ${showAmt ? (rr.amount >= 0 ? "text-emerald-300" : "text-rose-300") : "text-muted-foreground/70"}`}>
+   259→                                  {showAmt ? amountLabel(rr.amount) : "???"}
+   260→                                </span>
+   261→                                <div className="flex items-center gap-0.5">
+   262→                                  {!showRule && (
+   263→                                    <button
+   264→                                      onClick={() => revealRelicRule(r.id, idx)}
+   265→                                      disabled={divinity < REVEAL_COST_RULE || universeSimulating}
+   266→                                      className="text-[0.55rem] px-1 py-0.5 rounded border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+   267→                                      title={`Reveal rule name (${REVEAL_COST_RULE} Divinity)`}
+   268→                                    >
+   269→                                      <Eye className="w-2.5 h-2.5" />
+   270→                                    </button>
+   271→                                  )}
+   272→                                  {showRule && !showAmt && (
+   273→                                    <button
+   274→                                      onClick={() => revealRelicAmount(r.id, idx)}
+   275→                                      disabled={divinity < REVEAL_COST_AMOUNT || universeSimulating}
+   276→                                      className="text-[0.55rem] px-1 py-0.5 rounded border border-amber-400/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+   277→                                      title={`Reveal amount (${REVEAL_COST_AMOUNT} Divinity)`}
+   278→                                    >
+   279→                                      <Eye className="w-2.5 h-2.5" />
+   280→                                    </button>
+   281→                                  )}
+   282→                                  {showRule && showAmt && (
+   283→                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+   284→                                  )}
+   285→                                </div>
+   286→                              </div>
+   287→                            );
+   288→                          })}
+   289→                        </div>
+   290→                        {!inCrucible && (
+   291→                          <Button
+   292→                            size="sm"
+   293→                            variant="outline"
+   294→                            className="w-full h-6 mt-1.5 text-[0.6rem] text-amber-300 border-amber-400/40"
+   295→                            disabled={crucibleRelicIds.length >= 5 || universeSimulating}
+   296→                            onClick={() => addRelicToCrucible(r.id)}
+   297→                          >
+   298→                            <Plus className="w-3 h-3 mr-1" />
+   299→                            Add to Crucible ({crucibleRelicIds.length}/5)
+   300→                          </Button>
+   301→                        )}
+   302→                      </div>
+   303→                    );
+   304→                  })}
+   305→                </div>
+   306→              )}
+   307→            </section>
+   308→
+   309→            {/* Crucible */}
+   310→            <section>
+   311→              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1 justify-between">
+   312→                <span className="flex items-center gap-1">
+   313→                  <Atom className="w-3 h-3" /> The Crucible ({crucibleRelicIds.length}/5 relics)
+   314→                </span>
+   315→                <div className="flex items-center gap-1">
+   316→                  <Button
+   317→                    size="sm"
+   318→                    variant="outline"
+   319→                    className="h-5 text-[0.55rem] text-rose-300 border-rose-400/40"
+   320→                    disabled={crucibleRelicIds.length === 0 || universeSimulating}
+   321→                    onClick={() => clearCrucible()}
+   322→                    title="Clear all relics from the crucible"
+   323→                  >
+   324→                    <RefreshCw className="w-2.5 h-2.5 mr-0.5" /> Clear
+   325→                  </Button>
+   326→                </div>
+   327→              </div>
+   328→              <div className="stat-card p-2">
+   329→                {/* Crucible slots */}
+   330→                <div className="grid grid-cols-5 gap-1 mb-2">
+   331→                  {[0, 1, 2, 3, 4].map((slotIdx) => {
+   332→                    const relic = crucibleRelics[slotIdx];
+   333→                    return (
+   334→                      <div
+   335→                        key={slotIdx}
+   336→                        className={`rounded border p-1 text-center text-[0.55rem] ${relic ? "border-amber-400/60 bg-amber-500/10 text-amber-200" : "border-slate-700/40 text-muted-foreground/60"}`}
+   337→                      >
+   338→                        {relic ? (
+   339→                          <div className="truncate" title={relic.name}>
+   340→                            <Atom className="w-2.5 h-2.5 inline mr-0.5" />
+   341→                            {relic.name.replace("Relic of the ", "")}
+   342→                          </div>
+   343→                        ) : (
+   344→                          <span>empty</span>
+   345→                        )}
+   346→                      </div>
+   347→                    );
+   348→                  })}
+   349→                </div>
+   350→                {/* Computed rule levels */}
+   351→                <div className="space-y-1">
+   352→                  {crucibleComp.rules.map((rv) => {
+   353→                    const stable = rv.finalValue >= RULE_STABLE_MIN && rv.finalValue <= RULE_STABLE_MAX;
+   354→                    const low = rv.finalValue < RULE_STABLE_MIN;
+   355→                    const high = rv.finalValue > RULE_STABLE_MAX;
+   356→                    return (
+   357→                      <div key={rv.ruleId} className="flex items-center gap-2 text-[0.7rem]">
+   358→                        <span className="w-5 text-center">{ruleIcon(rv.ruleId)}</span>
+   359→                        <span className="w-28 truncate">{ruleShortName(rv.ruleId)}</span>
+   360→                        {/* Displayed value: revealed portion + mystery marker */}
+   361→                        <span className={`font-mono w-14 text-right ${stable ? "text-emerald-300" : low ? "text-rose-300" : high ? "text-amber-300" : "text-foreground"}`}>
+   362→                          {rv.revealedValue}
+   363→                          {rv.hasMystery ? "±?" : ""}
+   364→                        </span>
+   365→                        <span className="text-muted-foreground/60 text-[0.6rem]">→</span>
+   366→                        {/* Final value (after overflow) */}
+   367→                        <span className={`font-mono w-8 text-right font-bold ${stable ? "text-emerald-300" : low ? "text-rose-300" : high ? "text-amber-300" : "text-foreground"}`}>
+   368→                          {rv.finalValue}
+   369→                        </span>
+   370→                        {(low || high) && (
+   371→                          <AlertTriangle className={`w-3 h-3 ${low ? "text-rose-400" : "text-amber-400"}`} />
+   372→                        )}
+   373→                      </div>
+   374→                    );
+   375→                  })}
+   376→                </div>
+   377→                <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700/40 text-[0.65rem]">
+   378→                  <span className="text-muted-foreground">
+   379→                    Total: <span className={`font-mono font-bold ${crucibleComp.total === RULE_TOTAL_TARGET ? "text-emerald-300" : "text-rose-300"}`}>{crucibleComp.total}</span> / {RULE_TOTAL_TARGET}
+   380→                  </span>
+   381→                  <span className="text-muted-foreground">
+   382→                    Base per rule: {RULE_BASE} · Stability: <span className={crucibleComp.unstable ? "text-rose-300" : "text-emerald-300"}>
+   383→                      {crucibleComp.unstable ? `UNSTABLE (instability ${crucibleComp.instability})` : "stable"}
+   384→                    </span>
+   385→                  </span>
+   386→                </div>
+   387→              </div>
+   388→              {/* Big Bang button */}
+   389→              <div className="mt-2">
+   390→                {universeSimulating ? (
+   391→                  // P7 — Loading state: skeleton screen during the 30-second
+   392→                  // Big Bang simulation. Show pulsing placeholder relic slots
+   393→                  // (instead of just a progress bar) + a "Simulating universe..."
+   394→                  // status line. Keep the seconds-remaining indicator so the
+   395→                  // player knows roughly how long is left.
+   396→                  <div className="stat-card p-3 space-y-2">
+   397→                    <div className="flex items-center justify-between text-[0.7rem]">
+   398→                      <span className="text-amber-200 flex items-center gap-1 animate-pulse">
+   399→                        <Sparkles className="w-3 h-3" /> Simulating universe…
+   400→                      </span>
+   401→                      <span className="font-mono text-amber-300">{simRemainingSec.toFixed(0)}s</span>
+   402→                    </div>
+   403→                    {/* Pulsing placeholder cards — match the relic grid layout
+   404→                        so the layout doesn't shift when the result returns. */}
+   405→                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+   406→                      {Array.from({ length: 4 }).map((_, i) => (
+   407→                        <div
+   408→                          key={i}
+   409→                          className="h-12 rounded-md border border-amber-400/20 bg-amber-500/5 animate-pulse"
+   410→                          style={{ animationDelay: `${i * 150}ms` }}
+   411→                          aria-hidden
+   412→                        />
+   413→                      ))}
+   414→                    </div>
+   415→                    <div className="text-[0.6rem] text-muted-foreground text-center">
+   416→                      The crucible blazes — reality crystallizes…
+   417→                    </div>
+   418→                  </div>
+   419→                ) : (
+   420→                  <Button
+   421→                    className="w-full h-9 bg-gradient-to-r from-amber-600 via-rose-600 to-violet-600 hover:from-amber-500 hover:via-rose-500 hover:to-violet-500 text-white font-bold"
+   422→                    disabled={crucibleRelicIds.length < 1}
+   423→                    onClick={() => triggerBigBang()}
+   424→                  >
+   425→                    <Sparkles className="w-4 h-4 mr-2" />
+   426→                    Trigger Big Bang {crucibleRelicIds.length < 1 ? "(add a relic first)" : `(${crucibleRelicIds.length} relic${crucibleRelicIds.length !== 1 ? "s" : ""})`}
+   427→                  </Button>
+   428→                )}
+   429→              </div>
+   430→            </section>
+   431→
+   432→            {/* Last simulation result */}
+   433→            {lastSimResult && (
+   434→              <section>
+   435→                <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
+   436→                  Last Big Bang Result
+   437→                </div>
+   438→                <div className={`stat-card p-2 ${lastSimResult.stable ? "border-emerald-400/60 bg-emerald-500/5" : "border-rose-400/60 bg-rose-500/5"}`}>
+   439→                  {lastSimResult.stable ? (
+   440→                    <div className="text-[0.7rem]">
+   441→                      <div className="flex items-center gap-1 text-emerald-300 font-semibold">
+   442→                        <CheckCircle2 className="w-3 h-3" /> STABLE
+   443→                      </div>
+   444→                      <div className="text-muted-foreground mt-1">
+   445→                        {lastSimResult.archetypeId ? (
+   446→                          <>Discovered archetype: <span className="text-amber-300 font-semibold">{ARCHETYPE_MAP[lastSimResult.archetypeId]?.name || "Unknown"}</span></>
+   447→                        ) : (
+   448→                          <>No archetype matched this combination.</>
+   449→                        )}
+   450→                      </div>
+   451→                      <div className="text-muted-foreground mt-0.5">
+   452→                        +{lastSimResult.relicsGained} new relic(s).
+   453→                      </div>
+   454→                    </div>
+   455→                  ) : (
+   456→                    <div className="text-[0.7rem]">
+   457→                      <div className="flex items-center gap-1 text-rose-300 font-semibold">
+   458→                        <AlertTriangle className="w-3 h-3" /> UNSTABLE
+   459→                      </div>
+   460→                      <div className="text-muted-foreground mt-1">
+   461→                        Instability level: {lastSimResult.instability}. Lost {lastSimResult.relicsLost} relic(s) from inventory.
+   462→                      </div>
+   463→                    </div>
+   464→                  )}
+   465→                </div>
+   466→              </section>
+   467→            )}
+   468→
+   469→            {/* Archetype Collection */}
+   470→            <section>
+   471→              <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
+   472→                <span className="flex items-center gap-1">
+   473→                  <Star className="w-3 h-3" /> Archetype Collection ({discoveredCount}/{ARCHETYPE_COUNT})
+   474→                </span>
+   475→                <span className="text-[0.6rem] normal-case">
+   476→                  {allDiscovered ? "All discovered — ending unlocked!" : `${ARCHETYPE_COUNT - discoveredCount} remaining`}
+   477→                </span>
+   478→              </div>
+   479→              <Progress value={(discoveredCount / ARCHETYPE_COUNT) * 100} className="h-2 mb-2 bg-slate-800/60" />
+   480→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-48 overflow-y-auto pr-1">
+   481→                {ARCHETYPES.map((a) => {
+   482→                  const found = !!discoveredArchetypes[a.id];
+   483→                  return (
+   484→                    <div
+   485→                      key={a.id}
+   486→                      className={`stat-card p-1.5 text-[0.65rem] ${found ? "border-amber-400/60 bg-amber-500/10" : "border-slate-700/40 opacity-80"}`}
+   487→                    >
+   488→                      <div className="flex items-center gap-1">
+   489→                        {found ? (
+   490→                          <CheckCircle2 className="w-2.5 h-2.5 text-amber-300" />
+   491→                        ) : (
+   492→                          <Lock className="w-2.5 h-2.5 text-muted-foreground/60" />
+   493→                        )}
+   494→                        <span className={`font-medium truncate flex-1 ${found ? "text-amber-200" : "text-muted-foreground"}`}>
+   495→                          {found ? a.name : "???"}
+   496→                        </span>
+   497→                        {found && (
+   498→                          <Badge variant="outline" className="text-[0.5rem] text-emerald-300 border-emerald-400/40">+1%</Badge>
+   499→                        )}
+   500→                      </div>
+   501→                      <div className="text-[0.55rem] text-muted-foreground/80 mt-0.5 leading-tight">
+   502→                        {found ? `Rules: ${a.rules.join("/")}` : a.hint}
+   503→                      </div>
+   504→                    </div>
+   505→                  );
+   506→                })}
+   507→              </div>
+   508→            </section>
+   509→
+   510→            {/* Bonus summary */}
+   511→            <section>
+   512→              <div className="stat-card p-2 text-[0.7rem]">
+   513→                <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground mb-1">Current bonuses</div>
+   514→                <div className="flex flex-wrap gap-1">
+   515→                  <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
+   516→                    +{(discoveredCount * 1).toFixed(0)}% production (archetypes)
+   517→                  </Badge>
+   518→                  {cosmicBoonStacks > 0 && (
+   519→                    <Badge variant="outline" className="text-indigo-300 border-indigo-400/40">
+   520→                      +{(boon * 100).toFixed(0)}% production (cosmic boons)
+   521→                    </Badge>
+   522→                  )}
+   523→                </div>
+   524→              </div>
+   525→            </section>
+   526→          </div>
+   527→        )}
+   528→
+   529→        <Separator className="my-2" />
+   530→        <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
+   531→          <RefreshCw className="w-3 h-3" />
+   532→          Discover all {ARCHETYPE_COUNT} archetypes to unlock the ending screen. Each archetype grants +1% production.
+   533→        </div>
+   534→        <div className="flex justify-end pt-2">
+   535→          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
+   536→        </div>
+   537→
+   538→        {/* Ending-screen confirmation dialog */}
+   539→        <AlertDialog open={pendingEnding !== null} onOpenChange={(open) => { if (!open) setPendingEnding(null); }}>
+   540→          <AlertDialogContent>
+   541→            <AlertDialogHeader>
+   542→              <AlertDialogTitle>
+   543→                {pendingEnding === "preserve" ? "Continue in this Realm?" : "Explore another Dimension?"}
+   544→              </AlertDialogTitle>
+   545→              <AlertDialogDescription>
+   546→                {pendingEnding === "preserve"
+   547→                  ? "Continue playing with all bonuses intact. The Genesis Engine remains open for further experiments."
+   548→                  : "Reset the universe and begin a new dimension. You keep all discovered archetypes and gain a permanent Cosmic Boon stack (+10% all production). This cannot be undone."}
+   549→              </AlertDialogDescription>
+   550→            </AlertDialogHeader>
+   551→            <AlertDialogFooter>
+   552→              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   553→              <AlertDialogAction
+   554→                onClick={confirmEnding}
+   555→                className={pendingEnding === "reset" ? "bg-rose-600 hover:bg-rose-700 text-white" : ""}
+   556→              >
+   557→                {pendingEnding === "preserve" ? "Continue" : "Reset"}
+   558→              </AlertDialogAction>
+   559→            </AlertDialogFooter>
+   560→          </AlertDialogContent>
+   561→        </AlertDialog>
+   562→    </>
+   563→  );
+   564→}
+   565→
+   566→// ----- Ending screen -----
+   567→
+   568→// L10-ENDING-L5-UI-UNLOCKTECH — Dimension picker data.
+   569→// Only "mundane" is selectable on the dimension picker; all others are
+   570→// rendered as locked. `visitedDimensions` (from GameState, always starts
+   571→// with `["mundane"]`) is the source-of-truth for which dimensions have
+   572→// been visited — when more dimensions become unlockable in future
+   573→// updates, the picker will read from this list to decide which
+   574→// radio buttons are enabled.
+   575→interface DimensionOption {
+   576→  id: string;
+   577→  name: string;
+   578→  desc: string;
+   579→  // Special "locked" reason text. If omitted, locked dimensions just show
+   580→  // "Locked" with the standard lock icon. The "random" entry uses this to
+   581→  // explain the unlock condition (finish a dimension first).
+   582→  lockedNote?: string;
+   583→}
+   584→
+   585→// Future: unlock dimensions by finishing L10 in each one
+   586→const DIMENSION_OPTIONS: DimensionOption[] = [
+   587→  {
+   588→    id: "mundane",
+   589→    name: "Mundane Realm",
+   590→    desc: "The familiar world you began in. Earth, history, the ordinary cosmos.",
+   591→  },
+   592→  {
+   593→    id: "random",
+   594→    name: "Random Dimension",
+   595→    desc: "Let the multiverse choose for you.",
+   596→    lockedNote: "finish a dimension first",
+   597→  },
+   598→  {
+   599→    id: "fantasy",
+   600→    name: "Fantasy Realm",
+   601→    desc: "Swords, sorcery, dragons, and ancient magics.",
+   602→  },
+   603→  {
+   604→    id: "cyberpunk",
+   605→    name: "Cyberpunk Neon",
+   606→    desc: "Rain-slick megacity streets, chrome augments, and digital ghosts.",
+   607→  },
+   608→  {
+   609→    id: "ancient_egypt",
+   610→    name: "Ancient Egypt",
+   611→    desc: "Pharaohs, pyramids, and the long gaze of Ra across the Nile.",
+   612→  },
+   613→  {
+   614→    id: "norse",
+   615→    name: "Norse Mythology",
+   616→    desc: "Frost giants, the World Tree, and a serpent circling the seas.",
+   617→  },
+   618→  {
+   619→    id: "greek",
+   620→    name: "Greek Mythology",
+   621→    desc: "Mount Olympus, the wine-dark sea, and the wrath of the gods.",
+   622→  },
+   623→  {
+   624→    id: "post_apoc",
+   625→    name: "Post-Apocalyptic",
+   626→    desc: "Ash, rust, the long quiet after the end of all things.",
+   627→  },
+   628→];
+   629→
+   630→function EndingScreen({
+   631→  discoveredCount,
+   632→  totalPlayTime,
+   633→  thisRunTime,
+   634→  totalRuns,
+   635→  finalScore,
+   636→  boon,
+   637→  cosmicBoonStacks,
+   638→  visitedDimensions,
+   639→  onChooseEnding,
+   640→}: {
+   641→  discoveredCount: number;
+   642→  totalPlayTime: number;
+   643→  thisRunTime: number;
+   644→  totalRuns: number;
+   645→  finalScore: number;
+   646→  boon: number;
+   647→  cosmicBoonStacks: number;
+   648→  visitedDimensions: string[];
+   649→  onChooseEnding: (id: "preserve" | "reset") => void;
+   650→}) {
+   651→  // L10-ENDING-L5-UI-UNLOCKTECH — the EndingScreen has two views:
+   652→  //   - "main"  : the default cosmic viz + stats + two ending buttons.
+   653→  //   - "picker" : shown after the player clicks "Explore another
+   654→  //                Dimension". Lists the available dimensions; only the
+   655→  //                mundane realm is selectable today.
+   656→  const [view, setView] = useState<"main" | "picker">("main");
+   657→  const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
+   658→
+   659→  if (view === "picker") {
+   660→    return (
+   661→      <DimensionPicker
+   662→        visitedDimensions={visitedDimensions}
+   663→        selected={selectedDimension}
+   664→        onSelect={setSelectedDimension}
+   665→        onConfirm={() => onChooseEnding("reset")}
+   666→        onBack={() => {
+   667→          setSelectedDimension(null);
+   668→          setView("main");
+   669→        }}
+   670→      />
+   671→    );
+   672→  }
+   673→
+   674→  return (
+   675→    <div className="space-y-4">
+   676→      {/* Cosmic visualization */}
+   677→      <div className="relative h-48 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-900 via-violet-900 to-rose-900 border border-amber-400/30">
+   678→        <div className="absolute inset-0 flex items-center justify-center">
+   679→          <div className="relative">
+   680→            <div className="absolute -inset-12 rounded-full bg-amber-400/20 blur-2xl animate-pulse" />
+   681→            <div className="absolute -inset-8 rounded-full bg-violet-400/30 blur-xl animate-pulse" />
+   682→            <Sparkles className="w-16 h-16 text-amber-300 relative animate-pulse" />
+   683→            <div className="absolute -top-3 -left-3 w-3 h-3 bg-cyan-300 rounded-full animate-ping" />
+   684→            <div className="absolute -top-6 right-0 w-2 h-2 bg-rose-300 rounded-full animate-ping" />
+   685→            <div className="absolute bottom-2 -right-4 w-2.5 h-2.5 bg-emerald-300 rounded-full animate-ping" />
+   686→            <div className="absolute bottom-4 -left-8 w-1.5 h-1.5 bg-amber-200 rounded-full animate-ping" />
+   687→          </div>
+   688→        </div>
+   689→        <div className="absolute bottom-2 left-0 right-0 text-center">
+   690→          <div className="text-amber-200 text-sm font-bold tracking-wide">THE GENESIS COMPLETE</div>
+   691→          <div className="text-[0.65rem] text-amber-100/70 mt-0.5">
+   692→            You have forged all 100 archetypes. The multiverse unfolds before you.
+   693→          </div>
+   694→        </div>
+   695→      </div>
+   696→
+   697→      {/* Stats */}
+   698→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+   699→        <EndingStat label="Archetypes" value={`${discoveredCount}/${ARCHETYPE_COUNT}`} />
+   700→        <EndingStat label="Total time (all dimensions)" value={formatTime(totalPlayTime)} />
+   701→        <EndingStat label="This dimension" value={formatTime(thisRunTime)} />
+   702→        <EndingStat label="Dimensions explored" value={`${totalRuns + 1}`} />
+   703→        <EndingStat label="Cosmic Boons" value={`${cosmicBoonStacks} (+${(boon * 100).toFixed(0)}%)`} />
+   704→        <EndingStat label="Final score" value={formatNumber(finalScore, 0)} />
+   705→      </div>
+   706→
+   707→      {/* Choice buttons */}
+   708→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   709→        {ENDING_CHOICES.map((e) => (
+   710→          <button
+   711→            key={e.id}
+   712→            onClick={() => {
+   713→              // The "Explore another Dimension" choice opens the dimension
+   714→              // picker view instead of immediately confirming the reset.
+   715→              // "Continue in this realm" still goes straight through the
+   716→              // parent's confirmation flow.
+   717→              if (e.id === "reset") {
+   718→                setSelectedDimension(null);
+   719→                setView("picker");
+   720→              } else {
+   721→                onChooseEnding(e.id);
+   722→              }
+   723→            }}
+   724→            className={`stat-card text-left p-3 hover:border-amber-400/60 ${e.id === "reset" ? "border-rose-400/50" : "border-amber-400/40"}`}
+   725→          >
+   726→            <div className="flex items-center gap-2 mb-1">
+   727→              <span className="text-xl">{e.icon}</span>
+   728→              <span className="text-sm font-bold">{e.name}</span>
+   729→            </div>
+   730→            <div className="text-[0.65rem] text-muted-foreground leading-snug">{e.desc}</div>
+   731→          </button>
+   732→        ))}
+   733→      </div>
+   734→    </div>
+   735→  );
+   736→}
+   737→
+   738→// ----- Dimension picker view -----
+   739→// Shown after the player clicks "Explore another Dimension" on the main
+   740→// ending screen. Lists the dimensions; only the mundane realm is
+   741→// selectable today. All others render as greyed-out, locked options.
+   742→
+   743→function DimensionPicker({
+   744→  visitedDimensions,
+   745→  selected,
+   746→  onSelect,
+   747→  onConfirm,
+   748→  onBack,
+   749→}: {
+   750→  visitedDimensions: string[];
+   751→  selected: string | null;
+   752→  onSelect: (id: string) => void;
+   753→  onConfirm: () => void;
+   754→  onBack: () => void;
+   755→}) {
+   756→  // Future: unlock dimensions by finishing L10 in each one.
+   757→  // For now only "mundane" is ever in visitedDimensions, so only that row
+   758→  // is enabled; every other row is locked + greyed out with a lock icon.
+   759→  return (
+   760→    <div className="space-y-3">
+   761→      <div className="text-center">
+   762→        <div className="text-sm font-bold text-amber-200 flex items-center justify-center gap-1.5">
+   763→          <Sparkles className="w-4 h-4" />
+   764→          Choose Your Next Dimension
+   765→        </div>
+   766→        <div className="text-[0.65rem] text-muted-foreground mt-0.5">
+   767→          The crucible shatters; the cosmos rearranges itself around you. Pick a realm to begin anew.
+   768→        </div>
+   769→      </div>
+   770→
+   771→      <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
+   772→        {DIMENSION_OPTIONS.map((d) => {
+   773→          // Only the mundane realm (visited) is selectable. "random" is a
+   774→          // special case — it's locked with a custom note ("finish a
+   775→          // dimension first") so the player understands the unlock path.
+   776→          const isUnlocked = visitedDimensions.includes(d.id);
+   777→          const isLocked = !isUnlocked;
+   778→          const isSelected = selected === d.id;
+   779→          return (
+   780→            <button
+   781→              key={d.id}
+   782→              disabled={isLocked}
+   783→              onClick={() => onSelect(d.id)}
+   784→              className={`w-full text-left p-2 rounded-md border transition-colors flex items-start gap-2 ${
+   785→                isLocked
+   786→                  ? "border-slate-700/40 bg-slate-900/40 opacity-50 cursor-not-allowed"
+   787→                  : isSelected
+   788→                    ? "border-amber-400/70 bg-amber-500/10 ring-1 ring-amber-400/40"
+   789→                    : "border-slate-600/40 bg-card/40 hover:bg-card/70 hover:border-amber-400/50"
+   790→              }`}
+   791→            >
+   792→              <span
+   793→                className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center text-[0.55rem] shrink-0 ${
+   794→                  isLocked
+   795→                    ? "border-muted-foreground/30"
+   796→                    : isSelected
+   797→                      ? "border-amber-400 bg-amber-400 text-slate-900"
+   798→                      : "border-slate-500"
+   799→                }`}
+   800→                aria-hidden
+   801→              >
+   802→                {!isLocked && isSelected ? "✓" : ""}
+   803→              </span>
+   804→              <div className="min-w-0 flex-1">
+   805→                <div className="flex items-center gap-1.5">
+   806→                  <span
+   807→                    className={`text-xs font-medium truncate ${
+   808→                      isLocked ? "text-muted-foreground" : "text-amber-100"
+   809→                    }`}
+   810→                  >
+   811→                    {isLocked && d.id === "random"
+   812→                      ? `Random Dimension`
+   813→                      : d.id === "mundane"
+   814→                        ? `Start again in this Dimension: ${d.name}`
+   815→                        : d.name}
+   816→                  </span>
+   817→                  {isLocked && (
+   818→                    <Lock className="w-3 h-3 text-muted-foreground/70 shrink-0" />
+   819→                  )}
+   820→                </div>
+   821→                <div className="text-[0.6rem] text-muted-foreground leading-snug mt-0.5">
+   822→                  {d.desc}
+   823→                  {isLocked && d.lockedNote && (
+   824→                    <span className="ml-1 text-rose-300/80">({d.lockedNote})</span>
+   825→                  )}
+   826→                </div>
+   827→              </div>
+   828→            </button>
+   829→          );
+   830→        })}
+   831→      </div>
+   832→
+   833→      <div className="flex items-center justify-between gap-2 pt-1">
+   834→        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+   835→          ← Back
+   836→        </Button>
+   837→        <Button
+   838→          size="sm"
+   839→          className="h-8 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white"
+   840→          disabled={!selected}
+   841→          onClick={onConfirm}
+   842→        >
+   843→          <Sparkles className="w-3 h-3 mr-1" />
+   844→          {selected ? `Reset into: ${DIMENSION_OPTIONS.find((d) => d.id === selected)?.name}` : "Select a dimension"}
+   845→        </Button>
+   846→      </div>
+   847→      {/* Future: unlock dimensions by finishing L10 in each one. Today, only the Mundane Realm is selectable. */}
+   848→      <div className="text-[0.55rem] text-muted-foreground/70 text-center">
+   849→        Today, only the Mundane Realm is selectable. Future dimensions will unlock by finishing L10 in each one.
+   850→      </div>
+   851→    </div>
+   852→  );
+   853→}
+   854→
+   855→function EndingStat({ label, value }: { label: string; value: string }) {
+   856→  return (
+   857→    <div className="stat-card p-2">
+   858→      <div className="text-[0.55rem] uppercase tracking-wide text-muted-foreground">{label}</div>
+   859→      <div className="text-sm font-bold text-amber-200 mt-0.5">{value}</div>
+   860→    </div>
+   861→  );
+   862→}
+   863→
+   864→// ----- Starter relic helper -----
+   865→// Hint shown to players who haven't acquired any relics yet. The actual
+   866→// starter-relic seeding happens in the store when L10 first unlocks (and via
+   867→// debugUnlockAll for testing).
+   868→
+   869→function StarterRelicHint() {
+   870→  return (
+   871→    <span className="text-[0.6rem] text-muted-foreground">
+   872→      Defeat Old Gods and complete trials to earn relics — or use the Genesis Engine once you have one.
+   873→    </span>
+   874→  );
+   875→}
+   876→
