@@ -243,4 +243,17 @@ export const fantasyDimension: DimensionDef = {
     aquatic: "🐟",
     extremophile: "👁️",
   },
+
+  layerNames: {
+    evolution:       { name: "Awakening",     tagline: "The spirit opens its eyes" },
+    enlightenment:   { name: "Divination",    tagline: "The first fate is remembered" },
+    transcendence:   { name: "Soul Trade",    tagline: "Form becomes optional" },
+    genesis:         { name: "Realm Forging",  tagline: "A new realm, seeded" },
+    apotheosis:      { name: "Ascension",     tagline: "The god opens its eyes" },
+    singularity:     { name: "Convergence",   tagline: "All paths converge" },
+    omnipotence:     { name: "Animancy",      tagline: "Create life to fight the Abyss" },
+    divinity:        { name: "Pantheon",      tagline: "Forge divine alliances" },
+    infinity:        { name: "Ragnarok",      tagline: "The ancient evils stir" },
+    eternity:        { name: "Genesis",       tagline: "Forge a new realm of your own rules" },
+  },
 };

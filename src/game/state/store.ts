@@ -526,14 +526,8 @@ function initialMetaState(): Partial<GameState> {
     chosenEnding: null,
     cosmicBoonStacks: 0,
     showEternity: false,
-<<<<<<< HEAD
-    activeDimension: "mundane", // default dimension — always available
-    visitedDimensions: ["mundane"], // always starts with the Mundane Realm
-=======
-    // L10-ENDING-L5-UI-UNLOCKTECH — always starts with the mundane dimension.
-    // Future: unlock dimensions by finishing L10 in each one.
+    activeDimension: "mundane",
     visitedDimensions: ["mundane"],
->>>>>>> origin/main
     // NEW: Genesis Engine state
     divineRelics: [],
     crucibleRelicIds: [],
@@ -5410,7 +5404,6 @@ export const useGameStore = create<GameStore>()(
         }
       },
 
-<<<<<<< HEAD
       // DIMENSION SYSTEM — select the active dimension (visual/naming reskin).
       // Called from the L10 ending screen dimension picker.
       selectDimension: (dimensionId) => {
@@ -5439,8 +5432,6 @@ export const useGameStore = create<GameStore>()(
         void _godId;
       },
 
-=======
->>>>>>> origin/main
       // ============ GENESIS ENGINE — new actions ============
       addRelicToCrucible: (relicId) => {
         const s = get();

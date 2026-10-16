@@ -723,7 +723,6 @@ function EndingScreen({
 
       {/* Choice buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-<<<<<<< HEAD
         {/* Continue in this Realm */}
         <button
           onClick={() => onChooseEnding("preserve")}
@@ -750,89 +749,6 @@ function EndingScreen({
             Reset with a Cosmic Boon (+10% all production permanently). Choose your next dimension below.
           </div>
         </button>
-      </div>
-
-      {/* Dimension picker — shown when player chooses "Explore another Dimension" */}
-      {/* The picker is always visible on the ending screen so the player can see their options. */}
-      <DimensionPicker />
-    </div>
-  );
-}
-
-// ----- Dimension Picker -----
-// Shows all available dimensions. The player's current dimension + any visited
-// dimensions are selectable. Unvisited dimensions are selectable too (first visit).
-function DimensionPicker() {
-  const selectDimension = useGameStore((s) => s.selectDimension);
-  const activeDimension = useGameStore((s) => s.activeDimension || "mundane");
-  const visitedDimensions = useGameStore((s) => s.visitedDimensions || ["mundane"]);
-
-  return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-        Choose Your Next Dimension
-      </div>
-      <div className="space-y-1.5">
-        {DIMENSIONS.map((dim) => {
-          const isCurrent = dim.id === activeDimension;
-          const isVisited = visitedDimensions.includes(dim.id);
-          const isAvailable = dim.isBase || true; // All 3 dimensions available at launch
-          return (
-            <button
-              key={dim.id}
-              disabled={!isAvailable || isCurrent}
-              onClick={() => selectDimension(dim.id)}
-              className={`w-full text-left p-2.5 rounded-lg border transition-all ${
-                isCurrent
-                  ? "border-amber-400/60 bg-amber-500/10 opacity-60"
-                  : isAvailable
-                    ? "border-border/60 hover:border-amber-400/40 hover:bg-amber-500/5"
-                    : "border-border/30 opacity-40 cursor-not-allowed"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{dim.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold">
-                    {dim.name}
-                    {isCurrent && <span className="text-[0.6rem] text-amber-300 ml-2">(current)</span>}
-                    {isVisited && !isCurrent && <span className="text-[0.6rem] text-emerald-300 ml-2">visited</span>}
-                  </div>
-                  <div className="text-[0.65rem] text-muted-foreground truncate">{dim.desc}</div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      <div className="text-[0.6rem] text-muted-foreground/60 italic">
-        Future dimensions (Norse, Greek, Egypt, Post-Apocalyptic) will be added in content updates.
-=======
-        {ENDING_CHOICES.map((e) => (
-          <button
-            key={e.id}
-            onClick={() => {
-              // The "Explore another Dimension" choice opens the dimension
-              // picker view instead of immediately confirming the reset.
-              // "Continue in this realm" still goes straight through the
-              // parent's confirmation flow.
-              if (e.id === "reset") {
-                setSelectedDimension(null);
-                setView("picker");
-              } else {
-                onChooseEnding(e.id);
-              }
-            }}
-            className={`stat-card text-left p-3 hover:border-amber-400/60 ${e.id === "reset" ? "border-rose-400/50" : "border-amber-400/40"}`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl">{e.icon}</span>
-              <span className="text-sm font-bold">{e.name}</span>
-            </div>
-            <div className="text-[0.65rem] text-muted-foreground leading-snug">{e.desc}</div>
-          </button>
-        ))}
->>>>>>> origin/main
       </div>
     </div>
   );
@@ -873,10 +789,10 @@ function DimensionPicker({
 
       <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
         {DIMENSION_OPTIONS.map((d) => {
-          // Only the mundane realm (visited) is selectable. "random" is a
-          // special case — it's locked with a custom note ("finish a
-          // dimension first") so the player understands the unlock path.
-          const isUnlocked = visitedDimensions.includes(d.id);
+          // Available dimensions = Mundane (always), Fantasy + Cyberpunk (implemented).
+          // Future dimensions (Egypt, Norse, Greek, Post-Apoc) are locked.
+          const IMPLEMENTED = ["mundane", "fantasy", "cyberpunk"];
+          const isUnlocked = IMPLEMENTED.includes(d.id) || visitedDimensions.includes(d.id);
           const isLocked = !isUnlocked;
           const isSelected = selected === d.id;
           return (

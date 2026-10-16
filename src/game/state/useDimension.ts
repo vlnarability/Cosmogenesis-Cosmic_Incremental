@@ -27,5 +27,8 @@ export function useActiveDimension() {
     // Helper: get an archetype's display name
     archetypeName: (id: string, fallback: string): string => dim.archetypeNames[id] || fallback,
     archetypeGlyph: (id: string, fallback: string): string => dim.archetypeGlyphs[id] || fallback,
+    // Helper: get a layer's display name + tagline
+    layerName: (id: string, fallback: string): string => dim.layerNames[id]?.name || fallback,
+    layerTagline: (id: string, fallback: string): string => dim.layerNames[id]?.tagline || fallback,
   };
 }

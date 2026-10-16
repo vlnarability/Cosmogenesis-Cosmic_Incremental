@@ -400,17 +400,14 @@ export interface GameState {
   chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
   cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
-<<<<<<< HEAD
   // Dimension system — the active dimension (visual/naming reskin). Persists across prestiges.
   activeDimension: string; // "mundane" | "fantasy" | "cyberpunk" | ...
   visitedDimensions: string[]; // list of dimension ids the player has explored
-=======
   // L10-ENDING-L5-UI-UNLOCKTECH — dimensions the player has visited (always
   // starts with ["mundane"]). Future: unlocks additional dimensions by
   // finishing L10 in each one. Currently only "mundane" is selectable on the
   // ending-screen dimension picker.
   visitedDimensions: string[];
->>>>>>> origin/main
   // NEW: Genesis Engine state
   //   divineRelics        — inventory of relics (each with rules + revealed state)
   //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)
@@ -785,13 +782,10 @@ export interface GameStore extends GameState {
   // Layer 10 — Eternity — Genesis Engine
   setShowEternity: (v: boolean) => void;
   chooseEnding: (endingId: "preserve" | "reset") => void;
-<<<<<<< HEAD
   selectDimension: (dimensionId: string) => void;
   // LEGACY stubs (kept for save-compat — Genesis Engine redesign removed these)
   setUniverseRule: (slotIndex: number, optionId: string) => void;
   toggleKeptGod: (godId: string) => void;
-=======
->>>>>>> origin/main
   // NEW: Genesis Engine actions
   /** Add a relic to the crucible (max 5, no duplicates). Cannot be removed once added. */
   addRelicToCrucible: (relicId: string) => void;

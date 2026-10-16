@@ -3,6 +3,7 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { useActiveLayer, layerName } from "@/game/state/layerHelpers";
+import { useActiveDimension } from "@/game/state/useDimension";
 import { formatNumber, formatCompact, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,7 @@ interface LayerButtonDef {
 
 export function Header() {
   const stageIndex = useGameStore((s) => s.stageIndex);
+  const dim = useActiveDimension();
   const population = useGameStore((s) => s.population);
   const time = useGameStore((s) => s.time);
   const speed = useGameStore((s) => s.speed);
@@ -111,16 +113,16 @@ export function Header() {
   // At L1–L3 the next 1–2 unlocked layers also appear as standalone buttons
   // (the player's immediate focus). At L4+ everything collapses into dropdown.
   const layerButtons: LayerButtonDef[] = [
-    { id: "L1", layerId: "challenges", rank: 1, label: "Trials", icon: <Skull className="w-3.5 h-3.5" />, onClick: () => openLayerModal("challenges"), unlocked: !!unlockedChallenges, activeChallenge: !!activeChallenge },
-    { id: "L2", layerId: "enlightenment", rank: 2, label: "Foresight", icon: <Eye className="w-3.5 h-3.5" />, onClick: () => openLayerModal("enlightenment"), unlocked: !!unlockedLayers?.enlightenment },
-    { id: "L3", layerId: "transcendence", rank: 3, label: "Sacrifice", icon: <Triangle className="w-3.5 h-3.5" />, onClick: () => openLayerModal("transcendence"), unlocked: !!unlockedLayers?.transcendence },
-    { id: "L4", layerId: "genesis", rank: 4, label: "Genesis", icon: <Egg className="w-3.5 h-3.5" />, onClick: () => openLayerModal("genesis"), unlocked: !!unlockedLayers?.genesis },
-    { id: "L5", layerId: "apotheosis", rank: 5, label: "Divine", icon: <Sparkles className="w-3.5 h-3.5" />, onClick: () => openLayerModal("apotheosis"), unlocked: !!unlockedLayers?.apotheosis, heresy: heresy },
-    { id: "L6", layerId: "singularity", rank: 6, label: "System", icon: <Circle className="w-3.5 h-3.5" />, onClick: () => openLayerModal("singularity"), unlocked: !!unlockedLayers?.singularity },
-    { id: "L7", layerId: "omnipotence", rank: 7, label: "Hybrid", icon: <Atom className="w-3.5 h-3.5" />, onClick: () => openLayerModal("omnipotence"), unlocked: !!unlockedLayers?.omnipotence },
-    { id: "L8", layerId: "divinity", rank: 8, label: "Masks", icon: <Church className="w-3.5 h-3.5" />, onClick: () => openLayerModal("divinity"), unlocked: !!unlockedLayers?.divinity },
-    { id: "L9", layerId: "infinity", rank: 9, label: "Echoes", icon: <InfinityIcon className="w-3.5 h-3.5" />, onClick: () => openLayerModal("infinity"), unlocked: !!unlockedLayers?.infinity },
-    { id: "L10", layerId: "eternity", rank: 10, label: "Eternity", icon: <Star className="w-3.5 h-3.5" />, onClick: () => openLayerModal("eternity"), unlocked: !!unlockedLayers?.eternity },
+    { id: "L1", layerId: "evolution", rank: 1, label: dim.layerName("evolution", "Evolution"), icon: <Skull className="w-3.5 h-3.5" />, onClick: () => openLayerModal("challenges"), unlocked: !!unlockedChallenges, activeChallenge: !!activeChallenge },
+    { id: "L2", layerId: "enlightenment", rank: 2, label: dim.layerName("enlightenment", "Enlightenment"), icon: <Eye className="w-3.5 h-3.5" />, onClick: () => openLayerModal("enlightenment"), unlocked: !!unlockedLayers?.enlightenment },
+    { id: "L3", layerId: "transcendence", rank: 3, label: dim.layerName("transcendence", "Transcendence"), icon: <Triangle className="w-3.5 h-3.5" />, onClick: () => openLayerModal("transcendence"), unlocked: !!unlockedLayers?.transcendence },
+    { id: "L4", layerId: "genesis", rank: 4, label: dim.layerName("genesis", "Genesis"), icon: <Egg className="w-3.5 h-3.5" />, onClick: () => openLayerModal("genesis"), unlocked: !!unlockedLayers?.genesis },
+    { id: "L5", layerId: "apotheosis", rank: 5, label: dim.layerName("apotheosis", "Apotheosis"), icon: <Sparkles className="w-3.5 h-3.5" />, onClick: () => openLayerModal("apotheosis"), unlocked: !!unlockedLayers?.apotheosis, heresy: heresy },
+    { id: "L6", layerId: "singularity", rank: 6, label: dim.layerName("singularity", "Singularity"), icon: <Circle className="w-3.5 h-3.5" />, onClick: () => openLayerModal("singularity"), unlocked: !!unlockedLayers?.singularity },
+    { id: "L7", layerId: "omnipotence", rank: 7, label: dim.layerName("omnipotence", "Omnipotence"), icon: <Atom className="w-3.5 h-3.5" />, onClick: () => openLayerModal("omnipotence"), unlocked: !!unlockedLayers?.omnipotence },
+    { id: "L8", layerId: "divinity", rank: 8, label: dim.layerName("divinity", "Divinity"), icon: <Church className="w-3.5 h-3.5" />, onClick: () => openLayerModal("divinity"), unlocked: !!unlockedLayers?.divinity },
+    { id: "L9", layerId: "infinity", rank: 9, label: dim.layerName("infinity", "Infinity"), icon: <InfinityIcon className="w-3.5 h-3.5" />, onClick: () => openLayerModal("infinity"), unlocked: !!unlockedLayers?.infinity },
+    { id: "L10", layerId: "eternity", rank: 10, label: dim.layerName("eternity", "Eternity"), icon: <Star className="w-3.5 h-3.5" />, onClick: () => openLayerModal("eternity"), unlocked: !!unlockedLayers?.eternity },
   ];
 
   const unlockedLayerButtons = layerButtons.filter((b) => b.unlocked);
@@ -164,7 +166,7 @@ export function Header() {
 
   // === Layer label (left zone) ===
   const layerLabelText = isL2Plus
-    ? `Layer ${activeLayerRank} — ${layerName(activeLayerId)}`
+    ? `Layer ${activeLayerRank} — ${dim.layerName(activeLayerId, layerName(activeLayerId))}`
     : `${stage.name} Stage`;
 
   return (

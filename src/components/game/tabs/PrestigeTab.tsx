@@ -1,6 +1,7 @@
 "use client";
 
 import { useGameStore, TRIAL_REALMS_REQUIRED_FOR_LAYER_2 } from "@/game/state/store";
+import { useActiveDimension } from "@/game/state/useDimension";
 import { PRESTIGE_LAYERS, isLayerUnlocked, countChallengesCompleted, type PrestigeLayer } from "@/game/data/prestigeLayers";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,7 @@ function LayerNextProgress({
 }
 
 export function PrestigeTab() {
+  const dim = useActiveDimension();
   const galacticWins = useGameStore((s) => s.galacticWins);
   const totalRuns = useGameStore((s) => s.totalRuns);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
@@ -251,8 +253,8 @@ export function PrestigeTab() {
           {/* Layer 1 — Evolution (Challenges) */}
           <LayerCard
             order={1}
-            name="Evolution"
-            tagline="The first spark learns to climb"
+            name={dim.layerName("evolution", "Evolution")}
+            tagline={dim.layerTagline("evolution", "The first spark learns to climb")}
             icon="🌱"
             unlocked={!!unlockedChallenges}
             unlockText="First Galactic win"
@@ -298,7 +300,7 @@ export function PrestigeTab() {
           {/* Layer 2 — Enlightenment (Foresight) */}
           <LayerCard
             order={2}
-            name="Enlightenment"
+            name={dim.layerName("enlightenment", "Enlightenment")}
             tagline="The first truth is remembered"
             icon="👁️"
             unlocked={!!unlockedLayers.enlightenment}
@@ -331,8 +333,8 @@ export function PrestigeTab() {
           {/* Layer 3 — Transcendence */}
           <LayerCard
             order={3}
-            name="Transcendence"
-            tagline="Form becomes optional"
+            name={dim.layerName("transcendence", "Transcendence")}
+            tagline={dim.layerTagline("transcendence", "Form becomes optional")}
             icon="🔺"
             unlocked={!!unlockedLayers.transcendence}
             unlockText="10 Foresight nodes purchased"
@@ -362,8 +364,8 @@ export function PrestigeTab() {
           {/* Layer 4 — Genesis */}
           <LayerCard
             order={4}
-            name="Genesis"
-            tagline="A new universe, seeded"
+            name={dim.layerName("genesis", "Genesis")}
+            tagline={dim.layerTagline("genesis", "A new universe, seeded")}
             icon="🥚"
             unlocked={!!unlockedLayers.genesis}
             unlockText="All 4 Blood Pacts performed"
@@ -393,7 +395,7 @@ export function PrestigeTab() {
           {/* Layer 5 — Apotheosis */}
           <LayerCard
             order={5}
-            name="Apotheosis"
+            name={dim.layerName("apotheosis", "Apotheosis")}
             tagline="The god of gods"
             icon="👑"
             unlocked={!!unlockedLayers.apotheosis}
@@ -424,8 +426,8 @@ export function PrestigeTab() {
           {/* Layer 6 — Singularity */}
           <LayerCard
             order={6}
-            name="Singularity"
-            tagline="All paths converge"
+            name={dim.layerName("singularity", "Singularity")}
+            tagline={dim.layerTagline("singularity", "All paths converge")}
             icon="🌀"
             unlocked={!!unlockedLayers.singularity}
             unlockText="Enact 3+ Divine Laws"
@@ -453,7 +455,7 @@ export function PrestigeTab() {
           {/* Layer 7 — Omnipotence (Bio-engineering) */}
           <LayerCard
             order={7}
-            name="Omnipotence"
+            name={dim.layerName("omnipotence", "Omnipotence")}
             tagline="Create life; forge legions"
             icon="⚛️"
             unlocked={!!unlockedLayers.omnipotence}
@@ -486,7 +488,7 @@ export function PrestigeTab() {
           {/* Layer 8 — Divinity (Divine Alliance) */}
           <LayerCard
             order={8}
-            name="Divinity"
+            name={dim.layerName("divinity", "Divinity")}
             tagline="Alliances with minor gods"
             icon="⛪"
             unlocked={!!unlockedLayers.divinity}
@@ -518,7 +520,7 @@ export function PrestigeTab() {
           {/* Layer 9 — Infinity (Divine War) */}
           <LayerCard
             order={9}
-            name="Infinity"
+            name={dim.layerName("infinity", "Infinity")}
             tagline="War against the Old Gods"
             icon="∞"
             unlocked={!!unlockedLayers.infinity}
@@ -549,7 +551,7 @@ export function PrestigeTab() {
           {/* Layer 10 — Eternity (Genesis Engine) */}
           <LayerCard
             order={10}
-            name="Eternity"
+            name={dim.layerName("eternity", "Eternity")}
             tagline="Forge universes in the Genesis Engine"
             icon="🌠"
             unlocked={!!unlockedLayers.eternity}
@@ -709,11 +711,15 @@ function LayerRow({
   layer,
   unlocked,
   isLast,
+  dim,
 }: {
   layer: PrestigeLayer;
   unlocked: boolean;
   isLast: boolean;
+  dim?: ReturnType<typeof useActiveDimension>;
 }) {
+  const fallbackDim = useActiveDimension();
+  const d = dim || fallbackDim;
   return (
     <div className={`relative flex items-start gap-3 p-3 rounded-lg border ${unlocked ? "border-border bg-muted/20" : "border-border/40 opacity-60"}`}>
       <div className="flex-1 min-w-0">
@@ -721,7 +727,7 @@ function LayerRow({
           <span className="text-base shrink-0" aria-hidden>{unlocked ? layer.icon : null}</span>
           <span className="text-sm font-semibold">
             <span className="text-muted-foreground mr-1">#{layer.order}</span>
-            {layer.name}
+            {d.layerName(layer.id, layer.name)}
           </span>
           <Badge variant="outline" className="text-[0.6rem]">{layer.currencyName}</Badge>
           {unlocked ? (
@@ -733,7 +739,7 @@ function LayerRow({
             </Badge>
           )}
         </div>
-        <p className="text-xs text-muted-foreground italic mt-0.5">{layer.tagline}</p>
+        <p className="text-xs text-muted-foreground italic mt-0.5">{d.layerTagline(layer.id, layer.tagline)}</p>
         <p className="text-xs text-foreground/80 leading-snug mt-1">{layer.story}</p>
       </div>
       {!isLast && (

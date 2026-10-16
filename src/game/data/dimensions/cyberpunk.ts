@@ -243,4 +243,17 @@ export const cyberpunkDimension: DimensionDef = {
     aquatic: "🌊",
     extremophile: "☢️",
   },
+
+  layerNames: {
+    evolution:       { name: "Iteration",       tagline: "The process spawns" },
+    enlightenment:   { name: "Illumination",    tagline: "The first data is mapped" },
+    transcendence:   { name: "Overclocking",    tagline: "Form becomes code" },
+    genesis:         { name: "Compilation",     tagline: "A new network, compiled" },
+    apotheosis:      { name: "Sandboxing",      tagline: "The AI opens its eyes" },
+    singularity:     { name: "System Breach",   tagline: "All networks converge" },
+    omnipotence:     { name: "Bio-Synthesis",   tagline: "Create synths to fight the rogue AIs" },
+    divinity:        { name: "Federation",      tagline: "Forge corporate alliances" },
+    infinity:        { name: "Zero Day",        tagline: "The rogue superintelligences stir" },
+    eternity:        { name: "Singularity",    tagline: "Compile a new digital universe" },
+  },
 };

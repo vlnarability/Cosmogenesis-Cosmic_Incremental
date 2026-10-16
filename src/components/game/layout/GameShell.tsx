@@ -81,11 +81,9 @@ export function GameShell() {
   const activeLayerTheme = useGameStore((s) => s.activeLayerTheme);
   const activeSpecialTheme = useGameStore((s) => s.activeSpecialTheme);
 
-<<<<<<< HEAD
   // DIMENSION SYSTEM — apply the active dimension's CSS overrides.
   const activeDimension = useGameStore((s) => s.activeDimension || "mundane");
   const dimensionClass = activeDimension !== "mundane" ? `dimension-${activeDimension}` : "";
-=======
   // ORGANELLES-THEMES — some special themes (e.g. mini-ai) carry an
   // `extraClass` that opts into additional styling (glassmorphism, glow
   // shadows, icon-in-box). Look it up via THEME_MAP when a special is on.
@@ -93,18 +91,14 @@ export function GameShell() {
     ? THEME_MAP[activeSpecialTheme]
     : undefined;
   const extraClass = activeSpecialDef?.extraClass || "";
->>>>>>> origin/main
 
   const themeClass = [
     activeSpecialTheme
       ? `theme-${activeSpecialTheme}`
       : `theme-${activeStageTheme}`,
     activeLayerTheme && !activeSpecialTheme ? `theme-${activeLayerTheme}` : "",
-<<<<<<< HEAD
     dimensionClass,
-=======
     extraClass,
->>>>>>> origin/main
   ].filter(Boolean).join(" ");
 
   return (

@@ -55,6 +55,9 @@ export interface DimensionDef {
 
   /** Archetype glyph overrides — key = archetype id, value = dimension-specific glyph */
   archetypeGlyphs: Record<string, string>;
+
+  /** Layer name + tagline overrides — key = layer id (e.g. "enlightenment"), value = { name, tagline } */
+  layerNames: Record<string, { name: string; tagline: string; }>;
 }
 
 // The base dimension (Mundane Realm) — no overrides, uses the game's default names.
@@ -76,4 +79,5 @@ export const mundaneDimension: DimensionDef = {
   storyOverrides: {},
   archetypeNames: {},
   archetypeGlyphs: {},
+  layerNames: {}, // No overrides — use the game's default layer names
 };
