@@ -403,6 +403,9 @@ export interface GameState {
   chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
   cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
+  // Dimension system — the active dimension (visual/naming reskin). Persists across prestiges.
+  activeDimension: string; // "mundane" | "fantasy" | "cyberpunk" | ...
+  visitedDimensions: string[]; // list of dimension ids the player has explored
   // NEW: Genesis Engine state
   //   divineRelics        — inventory of relics (each with rules + revealed state)
   //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)
@@ -689,6 +692,7 @@ export interface GameStore extends GameState {
   toggleCanonization: (canonId: string) => void; // LEGACY stub
   togglePermanenceWeave: (weaveId: string) => void; // LEGACY stub
   chooseEnding: (endingId: "preserve" | "reset") => void;
+  selectDimension: (dimensionId: string) => void;
   // LEGACY stubs (kept for save-compat — Genesis Engine redesign removed these)
   setUniverseRule: (slotIndex: number, optionId: string) => void;
   toggleKeptGod: (godId: string) => void;

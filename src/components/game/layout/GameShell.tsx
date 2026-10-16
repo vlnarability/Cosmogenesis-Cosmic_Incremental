@@ -70,11 +70,16 @@ export function GameShell() {
   const activeLayerTheme = useGameStore((s) => s.activeLayerTheme);
   const activeSpecialTheme = useGameStore((s) => s.activeSpecialTheme);
 
+  // DIMENSION SYSTEM — apply the active dimension's CSS overrides.
+  const activeDimension = useGameStore((s) => s.activeDimension || "mundane");
+  const dimensionClass = activeDimension !== "mundane" ? `dimension-${activeDimension}` : "";
+
   const themeClass = [
     activeSpecialTheme
       ? `theme-${activeSpecialTheme}`
       : `theme-${activeStageTheme}`,
     activeLayerTheme && !activeSpecialTheme ? `theme-${activeLayerTheme}` : "",
+    dimensionClass,
   ].filter(Boolean).join(" ");
 
   return (

@@ -283,6 +283,7 @@ import {
   isGenesisComplete,
   type DivineRelic,
 } from "../data/genesisEngine";
+import { getDimension, DIMENSIONS, DIMENSION_MAP } from "../data/dimensions";
 import {
   STAGE_INDEX_TO_THEME,
   LAYER_ID_TO_THEME,
@@ -552,6 +553,8 @@ function initialMetaState(): Partial<GameState> {
     chosenEnding: null,
     cosmicBoonStacks: 0,
     showEternity: false,
+    activeDimension: "mundane", // default dimension — always available
+    visitedDimensions: ["mundane"], // always starts with the Mundane Realm
     // NEW: Genesis Engine state
     divineRelics: [],
     crucibleRelicIds: [],
@@ -3436,6 +3439,9 @@ export const useGameStore = create<GameStore>()(
           cosmicBoonStacks: (s.cosmicBoonStacks || 0) +
             (s.chosenEnding === "reset" ? 1 : 0),
           showEternity: false,
+          // Dimension system — persists across prestiges
+          activeDimension: s.activeDimension || "mundane",
+          visitedDimensions: s.visitedDimensions || ["mundane"],
           // NEW: Genesis Engine state — persist relics + discoveries across prestiges
           divineRelics: s.divineRelics || [],
           crucibleRelicIds: [], // crucible is cleared on prestige
@@ -5445,9 +5451,28 @@ export const useGameStore = create<GameStore>()(
         if (endingId === "reset") {
           setTimeout(() => {
             get().addToLog("You step beyond the veil. A new dimension unfolds before you.");
+            // Mark current dimension as visited
+            const currentDim = s.activeDimension || "mundane";
+            const visited = [...new Set([...(s.visitedDimensions || ["mundane"]), currentDim])];
+            set({ visitedDimensions: visited });
             get().triggerPrestige();
           }, 0);
         }
+      },
+
+      // DIMENSION SYSTEM — select the active dimension (visual/naming reskin).
+      // Called from the L10 ending screen dimension picker.
+      selectDimension: (dimensionId) => {
+        const s = get();
+        const dim = getDimension(dimensionId);
+        if (!dim) return;
+        // Add to visited dimensions
+        const visited = [...new Set([...(s.visitedDimensions || ["mundane"]), dimensionId])];
+        set({
+          activeDimension: dimensionId,
+          visitedDimensions: visited,
+        });
+        get().addToLog(`Dimension selected: ${dim.name}. ${dim.desc}`);
       },
 
       // LEGACY — Genesis Engine redesign removed universe-rule slots.
@@ -6166,6 +6191,9 @@ export const useGameStore = create<GameStore>()(
         if (persisted.chosenEnding === undefined) persisted.chosenEnding = null;
         if (persisted.cosmicBoonStacks === undefined) persisted.cosmicBoonStacks = 0;
         if (persisted.showEternity === undefined) persisted.showEternity = false;
+        // Dimension system migration
+        if (!persisted.activeDimension) persisted.activeDimension = "mundane";
+        if (!persisted.visitedDimensions || !Array.isArray(persisted.visitedDimensions)) persisted.visitedDimensions = ["mundane"];
         if (persisted.unlockedLayers.eternity === undefined) persisted.unlockedLayers.eternity = false;
         // NEW: Genesis Engine state migration (v12).
         //   - Legacy `universeRules` (8-slot array) and `keptGods` (god ids) are
