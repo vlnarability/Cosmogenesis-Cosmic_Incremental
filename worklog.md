@@ -6640,3 +6640,422 @@ Costs scale with stage, mirroring existing tech patterns:
   corresponding archetype-drift system to link to. A future
   archetype-systems-expansion task could fill those gaps.
 
+
+---
+
+## FIX-STORE-BUGS — Store-level bug fixes (Trial of Fortune / autobuyers / upgrade catalog)
+
+### Summary
+
+Six store-level bugs were addressed across `src/game/state/store.ts`,
+`src/game/state/types.ts`, and `src/game/data/upgrades.ts`. Lint passes
+with 0 errors after the changes.
+
+### Bugs fixed
+
+**Bug 1 — Trial of Fortune not gated (`store.ts`).**
+The "Layer 1 — Trial of Fortune" event in the tick (every 120s, +20%
+capacity to 2 random primary resources) was firing for ALL players on
+their very first playthrough, before any Galactic win unlocked the L1
+challenge layer. Wrapped the entire Trial of Fortune block (including
+the first-time initialization `else if` clause) in
+`if (s.unlockedChallenges) { ... }`. `unlockedChallenges` flips to
+`true` after the first Galactic win (see `triggerPrestige` line ~3363
+in store.ts), so the event now only fires for L1-unlocked players.
+The sibling layer events (Vision / Divine Whim / Heresy Surge) were
+already gated by their respective `unlockedLayers.*` flags — this fix
+brings Trial of Fortune in line with them.
+
+**Bug 2 — Free Buy not working in buyUpgrade (`store.ts`).**
+Verified the `buyUpgrade` action (line ~3074) already contains the
+correct `!s.debugFreeBuy` guard:
+- Wins / layer gating wrapped in `if (!s.debugFreeBuy) { ... }`
+- Cost check uses `if (!s.debugFreeBuy && s.evolutionPoints < cost) { ... }`
+- The deduction is `evolutionPoints: s.debugFreeBuy ? s.evolutionPoints : s.evolutionPoints - cost`
+No changes needed. Confirmed working as expected.
+
+**Bug 3 — Remove Stage Compression upgrade (`upgrades.ts`, `types.ts`).**
+Removed the entire `stage_compression` entry from `UPGRADES` in
+`upgrades.ts` (was at lines ~182-192). Removed the matching
+`| "stage_compression"` literal from the `UpgradeEffectType` union in
+`src/game/state/types.ts`. Grep across the entire `src/` tree confirmed
+no other references to `stage_compression` exist (no store logic, no UI
+consumers).
+
+**Bug 4 — Simulation Amplifier moved to PP shop (`upgrades.ts`).**
+Removed the `simulation_amplifier` entry from the AUTOMATION (EP-shop)
+section of `UPGRADES`. Added a new entry in the UNIVERSAL (PP-shop)
+section with:
+- `category: "universal"`
+- `requiresLayer: "enlightenment"` — so it only appears after L2
+  (Enlightenment) is unlocked
+- `baseCost: 20`, `maxLevel: 20`, `costGrowth: 1.5` (unchanged)
+- Effect type unchanged (`auto_mult` / value 0.0; the actual multiplier
+  is applied via `s.upgrades["simulation_amplifier"] || 0` lookup in the
+  tick at line ~2277, and the DivineEnginePanel UI reads the same key)
+
+This means the upgrade is now purchased via `buyUniversalUpgrade`
+(spends Prestige Points) rather than `buyUpgrade` (spent EP). Verified
+the only external reader, `DivineEnginePanel.tsx` line 111, only reads
+the level — does not depend on the shop category, so no UI change
+required.
+
+**Bug 5 — Auto-Ascend autobuyer added (`upgrades.ts`, `store.ts`).**
+Added a new upgrade entry in `UPGRADES`:
+```ts
+{
+  id: "auto_ascend",
+  name: "Auto-Ascend",
+  desc: (l) => l ? "Automatically triggers prestige when Galactic is reached. Your civilization ascends on its own." : "Auto-prestiges at Galactic stage",
+  baseCost: 20,
+  maxLevel: 1,
+  costGrowth: 1.0,
+  category: "universal",
+  effect: { type: "auto_mult", value: 0.0 },
+}
+```
+Added tick logic immediately after the Auto-Evolver block (around line
+1252 in `store.ts`):
+```ts
+const hasAutoAscend = (s.upgrades["auto_ascend"] || 0) > 0;
+if (hasAutoAscend && s.stageIndex >= STAGES.length - 1) {
+  setTimeout(() => {
+    get().addToLog("🌌 Auto-Ascend: triggering prestige.");
+    get().triggerPrestige();
+  }, 0);
+}
+```
+`STAGES.length - 1` is Galactic (index 6 of 7 — verified via
+`src/game/data/stages.ts`). The deferred `setTimeout(0)` matches the
+existing Auto-Evolver pattern to avoid mutating state mid-tick. No new
+`UpgradeEffectType` literal needed (uses `auto_mult`).
+
+**Bug 6 — Verified autobuyers (`store.ts`).**
+Read both Auto-Builder (auto_system_buyer, lines ~1109-1166) and
+Auto-Researcher (auto_tech_buyer, lines ~1168-1222) sections in the
+tick. All six verification points pass for BOTH autobuyers:
+
+| # | Requirement | Auto-Builder | Auto-Researcher |
+|---|---|---|---|
+| 1 | Checks `(s.upgrades["auto_X"] || 0) > 0` | `hasAutoSystemBuyer` line 1111 | `hasAutoTechBuyer` line 1170 |
+| 2 | Checks timer interval | `newTime - (autoTimers.system \|\| 0) >= 8` line 1113 | `newTime - (autoTimers.tech \|\| 0) >= 12` line 1172 |
+| 3 | Filters by current stage | `SYSTEMS.filter((sys) => sys.stage === stageId)` line 1120 | `TECHS.filter((t) => t.stage === stageId && !technologies[t.id])` line 1178 |
+| 4 | Checks affordability | `canAfford` flag computed in map (lines 1131-1137), filtered at 1140 | `canAfford` flag computed in map (1189-1195), filtered at 1198 |
+| 5 | Modifies `ownedSystems`/`technologies` | `ownedSystems = { ...ownedSystems, [pick.sys.id]: (...) + 1 }` line 1151 | `technologies = { ...technologies, [pick.t.id]: true }` line 1208 |
+| 6 | Updates `autoTimers` | `autoTimers.system = newTime` lines 1161, 1164 (also in the no-purchase else branch) | `autoTimers.tech = newTime` lines 1215, 1217, 1220 |
+
+Both autobuyers are correctly wired — no fixes needed. Note that both
+also advance the timer in the no-purchase / disabled branches (lines
+1164, 1217, 1220) so they don't retry every tick when the player can't
+afford anything. They additionally respect challenge debuffs
+(`disableMilitary`, `disableTech`, `maxSystemsCap`) and apply cost
+reduction (`costReduction`) and challenge cost multipliers.
+
+### Files changed
+
+- `src/game/state/store.ts` — wrapped Trial of Fortune in
+  `if (s.unlockedChallenges)`; added auto-ascend tick logic.
+- `src/game/data/upgrades.ts` — removed `stage_compression`; moved
+  `simulation_amplifier` to universal section with
+  `requiresLayer: "enlightenment"`; added `auto_ascend` upgrade.
+- `src/game/state/types.ts` — removed `"stage_compression"` from
+  `UpgradeEffectType` union.
+
+### Lint status
+
+`bun run lint` → **0 errors**, 7 warnings (all pre-existing in
+`src/game/data/galaxies.ts` and `upload/logic.js`, unrelated to this
+task).
+
+### Follow-up notes / future work (NOT done in this task)
+
+- The auto-ascend logic fires on every tick the player is at Galactic
+  stage. The prestige resets `stageIndex` to 0 (creature), so it
+  cannot loop indefinitely within a single run. However, the
+  `setTimeout(0)` deferral means a fast tick loop could enqueue a
+  second trigger before the first resolves. `triggerPrestige` itself
+  is idempotent for this case (it snapshots the current run into the
+  archive and resets state), but a follow-up could add a guard flag
+  (e.g. `autoAscendPending`) to make the deduplication explicit.
+- The `simulation_amplifier` upgrade keeps its `effect.type: "auto_mult"
+  with value 0.0` placeholder (the real multiplier is applied via the
+  direct `s.upgrades["simulation_amplifier"]` lookup in the tick). A
+  future cleanup could add a dedicated `"simulation_amplifier"` effect
+  type to make this less of a magic-string. Skipped here to minimize
+  surface area.
+- Removed `stage_compression` upgrade is a save-compat break: any
+  existing saves with `upgrades.stage_compression > 0` will silently
+  lose that level on next load (the value will simply be ignored). No
+  migration shim was added because the upgrade had no behavior wired
+  in (the `"stage_compression"` effect type had no consumer in the
+  store — the entire entry was effectively dead weight).
+
+---
+Task ID: FIX-UI-TABS
+Agent: UI/UX fixes agent
+Task: Five UI bug fixes (ShopModal free-buy, TabNav Shop clipping, EventModal
+  countdown bar, layer-aware tab restructure, theme-aware background layers)
+
+Work Log:
+- Read ShopModal, TabNav, EventModal, GameShell, Header, globals.css,
+  store.ts, types.ts, layerHelpers.ts, SettingsModal, all four info-tab
+  components (Log/Archive/Codex/Achievements), LayerModal, EnlightenmentModal.
+
+Fix 1 — ShopModal free-buy (`src/components/game/modals/ShopModal.tsx`)
+- Subscribed to `debugFreeBuy` from the store.
+- Tabbed + flat layouts: `canAfford = debugFreeBuy || currency >= cost`;
+  cost label = `"FREE"` (emerald) when free-buy is on; button label =
+  `"Free Upgrade"`; `disabled` becomes `maxed || requiresWins || !(debugFreeBuy || canAfford)`.
+- `FlatUpgradeList` takes a new `debugFreeBuy: boolean` prop.
+
+Fix 2 — TabNav Shop clipping (`src/components/game/layout/TabNav.tsx`)
+- Every tab button (main + layer + Shop) now has `shrink-0` so the row
+  scrolls horizontally without clipping the Shop button at the right edge.
+- Shop button is always rendered (was previously EP-gated, which made it
+  disappear before the player earned any EP).
+
+Fix 3 — EventModal countdown bar (`src/components/game/modals/EventModal.tsx`)
+- Subscribed to `eventTimer` from the store; defined
+  `EVENT_TIMEOUT_SECONDS = 60` constant matching the store's initial value.
+- Added a 1.5px progress bar that shrinks 100% → 0% as the timer counts
+  down, plus the text "Auto-resolves in {ceil(eventTimer)}s with:
+  {ev.choices[0].label}" (the default = first choice, matching the store's
+  auto-resolve logic).
+- Bar has `role="progressbar"` + ARIA `aria-valuenow/min/max`.
+- Removed the unused `Button` import (choices are native `<button>`s).
+
+Fix 4 — Tab restructure (3 files + store/types)
+- `src/game/state/types.ts`: added `activeInfoModal: "log" | "archive" |
+  "codex" | "achievements" | null` field; `openInfoModal(target)` and
+  `closeInfoModal()` action signatures.
+- `src/game/state/store.ts`: implemented the two actions; seeded
+  `activeInfoModal: null` in initial state; added the migration entry
+  `if (persisted.activeInfoModal === undefined) persisted.activeInfoModal = null;`
+  for old saves.
+- `src/components/game/layout/TabNav.tsx` (full rewrite):
+  - `MAIN_TABS`: Actions · Systems · Tech · Story · Prestige (Production
+    omitted from the main bar per spec; still reachable via `setTab`).
+  - `LAYER_TABS`: Trials / Constellations / Market / Galaxy / Conquest /
+    Universe / Lab / Diplomacy / War / Genesis Engine — each maps to a
+    layer modal id (`challenges`, `enlightenment`, `transcendence`,
+    `genesis`, `apotheosis`, `singularity`, `omnipotence`, `divinity`,
+    `infinity`, `eternity`).
+  - `visibleMainTabs` filter: at L2+ (`isAtLeast("enlightenment")`),
+    hide Actions/Systems/Tech.
+  - `visibleLayerTabs` filter: each shown when its layer is unlocked
+    (`unlockedChallenges` for Trials, `unlockedLayers.<layerId>` for L2-L10).
+  - Layer tabs call `openLayerModal(tab.layerId)` and highlight when
+    `activeLayerModal === tab.layerId`.
+  - Shop button always on the desktop main bar (per spec).
+  - Mobile bottom nav: horizontal-scrollable row of all visible main tabs
+    + latest unlocked layer tab + Shop. Replaces the old "top 4 + More →
+    Prestige" pattern.
+  - Fallback "Back to Prestige" button when current tab was hidden at a
+    higher layer.
+- `src/components/game/layout/Header.tsx`: imported `ListTree`,
+  `Archive`, `ScrollText`, `Trophy`; subscribed to `openInfoModal`; added
+  a "Reference" group in the gear dropdown with Log/Archive/Codex/Awards
+  (calling `openInfoModal("…")`) and a separator before Settings.
+- `src/components/game/layout/GameShell.tsx`: imported `Dialog*` + the
+  four info icons; added an `InfoModal` component that wraps `LogTab` /
+  `ArchiveTab` / `CodexTab` / `AchievementsTab` in a shared Dialog driven
+  by `activeInfoModal`. Mounted in the existing `<Suspense>` block
+  alongside `LayerModal`. The existing `currentTab === "log" / "archive"
+  / "codex" / "achievements"` rendering in the main panel is preserved
+  for save-compat (old saves with `currentTab = "log"` still show the
+  content; they just don't have a tab button anymore).
+
+Fix 5 — Theme-aware background layers (`src/app/globals.css`)
+- `.bg-layer-1`: unchanged (already `var(--background)`).
+- `.bg-layer-2`: dot color changed from hardcoded
+  `oklch(0.35 0.015 260 / 0.4)` to
+  `color-mix(in oklab, var(--foreground) 35%, transparent)`.
+- `.bg-vignette`: edge color changed from hardcoded
+  `oklch(0.08 0.02 260 / 0.5)` to
+  `color-mix(in oklab, var(--background) 50%, black)`.
+  Both now shift with the active stage/layer/special theme instead of
+  always being ink-blue.
+
+Bonus fix — `src/components/game/modals/EnlightenmentModal.tsx`
+- `react-hooks/set-state-in-effect` was firing on the existing
+  `useEffect(() => { if (scrollX < -SKY_W) setScrollX(…) }, [scrollX])`
+  block — the only lint error blocking the 0-error gate.
+- Extracted a module-level `wrapScrollX(x)` helper and applied it inside
+  the two `setScrollX()` call sites (`onPointerMove` + `handleScrollButton`).
+- Removed the `useEffect` and the now-unused `useEffect` import.
+  Behaviour is identical (the wrap still fires on every scrollX change),
+  but it's now applied at the update site, not as a cascading-render trigger.
+
+Files modified (9):
+- src/components/game/modals/ShopModal.tsx
+- src/components/game/modals/EventModal.tsx
+- src/components/game/modals/EnlightenmentModal.tsx
+- src/components/game/layout/TabNav.tsx
+- src/components/game/layout/Header.tsx
+- src/components/game/layout/GameShell.tsx
+- src/app/globals.css
+- src/game/state/types.ts
+- src/game/state/store.ts
+
+Verification:
+- `bun run lint` → 0 errors, 7 warnings (all pre-existing in
+  `src/game/data/galaxies.ts` + `upload/logic.js`, neither file touched).
+- Dev server (Next.js 16.1.3 Turbopack): clean compile, GET / 200 in 64ms.
+- No tests written (per instructions).
+- No functionality removed — every existing tab is still reachable
+  (Log/Archive/Codex/Awards via gear dropdown, Production via
+  `setTab("production")` programmatic path or saved state).
+
+Agent-ctx work record:
+- `/home/z/my-project/agent-ctx/FIX-UI-TABS-ui-fixes.md` (full breakdown).
+
+---
+
+## Task: FIX-PRESTIGE-DIVINE-CONSTELLATIONS
+
+**Agent:** Z.ai Code (Task ID: FIX-PRESTIGE-DIVINE-CONSTELLATIONS)
+**Scope:** Three major UI changes for the Evolution Idle game.
+
+### Change 1: Prestige screen decluttering
+**File:** `src/components/game/tabs/PrestigeTab.tsx`
+
+The user reported the prestige tab was too cluttered — it rendered all 10
+LayerCards at once. The user only needs to see the CURRENT layer (the highest
+one they've unlocked — what they're working on) and the PREVIOUS layer (the
+one they just finished).
+
+**Implementation:**
+- Added a `LAYER_ORDER` array mapping each LayerCard order (1-10) to its
+  `unlockedLayers` key (or `null` for L1 Evolution which is implicitly
+  unlocked after first prestige).
+- Added `currentLayerOrder` = the highest unlocked layer's order
+  (computed via a `reduce` walk through `LAYER_ORDER`).
+- Added `previousLayerOrder` = `currentLayerOrder - 1` (or `null` for L1).
+- Added `isVisibleLayer(order)` helper — returns `true` only for the
+  current and previous layer orders.
+- Wrapped each of the 10 `<LayerCard>` components with
+  `{isVisibleLayer(N) && (<>...</>)}` so only 1-2 cards render at a time.
+- Updated the "Prestige Layer Progress" `CardDescription` to explain the
+  new behavior: "Showing your current layer (L{N}) and the one you just
+  finished (L{N-1}). Older layers are hidden to reduce clutter."
+- Kept the header card ("The Ten Ages of Becoming" with stats: Galactic
+  wins, total runs, trials mastered, total repeats) untouched.
+- Kept the "What Lies Beyond" teaser section untouched (still shows 1-2
+  locked layers as ??? with their previous-layer-unlocked filter).
+
+### Change 2: Bring back Divine Engine panel at L2
+**Files:**
+- `src/components/game/layout/DivineEnginePanel.tsx`
+- `src/components/game/layout/GameShell.tsx`
+
+The user reported that when entering L2, the Divine Engine panel
+"disappears" and they lose sight of resource production and world count.
+
+**Investigation:**
+- `GameShell.tsx` already correctly renders
+  `{showDivineEngine ? <DivineEnginePanel /> : <StagePanel />}` at line 127.
+  `showDivineEngine` flips true when `unlockedLayers.enlightenment` is true
+  (i.e. L2+). The conditional is intact — no removal needed.
+- However, the `DivineEnginePanel` itself was missing two pieces of info
+  the user explicitly requested: (a) EP/s was gated behind `isL4Plus`
+  (`activeLayerRank >= 4`), so it didn't show at L2/L3; (b) "Peak
+  production" was not displayed at all (only `peakProductionRate` was
+  referenced indirectly via the formula tooltip).
+
+**Implementation:**
+- Removed the `isL4Plus` check from DivineEnginePanel — EP/s is now shown
+  at L2+ (matches the user's request).
+- Added a new "Peak prod" stat line (with `Globe` icon, violet accent)
+  that displays `peakProductionRate` directly — the raw throughput feeding
+  the Divinity/s and EP/s rates above.
+- Panel now shows, in order: Worlds (big), Divinity/s, EP/s, Peak prod,
+  Lifetime Divinity footnote, then the quick-access buttons to current +
+  next layer.
+- Added a clarifying comment in `GameShell.tsx` next to the
+  `showDivineEngine` ternary, documenting that this conditional MUST stay
+  in place so L2+ players keep seeing their DivineEnginePanel.
+
+### Change 3: Constellations UI redesign — wide scrollable sky
+**File:** `src/components/game/modals/EnlightenmentModal.tsx`
+
+The user wanted a completely different UI for the constellation star map:
+a wide horizontally-scrollable "panorama" sky with drag-to-scroll, ◀ ▶
+navigation arrows, infinite wrap-around, and a per-star purchase popup
+that replaces the old direct-click illumination.
+
+**Implementation:**
+- Replaced the SVG-based star map (`MAP_W = 1000, MAP_H = 600` viewBox)
+  with a wide-sky panorama: `SKY_W = 3000px`, `SKY_H = 500px`.
+- Stars are positioned by mapping each constellation's existing normalized
+  (0-100) coordinates to `(x/100)*SKY_W` and `(y/100)*SKY_H` pixel
+  positions. All 88 IAU constellations are spread across the wide sky.
+- **Infinite wrap:** Rendered 3 copies of the sky at offsets `[-SKY_W, 0,
+  +SKY_W]` (left, center, right) inside a single wrapper translated by
+  `transform: translateX(${scrollX}px)`. A pure module-level helper
+  `wrapScrollX(x)` keeps `scrollX` within `[-SKY_W, +SKY_W]` so the
+  viewport always sees a fully-populated area; the wrap is invisible
+  because all 3 instances render identical content. Wrap is applied inline
+  at each `setScrollX()` call site (not in a `useEffect`) to avoid the
+  `react-hooks/set-state-in-effect` cascading-render lint warning.
+- **Drag-to-scroll:** Implemented via Pointer events (works for mouse +
+  touch). `isDragging` ref + `dragDistance` ref track drag state and
+  distance. If `dragDistance > 5px`, the click handler on the star button
+  bails out (so a drag-release doesn't trigger a star click).
+- **Navigation arrows:** ◀ and ▶ buttons positioned at the left and right
+  edges of the viewport (vertically centered). Each click scrolls by
+  ±300px (10% of sky width). `onPointerDown` on the buttons stops
+  propagation so the drag handler doesn't pick up the click.
+- **Click a star → popup:** Each star is a 14×14 px `<button>` positioned
+  absolutely inside its instance. Clicking opens a custom fixed-position
+  overlay popup (avoids nesting two Radix Dialogs, which has focus-trap
+  quirks). The popup shows:
+  - Star name (Greek-letter designation, e.g. "α Arietis", derived from
+    the star id via a `GREEK` lookup table)
+  - Constellation name (IAU name + category label)
+  - "Lit" badge if already illuminated
+  - Reward for completing the constellation (bonus badges: production,
+    capacity, EP, pop growth, cost, divinity — only the ones defined)
+  - Progress in this constellation (progress bar + count)
+  - Cost to illuminate (in Divinity, with affordability state)
+  - "Illuminate" button → calls the existing store action
+    `illuminateStar(constellationId, starId)` (preserved unchanged), then
+    closes the popup so the player sees the now-lit star.
+  - "Close" button (and click-on-backdrop) dismisses without purchasing.
+- **Sidebar (preserved + adapted):**
+  - Cost model explainer (expandable details) — kept as-is.
+  - Constellation list — now clickable to pan the sky to that
+    constellation's first star (calls `panToConstellation(cId)` which
+    sets `scrollX` to `-(first.x / 100) * SKY_W + 150`).
+  - Route picker (cosmetic foresight bonus layer) — kept as-is.
+- **Below-sky progress summary card** added (was in the sidebar before):
+  Completed / Stars lit / Started / Divinity, plus the bonus badges
+  (production/cap/EP/pop/cost/divinity) and the
+  `canAdvanceToTranscendence` badge.
+- **Map legend** (bottom-left) and **drag hint** (top-right) positioned
+  inside the viewport as backdrop-blurred pills, both `pointer-events:
+  none` so they don't intercept drag clicks.
+
+### Verification
+- `bun run lint` → **0 errors, 7 warnings** (all pre-existing in
+  `src/game/data/galaxies.ts` + `upload/logic.js`, neither file touched
+  by this task).
+- Dev server (Next.js 16.1.3 Turbopack): clean compile.
+- No tests written (per instructions).
+- No functionality removed — every existing prestige-layer action is
+  still reachable (the LayerCards for hidden layers are simply not
+  rendered in the PrestigeTab; their modals are still accessible via
+  the DivineEnginePanel quick-access buttons or the
+  `openLayerModal(layerId)` store action).
+- The store action `illuminateStar(constellationId, starId)` is preserved
+  with no signature change.
+
+### Files touched
+- `src/components/game/tabs/PrestigeTab.tsx` (+33 lines: layer-order
+  decluttering logic + `isVisibleLayer` wraps on each LayerCard)
+- `src/components/game/layout/DivineEnginePanel.tsx` (~+12 lines:
+  Peak prod stat line, EP/s shown at L2+; removed `isL4Plus` gate)
+- `src/components/game/layout/GameShell.tsx` (+7 lines: clarifying
+  comment next to the `showDivineEngine` ternary)
+- `src/components/game/modals/EnlightenmentModal.tsx` (rewritten: wide
+  scrollable sky + per-star purchase popup; preserves sidebar)
+

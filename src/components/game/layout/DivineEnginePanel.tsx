@@ -101,7 +101,6 @@ export function DivineEnginePanel() {
 
   const { activeLayerId, activeLayerRank } = useActiveLayer();
   const nextId = nextLayerId(activeLayerId);
-  const isL4Plus = activeLayerRank >= 4;
 
   // Background-sim production rates.
   const divPerSec = peakProductionRate * 0.01 * backgroundSimulations;
@@ -161,6 +160,9 @@ export function DivineEnginePanel() {
       </div>
 
       {/* === One big number + minimal context === */}
+      {/* FIX-PRESTIGE-DIVINE-CONSTELLATIONS: panel now shows EP/s at L2+ (was
+          L4+ only) and adds a "Peak production" stat line so players at L2+
+          never lose sight of their background-sim throughput. */}
       <div className="space-y-1.5 mb-4">
         {/* Worlds — big */}
         <div className="flex items-baseline gap-2">
@@ -177,16 +179,22 @@ export function DivineEnginePanel() {
           </span>
           <span className="text-xs text-muted-foreground">Divinity/s</span>
         </div>
-        {/* EP/sec — small, only at L4+ */}
-        {isL4Plus && (
-          <div className="flex items-baseline gap-1.5">
-            <Leaf className="w-3 h-3 text-emerald-300" aria-hidden />
-            <span className="text-sm font-semibold tabular-nums text-emerald-300 leading-none">
-              {epPerSec > 0 ? formatNumber(epPerSec, 2) : "0"}
-            </span>
-            <span className="text-[0.7rem] text-muted-foreground">EP/s</span>
-          </div>
-        )}
+        {/* EP/sec — small, shown at L2+ (was L4+ only) */}
+        <div className="flex items-baseline gap-1.5">
+          <Leaf className="w-3 h-3 text-emerald-300" aria-hidden />
+          <span className="text-sm font-semibold tabular-nums text-emerald-300 leading-none">
+            {epPerSec > 0 ? formatNumber(epPerSec, 2) : "0"}
+          </span>
+          <span className="text-[0.7rem] text-muted-foreground">EP/s</span>
+        </div>
+        {/* Peak production — the raw throughput feeding the rates above */}
+        <div className="flex items-baseline gap-1.5">
+          <Globe className="w-3 h-3 text-violet-300" aria-hidden />
+          <span className="text-sm font-semibold tabular-nums text-violet-300 leading-none">
+            {formatNumber(peakProductionRate, 0)}
+          </span>
+          <span className="text-[0.7rem] text-muted-foreground">Peak prod</span>
+        </div>
         {/* Lifetime Divinity — quiet footnote */}
         {divinityFromBackground > 0 && (
           <div className="text-[0.65rem] text-muted-foreground/70 tabular-nums pt-1">

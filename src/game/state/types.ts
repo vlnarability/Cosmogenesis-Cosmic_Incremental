@@ -122,7 +122,6 @@ export type UpgradeEffectType =
   | "frontier_spirit"
   | "ancestral_bounty"
   | "challenge_mastery"
-  | "stage_compression"
   | "temporal_acceleration"
   | "deep_memory"
   | "cosmic_understanding"
@@ -436,6 +435,16 @@ export interface GameState {
   showEvolve: boolean;
   showSettings: boolean;
   /**
+   * FIX-UI-TABS — Tab restructure. Log/Archive/Codex/Awards no longer
+   * live on the main tab bar; they're accessed via the gear dropdown
+   * and open in a shared modal. `activeInfoModal` holds the target id
+   * ("log" | "archive" | "codex" | "achievements") or null when closed.
+   * The InfoModal component in GameShell wraps the corresponding tab
+   * component (LogTab / ArchiveTab / CodexTab / AchievementsTab) in a
+   * Dialog.
+   */
+  activeInfoModal: "log" | "archive" | "codex" | "achievements" | null;
+  /**
    * P6 — Modal Consolidation. Single source-of-truth for which layer modal
    * is open. Holds the layer id ("enlightenment", "transcendence", ...,
    * "eternity", "challenges") or null when closed. The LayerModal component
@@ -640,6 +649,14 @@ export interface GameStore extends GameState {
   setShowEvolve: (v: boolean) => void;
   setShowSettings: (v: boolean) => void;
   setShowChallenges: (v: boolean) => void;
+  /**
+   * FIX-UI-TABS — Opens a shared InfoModal showing the target tab content
+   * (Log / Archive / Codex / Awards) wrapped in a Dialog. Closes any
+   * other open info modal first so only one is on screen at a time.
+   */
+  openInfoModal: (target: "log" | "archive" | "codex" | "achievements") => void;
+  /** Closes the shared InfoModal (clears `activeInfoModal`). */
+  closeInfoModal: () => void;
   /**
    * P6 — Modal Consolidation. Opens the shared LayerModal showing the layer
    * with the given id. Also sets the corresponding legacy `show*` flag for

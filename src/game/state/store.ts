@@ -542,6 +542,9 @@ function initialMetaState(): Partial<GameState> {
     showShop: false,
     showEvolve: false,
     showSettings: false,
+    // FIX-UI-TABS — Log/Archive/Codex/Awards moved into a shared info
+    // modal accessible from the gear dropdown (no longer on the main tab bar).
+    activeInfoModal: null,
     // P6 — Modal Consolidation: single source-of-truth for which layer modal
     // is open. Per-layer `show*` flags are mirrored in openLayerModal() for
     // save-compat with old code that reads them directly.
@@ -1249,6 +1252,18 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // FIX-STORE-BUGS Bug 5 — Auto-Ascend: trigger prestige when at Galactic stage.
+        // The player must own the `auto_ascend` PP upgrade. We defer the actual
+        // triggerPrestige() call via setTimeout to avoid mutating state mid-tick
+        // (same pattern as Auto-Evolver above). `STAGES.length - 1` is Galactic.
+        const hasAutoAscend = (s.upgrades["auto_ascend"] || 0) > 0;
+        if (hasAutoAscend && s.stageIndex >= STAGES.length - 1) {
+          setTimeout(() => {
+            get().addToLog("🌌 Auto-Ascend: triggering prestige.");
+            get().triggerPrestige();
+          }, 0);
+        }
+
         // Check story triggers
         const newStory = { ...s.storyUnlocked };
         let activePopup = s.activeStoryPopup;
@@ -1286,9 +1301,11 @@ export const useGameStore = create<GameStore>()(
         let eventCooldown = (s.eventCooldown || 0) - realDt;
         if (eventCooldown < 0) eventCooldown = 0;
         let eventTimer = s.eventTimer || 0;
-        // Countdown active event timer — auto-resolve at 0
+        // Countdown active event timer — uses REAL TIME (dt), not game time (realDt).
+        // This ensures the 60s auto-resolve timeout is 60 real seconds, not 60 game seconds
+        // (which at 8× speed would be 7.5 real seconds).
         if (activeEvent) {
-          eventTimer -= realDt;
+          eventTimer -= dt;
           if (eventTimer <= 0) {
             // Auto-resolve with the default (first) choice
             const evDef = EVENT_MAP[activeEvent];
@@ -1480,23 +1497,26 @@ export const useGameStore = create<GameStore>()(
 
         // QUICK WIN 7 — Random layer events (log-only state mutations)
         let layerEventTimers = { ...(s.layerEventTimers || { trial_of_fortune: 0, vision: 0, divine_whim: 0, heresy_surge: 0 }) };
-        // Layer 1 — Trial of Fortune: every 120s, +20% of capacity to 2 random primary resources
-        if (newTime - (layerEventTimers.trial_of_fortune || 0) >= 120 && (layerEventTimers.trial_of_fortune || 0) > 0) {
-          layerEventTimers.trial_of_fortune = newTime;
-          const primRes = ["glucose", "proteins", "lipids", "food", "water", "materials", "wood", "stone", "production", "gold", "influence", "energy", "alloys", "data"];
-          const picks: string[] = [];
-          for (let i = 0; i < 2 && primRes.length > 0; i++) {
-            const idx = Math.floor(Math.random() * primRes.length);
-            picks.push(primRes.splice(idx, 1)[0]);
+        // Layer 1 — Trial of Fortune: every 120s, +20% of capacity to 2 random primary resources.
+        // FIX-STORE-BUGS Bug 1: gated behind `unlockedChallenges` so it only fires after the first Galactic win (L1 unlock).
+        if (s.unlockedChallenges) {
+          if (newTime - (layerEventTimers.trial_of_fortune || 0) >= 120 && (layerEventTimers.trial_of_fortune || 0) > 0) {
+            layerEventTimers.trial_of_fortune = newTime;
+            const primRes = ["glucose", "proteins", "lipids", "food", "water", "materials", "wood", "stone", "production", "gold", "influence", "energy", "alloys", "data"];
+            const picks: string[] = [];
+            for (let i = 0; i < 2 && primRes.length > 0; i++) {
+              const idx = Math.floor(Math.random() * primRes.length);
+              picks.push(primRes.splice(idx, 1)[0]);
+            }
+            for (const r of picks) {
+              const cap = capacities[r] || 50;
+              resources[r] = Math.min(cap, (resources[r] || 0) + cap * 0.20);
+            }
+            setTimeout(() => get().addToLog(`🎲 Trial of Fortune! +20% capacity to ${picks.join(", ")}.`), 0);
+          } else if ((layerEventTimers.trial_of_fortune || 0) === 0) {
+            // First-time initialization — wait 120s before first fire
+            layerEventTimers.trial_of_fortune = newTime;
           }
-          for (const r of picks) {
-            const cap = capacities[r] || 50;
-            resources[r] = Math.min(cap, (resources[r] || 0) + cap * 0.20);
-          }
-          setTimeout(() => get().addToLog(`🎲 Trial of Fortune! +20% capacity to ${picks.join(", ")}.`), 0);
-        } else if ((layerEventTimers.trial_of_fortune || 0) === 0) {
-          // First-time initialization — wait 120s before first fire
-          layerEventTimers.trial_of_fortune = newTime;
         }
         // Layer 2 — Vision: every 90s (after enlightenment unlocked), +5 Divinity
         if (unlockedLayers.enlightenment) {
@@ -3681,6 +3701,10 @@ export const useGameStore = create<GameStore>()(
       setShowEvolve: (v) => set({ showEvolve: v }),
       setShowSettings: (v) => set({ showSettings: v }),
       setShowChallenges: (v) => set({ showChallenges: v }),
+      // FIX-UI-TABS — Info modal opens Log/Archive/Codex/Awards as a
+      // shared Dialog (called from the gear dropdown).
+      openInfoModal: (target) => set({ activeInfoModal: target }),
+      closeInfoModal: () => set({ activeInfoModal: null }),
       setShowEnlightenment: (v) => set({ showEnlightenment: v }),
       setShowTranscendence: (v) => set({ showTranscendence: v }),
       setShowGenesis: (v) => set({ showGenesis: v }),
@@ -5691,7 +5715,6 @@ export const useGameStore = create<GameStore>()(
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
         if (!s.debugFreeBuy && (s.prestigePoints || 0) < cost) {
-          // P7 — Error state: surface insufficient Prestige Points.
           get().notifyPurchaseError("Not enough Prestige Points");
           return;
         }
@@ -6166,6 +6189,8 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.achievements) persisted.achievements = {};
         if (!persisted.newAchievements) persisted.newAchievements = [];
         if (persisted.showSettings === undefined) persisted.showSettings = false;
+        // FIX-UI-TABS — Log/Archive/Codex/Awards info-modal state.
+        if (persisted.activeInfoModal === undefined) persisted.activeInfoModal = null;
         if (persisted.tutorialDismissed === undefined) persisted.tutorialDismissed = false;
         if (persisted.maxPopulation === undefined) persisted.maxPopulation = persisted.population || 8;
         if (persisted.fastestCellClear === undefined) persisted.fastestCellClear = 0;

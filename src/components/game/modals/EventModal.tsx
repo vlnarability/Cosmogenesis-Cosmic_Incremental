@@ -2,16 +2,28 @@
 
 import { useGameStore } from "@/game/state/store";
 import { EVENT_MAP } from "@/game/data/events";
-import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Clock } from "lucide-react";
+
+// Auto-resolve timeout (seconds). Must match the store's `eventTimer`
+// initial value (set in the game loop when an event fires).
+const EVENT_TIMEOUT_SECONDS = 60;
 
 export function EventModal() {
   const activeEvent = useGameStore((s) => s.activeEvent);
   const resolveEvent = useGameStore((s) => s.resolveEvent);
+  // EVENT-TIMEOUT-BAR — store-side timer that counts down from 60 → 0.
+  // The bar fills to 100% when full (60s) and shrinks to 0% as time runs out.
+  const eventTimer = useGameStore((s) => s.eventTimer || 0);
 
   if (!activeEvent) return null;
   const ev = EVENT_MAP[activeEvent];
   if (!ev) return null;
+
+  // Default choice = the first choice (matches the store's auto-resolve logic).
+  const defaultChoice = ev.choices[0];
+  const pct = Math.max(0, Math.min(100, (eventTimer / EVENT_TIMEOUT_SECONDS) * 100));
+  // Round up so the bar hits 0 only when the timer is truly expired.
+  const secondsLeft = Math.max(0, Math.ceil(eventTimer));
 
   return (
     <div className="story-popup-overlay" onClick={(e) => { /* don't dismiss on backdrop click — require a choice */ }}>
@@ -33,6 +45,34 @@ export function EventModal() {
         {/* Body */}
         <div className="p-5">
           <p className="text-sm leading-relaxed text-foreground/95">{ev.desc}</p>
+        </div>
+
+        {/* EVENT-TIMEOUT-BAR — countdown progress + default-choice hint.
+            The bar shrinks from 100% → 0% as the 60s timer counts down.
+            When it hits 0, the store auto-resolves with `defaultChoice`. */}
+        <div className="px-5 pb-3">
+          <div className="flex items-center justify-between text-[0.65rem] text-muted-foreground mb-1.5 gap-2">
+            <span className="flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Auto-resolves in {secondsLeft}s with:
+            </span>
+            <span className="text-amber-400/90 font-medium truncate">
+              {defaultChoice?.label ?? "—"}
+            </span>
+          </div>
+          <div
+            className="h-1.5 w-full rounded-full bg-muted/60 overflow-hidden"
+            role="progressbar"
+            aria-label="Time remaining before auto-resolve"
+            aria-valuenow={secondsLeft}
+            aria-valuemin={0}
+            aria-valuemax={EVENT_TIMEOUT_SECONDS}
+          >
+            <div
+              className="h-full rounded-full bg-amber-500/80 transition-[width] duration-200 ease-linear"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
 
         {/* Choices */}

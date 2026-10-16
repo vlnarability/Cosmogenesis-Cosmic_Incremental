@@ -146,6 +146,40 @@ export function PrestigeTab() {
   const hasMastery = (upgrades["challenge_mastery"] || 0) > 0;
   const maxRepeats = getMaxRepeats(hasMastery);
 
+  // ===== FIX-PRESTIGE-DIVINE-CONSTELLATIONS — Layer decluttering =====
+  // Determine the player's CURRENT layer (highest unlocked) and PREVIOUS
+  // layer (one below the current). The PrestigeTab now shows only those two
+  // LayerCards — all other layers are hidden to reduce clutter. The "What
+  // Lies Beyond" teaser remains to hint at the next 1-2 locked layers.
+  //
+  // Layer unlock flags are stored in `unlockedLayers` keyed by layer id:
+  //   evolution (L1) — implicit via `unlockedChallenges` after first prestige
+  //   enlightenment (L2) → eternity (L10) — `unlockedLayers[id]`
+  const LAYER_ORDER: { order: number; key: string | null }[] = [
+    { order: 1, key: null },                // evolution — always unlocked in this tab
+    { order: 2, key: "enlightenment" },
+    { order: 3, key: "transcendence" },
+    { order: 4, key: "genesis" },
+    { order: 5, key: "apotheosis" },
+    { order: 6, key: "singularity" },
+    { order: 7, key: "omnipotence" },
+    { order: 8, key: "divinity" },
+    { order: 9, key: "infinity" },
+    { order: 10, key: "eternity" },
+  ];
+  const isLayerOrderUnlocked = (entry: { key: string | null }): boolean => {
+    if (entry.key === null) return !!unlockedChallenges;
+    return !!unlockedLayers?.[entry.key];
+  };
+  const currentLayerOrder = LAYER_ORDER.reduce(
+    (max, entry) => (isLayerOrderUnlocked(entry) ? entry.order : max),
+    1
+  );
+  const previousLayerOrder = currentLayerOrder > 1 ? currentLayerOrder - 1 : null;
+  // Only render LayerCards for the current + previous layer.
+  const isVisibleLayer = (order: number): boolean =>
+    order === currentLayerOrder || order === previousLayerOrder;
+
   // Part 6 — L1→L2 progress: 3+ distinct challenges OR 5+ total challenge
   // repeats. (Legacy trialRealm mini-games removed in CLEANUP-LEGACY.)
   const l1ProgressCurrent = Math.max(
@@ -241,16 +275,21 @@ export function PrestigeTab() {
         </CardContent>
       </Card>
 
-      {/* Layer progress cards (1 per layer) */}
+      {/* Layer progress cards — decluttered to only show the CURRENT layer
+          (the highest unlocked one) and the PREVIOUS layer (the one before).
+          The "What Lies Beyond" teaser below hints at the next 1-2 locked
+          layers, so the player still gets a sense of progression without
+          scrolling through all 10 LayerCards every visit. */}
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Prestige Layer Progress</CardTitle>
           <CardDescription>
-            Each layer has its own unlock condition, currency, and bonuses. View a layer to interact with its systems.
+            Showing your current layer (L{currentLayerOrder}) and the one you just finished{previousLayerOrder ? ` (L${previousLayerOrder})` : ""}. Older layers are hidden to reduce clutter.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {/* Layer 1 — Evolution (Challenges) */}
+          {/* Layer 1 — Evolution (Challenges) — only shown when it's the current or previous layer */}
+          {isVisibleLayer(1) && (
           <LayerCard
             order={1}
             name={dim.layerName("evolution", "Evolution")}
@@ -296,8 +335,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.enlightenment}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 2 — Enlightenment (Foresight) */}
+          {/* Layer 2 — Enlightenment (Foresight) — only shown when current/previous */}
+          {isVisibleLayer(2) && (
           <LayerCard
             order={2}
             name={dim.layerName("enlightenment", "Enlightenment")}
@@ -329,8 +370,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.transcendence}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 3 — Transcendence */}
+          {/* Layer 3 — Transcendence — only shown when current/previous */}
+          {isVisibleLayer(3) && (
           <LayerCard
             order={3}
             name={dim.layerName("transcendence", "Transcendence")}
@@ -360,8 +403,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.genesis}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 4 — Genesis */}
+          {/* Layer 4 — Genesis — only shown when current/previous */}
+          {isVisibleLayer(4) && (
           <LayerCard
             order={4}
             name={dim.layerName("genesis", "Genesis")}
@@ -391,8 +436,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.apotheosis}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 5 — Apotheosis */}
+          {/* Layer 5 — Apotheosis — only shown when current/previous */}
+          {isVisibleLayer(5) && (
           <LayerCard
             order={5}
             name={dim.layerName("apotheosis", "Apotheosis")}
@@ -422,8 +469,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.singularity}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 6 — Singularity */}
+          {/* Layer 6 — Singularity — only shown when current/previous */}
+          {isVisibleLayer(6) && (
           <LayerCard
             order={6}
             name={dim.layerName("singularity", "Singularity")}
@@ -451,8 +500,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.omnipotence}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 7 — Omnipotence (Bio-engineering) */}
+          {/* Layer 7 — Omnipotence (Bio-engineering) — only shown when current/previous */}
+          {isVisibleLayer(7) && (
           <LayerCard
             order={7}
             name={dim.layerName("omnipotence", "Omnipotence")}
@@ -484,8 +535,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.divinity}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 8 — Divinity (Divine Alliance) */}
+          {/* Layer 8 — Divinity (Divine Alliance) — only shown when current/previous */}
+          {isVisibleLayer(8) && (
           <LayerCard
             order={8}
             name={dim.layerName("divinity", "Divinity")}
@@ -516,8 +569,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.infinity}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 9 — Infinity (Divine War) */}
+          {/* Layer 9 — Infinity (Divine War) — only shown when current/previous */}
+          {isVisibleLayer(9) && (
           <LayerCard
             order={9}
             name={dim.layerName("infinity", "Infinity")}
@@ -547,8 +602,10 @@ export function PrestigeTab() {
               nextLayerUnlocked={!!unlockedLayers?.eternity}
             />
           </LayerCard>
+          )}
 
-          {/* Layer 10 — Eternity (Genesis Engine) */}
+          {/* Layer 10 — Eternity (Genesis Engine) — only shown when current/previous */}
+          {isVisibleLayer(10) && (
           <LayerCard
             order={10}
             name={dim.layerName("eternity", "Eternity")}
@@ -571,6 +628,7 @@ export function PrestigeTab() {
               <span className="font-semibold">Max layer reached — end-game ascension content.</span>
             </div>
           </LayerCard>
+          )}
         </CardContent>
       </Card>
 

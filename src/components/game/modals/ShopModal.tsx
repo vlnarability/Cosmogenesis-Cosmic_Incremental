@@ -87,6 +87,9 @@ export function ShopModal() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const buyUpgrade = useGameStore((s) => s.buyUpgrade);
   const buyUniversalUpgrade = useGameStore((s) => s.buyUniversalUpgrade);
+  // DEBUG-FREE-BUY — when enabled, all affordability checks are bypassed;
+  // costs render as "FREE / 0" and purchase buttons stay enabled.
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
 
   // PP shop is unlocked once Enlightenment (L2) is reached — the player has
   // earned their first Prestige Points via trials + background sims.
@@ -155,6 +158,7 @@ export function ShopModal() {
             evolutionPoints={evolutionPoints}
             galacticWins={galacticWins}
             buyUpgrade={buyUpgrade}
+            debugFreeBuy={debugFreeBuy}
           />
           <div className="text-[0.65rem] text-muted-foreground px-1 pt-1">
             <span className="text-amber-300/80">Evolution Points</span> are earned
@@ -281,7 +285,7 @@ export function ShopModal() {
                         const maxed = owned >= up.maxLevel;
                         const requiresWins = !!(up.requiresWins && galacticWins < (up.requiresWins || 0));
                         const cost = upgradeCost(up, owned);
-                        const canAfford = canAffordCurrency >= cost;
+                        const canAfford = debugFreeBuy || canAffordCurrency >= cost;
                         const layerName = up.requiresLayer ? (LAYER_DISPLAY_NAMES[up.requiresLayer] || up.requiresLayer) : null;
                         return (
                           <div
@@ -313,16 +317,16 @@ export function ShopModal() {
                             </div>
                             <p className="text-xs text-muted-foreground mb-2 leading-snug">{up.desc(owned)}</p>
                             <div className="flex items-center justify-between">
-                              <span className={`text-xs font-bold ${canAfford ? (currency === "PP" ? "text-fuchsia-300" : "text-amber-400") : "text-red-400"}`}>
-                                {currency === "PP" ? "✦" : "🌱"} {formatNumber(cost, 0)} {currency}
+                              <span className={`text-xs font-bold ${debugFreeBuy ? "text-emerald-400" : canAfford ? (currency === "PP" ? "text-fuchsia-300" : "text-amber-400") : "text-red-400"}`}>
+                                {debugFreeBuy ? "FREE" : `${currency === "PP" ? "✦" : "🌱"} ${formatNumber(cost, 0)} ${currency}`}
                               </span>
                               <Button
                                 size="sm"
                                 className="h-7"
-                                disabled={maxed || requiresWins || !canAfford}
+                                disabled={maxed || requiresWins || !(debugFreeBuy || canAfford)}
                                 onClick={() => onBuy(up.id)}
                               >
-                                {maxed ? "Maxed" : requiresWins ? `Need ${up.requiresWins} wins` : "Upgrade"}
+                                {maxed ? "Maxed" : requiresWins ? `Need ${up.requiresWins} wins` : debugFreeBuy ? "Free Upgrade" : "Upgrade"}
                               </Button>
                             </div>
                           </div>
@@ -367,12 +371,14 @@ function FlatUpgradeList({
   evolutionPoints,
   galacticWins,
   buyUpgrade,
+  debugFreeBuy,
 }: {
   isVisible: (up: UpgradeDef) => boolean;
   upgrades: Record<string, number>;
   evolutionPoints: number;
   galacticWins: number;
   buyUpgrade: (id: string) => void;
+  debugFreeBuy: boolean;
 }) {
   const categories = [
     { id: "automation", label: "Automation" },
@@ -397,7 +403,7 @@ function FlatUpgradeList({
                 const maxed = owned >= up.maxLevel;
                 const requiresWins = !!(up.requiresWins && galacticWins < (up.requiresWins || 0));
                 const cost = upgradeCost(up, owned);
-                const canAfford = evolutionPoints >= cost;
+                const canAfford = debugFreeBuy || evolutionPoints >= cost;
                 const layerName = up.requiresLayer ? (LAYER_DISPLAY_NAMES[up.requiresLayer] || up.requiresLayer) : null;
                 return (
                   <div
@@ -429,16 +435,16 @@ function FlatUpgradeList({
                     </div>
                     <p className="text-xs text-muted-foreground mb-2 leading-snug">{up.desc(owned)}</p>
                     <div className="flex items-center justify-between">
-                      <span className={`text-xs font-bold ${canAfford ? "text-amber-400" : "text-red-400"}`}>
-                        🌱 {formatNumber(cost, 0)} EP
+                      <span className={`text-xs font-bold ${debugFreeBuy ? "text-emerald-400" : canAfford ? "text-amber-400" : "text-red-400"}`}>
+                        {debugFreeBuy ? "FREE" : `🌱 ${formatNumber(cost, 0)} EP`}
                       </span>
                       <Button
                         size="sm"
                         className="h-7"
-                        disabled={maxed || requiresWins || !canAfford}
+                        disabled={maxed || requiresWins || !(debugFreeBuy || canAfford)}
                         onClick={() => buyUpgrade(up.id)}
                       >
-                        {maxed ? "Maxed" : requiresWins ? `Need ${up.requiresWins} wins` : "Upgrade"}
+                        {maxed ? "Maxed" : requiresWins ? `Need ${up.requiresWins} wins` : debugFreeBuy ? "Free Upgrade" : "Upgrade"}
                       </Button>
                     </div>
                   </div>

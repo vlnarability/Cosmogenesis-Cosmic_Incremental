@@ -114,6 +114,12 @@
    Layer 1: deep base color
    Layer 2: faint dot-grid (technical paper)
    Layer 3: vignette (focus toward center)
+
+   FIX-UI-TABS — all three layers are now theme-aware. The dot grid
+   and vignette derive their colors from `var(--background)` /
+   `var(--foreground)` via `color-mix` so they shift with the active
+   stage / layer / special theme instead of being hardcoded to the
+   ink-blue oklch() values from the L0 default.
    ============================================================ */
 
 .bg-layer-1 {
@@ -127,9 +133,11 @@
   position: fixed;
   inset: 0;
   z-index: -2;
-  /* Hairline dot grid — like graph paper, not stars */
+  /* Hairline dot grid — like graph paper, not stars. Dot color is
+     derived from `--foreground` so it adapts to every theme (was a
+     hardcoded oklch(0.35 0.015 260 / 0.4) ink-blue). */
   background-image:
-    radial-gradient(circle, oklch(0.35 0.015 260 / 0.4) 0.5px, transparent 0.5px);
+    radial-gradient(circle, color-mix(in oklab, var(--foreground) 35%, transparent) 0.5px, transparent 0.5px);
   background-size: 28px 28px;
   background-position: 0 0;
   opacity: 0.5;
@@ -142,7 +150,9 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 50%, oklch(0.08 0.02 260 / 0.5) 100%);
+  /* Theme-aware vignette — edges are a darkened variant of
+     `var(--background)` instead of the old hardcoded ink-blue. */
+  background: radial-gradient(ellipse at center, transparent 50%, color-mix(in oklab, var(--background) 50%, black) 100%);
 }
 
 /* ============================================================

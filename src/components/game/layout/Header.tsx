@@ -38,6 +38,10 @@ import {
   TrendingUp,
   Leaf,
   Clock,
+  ListTree,
+  Archive as ArchiveIcon,
+  ScrollText,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, type ReactNode } from "react";
@@ -94,6 +98,10 @@ export function Header() {
   // that still reads `show*` directly.
   const openLayerModal = useGameStore((s) => s.openLayerModal);
   const setTab = useGameStore((s) => s.setTab);
+  // FIX-UI-TABS — Log/Archive/Codex/Awards moved into the gear dropdown
+  // and open as modals (see GameShell's InfoModal). The setter is a
+  // single action that takes a target id.
+  const openInfoModal = useGameStore((s) => s.openInfoModal);
   // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "Title Clicker" achievement
   // checks `titleClicks >= 10`. The "Evolution Idle" title in the header
   // is the canonical click target; each click bumps the counter via the
@@ -387,6 +395,44 @@ export function Header() {
                 )}
                 <span>Save</span>
               </DropdownMenuItem>
+              {/* FIX-UI-TABS — Log/Archive/Codex/Awards moved off the
+                  main tab bar into the gear dropdown. They open as a
+                  shared InfoModal (see GameShell) instead of switching
+                  tabs. Settings stays at the bottom as the "real"
+                  settings modal. */}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                Reference
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => openInfoModal("log")}
+                className="cursor-pointer text-xs"
+              >
+                <ListTree className="w-3.5 h-3.5" />
+                <span>Log</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => openInfoModal("archive")}
+                className="cursor-pointer text-xs"
+              >
+                <ArchiveIcon className="w-3.5 h-3.5" />
+                <span>Archive</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => openInfoModal("codex")}
+                className="cursor-pointer text-xs"
+              >
+                <ScrollText className="w-3.5 h-3.5" />
+                <span>Codex</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => openInfoModal("achievements")}
+                className="cursor-pointer text-xs"
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Awards</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {/* Settings */}
               <DropdownMenuItem
                 onClick={() => setShowSettings(true)}

@@ -21,6 +21,8 @@ import { AchievementsTab } from "../tabs/AchievementsTab";
 import { ArchiveTab } from "../tabs/ArchiveTab";
 import { LogTab } from "../tabs/LogTab";
 import { PrestigeTab } from "../tabs/PrestigeTab";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ListTree, Archive as ArchiveIcon, ScrollText, Trophy } from "lucide-react";
 
 // LAZY-LOAD modals — these are only rendered when their `show*` flag is true.
 // This dramatically reduces initial bundle size + memory usage (the OOM killer
@@ -44,6 +46,77 @@ const TutorialHints = lazy(() => import("./TutorialHints").then(m => ({ default:
 const OfflineSummary = lazy(() => import("../modals/OfflineSummary").then(m => ({ default: m.OfflineSummary })));
 
 import { cn } from "@/lib/utils";
+
+// ============================================================
+// InfoModal — FIX-UI-TABS.
+// Wraps Log / Archive / Codex / Achievements tab content in a shared
+// Dialog driven by the `activeInfoModal` state field. The content is
+// the SAME tab component that used to render in the main panel — just
+// wrapped in a Dialog so it appears as a modal when invoked from the
+// gear dropdown.
+// ============================================================
+const INFO_MODAL_META: Record<
+  "log" | "archive" | "codex" | "achievements",
+  { title: string; description: string; icon: React.ReactNode }
+> = {
+  log: {
+    title: "Run Log",
+    description: "Recent events from this run.",
+    icon: <ListTree className="w-4 h-4" />,
+  },
+  archive: {
+    title: "Run Archive",
+    description: "Every run you've completed.",
+    icon: <ArchiveIcon className="w-4 h-4" />,
+  },
+  codex: {
+    title: "Codex",
+    description: "Encyclopedia of stages, systems, techs, and upgrades.",
+    icon: <ScrollText className="w-4 h-4" />,
+  },
+  achievements: {
+    title: "Achievements",
+    description: "Milestones unlocked across all runs.",
+    icon: <Trophy className="w-4 h-4" />,
+  },
+};
+
+function InfoModal() {
+  const activeInfoModal = useGameStore((s) => s.activeInfoModal);
+  const closeInfoModal = useGameStore((s) => s.closeInfoModal);
+
+  const meta = activeInfoModal ? INFO_MODAL_META[activeInfoModal] : null;
+
+  return (
+    <Dialog
+      open={activeInfoModal !== null}
+      onOpenChange={(o) => {
+        if (!o) closeInfoModal();
+      }}
+    >
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto glass-strong flex flex-col">
+        {meta && (
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              {meta.icon}
+              {meta.title}
+            </DialogTitle>
+            <DialogDescription>{meta.description}</DialogDescription>
+          </DialogHeader>
+        )}
+        {/* Render the corresponding tab content. The tab components
+            are all client components that subscribe to the store —
+            they don't care whether they're shown as a tab or modal. */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          {activeInfoModal === "log" && <LogTab />}
+          {activeInfoModal === "archive" && <ArchiveTab />}
+          {activeInfoModal === "codex" && <CodexTab />}
+          {activeInfoModal === "achievements" && <AchievementsTab />}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function GameShell() {
   const { offlineSummary, dismissOffline } = useGameLoop();
@@ -117,6 +190,13 @@ export function GameShell() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-4 xl:col-span-3">
             <div className="lg:sticky lg:top-[112px]">
+              {/* FIX-PRESTIGE-DIVINE-CONSTELLATIONS: the DivineEnginePanel
+                  MUST keep rendering at L2+ (when `unlockedLayers.enlightenment`
+                  is true). Players at L2+ lose access to StagePanel and rely
+                  on the DivineEnginePanel for world count, Divinity/s, EP/s,
+                  peak production, and quick-access layer buttons. Do not
+                  remove this conditional — it's the only way to see
+                  background-sim throughput after L1. */}
               {showDivineEngine ? <DivineEnginePanel /> : <StagePanel />}
             </div>
           </div>
@@ -153,6 +233,11 @@ export function GameShell() {
             inside a single shared <Dialog> wrapper based on `activeLayerModal`. */}
         <LayerModal />
         <TutorialHints />
+        {/* FIX-UI-TABS — Shared info modal for Log/Archive/Codex/Awards.
+            Opened from the gear dropdown (Header); content switches on
+            `activeInfoModal`. Renders the same tab component that the
+            main panel would render — just wrapped in a Dialog. */}
+        <InfoModal />
         {offlineSummary && (
           <OfflineSummary
             elapsed={offlineSummary.elapsed}

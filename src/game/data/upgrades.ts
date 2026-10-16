@@ -67,18 +67,6 @@ export const UPGRADES: UpgradeDef[] = [
     category: "automation",
     effect: { type: "auto_evolver", value: 0.2 },
   },
-  {
-    id: "simulation_amplifier",
-    name: "Simulation Amplifier",
-    desc: (l) => l === 0
-      ? "Background simulations: ×1 (base). Purchase to multiply sims per star."
-      : `Background simulations: ×${l + 1} (each star gives ${(l + 1).toFixed(0)} sims instead of 1). No cap — keep leveling for infinite scaling.`,
-    baseCost: 20,
-    maxLevel: 20,
-    costGrowth: 1.5,
-    category: "automation",
-    effect: { type: "auto_mult", value: 0.0 },  // effect applied via upgrades lookup in tick
-  },
 
   // ===== ECONOMY =====
   {
@@ -180,17 +168,6 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "challenge_mastery", value: 10 },
   },
   {
-    id: "stage_compression",
-    name: "Stage Compression",
-    desc: (l) => l ? "Stages you have already cleared 3+ times can be skipped at the Evolve prompt — their rewards still apply." : "Skip mastered stages (cleared 3+ times)",
-    baseCost: 12,
-    maxLevel: 1,
-    costGrowth: 1.0,
-    requiresWins: 2,
-    category: "prestige",
-    effect: { type: "stage_compression", value: 3 },
-  },
-  {
     id: "deep_memory",
     name: "Deep Memory",
     desc: (l) => `+${l * 5}% production per prestige (per level), based on your total runs`,
@@ -233,6 +210,36 @@ export const UPGRADES: UpgradeDef[] = [
     costGrowth: 1.8,
     category: "universal",
     effect: { type: "universal_speed", value: 0.10 },
+  },
+  // FIX-STORE-BUGS Bug 4: Simulation Amplifier moved here from `automation` (EP shop)
+  // to `universal` (PP shop). It now costs Prestige Points and only appears in the
+  // shop after L2 (Enlightenment) is unlocked. The DivineEnginePanel still reads
+  // the upgrade level — the only thing that changed is which shop tab it shows in.
+  {
+    id: "simulation_amplifier",
+    name: "Simulation Amplifier",
+    desc: (l) => l === 0
+      ? "Background simulations: ×1 (base). Purchase to multiply sims per star. Costs PP."
+      : `Background simulations: ×${l + 1} (each star gives ${(l + 1).toFixed(0)} sims instead of 1). No cap — keep leveling for infinite scaling.`,
+    baseCost: 20,
+    maxLevel: 20,
+    costGrowth: 1.5,
+    requiresLayer: "enlightenment",  // visible once L2 (Enlightenment) is unlocked
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },  // effect applied via upgrades lookup in tick
+  },
+  // FIX-STORE-BUGS Bug 5: Auto-Ascend autobuyer — PP shop. Triggers prestige
+  // automatically when the player reaches the Galactic stage. Owned-only check
+  // + stage-index check in the tick fires triggerPrestige() (deferred via setTimeout).
+  {
+    id: "auto_ascend",
+    name: "Auto-Ascend",
+    desc: (l) => l ? "Automatically triggers prestige when Galactic is reached. Your civilization ascends on its own." : "Auto-prestiges at Galactic stage",
+    baseCost: 20,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
   },
 
   // ===== UNIVERSAL AUTO-BUYERS (PP-SHOP-TABS) =====
