@@ -25,7 +25,6 @@ import {
   creatureLevel,
   creatureLevelBonus,
 } from "@/game/data/omnipotence";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -34,7 +33,6 @@ import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
 
 export function OmnipotenceContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const creatures = useGameStore((s) => s.creatures || []);
   const legions = useGameStore((s) => s.legions || []);
@@ -94,13 +92,16 @@ export function OmnipotenceContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Dna className="w-5 h-5" />
           Layer 7 — Omnipotence (Bio-engineering)
           <BackgroundLayerBadge layerId="omnipotence" />
-        </DialogTitle>
-        <DialogDescription asChild>
+        </h2>
+        <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between">
           <span>
             Design creatures, combine them into Legions. Each active creature adds instability — at 100, they go rogue.
@@ -116,10 +117,9 @@ export function OmnipotenceContent() {
                 {instability.toFixed(1)} / 100
               </Badge>
             </div>
-          
-            </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -590,9 +590,6 @@ export function OmnipotenceContent() {
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <AlertTriangle className="w-3 h-3" />
           Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Layer 8 (Divine Alliance). At 100 instability, creatures go rogue and raid YOUR galaxies.
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

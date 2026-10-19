@@ -12,7 +12,6 @@ import {
   canFormAlliance,
   isDivinityComplete,
 } from "@/game/data/divinity_layer";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -36,7 +35,6 @@ const RESOURCE_ICON: Record<string, string> = {
 };
 
 export function DivinityLayerContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const minorGods = useGameStore((s) => s.minorGods || MINOR_GODS);
   const godRelationships = useGameStore((s) => s.godRelationships || {});
@@ -64,21 +62,24 @@ export function DivinityLayerContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Handshake className="w-5 h-5" />
           Layer 8 — Divinity (Divine Alliance)
           <BackgroundLayerBadge layerId="divinity" />
-        </DialogTitle>
-        <DialogDescription className="flex items-center justify-between">
+        </h2>
+        <p className="text-sm text-muted-foreground flex items-center justify-between">
           <span>
             Negotiate with minor gods, trade resources, and form alliances. 2+ alliances unlocks Divine War.
           </span>
           <Badge variant="outline" className="text-amber-300 border-amber-400/40">
               {alliedCount}/{MINOR_GODS.length} alliances
             </Badge>
-          </DialogDescription>
-        </DialogHeader>
+        </p>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -235,9 +236,6 @@ export function DivinityLayerContent() {
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Sparkles className="w-3 h-3" />
           Form 2+ alliances to unlock Layer 9 (Divine War). Allied gods grant passive bonuses and can be called into battle against the Old Gods.
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

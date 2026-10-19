@@ -25,7 +25,6 @@ import {
   FORESIGHT_ROUTES,
   routeBonus,
 } from "@/game/data/foresight";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -189,7 +188,6 @@ function bonusSummary(bonus: ConstellationDef["bonus"]): { label: string; value:
 }
 
 export function EnlightenmentContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity);
   // L2 state
@@ -492,21 +490,24 @@ export function EnlightenmentContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Eye className="w-5 h-5" />
           Layer 2 — Enlightenment (Constellation Sky)
           <BackgroundLayerBadge layerId="enlightenment" />
-        </DialogTitle>
-        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+        </h2>
+        <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
             Drag the wide sky or use ◀ ▶ to pan. Click a star to inspect it and illuminate.
           </span>
           <Badge variant="outline" className="text-violet-300 border-violet-400/40">
             {formatNumber(divinity, 0)} Divinity
           </Badge>
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
       {!isUnlocked ? (
         <div className="text-center text-muted-foreground py-10">
@@ -887,9 +888,6 @@ export function EnlightenmentContent() {
       <Separator className="my-2" />
       <div className="text-[0.65rem] text-muted-foreground px-1">
         Click any star to inspect it; then press <span className="text-violet-300">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per star already lit in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per other started constellation. Complete <span className="text-emerald-300">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> constellations to advance to Layer 3.
-      </div>
-      <div className="flex justify-end pt-2">
-        <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
       </div>
     </>
   );

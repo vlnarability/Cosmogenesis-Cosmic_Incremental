@@ -28,12 +28,13 @@ import { ListTree, Archive as ArchiveIcon, ScrollText, Trophy } from "lucide-rea
 // This dramatically reduces initial bundle size + memory usage (the OOM killer
 // was triggered by all 17 modals + their data files being in the initial chunk).
 //
-// P6 — MODAL CONSOLIDATION: The 10 layer modals (Challenge, Enlightenment,
+// LAYER-AS-TAB — the 10 layer content components (Challenge, Enlightenment,
 // Transcendence, Genesis, Apotheosis, Singularity, Omnipotence, DivinityLayer,
-// Infinity, Eternity) are no longer rendered individually here. They are
-// consolidated into a single <LayerModal /> that switches content based on
-// the `activeLayerModal` state field. LayerModal lazy-loads each layer's
-// content separately (so memory optimization is preserved).
+// Infinity, Eternity) are now rendered INLINE in the main tab panel based on
+// `currentTab`. They used to live inside the <LayerModal/> wrapper (a shared
+// <Dialog>); that wrapper is no longer rendered here (the file remains in
+// `modals/LayerModal.tsx` for back-compat). The layer content is still
+// lazy-loaded individually, preserving the memory optimization.
 const ShopModal = lazy(() => import("../modals/ShopModal").then(m => ({ default: m.ShopModal })));
 const EvolveModal = lazy(() => import("../modals/EvolveModal").then(m => ({ default: m.EvolveModal })));
 const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
@@ -41,9 +42,55 @@ const AchievementToast = lazy(() => import("../modals/AchievementToast").then(m 
 const SettingsModal = lazy(() => import("../modals/SettingsModal").then(m => ({ default: m.SettingsModal })));
 const EventModal = lazy(() => import("../modals/EventModal").then(m => ({ default: m.EventModal })));
 const StageTransition = lazy(() => import("../modals/StageTransition").then(m => ({ default: m.StageTransition })));
-const LayerModal = lazy(() => import("../modals/LayerModal").then(m => ({ default: m.LayerModal })));
 const TutorialHints = lazy(() => import("./TutorialHints").then(m => ({ default: m.TutorialHints })));
 const OfflineSummary = lazy(() => import("../modals/OfflineSummary").then(m => ({ default: m.OfflineSummary })));
+
+// LAYER-AS-TAB — lazy-load each layer's CONTENT (no <Dialog> wrapper).
+// Each content component reads its own layer state from the store; GameShell
+// renders them inline based on `currentTab`. The Suspense fallback below
+// (InlineLayerLoading) shows a centered spinner while the chunk loads.
+const ChallengeContent = lazy(() =>
+  import("../modals/ChallengeModal").then((m) => ({ default: m.ChallengeContent as React.ComponentType }))
+);
+const EnlightenmentContent = lazy(() =>
+  import("../modals/EnlightenmentModal").then((m) => ({ default: m.EnlightenmentContent as React.ComponentType }))
+);
+const TranscendenceContent = lazy(() =>
+  import("../modals/TranscendenceModal").then((m) => ({ default: m.TranscendenceContent as React.ComponentType }))
+);
+const GenesisContent = lazy(() =>
+  import("../modals/GenesisModal").then((m) => ({ default: m.GenesisContent as React.ComponentType }))
+);
+const ApotheosisContent = lazy(() =>
+  import("../modals/ApotheosisModal").then((m) => ({ default: m.ApotheosisContent as React.ComponentType }))
+);
+const SingularityContent = lazy(() =>
+  import("../modals/SingularityModal").then((m) => ({ default: m.SingularityContent as React.ComponentType }))
+);
+const OmnipotenceContent = lazy(() =>
+  import("../modals/OmnipotenceModal").then((m) => ({ default: m.OmnipotenceContent as React.ComponentType }))
+);
+const DivinityLayerContent = lazy(() =>
+  import("../modals/DivinityLayerModal").then((m) => ({ default: m.DivinityLayerContent as React.ComponentType }))
+);
+const InfinityContent = lazy(() =>
+  import("../modals/InfinityModal").then((m) => ({ default: m.InfinityContent as React.ComponentType }))
+);
+const EternityContent = lazy(() =>
+  import("../modals/EternityModal").then((m) => ({ default: m.EternityContent as React.ComponentType }))
+);
+
+// ---- Inline-layer loading state — shown while a layer's content chunk loads. ----
+function InlineLayerLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-3 min-h-[200px]">
+      <div className="animate-spin text-3xl select-none" aria-hidden>
+        ⏳
+      </div>
+      <p className="text-xs text-muted-foreground">Loading layer…</p>
+    </div>
+  );
+}
 
 import { cn } from "@/lib/utils";
 
@@ -209,6 +256,35 @@ export function GameShell() {
               {currentTab === "archive" && <ArchiveTab />}
               {currentTab === "prestige" && <PrestigeTab />}
               {currentTab === "log" && <LogTab />}
+
+              {/* LAYER-AS-TAB — the 10 prestige-layer content components
+                  render INLINE here, in the same panel as the other tabs,
+                  driven by `currentTab` (NOT `activeLayerModal`). Each
+                  layer's chunk is lazy-loaded above; Suspense shows a
+                  centered spinner while the chunk fetches. */}
+              {(currentTab === "trials" ||
+                currentTab === "constellations" ||
+                currentTab === "market" ||
+                currentTab === "galaxy" ||
+                currentTab === "conquest" ||
+                currentTab === "universe" ||
+                currentTab === "lab" ||
+                currentTab === "diplomacy" ||
+                currentTab === "war" ||
+                currentTab === "genesis_engine") && (
+                <Suspense fallback={<InlineLayerLoading />}>
+                  {currentTab === "trials" && <ChallengeContent />}
+                  {currentTab === "constellations" && <EnlightenmentContent />}
+                  {currentTab === "market" && <TranscendenceContent />}
+                  {currentTab === "galaxy" && <GenesisContent />}
+                  {currentTab === "conquest" && <ApotheosisContent />}
+                  {currentTab === "universe" && <SingularityContent />}
+                  {currentTab === "lab" && <OmnipotenceContent />}
+                  {currentTab === "diplomacy" && <DivinityLayerContent />}
+                  {currentTab === "war" && <InfinityContent />}
+                  {currentTab === "genesis_engine" && <EternityContent />}
+                </Suspense>
+              )}
             </div>
           </div>
         </div>
@@ -225,9 +301,12 @@ export function GameShell() {
         <SettingsModal />
         <EventModal />
         <StageTransition />
-        {/* P6 — Consolidated layer modal. Renders the active layer's content
-            inside a single shared <Dialog> wrapper based on `activeLayerModal`. */}
-        <LayerModal />
+        {/* LAYER-AS-TAB — <LayerModal/> is no longer rendered here. The 10
+            layer content components are now rendered INLINE in the main tab
+            panel above (driven by `currentTab`). The LayerModal.tsx file is
+            kept in `modals/` for back-compat (PrestigeTab.onView buttons and
+            useKeyboardShortcuts still call openLayerModal, which now flips
+            `currentTab` via LAYER_TO_TAB). */}
         <TutorialHints />
         {/* FIX-UI-TABS — Shared info modal for Log/Archive/Codex/Awards.
             Opened from the gear dropdown (Header); content switches on

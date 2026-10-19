@@ -22,7 +22,6 @@ import {
   starCost,
   type ConstellationState,
 } from "@/game/data/constellations";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -41,7 +40,6 @@ const MARKET_LABELS: Record<string, { icon: string; color: string }> = {
 };
 
 export function TranscendenceContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity);
   const population = useGameStore((s) => s.population);
@@ -174,13 +172,16 @@ export function TranscendenceContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Triangle className="w-5 h-5" />
           Layer 3 — Transcendence (Divine Investment Market)
           <BackgroundLayerBadge layerId="transcendence" />
-        </DialogTitle>
-        <DialogDescription asChild>
+        </h2>
+        <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between">
             <span>
               Allocate background worlds to investment portfolios for Divinity dividends. All 4 Blood Pacts unlock Genesis.
@@ -193,10 +194,9 @@ export function TranscendenceContent() {
                 {pactsUsedCount}/4 pacts
               </Badge>
             </div>
-          
-            </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -631,9 +631,6 @@ export function TranscendenceContent() {
             <span className="text-emerald-300"> Divine-dend</span> of +1 Div/s.
           </div>
           <div>Perform all 4 Blood Pacts to unlock Layer 4 (Genesis).</div>
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

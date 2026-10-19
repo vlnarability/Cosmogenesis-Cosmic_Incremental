@@ -24,7 +24,6 @@ import {
   heresySeverity,
   type HeresySeverity,
 } from "@/game/data/galaxies";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -63,7 +62,6 @@ function severityTextClass(sev: HeresySeverity): string {
 }
 
 export function ApotheosisContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const faith = useGameStore((s) => s.faith);
   const divinity = useGameStore((s) => s.divinity);
@@ -143,13 +141,16 @@ export function ApotheosisContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Crown className="w-5 h-5" />
           Layer 5 — Apotheosis (Galactic Conquest)
           <BackgroundLayerBadge layerId="apotheosis" />
-        </DialogTitle>
-        <DialogDescription asChild>
+        </h2>
+        <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span>
               Conquer 3 rival galaxies to unlock Layer 6. Each claimed rival system grants +18 worlds.
@@ -172,8 +173,8 @@ export function ApotheosisContent() {
                 </Badge>
               </div>
             </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -583,9 +584,6 @@ export function ApotheosisContent() {
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Flame className="w-3 h-3" />
           <span className="text-rose-300">Galactic Conquest</span> is the new L5 loop. Attack rival galaxies (each system = +18 worlds), manage per-galaxy heresy webs, conquer 3 galaxies to unlock Layer 6 (Singularity).
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

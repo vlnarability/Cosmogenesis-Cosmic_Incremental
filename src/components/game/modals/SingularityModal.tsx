@@ -23,7 +23,6 @@ import {
   totalUniversalSystemsClaimed,
   type UniversalGalaxy,
 } from "@/game/data/universalMap";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -38,7 +37,6 @@ import { EmptyState } from "../shared/EmptyState";
 const MAP_SIZE = 100;
 
 export function SingularityContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const singularityCores = useGameStore((s) => s.singularityCores);
   const faith = useGameStore((s) => s.faith);
@@ -108,13 +106,16 @@ export function SingularityContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Orbit className="w-5 h-5 text-cyan-300" />
           Layer 6 — Singularity (Universal Map)
           <BackgroundLayerBadge layerId="singularity" />
-        </DialogTitle>
-        <DialogDescription asChild>
+        </h2>
+        <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span>
               Defend the 50-galaxy universe from Old-God rifts. Close rifts (Singularity Cores),
@@ -133,8 +134,8 @@ export function SingularityContent() {
                 </Badge>
               </div>
             </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -518,9 +519,6 @@ export function SingularityContent() {
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
           <span className="text-cyan-300">Universal Map</span> — defend 50 galaxies from Old-God rifts. Close rifts for Singularity Cores, place Reality Anchors to immunize galaxies in a {ANCHOR_RADIUS}-unit radius, and conquer new neutral galaxies (Faith) for +198 worlds each. Close {RIFTS_REQUIRED_FOR_L7} rifts + place {ANCHORS_REQUIRED_FOR_L7} anchors to unlock Layer 7 (Omnipotence).
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

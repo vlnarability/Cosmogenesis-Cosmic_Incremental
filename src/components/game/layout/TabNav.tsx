@@ -124,9 +124,14 @@ export function TabNav() {
               <button
                 key={tab.id}
                 onClick={() => openLayerModal(tab.layerId)}
+                // LAYER-AS-TAB — highlight when EITHER:
+                //   • `currentTab === tab.id` (the new inline-tab model — openLayerModal
+                //     also flips currentTab via LAYER_TO_TAB), OR
+                //   • `activeLayerModal === tab.layerId` (legacy flag, kept for
+                //     back-compat with Header chip / useKeyboardShortcuts).
                 className={cn(
                   "tab-btn shrink-0",
-                  activeLayerModal === tab.layerId && "active"
+                  (currentTab === tab.id || activeLayerModal === tab.layerId) && "active"
                 )}
                 title={tab.label}
               >
@@ -203,20 +208,27 @@ export function TabNav() {
 
           {/* Latest layer tab */}
           {visibleLayerTabs.length > 0 && (
-            <button
-              onClick={() => openLayerModal(visibleLayerTabs[visibleLayerTabs.length - 1].layerId)}
-              className={cn(
-                "flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-md text-[0.6rem] font-medium transition-colors min-w-[44px] min-h-[44px] justify-center shrink-0",
-                activeLayerModal === visibleLayerTabs[visibleLayerTabs.length - 1].layerId
-                  ? "text-foreground bg-muted/40"
-                  : "text-amber-400"
-              )}
-            >
-              <span className="w-5 h-5 flex items-center justify-center">
-                {visibleLayerTabs[visibleLayerTabs.length - 1].icon}
-              </span>
-              {visibleLayerTabs[visibleLayerTabs.length - 1].label}
-            </button>
+            (() => {
+              const latest = visibleLayerTabs[visibleLayerTabs.length - 1];
+              return (
+                <button
+                  onClick={() => openLayerModal(latest.layerId)}
+                  // LAYER-AS-TAB — also highlight when currentTab is the
+                  // latest layer tab (matches the desktop behavior above).
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-md text-[0.6rem] font-medium transition-colors min-w-[44px] min-h-[44px] justify-center shrink-0",
+                    (currentTab === latest.id || activeLayerModal === latest.layerId)
+                      ? "text-foreground bg-muted/40"
+                      : "text-amber-400"
+                  )}
+                >
+                  <span className="w-5 h-5 flex items-center justify-center">
+                    {latest.icon}
+                  </span>
+                  {latest.label}
+                </button>
+              );
+            })()
           )}
 
           {/* Shop */}

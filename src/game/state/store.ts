@@ -329,6 +329,26 @@ export const SHORTCUT_LAYER_GATE: Record<string, string> = {
   genesis: "eternity",
 };
 
+// LAYER-AS-TAB — layerId → tab id. `openLayerModal(layerId)` calls
+// `setTab(LAYER_TO_TAB[layerId])` in addition to the legacy `activeLayerModal`
+// + `show*` flag flips. GameShell renders the layer content INLINE (as a
+// tab) instead of inside a <Dialog>, so this is how the player exits now.
+// The legacy `activeLayerModal` + `show*` flags stay for back-compat with
+// any code still reading them (e.g. Header buttons highlighting the active
+// layer chip; PrestigeTab onView buttons; useKeyboardShortcuts).
+export const LAYER_TO_TAB: Record<string, TabId> = {
+  challenges: "trials",
+  enlightenment: "constellations",
+  transcendence: "market",
+  genesis: "galaxy",
+  apotheosis: "conquest",
+  singularity: "universe",
+  omnipotence: "lab",
+  divinity: "diplomacy",
+  infinity: "war",
+  eternity: "genesis_engine",
+};
+
 // ===== REBUILD: L1-6 helper factories =====
 function makeInitialFollowerGrid(): Array<{ state: string; type: string }> {
   // 8×4 = 32 cells. All start faithful.
@@ -3719,6 +3739,12 @@ export const useGameStore = create<GameStore>()(
       // openLayerModal(layerId) sets `activeLayerModal` to the requested layer id
       // AND mirrors it into the corresponding legacy `show*` flag so any code
       // that still reads `show*` directly continues to work.
+      //
+      // LAYER-AS-TAB — also flips `currentTab` to the layer's tab id
+      // (LAYER_TO_TAB). GameShell renders the layer content INLINE in the
+      // tab panel now (the <LayerModal/> is no longer rendered). The legacy
+      // flags stay for back-compat (Header chip highlight, PrestigeTab
+      // onView buttons, useKeyboardShortcuts).
       openLayerModal: (layerId) => {
         const showFlagMap: Record<string, keyof GameState> = {
           challenges: "showChallenges",
@@ -3750,6 +3776,11 @@ export const useGameStore = create<GameStore>()(
           activeLayerModal: layerId,
         };
         (patch as Record<string, unknown>)[flagKey] = true;
+        // LAYER-AS-TAB — also switch the active tab to the layer's tab id.
+        const layerTabId = LAYER_TO_TAB[layerId];
+        if (layerTabId) {
+          (patch as Record<string, unknown>).currentTab = layerTabId;
+        }
         set(patch);
       },
       closeLayerModal: () =>

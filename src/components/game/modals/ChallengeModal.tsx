@@ -10,7 +10,6 @@ import {
   type ChallengeEffects,
 } from "@/game/data/challenges";
 import { STAGES, STAGE_IDS } from "@/game/data/stages";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -19,7 +18,6 @@ import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 
 export function ChallengeContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const activeChallenge = useGameStore((s) => s.activeChallenge);
   const completedChallenges = useGameStore((s) => s.completedChallenges || {});
@@ -38,13 +36,16 @@ export function ChallengeContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Skull className="w-5 h-5" />
           Layer 1 — Trials
           <BackgroundLayerBadge layerId="evolution" />
-        </DialogTitle>
-        <DialogDescription asChild>
+        </h2>
+        <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between">
             <span>
               Run-modifier challenges — apply a debuff during a run, then earn a permanent mastery bonus on completion.
@@ -58,8 +59,8 @@ export function ChallengeContent() {
               </Badge>
             </div>
           </div>
-        </DialogDescription>
-      </DialogHeader>
+        </div>
+      </div>
 
         {!unlockedChallenges ? (
           <div className="text-center text-muted-foreground py-10">
@@ -152,10 +153,6 @@ export function ChallengeContent() {
           Each <span className="text-cyan-300">trial</span> applies a debuff to the run. Complete the goal to
           earn a permanent mastery bonus. Each repeat strengthens the debuff AND the reward (up to {maxRepeats}×).
           Master any <span className="text-amber-300">3 distinct trials</span> (or complete <span className="text-amber-300">5 total repeats</span>) to unlock the Enlightenment prestige layer.
-        </div>
-
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

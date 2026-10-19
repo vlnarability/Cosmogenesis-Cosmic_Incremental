@@ -21,7 +21,6 @@ import {
   computeCrucibleRules,
   type DivineRelic,
 } from "@/game/data/genesisEngine";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +60,6 @@ function amountLabel(amt: number): string {
 // ----- main component -----
 
 export function EternityContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity || 0);
   const cosmicBoonStacks = useGameStore((s) => s.cosmicBoonStacks || 0);
@@ -165,13 +163,16 @@ export function EternityContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Star className="w-5 h-5" />
           Layer 10 — Eternity (Genesis Engine)
           <BackgroundLayerBadge layerId="eternity" />
-        </DialogTitle>
-        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+        </h2>
+        <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
             Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
           </span>
@@ -188,8 +189,8 @@ export function EternityContent() {
               </Badge>
             )}
           </div>
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -216,7 +217,9 @@ export function EternityContent() {
             <p className="text-xs mt-1 text-muted-foreground">
               {ENDING_CHOICES.find((e) => e.id === chosenEnding)?.desc}
             </p>
-            <Button variant="outline" className="mt-4" onClick={() => closeLayerModal()}>Close</Button>
+            {/* LAYER-AS-TAB — Close button removed; switching tabs is how the
+                player exits now. The closeLayerModal store subscription has
+                been removed too (no longer used). */}
           </div>
         ) : (
           <div className="space-y-4">
@@ -547,9 +550,6 @@ export function EternityContent() {
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <RefreshCw className="w-3 h-3" />
           Discover all {ARCHETYPE_COUNT} archetypes to unlock the ending screen. Each archetype grants +1% production.
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
 
         {/* Ending-screen confirmation dialog */}

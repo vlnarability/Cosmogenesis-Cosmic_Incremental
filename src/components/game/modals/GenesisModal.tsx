@@ -13,7 +13,6 @@ import {
   summarizeGalaxyBonuses,
   type GalaxyBonusType,
 } from "@/game/data/galaxyMap";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -58,7 +57,6 @@ function bonusPct(value: number): string {
 }
 
 export function GenesisContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const galaxySystems = useGameStore((s) => s.galaxySystems || []);
@@ -140,21 +138,24 @@ export function GenesisContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Egg className="w-5 h-5" />
           Layer 4 — Genesis (Galaxy Claim)
           <BackgroundLayerBadge layerId="genesis" />
-        </DialogTitle>
-        <DialogDescription className="flex items-center justify-between flex-wrap gap-2">
+        </h2>
+        <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
             Survey 50 star systems on a hex spiral. Scan the unknown, then claim with Genesis Seeds to grow the Divine Engine.
           </span>
           <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
             {formatNumber(genesisSeeds, 0)} Seeds
           </Badge>
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -464,9 +465,6 @@ export function GenesisContent() {
           The galaxy spiral is the Layer 4 gameplay loop — scan unknown systems to reveal their bonus and
           rare resource, then claim them with Genesis Seeds. Adjacency matters: systems with 2+ claimed
           neighbors gain a <span className="text-amber-300">+50% synergy bonus</span>.
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );

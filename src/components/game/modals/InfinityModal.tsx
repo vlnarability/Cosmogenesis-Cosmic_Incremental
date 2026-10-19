@@ -9,7 +9,6 @@ import {
 } from "@/game/data/infinity";
 import { MINOR_GOD_MAP } from "@/game/data/divinity_layer";
 import { CREATURE_BODY_TYPE_MAP, legionPower } from "@/game/data/omnipotence";
-import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -23,7 +22,6 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 export function InfinityContent() {
-  const closeLayerModal = useGameStore((s) => s.closeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const oldGodBattles = useGameStore((s) => s.oldGodBattles || {});
   const divineFragments = useGameStore((s) => s.divineFragments || 0);
@@ -47,21 +45,24 @@ export function InfinityContent() {
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-lg flex-wrap">
+      {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
+          (Radix primitives that require a <Dialog> parent). Now plain HTML
+          since this content renders inline in the tab panel. */}
+      <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
+        <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Swords className="w-5 h-5" />
           Layer 9 — Infinity (Divine War)
           <BackgroundLayerBadge layerId="infinity" />
-        </DialogTitle>
-        <DialogDescription className="flex items-center justify-between">
+        </h2>
+        <p className="text-sm text-muted-foreground flex items-center justify-between">
           <span>
             Battle the Old Gods. Deploy Legions, call Allies, defeat all 3 to ascend.
           </span>
           <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">
             {divineFragments} Divine Fragments
           </Badge>
-          </DialogDescription>
-        </DialogHeader>
+        </p>
+      </div>
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -311,9 +312,6 @@ export function InfinityContent() {
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Swords className="w-3 h-3" />
           Defeat all 3 Old Gods to unlock Layer 10 (Ascension). Each victory grants a permanent Divine Fragment bonus.
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={() => closeLayerModal()}>Close</Button>
         </div>
     </>
   );
