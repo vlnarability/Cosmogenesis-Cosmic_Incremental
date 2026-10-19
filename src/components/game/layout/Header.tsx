@@ -367,14 +367,10 @@ export function Header() {
                 <DropdownMenuSeparator />
               </span>
 
-              {/* Prestige (roadmap) */}
-              <DropdownMenuItem
-                onClick={() => setTab("prestige")}
-                className="cursor-pointer text-xs"
-              >
-                <Crown className="w-3.5 h-3.5" />
-                <span>Prestige Roadmap</span>
-              </DropdownMenuItem>
+              {/* REMOVE-PRESTIGE-TAB — Prestige Roadmap menu item removed
+                  (user asked multiple times). The prestige flow is now
+                  driven by the Auto-Ascend autobuyer + the Big Bang
+                  button at L10. */}
               {/* Shop */}
               <DropdownMenuItem
                 onClick={() => setShowShop(true)}

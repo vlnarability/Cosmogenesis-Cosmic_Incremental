@@ -131,19 +131,15 @@ export function GameShell() {
   const showDivineEngine = !!(unlockedLayers?.enlightenment);
   const setTab = useGameStore((s) => s.setTab);
 
-  // AUTO-REDIRECT (one-time): At L2+, if the current tab is a hidden base-game tab
-  // (actions/systems/tech/production/story), redirect to "prestige" ONCE so the
-  // player never sees the Cell Actions / Manual Action section.
-  // This runs only when transitioning into L2 (not on every render) to avoid
-  // the "keeps resetting to prestige" bug.
+  // AUTO-REDIRECT: At L2+, if the current tab is a hidden base-game tab
+  // (actions/systems/tech/production), redirect to "story" so the player
+  // never sees the Cell Actions / Manual Action section.
+  // REMOVE-PRESTIGE-TAB — redirect to "story" instead of "prestige".
   const prevShowDivineEngine = useRef(showDivineEngine);
   useEffect(() => {
-    // Only redirect on the TRANSITION from L1 → L2 (when showDivineEngine flips true),
-    // or if the saved tab is a hidden base-game tab at L2+.
-    // Don't redirect on every render — that would trap the player on prestige.
     const hiddenTabs = ["actions", "systems", "tech", "production"];
     if (showDivineEngine && hiddenTabs.includes(currentTab)) {
-      setTab("prestige");
+      setTab("story");
     }
     prevShowDivineEngine.current = showDivineEngine;
   }, [showDivineEngine, currentTab, setTab]);

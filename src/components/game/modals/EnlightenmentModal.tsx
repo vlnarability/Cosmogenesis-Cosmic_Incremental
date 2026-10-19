@@ -335,6 +335,16 @@ export function EnlightenmentContent() {
 
   // ===== Render a single instance of the wide sky at the given x offset =====
   // Called 3 times by the wrapper to produce the infinite-scroll illusion.
+  //
+  // STAR-MAP-FIX: previously the inner sky div had a fixed `height: SKY_H`
+  // (500px) while the viewport could be variable height. When the viewport
+  // was taller, the bottom was empty; when shorter, stars at high y-values
+  // were clipped and unclickable.
+  //
+  // FIX: the inner sky div uses `height: 100%` so it matches the viewport's
+  // rendered height. Star + label positions use PERCENTAGE positioning
+  // (top: `${y}%`) so they always scale to the parent's height. The SVG
+  // uses viewBox="0 0 100 100" + preserveAspectRatio="none" to stretch.
   function renderSkyInstance(offset: number) {
     return (
       <div
@@ -343,7 +353,7 @@ export function EnlightenmentContent() {
         style={{
           left: `${offset}px`,
           width: `${SKY_W}px`,
-          height: `${SKY_H}px`,
+          height: "100%",
         }}
       >
         {/* Subtle starfield background (per-instance so the gradient fills
@@ -369,21 +379,17 @@ export function EnlightenmentContent() {
             backgroundSize: "100% 100%",
           }}
         />
-        {/* Constellation connection lines — drawn as SVG so we get crisp
-            diagonal lines without CSS hacks. The SVG is non-interactive
-            (pointer-events: none) so star buttons remain clickable. */}
+        {/* Constellation connection lines — SVG fills the parent and uses
+            a normalized 0-100 viewBox so lines scale to any height. */}
         <svg
           className="absolute inset-0 pointer-events-none"
-          width={SKY_W}
-          height={SKY_H}
-          viewBox={`0 0 ${SKY_W} ${SKY_H}`}
+          width="100%"
+          height="100%"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
           aria-hidden
         >
           {FLAT_CONNS.map((conn, i) => {
-            const x1 = (conn.ax / 100) * SKY_W;
-            const y1 = (conn.ay / 100) * SKY_H;
-            const x2 = (conn.bx / 100) * SKY_W;
-            const y2 = (conn.by / 100) * SKY_H;
             const isCompleted = !!constellationsCompleted[conn.cId];
             const isStarted = !!constellationsStarted[conn.cId];
             const isRevealed = !!constellationRevealed[conn.cId];
@@ -396,23 +402,22 @@ export function EnlightenmentContent() {
             return (
               <line
                 key={`${offset}-${conn.cId}-${conn.aId}-${conn.bId}-${i}`}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
+                x1={conn.ax}
+                y1={conn.ay}
+                x2={conn.bx}
+                y2={conn.by}
                 stroke={stroke}
-                strokeWidth={isCompleted ? 2.2 : 1}
+                strokeWidth={isCompleted ? 0.25 : 0.12}
                 strokeLinecap="round"
                 opacity={dim ? 0.35 : 0.9}
+                vectorEffect="non-scaling-stroke"
               />
             );
           })}
         </svg>
-        {/* Stars as clickable buttons. Each is a 14×14 px hit area positioned
-            so the star's (x, y) maps to its center. */}
+        {/* Stars as clickable buttons positioned using PERCENTAGE
+            coordinates so they always scale with the parent's height. */}
         {FLAT_STARS.map((fs) => {
-          const left = (fs.x / 100) * SKY_W;
-          const top = (fs.y / 100) * SKY_H;
           const lit = !!constellationStars[fs.starId];
           const started = !!constellationsStarted[fs.cId];
           const accent = CATEGORY_ACCENT[fs.category];
@@ -422,21 +427,18 @@ export function EnlightenmentContent() {
               key={`${offset}-${fs.starId}`}
               type="button"
               onPointerDown={(e) => {
-                // Suppress drag start when the user clicked on a star —
-                // we want star clicks to open the popup, not start a drag.
                 e.stopPropagation();
               }}
               onClick={(e) => {
-                // If the user just finished dragging a long way, ignore the
-                // click (it's a drag-release, not a star click).
                 if (dragDistance.current > 5) return;
                 e.stopPropagation();
                 setSelectedStar({ constellationId: fs.cId, starId: fs.starId });
               }}
               className="absolute rounded-full transition-transform hover:scale-125 focus:outline-none focus:ring-2 focus:ring-white/60"
               style={{
-                left: `${left - 7}px`,
-                top: `${top - 7}px`,
+                left: `${fs.x}%`,
+                top: `${fs.y}%`,
+                transform: "translate(-50%, -50%)",
                 width: "14px",
                 height: "14px",
                 background: lit ? accent : started ? "#475569" : "#1e293b",
@@ -457,14 +459,10 @@ export function EnlightenmentContent() {
             />
           );
         })}
-        {/* Constellation name labels — positioned at the top-right corner
-            of each constellation's bounding box, in a serif italic font for
-            that classic star-map feel. */}
+        {/* Constellation name labels — percentage positioning. */}
         {LABEL_ANCHORS.map((la) => {
           const cdef = CONSTELLATION_MAP[la.cId];
           if (!cdef) return null;
-          const left = (la.left / 100) * SKY_W;
-          const top = (la.top / 100) * SKY_H;
           const isCompleted = !!constellationsCompleted[la.cId];
           const isStarted = !!constellationsStarted[la.cId];
           const isRevealed = !!constellationRevealed[la.cId];
@@ -474,8 +472,8 @@ export function EnlightenmentContent() {
               key={`${offset}-label-${la.cId}`}
               className="absolute text-[10px] italic font-serif pointer-events-none select-none whitespace-nowrap"
               style={{
-                left: `${left + 8}px`,
-                top: `${top + 4}px`,
+                left: `${la.left}%`,
+                top: `${la.top}%`,
                 color: isCompleted
                   ? CATEGORY_ACCENT[cdef.category]
                   : isStarted
@@ -520,11 +518,13 @@ export function EnlightenmentContent() {
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3 min-h-0">
           {/* ===== WIDE SCROLLABLE SKY + PROGRESS SUMMARY ===== */}
           <div className="flex flex-col gap-2 min-h-0">
-            {/* The wide-sky viewport — fixed 500px tall, hides overflow */}
+            {/* The wide-sky viewport — responsive height (was fixed SKY_H).
+                STAR-MAP-FIX: using clamp() so the map grows to fill the
+                modal on tall viewports. */}
             <div
               className="relative w-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
               style={{
-                height: SKY_H,
+                height: "clamp(380px, 56vh, 700px)",
                 cursor: dragging ? "grabbing" : "grab",
               }}
               onPointerDown={onPointerDown}
@@ -533,13 +533,14 @@ export function EnlightenmentContent() {
               onPointerCancel={endDrag}
               onPointerLeave={endDrag}
             >
-              {/* The 3 sky instances — wrapper translates by `scrollX` */}
+              {/* The 3 sky instances — wrapper height matches viewport (100%)
+                  so the inner sky fills the visible area. */}
               <div
                 className="absolute top-0 left-0"
                 style={{
                   transform: `translateX(${scrollX}px)`,
                   width: SKY_W,
-                  height: SKY_H,
+                  height: "100%",
                   willChange: "transform",
                 }}
               >
