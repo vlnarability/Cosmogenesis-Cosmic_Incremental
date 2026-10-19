@@ -6923,3 +6923,10 @@ function markPlayerAction(s: GameState): Record<string, number> {
   meta.idleDurationSec = 0;
   return meta;
 }
+
+// PLAYTEST-AUTOMATION — expose the store on `window` so automated
+// playtest scripts (via agent-browser eval) can call store actions
+// directly without going through React UI clicks.
+if (typeof window !== "undefined") {
+  (window as any).__gameStore = useGameStore;
+}
