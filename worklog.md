@@ -7259,3 +7259,27 @@ GovernmentDef interface, no GOVERNMENTS array, no activeGovernment state
 field). The feature was described in the design doc + referenced in
 earlier worklog entries but never implemented in the actual source.
 The 20-government playtest CANNOT be run until the feature is built.
+
+---
+Task ID: LAYER-AS-TAB
+Agent: layer-as-tab subagent
+Task: Convert 10 layer modals into inline tab pages.
+Work Log:
+- src/game/state/types.ts — extended `TabId` with 10 layer-tab ids: `trials | constellations | market | galaxy | conquest | universe | lab | diplomacy | war | genesis_engine` (each renders inline in GameShell instead of opening a modal).
+- src/game/state/store.ts — added module-scope `LAYER_TO_TAB` map (challenges→trials, enlightenment→constellations, transcendence→market, genesis→galaxy, apotheosis→conquest, singularity→universe, omnipotence→lab, divinity→diplomacy, infinity→war, eternity→genesis_engine). `openLayerModal(layerId)` now also patches `currentTab = LAYER_TO_TAB[layerId]` in addition to the legacy `activeLayerModal` + `show*` flag flips (kept for back-compat with Header chip / PrestigeTab.onView / useKeyboardShortcuts). `closeLayerModal()` unchanged (clears legacy flags).
+- src/components/game/layout/GameShell.tsx — lazy-loaded all 10 layer content components (ChallengeContent, EnlightenmentContent, TranscendenceContent, GenesisContent, ApotheosisContent, SingularityContent, OmnipotenceContent, DivinityLayerContent, InfinityContent, EternityContent) and rendered them INLINE in the main tab panel based on `currentTab` (NOT `activeLayerModal`). Removed `<LayerModal />` from the Suspense block (file kept at modals/LayerModal.tsx for back-compat). Added `InlineLayerLoading` Suspense fallback. ShopModal still rendered as a modal (separate task).
+- src/components/game/layout/TabNav.tsx — layer tab buttons now highlight when EITHER `currentTab === tab.id` OR `activeLayerModal === tab.layerId` (the existing back-compat flag). Same change applied to the mobile "latest layer tab" button.
+- 10 layer modal content files (ChallengeModal, EnlightenmentModal, TranscendenceModal, GenesisModal, ApotheosisModal, SingularityModal, OmnipotenceModal, DivinityLayerModal, InfinityModal, EternityModal) — removed `import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"`, removed the `closeLayerModal` store subscription, removed the bottom Close button (and the secondary post-ending Close button in EternityModal). Replaced:
+  - `<DialogHeader>` → `<div className="flex flex-col gap-2 text-center sm:text-left mb-3">`
+  - `<DialogTitle className="X">...</DialogTitle>` → `<h2 className="text-lg leading-none font-semibold X">...</h2>`
+  - `<DialogDescription asChild>` → `<div className="text-sm text-muted-foreground">` (with original child unchanged inside)
+  - `<DialogDescription className="X">` → `<p className="text-sm text-muted-foreground X">`
+  EternityModal.tsx preserved its `AlertDialog` import (still used for the ending-confirmation dialog) — only the DialogHeader/DialogTitle/DialogDescription import was removed.
+- Lint: `bun run lint` shows 0 errors (only pre-existing warnings in scripts/ and upload/ folders).
+- Verification with agent-browser: opened http://localhost:3000, paused the game, opened Settings, clicked "Evolution Idle · v1.0" 5× to enable debug mode, clicked "Unlock All Layers", closed settings, clicked the Constellations tab. Verified `document.querySelector('[role=dialog]')` returns null and `document.querySelectorAll('[role=dialog]').length === 0`. Snapshot shows "Layer 2 — Enlightenment (Constellation Sky)" `<h2>` heading + the wide-scrollable star sky (88 stars visible as buttons like "α Aries in Aries constellation (unlit)") rendered inline in the main panel — no `<Dialog>` wrapper. Also verified Trials tab renders inline with the challenge cards and "Begin Trial (repeat 1)" buttons (no dialog). Store state after Constellations click: `{tab: "constellations", activeLayerModal: "enlightenment", dialogCount: 0}` — confirming the legacy `activeLayerModal` flag is still set for back-compat while the new `currentTab` drives the inline render.
+- Git: committed as `12d4a75` with message "LAYER-AS-TAB: convert 10 layer modals into inline tab pages. openLayerModal now calls setTab. Layer content renders inline in GameShell based on currentTab. DialogHeader/DialogTitle/DialogDescription replaced with plain HTML (Radix requires Dialog parent)." and pushed to `origin/main`.
+Stage Summary:
+- The 10 prestige-layer modals (L1–L10) are now inline tab pages rendered in the same `<main>` panel as Actions/Systems/Tech/Story. The shared `<LayerModal />` wrapper is no longer rendered (file kept for back-compat).
+- The legacy `activeLayerModal` + `show*` flags stay in `openLayerModal()` so existing code paths (Header chip highlighting, PrestigeTab onView buttons, useKeyboardShortcuts) continue to work — they now also flip `currentTab` to the layer's tab id via `LAYER_TO_TAB`.
+- Each layer content file is now plain HTML (no Radix Dialog primitives) so it can render standalone outside a `<Dialog>`.
+- Verified zero `[role=dialog]` elements on the Constellations tab — the constellation sky renders inline with all 88 stars visible + clickable.
