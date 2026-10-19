@@ -167,10 +167,12 @@ export function Header() {
 
   // === Center-zone stats ===
   // L1 (first playthrough): Population + Time
-  // L2+: Worlds count + Divinity/sec
-  // L4+: also EP/sec (max 3 stats)
+  // L2+: Worlds count + Divinity/sec (max 2 stats)
+  // CURRENCY-UNIFICATION — the L4+ "EP/s" stat has been removed. EP is
+  // no longer a spendable currency (folded into Divinity at prestige),
+  // so the per-second generation number is meaningless to surface. The
+  // L2+ "Div/s" stat already covers divinity generation.
   const divPerSec = peakProductionRate * 0.01 * backgroundSimulations;
-  const epPerSec = peakProductionRate * 0.001 * backgroundSimulations;
 
   // === Layer label (left zone) ===
   const layerLabelText = isL2Plus
@@ -238,7 +240,7 @@ export function Header() {
               />
             </>
           ) : (
-            // L2+: Worlds + Divinity/sec (+ EP/sec at L4+)
+            // L2+: Worlds + Divinity/sec (max 2 stats)
             <>
               <Stat
                 icon={<Globe className="w-3 h-3" />}
@@ -253,15 +255,6 @@ export function Header() {
                 color="text-amber-300"
                 className="hidden sm:flex"
               />
-              {isL4Plus && (
-                <Stat
-                  icon={<Leaf className="w-3 h-3" />}
-                  label="EP/s"
-                  value={epPerSec > 0 ? formatCompact(epPerSec) : "0"}
-                  color="text-emerald-300"
-                  className="hidden md:flex"
-                />
-              )}
             </>
           )}
         </div>

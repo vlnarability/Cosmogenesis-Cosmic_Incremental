@@ -32,6 +32,15 @@ export interface EventChoice {
   };
   // Log message to add after choosing
   logMsg?: string;
+  // EVENT-CHAINS — when set, resolving this choice schedules a follow-up
+  // event to fire after `delaySec` real seconds (chance-gated). The chained
+  // event is usually `chainOnly: true` (excluded from the random pool) so
+  // it ONLY fires via this scheduling path. Chance defaults to 1 (always).
+  followUpEvent?: {
+    eventId: string;
+    delaySec: number;
+    chance?: number;
+  };
 }
 
 export interface GameEvent {
@@ -53,6 +62,11 @@ export interface GameEvent {
   // the player has researched the tech with this id (e.g. dna_repair blocks
   // mutation events).
   immuneTech?: string;
+  // EVENT-CHAINS — when true, the event is excluded from the random pool
+  // (eventsForStage()). It only fires via a scheduled followUpEvent from
+  // a previous event choice. ChainOnly events still appear in the EVENT_MAP
+  // so they can be resolved like any other event once scheduled.
+  chainOnly?: boolean;
 }
 
 export const EVENTS: GameEvent[] = [
@@ -74,6 +88,9 @@ export const EVENTS: GameEvent[] = [
         desc: "+15 glucose, +5 proteins. Risk: slight toxicity.",
         resourceChanges: { glucose: 15, proteins: 5, atp: -2 },
         logMsg: "Absorbed the chemical bloom. Gained resources, lost some ATP.",
+        // EVENT-CHAINS — absorbing the bloom attracts opportunistic
+        // scavengers; 60% chance to trigger `scavenger_swarm` 70s later.
+        followUpEvent: { eventId: "scavenger_swarm", delaySec: 70, chance: 0.6 },
       },
       {
         id: "avoid",
@@ -113,6 +130,9 @@ export const EVENTS: GameEvent[] = [
           populationChange: -1,
         },
         logMsg: "Fled the predator. Burned glucose, gained ATP.",
+        // EVENT-CHAINS — fleeing leaves a trail; 70% chance the predator
+        // tracks the cell down 50s later (`predator_return` chain).
+        followUpEvent: { eventId: "predator_return", delaySec: 50, chance: 0.7 },
       },
     ],
   },
@@ -6633,6 +6653,96 @@ export const EVENTS: GameEvent[] = [
       },
     ],
   },
+
+  // =================================================================
+  // ===== EVENT-CHAINS — chainOnly events (excluded from the random pool) =====
+  // These only fire via a `followUpEvent` scheduling from a previous event.
+  // See `pendingFollowUps` in store.ts + the tick's follow-up scan block.
+  // =================================================================
+  {
+    id: "predator_return",
+    name: "Predator Returns",
+    desc: "The shadow has found you again. The predator tracked your scent through the warm currents. This time, it will not be shaken off so easily.",
+    icon: "🌑",
+    stages: ["cell"],
+    minTime: 0,
+    weight: 0,
+    chainOnly: true,
+    choices: [
+      {
+        id: "fight",
+        label: "Stand your ground",
+        desc: "−4 ATP, +2 proteins from the kill. But scavengers smell the blood — they are coming.",
+        resourceChanges: { atp: -4, proteins: 2 },
+        // EVENT-CHAINS — the kill draws scavengers 40s later (50% chance).
+        followUpEvent: { eventId: "scavenger_swarm", delaySec: 40, chance: 0.5 },
+        logMsg: "Stood your ground and drove the predator off. Blood in the water.",
+      },
+      {
+        id: "flee_deeper",
+        label: "Flee deeper",
+        desc: "−3 ATP, but lose the trail for good. The deep is cold but safe.",
+        resourceChanges: { atp: -3 },
+        logMsg: "Fled into the deep. Lost the predator — this time for good.",
+      },
+    ],
+  },
+  {
+    id: "scavenger_swarm",
+    name: "Scavenger Swarm",
+    desc: "A swarm of opportunistic cells drifts in, drawn by the recent turmoil. They want a share of your resources — or to take yours by force.",
+    icon: "🌀",
+    stages: ["cell"],
+    minTime: 0,
+    weight: 0,
+    chainOnly: true,
+    choices: [
+      {
+        id: "share",
+        label: "Share the bounty",
+        desc: "−10 glucose, +3 proteins (they trade what they have). No lasting debt.",
+        resourceChanges: { glucose: -10, proteins: 3 },
+        logMsg: "Shared the bounty with the swarm. Lost glucose, gained rare proteins.",
+      },
+      {
+        id: "drive_off",
+        label: "Drive them off",
+        desc: "−5 ATP, but assert dominance. They will remember the slight.",
+        resourceChanges: { atp: -5 },
+        // EVENT-CHAINS — driving them off sows a grudge; 50% chance the
+        // swarm's descendants return 90s later to settle the score.
+        followUpEvent: { eventId: "grudge_recall", delaySec: 90, chance: 0.5 },
+        logMsg: "Drove the scavengers off. The cells scattered — but they will remember.",
+      },
+    ],
+  },
+  {
+    id: "grudge_recall",
+    name: "Grudge Recall",
+    desc: "A larger cell — one of the scavengers you drove off, now grown — returns. It does not attack; it hovers, as if demanding acknowledgement of the debt you owe.",
+    icon: "👁️",
+    stages: ["cell"],
+    minTime: 0,
+    weight: 0,
+    chainOnly: true,
+    choices: [
+      {
+        id: "acknowledge",
+        label: "Acknowledge the debt",
+        desc: "+2 population (the swarm accepts the truce and joins you), but happiness dips −3 as old tensions linger.",
+        populationChange: 2,
+        happinessChange: -3,
+        logMsg: "Acknowledged the old debt. The scavenger joined your colony — peace at a price.",
+      },
+      {
+        id: "ignore",
+        label: "Ignore the presence",
+        desc: "+1 ATP (you absorb the leftover trace molecules). The grudge continues to fester in the deep.",
+        resourceChanges: { atp: 1 },
+        logMsg: "Ignored the visitor. It drifts away — for now.",
+      },
+    ],
+  },
 ];
 
 export const EVENT_MAP: Record<string, GameEvent> = Object.fromEntries(
@@ -6641,5 +6751,7 @@ export const EVENT_MAP: Record<string, GameEvent> = Object.fromEntries(
 
 // Get events that can fire in the current stage
 export function eventsForStage(stage: string, gameTime: number): GameEvent[] {
-  return EVENTS.filter((e) => e.stages.includes(stage) && gameTime >= e.minTime);
+  return EVENTS.filter(
+    (e) => e.stages.includes(stage) && gameTime >= e.minTime && !e.chainOnly
+  );
 }

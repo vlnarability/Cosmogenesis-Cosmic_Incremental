@@ -375,22 +375,16 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "auto_author_universes", value: 120 },
   },
 
-  // L2+ — ep_auto_converter: converts EP to PP at 1:1 every tick.
-  // Once owned, the EP resource is hidden from the UI (Header + ResourceBar).
-  // EP becomes internal-only (still accrued from background sims, but auto-converted).
-  {
-    id: "ep_auto_converter",
-    name: "EP Auto-Converter",
-    desc: (l) => l
-      ? "Every tick, converts ALL Evolution Points to Prestige Points at 1:1. EP becomes internal-only and is hidden from the UI."
-      : "Converts EP to PP at 1:1 every tick. Hides EP from the UI.",
-    baseCost: 50,
-    maxLevel: 1,
-    costGrowth: 1.0,
-    requiresLayer: "enlightenment",  // visible once L2 is unlocked
-    category: "universal",
-    effect: { type: "ep_auto_converter", value: 1 },
-  },
+  // CURRENCY-UNIFICATION — the `ep_auto_converter` upgrade has been
+  // REMOVED from the shop. The EP→PP conversion every tick was redundant
+  // once the shop spends a single currency (Divinity) for everything.
+  // Old saves that purchased this upgrade keep `upgrades.ep_auto_converter`
+  // in their save — it is inert (the tick logic was removed too). New
+  // players will never see it in the shop.
+  // {
+  //   id: "ep_auto_converter",
+  //   ...removed — see CURRENCY-UNIFICATION worklog entry.
+  // },
 
   // ===== LAYER-SPECIFIC (L2–L10) =====
   // Each upgrade only appears in the shop once its `requiresLayer` is unlocked.

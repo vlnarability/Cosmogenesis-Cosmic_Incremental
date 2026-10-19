@@ -585,6 +585,22 @@ function initialMetaState(): Partial<GameState> {
     eventFrequency: "normal",
     debugFreeBuy: false,
 
+    // AUTOBUYER-SETTINGS — archetype / government targeting preferences.
+    // All four slots default to null (no preference); the shop panel sets
+    // them via the setAutoBuyerSystemTarget / setAutoBuyerTechTarget /
+    // setPreferredGovernment / setPreferredForesightRoute actions.
+    autoBuyerSettings: {
+      systemTarget: null,
+      techTarget: null,
+      preferredGovernment: null,
+      preferredForesightRoute: null,
+    },
+    // EVENT-CHAINS — scheduled follow-up events awaiting their fire time.
+    // Empty at fresh-start; populated by resolveEvent() when a choice has
+    // a `followUpEvent` field. The tick scans for due entries and either
+    // fires them (chance roll passed) or drops them (chance roll failed).
+    pendingFollowUps: [],
+
     // Theme customization (Part 1)
     activeStageTheme: "stage-cell",
     activeLayerTheme: null,
@@ -1131,6 +1147,11 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Auto-Builder: every 8s, buy cheapest affordable system ----
         // Player MUST purchase the auto_system_buyer shop upgrade (8 EP) to enable.
+        // AUTOBUYER-SETTINGS — when `systemTarget` is set, the buyer prefers
+        // candidates whose `grantsAffinity.archetype` matches the target. The
+        // sort order is (matchesTarget DESC, totalCost ASC) so the cheapest
+        // matching candidate wins; when no candidate matches, the cheapest
+        // overall wins (identical to the original behaviour).
         const hasAutoSystemBuyer = (s.upgrades["auto_system_buyer"] || 0) > 0;
         const systemBuyerInterval = 8;
         if (!trialAutobuyersBlocked && hasAutoSystemBuyer && newTime - (autoTimers.system || 0) >= systemBuyerInterval) {
@@ -1139,6 +1160,7 @@ export const useGameStore = create<GameStore>()(
           const maxSystemsCap = challengeDebuff.maxSystems ?? Infinity;
           const canExceedCap = totalSystemsNow < maxSystemsCap;
           const disableMilitary = !!challengeDebuff.disableMilitary;
+          const systemTarget = s.autoBuyerSettings?.systemTarget || null;
 
           const candidates = SYSTEMS.filter((sys) => sys.stage === stageId)
             .map((sys) => {
@@ -1158,12 +1180,19 @@ export const useGameStore = create<GameStore>()(
                 totalCost += scaled;
                 if ((resources[r] || 0) < scaled) canAfford = false;
               }
-              return { sys, scaledCost, totalCost, canAfford };
+              const matchesTarget = !!systemTarget && !!(sys.grantsAffinity && sys.grantsAffinity.archetype === systemTarget);
+              return { sys, scaledCost, totalCost, canAfford, matchesTarget };
             })
             .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
 
           if (canExceedCap && candidates.length > 0) {
-            candidates.sort((a, b) => a.totalCost - b.totalCost);
+            // AUTOBUYER-SETTINGS — sort by (matchesTarget DESC, totalCost ASC).
+            candidates.sort((a, b) => {
+              const aM = a.matchesTarget ? 1 : 0;
+              const bM = b.matchesTarget ? 1 : 0;
+              if (aM !== bM) return bM - aM;
+              return a.totalCost - b.totalCost;
+            });
             const pick = candidates[0];
             // Apply purchase
             const newResources = { ...resources };
@@ -1190,12 +1219,16 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Auto-Researcher: every 12s, research cheapest affordable tech ----
         // Player MUST purchase the auto_tech_buyer shop upgrade (10 EP) to enable.
+        // AUTOBUYER-SETTINGS — when `techTarget` is set, the buyer prefers
+        // techs whose `grantsAffinity.archetype` matches the target. The
+        // sort order is (matchesTarget DESC, totalCost ASC).
         const hasAutoTechBuyer = (s.upgrades["auto_tech_buyer"] || 0) > 0;
         const techBuyerInterval = 12;
         if (!trialAutobuyersBlocked && hasAutoTechBuyer && newTime - (autoTimers.tech || 0) >= techBuyerInterval) {
           const stageId = STAGES[s.stageIndex].id;
           const disableTech = !!challengeDebuff.disableTech;
           const disableMilitary = !!challengeDebuff.disableMilitary;
+          const techTarget = s.autoBuyerSettings?.techTarget || null;
 
           if (!disableTech) {
             const techCandidates = TECHS.filter((t) => t.stage === stageId && !technologies[t.id])
@@ -1216,12 +1249,19 @@ export const useGameStore = create<GameStore>()(
                   totalCost += scaled;
                   if ((resources[r] || 0) < scaled) canAfford = false;
                 }
-                return { t, scaledCost, totalCost, canAfford };
+                const matchesTarget = !!techTarget && !!(t.grantsAffinity && t.grantsAffinity.archetype === techTarget);
+                return { t, scaledCost, totalCost, canAfford, matchesTarget };
               })
               .filter((x): x is NonNullable<typeof x> => x !== null && x.canAfford);
 
             if (techCandidates.length > 0) {
-              techCandidates.sort((a, b) => a.totalCost - b.totalCost);
+              // AUTOBUYER-SETTINGS — sort by (matchesTarget DESC, totalCost ASC).
+              techCandidates.sort((a, b) => {
+                const aM = a.matchesTarget ? 1 : 0;
+                const bM = b.matchesTarget ? 1 : 0;
+                if (aM !== bM) return bM - aM;
+                return a.totalCost - b.totalCost;
+              });
               const pick = techCandidates[0];
               const newResources = { ...resources };
               for (const [r, v] of Object.entries(pick.scaledCost)) {
@@ -1343,6 +1383,43 @@ export const useGameStore = create<GameStore>()(
         const eventFreq = s.eventFrequency || "normal";
         const eventsAllowed = !challengeDebuff.disableEvents;
         const isL2Plus = !!(s.unlockedLayers?.enlightenment);
+
+        // ---- EVENT-CHAINS — scan pendingFollowUps for due entries ----
+        // Chain events fire BEFORE the random pool check so a scheduled
+        // follow-up pre-empts a random event. Chain events are NOT gated
+        // by `eventFreq`, `eventsAllowed`, or `isL2Plus` — they were
+        // scheduled by the player's previous choice and should always
+        // fire (subject to the chance roll). The only gating: no other
+        // event/popup may be active.
+        let pendingFollowUps = s.pendingFollowUps || [];
+        if (!activeEvent && !activePopup && pendingFollowUps.length > 0) {
+          const now = Date.now();
+          // Oldest due entry first.
+          const due = pendingFollowUps
+            .filter((p) => p.fireAt <= now)
+            .sort((a, b) => a.fireAt - b.fireAt);
+          if (due.length > 0) {
+            const followUp = due[0];
+            // Remove the fired entry whether or not the chance roll passes.
+            pendingFollowUps = pendingFollowUps.filter((p) => p !== followUp);
+            const srcName = EVENT_MAP[followUp.sourceEventId]?.name || followUp.sourceEventId;
+            if (Math.random() < followUp.chance) {
+              const evDef = EVENT_MAP[followUp.eventId];
+              if (evDef) {
+                activeEvent = followUp.eventId;
+                eventTimer = 60;
+                eventCooldown = 5;
+                setTimeout(() => get().addToLog(`🔗 Event chain: "${srcName}" triggered follow-up "${evDef.name}".`), 0);
+              } else {
+                // Target event was removed from EVENT_MAP — drop silently.
+                setTimeout(() => get().addToLog(`🔗 Event chain from "${srcName}" — follow-up "${followUp.eventId}" no longer exists; dropped.`), 0);
+              }
+            } else {
+              setTimeout(() => get().addToLog(`🔗 Event chain from "${srcName}" — follow-up did not fire (chance roll failed).`), 0);
+            }
+          }
+        }
+
         if (eventFreq !== "off" && eventsAllowed && !activeEvent && !activePopup && eventCooldown === 0 && !isL2Plus) {
           const stageId = STAGES[s.stageIndex].id;
           // ARCHETYPES-REWORK — filter out events the locked archetype is
@@ -2679,21 +2756,14 @@ export const useGameStore = create<GameStore>()(
           setTimeout(() => get().completeBigBang(), 0);
         }
 
-        // ---- ep_auto_converter (L2+ unlocked, every tick): convert ALL EP to PP at 1:1 ----
-        // Done inline (not deferred) so the EP→PP transfer is atomic with this tick.
-        if ((s.upgrades["ep_auto_converter"] || 0) > 0
-            && s.unlockedLayers?.enlightenment
-            && evolutionPoints > 0) {
-          const epToConvert = evolutionPoints;
-          evolutionPoints = 0;
-          prestigePoints += epToConvert;
-          // One-time log message per session of conversion (rate-limited to avoid spam).
-          const lastConvertLog = (s as any)._lastEpConvertLog || 0;
-          if (newTime - lastConvertLog >= 30) {
-            (s as any)._lastEpConvertLog = newTime;
-            setTimeout(() => get().addToLog(`🌱✦ EP Auto-Converter: +${epToConvert.toFixed(1)} EP → +${epToConvert.toFixed(1)} PP.`), 0);
-          }
-        }
+        // CURRENCY-UNIFICATION — the `ep_auto_converter` tick block has been
+        // REMOVED. The EP→PP conversion was redundant once the shop spends a
+        // single currency (Divinity) for everything. Old saves keep their
+        // `upgrades.ep_auto_converter` level but it has no effect — the
+        // upgrade definition was removed from data/upgrades.ts and this tick
+        // block is left as a marker. (Old behaviour: every tick, when the
+        // player owned `ep_auto_converter` AND L2 was unlocked AND
+        // `evolutionPoints > 0`, convert ALL EP→PP at 1:1. Rate-limited log.)
 
         set({
           resources,
@@ -2709,6 +2779,10 @@ export const useGameStore = create<GameStore>()(
           activeEvent,
           eventTimer,
           eventCooldown,
+          // EVENT-CHAINS — persist the (possibly mutated) pendingFollowUps
+          // array. The block above pops + rolls due entries; entries whose
+          // fireAt is still in the future stay queued.
+          pendingFollowUps,
           ownedSystems,
           systemEnabled,
           archetypeAffinity,
@@ -3117,17 +3191,19 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if (!s.debugFreeBuy && s.evolutionPoints < cost) {
-          // P7 — Error state: surface insufficient Evolution Points.
-          get().notifyPurchaseError("Not enough Evolution Points");
+        // CURRENCY-UNIFICATION — shop upgrades now cost Divinity (was EP).
+        // `evolutionPoints` is kept on GameState for back-compat but is no
+        // longer spent here. `debugFreeBuy` still bypasses affordability.
+        if (!s.debugFreeBuy && (s.divinity || 0) < cost) {
+          get().notifyPurchaseError("Not enough Divinity");
           return;
         }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          evolutionPoints: s.debugFreeBuy ? s.evolutionPoints : s.evolutionPoints - cost,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).${s.debugFreeBuy ? " (DEBUG: free)" : ""}`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1}).${s.debugFreeBuy ? " (DEBUG: free)" : ` for ${cost} Divinity`}`);
       },
 
       evolveStage: () => {
@@ -3249,16 +3325,23 @@ export const useGameStore = create<GameStore>()(
         // (forced archetype government) OR, when no archetype government
         // applies, from the most-researched Civilization-stage tech branch.
         // The government's tick bonuses are applied in the tick below.
+        // AUTOBUYER-SETTINGS — `preferredGovernment` overrides the auto-pick
+        // when set AND the id exists in GOVERNMENT_MAP. Null = use auto-pick.
         let activeGovernment = s.activeGovernment ?? null;
         if (nextStageIdx === 4 && !activeGovernment) {
-          const govId = pickGovernmentForEmpire(lockedArchetype, s.technologies);
+          const preferredGov = s.autoBuyerSettings?.preferredGovernment || null;
+          const govId = (preferredGov && GOVERNMENT_MAP[preferredGov])
+            ? preferredGov
+            : pickGovernmentForEmpire(lockedArchetype, s.technologies);
           if (govId && GOVERNMENT_MAP[govId]) {
             activeGovernment = govId;
             const g = GOVERNMENT_MAP[govId];
             const advMsg = g.advantages.length ? g.advantages.join(", ") : "none";
             const disMsg = g.disadvantages.length ? g.disadvantages.join(", ") : "none";
             // Deferred log so it fires AFTER the "Evolved to Empire" line.
-            const govLine = `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
+            const govLine = preferredGov === govId
+              ? `Government established: ${g.name} (player-preferred). Advantages: ${advMsg}. Disadvantages: ${disMsg}.`
+              : `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
             setTimeout(() => get().addToLog(govLine), 0);
           }
         }
@@ -3447,7 +3530,13 @@ export const useGameStore = create<GameStore>()(
         fresh.maxPopulation = startingMaxPop;
 
         const metaState: Partial<GameState> = {
+          // CURRENCY-UNIFICATION — EP is no longer spent in the shop. EP
+          // earned at prestige is folded into the player's Divinity
+          // balance (the unified shop currency). `evolutionPoints` is
+          // kept on GameState for back-compat (old saves still load) but
+          // is no longer mutated anywhere except here for accounting.
           evolutionPoints: s.evolutionPoints + epEarned,
+          divinity: (s.divinity || 0) + epEarned,
           totalRuns: s.totalRuns + 1,
           galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
           // BACKGROUND-SIMULATION — META fields persist across prestiges.
@@ -3468,6 +3557,17 @@ export const useGameStore = create<GameStore>()(
           storyAcknowledged: s.storyAcknowledged,
           unlockedLayers: s.unlockedLayers,
           stageClearCounts: s.stageClearCounts,
+          // AUTOBUYER-SETTINGS — preferences persist across prestiges
+          // (meta state; same as upgrades). The player picks once and forgets.
+          autoBuyerSettings: s.autoBuyerSettings || {
+            systemTarget: null,
+            techTarget: null,
+            preferredGovernment: null,
+            preferredForesightRoute: null,
+          },
+          // EVENT-CHAINS — pending follow-ups are per-run; reset on prestige.
+          // A chain that was mid-flight when the player prestiged simply dies.
+          pendingFollowUps: [],
           fastestCellClear: s.fastestCellClear,
           totalEventsResolved: s.totalEventsResolved,
           totalPlayTime: s.totalPlayTime,
@@ -3672,7 +3772,7 @@ export const useGameStore = create<GameStore>()(
           lastSaved: Date.now(),
           tutorialActive: false,
         });
-        get().addToLog(`Prestige! Earned ${epEarned} Evolution Points.`);
+        get().addToLog(`Prestige! Earned ${epEarned} Divinity (CURRENCY-UNIFICATION: was Evolution Points, now folded into Divinity).`);
         if (isFirstGalacticWin) {
           get().addToLog("Layer 1 trials unlocked. Visit the Trials button to begin a Challenge.");
         }
@@ -3864,6 +3964,71 @@ export const useGameStore = create<GameStore>()(
         set({ activeForesightRoute: routeId });
         const r = routeId ? FORESIGHT_ROUTE_MAP[routeId] : null;
         get().addToLog(r ? `Foresight route chosen: ${r.name}.` : "Foresight route cleared.");
+      },
+
+      // ===== AUTOBUYER-SETTINGS — archetype / government targeting setters =====
+      // Each setter validates the id (against ARCHETYPE_MAP /
+      // GOVERNMENT_MAP / FORESIGHT_ROUTE_MAP) before storing. Null is
+      // always accepted (means "no preference"). Persists across prestiges
+      // via the metaState carry-forward in triggerPrestige.
+      setAutoBuyerSystemTarget: (archetypeId) => {
+        const s = get();
+        if (archetypeId !== null && !ARCHETYPE_MAP[archetypeId]) return;
+        const cur = s.autoBuyerSettings || {
+          systemTarget: null, techTarget: null,
+          preferredGovernment: null, preferredForesightRoute: null,
+        };
+        const archName = archetypeId ? ARCHETYPE_MAP[archetypeId]?.name : null;
+        set({ autoBuyerSettings: { ...cur, systemTarget: archetypeId } });
+        get().addToLog(archName
+          ? `Auto-Builder target set: ${archName} (cheapest matching system wins).`
+          : "Auto-Builder target cleared (cheapest-first, no preference)."
+        );
+      },
+      setAutoBuyerTechTarget: (archetypeId) => {
+        const s = get();
+        if (archetypeId !== null && !ARCHETYPE_MAP[archetypeId]) return;
+        const cur = s.autoBuyerSettings || {
+          systemTarget: null, techTarget: null,
+          preferredGovernment: null, preferredForesightRoute: null,
+        };
+        const archName = archetypeId ? ARCHETYPE_MAP[archetypeId]?.name : null;
+        set({ autoBuyerSettings: { ...cur, techTarget: archetypeId } });
+        get().addToLog(archName
+          ? `Auto-Researcher target set: ${archName} (cheapest matching tech wins).`
+          : "Auto-Researcher target cleared (cheapest-first, no preference)."
+        );
+      },
+      setPreferredGovernment: (govId) => {
+        const s = get();
+        if (govId !== null && !GOVERNMENT_MAP[govId]) return;
+        const cur = s.autoBuyerSettings || {
+          systemTarget: null, techTarget: null,
+          preferredGovernment: null, preferredForesightRoute: null,
+        };
+        const govName = govId ? GOVERNMENT_MAP[govId]?.name : null;
+        set({ autoBuyerSettings: { ...cur, preferredGovernment: govId } });
+        get().addToLog(govName
+          ? `Preferred government set: ${govName} (auto-applied at Empire stage).`
+          : "Preferred government cleared (auto-pick at Empire stage)."
+        );
+      },
+      setPreferredForesightRoute: (routeId) => {
+        const s = get();
+        // FORESIGHT_ROUTE_MAP is currently empty (legacy shim) so this
+        // setter only accepts null for now. Kept for forward-compat when
+        // foresight routes are reintroduced.
+        if (routeId !== null && !FORESIGHT_ROUTE_MAP[routeId]) return;
+        const cur = s.autoBuyerSettings || {
+          systemTarget: null, techTarget: null,
+          preferredGovernment: null, preferredForesightRoute: null,
+        };
+        const routeName = routeId ? FORESIGHT_ROUTE_MAP[routeId]?.name : null;
+        set({ autoBuyerSettings: { ...cur, preferredForesightRoute: routeId } });
+        get().addToLog(routeName
+          ? `Preferred foresight route set: ${routeName} (auto-applied at L2+).`
+          : "Preferred foresight route cleared (auto-pick at L2+)."
+        );
       },
 
       // ============ LAYER 3 — TRANSCENDENCE ============
@@ -5745,16 +5910,20 @@ export const useGameStore = create<GameStore>()(
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
         const cost = upgradeCost(up, owned);
-        if (!s.debugFreeBuy && (s.prestigePoints || 0) < cost) {
-          get().notifyPurchaseError("Not enough Prestige Points");
+        // CURRENCY-UNIFICATION — universal shop upgrades now cost Divinity
+        // (was Prestige Points). `prestigePoints` is kept on GameState for
+        // back-compat but is no longer spent here. `debugFreeBuy` still
+        // bypasses affordability.
+        if (!s.debugFreeBuy && (s.divinity || 0) < cost) {
+          get().notifyPurchaseError("Not enough Divinity");
           return;
         }
         const upgrades = { ...s.upgrades, [upgradeId]: owned + 1 };
         set({
-          prestigePoints: s.debugFreeBuy ? s.prestigePoints : (s.prestigePoints || 0) - cost,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - cost,
           upgrades,
         });
-        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1})${s.debugFreeBuy ? " (DEBUG: free)" : ` for ${cost} Prestige Points`}.`);
+        get().addToLog(`Purchased ${up.name} (Lv ${owned + 1})${s.debugFreeBuy ? " (DEBUG: free)" : ` for ${cost} Divinity`}.`);
       },
 
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
@@ -5869,6 +6038,30 @@ export const useGameStore = create<GameStore>()(
           },
           ...(s.eventHistory || []),
         ].slice(0, 50); // keep last 50
+
+        // EVENT-CHAINS — if the resolved choice schedules a follow-up event,
+        // push a PendingFollowUp with `fireAt = Date.now() + delaySec*1000`.
+        // The tick scans `pendingFollowUps` for due entries and either fires
+        // the chained event (chance roll passed) or drops it (failed). We
+        // only schedule when the target event exists in EVENT_MAP — this
+        // gracefully no-ops if a chain event was removed in a future patch.
+        let pendingFollowUps = s.pendingFollowUps || [];
+        if (choice.followUpEvent && EVENT_MAP[choice.followUpEvent.eventId]) {
+          const fu = choice.followUpEvent;
+          const chance = fu.chance ?? 1;
+          pendingFollowUps = [
+            ...pendingFollowUps,
+            {
+              eventId: fu.eventId,
+              fireAt: Date.now() + fu.delaySec * 1000,
+              chance,
+              sourceEventId: ev.id,
+            },
+          ];
+          const targetName = EVENT_MAP[fu.eventId]?.name || fu.eventId;
+          setTimeout(() => get().addToLog(`🔗 ${ev.name} scheduled follow-up "${targetName}" in ${fu.delaySec}s (chance ${Math.round(chance * 100)}%).`), 0);
+        }
+
         set({
           resources: res,
           population: pop,
@@ -5877,6 +6070,7 @@ export const useGameStore = create<GameStore>()(
           technologies,
           activeEvent: null,
           eventHistory,
+          pendingFollowUps,
           totalEventsResolved: (s.totalEventsResolved || 0) + 1,
         });
         if (choice.logMsg) get().addToLog(`${ev.name}: ${choice.logMsg}`);
@@ -6188,7 +6382,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 14,
+      version: 15,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -6626,6 +6820,44 @@ export const useGameStore = create<GameStore>()(
         // to 14 here so the migrate block is unambiguous.)
         if (persisted.activeGovernment === undefined) {
           persisted.activeGovernment = null;
+        }
+
+        // v15 migration (AUTOBUYER-SETTINGS + EVENT-CHAINS +
+        // CURRENCY-UNIFICATION):
+        //   • Initialize the new `autoBuyerSettings` record (4 nullable
+        //     targeting slots — systemTarget, techTarget,
+        //     preferredGovernment, preferredForesightRoute). Old saves get
+        //     all-null = no preference (matches fresh-start behaviour).
+        //   • Initialize `pendingFollowUps` as [] (the follow-up event
+        //     scheduler queue; old saves had no chains in flight).
+        //   • CURRENCY-UNIFICATION does NOT remove the `ep_auto_converter`
+        //     upgrade level from `upgrades` — old saves that bought it keep
+        //     the level but it is inert (the tick logic + upgrade definition
+        //     were both removed; see the comment blocks in those files).
+        if (!persisted.autoBuyerSettings) {
+          persisted.autoBuyerSettings = {
+            systemTarget: null,
+            techTarget: null,
+            preferredGovernment: null,
+            preferredForesightRoute: null,
+          };
+        } else {
+          // Defensive — ensure all 4 slots exist on partial records.
+          if (persisted.autoBuyerSettings.systemTarget === undefined) {
+            persisted.autoBuyerSettings.systemTarget = null;
+          }
+          if (persisted.autoBuyerSettings.techTarget === undefined) {
+            persisted.autoBuyerSettings.techTarget = null;
+          }
+          if (persisted.autoBuyerSettings.preferredGovernment === undefined) {
+            persisted.autoBuyerSettings.preferredGovernment = null;
+          }
+          if (persisted.autoBuyerSettings.preferredForesightRoute === undefined) {
+            persisted.autoBuyerSettings.preferredForesightRoute = null;
+          }
+        }
+        if (!persisted.pendingFollowUps) {
+          persisted.pendingFollowUps = [];
         }
 
         return persisted;

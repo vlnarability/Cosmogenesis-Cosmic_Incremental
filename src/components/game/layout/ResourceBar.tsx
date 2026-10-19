@@ -16,30 +16,35 @@ import { useMemo } from "react";
 //   progress bars.
 //
 // L2+: stage resources are abstracted into the Divine Engine. The bar
-//   shows only META CURRENCIES as compact pills. Priority list (max 5):
-//     Divinity · EP · PP · Faith · Genesis Seeds
+//   shows only META CURRENCIES as compact pills. Priority list (max 3):
+//     Divinity · Faith · Genesis Seeds
+//
+// CURRENCY-UNIFICATION — the Evolution Points (EP) and Prestige Points
+// (PP) pills have been removed. The shop now spends a single currency
+// (Divinity) for all upgrades. EP/PP fields stay on GameState for
+// back-compat but are no longer rendered anywhere in the UI.
 //
 // Removed in this redesign:
 //   - "📚 N resources X% avg" summary chip (was confusing)
 //   - Archetype badge (lives in the Prestige tab now)
 //   - The "🌌 Divine Engine" label text at L2+ (the Header already shows
 //     the active layer; the bar doesn't need to repeat it)
+//   - EP pill (was: 🌱 N EP) — folded into Divinity
+//   - PP pill (was: ✦ N PP) — folded into Divinity
 // ============================================================
 
 export function ResourceBar() {
   const resources = useGameStore((s) => s.resources);
   const capacities = useGameStore((s) => s.capacities);
   const stageIndex = useGameStore((s) => s.stageIndex);
-  const evolutionPoints = useGameStore((s) => s.evolutionPoints);
-  const galacticWins = useGameStore((s) => s.galacticWins);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
-  const upgrades = useGameStore((s) => s.upgrades);
 
   // Meta currencies (priority list — L2+ only).
+  // CURRENCY-UNIFICATION — Divinity is now the single shop currency; the
+  // old EP/PP subscriptions are gone.
   const divinity = useGameStore((s) => s.divinity);
   const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const faith = useGameStore((s) => s.faith);
-  const prestigePoints = useGameStore((s) => s.prestigePoints);
 
   const stage = STAGES[stageIndex];
   const { isAtLeast } = useActiveLayer();
@@ -95,15 +100,9 @@ export function ResourceBar() {
             "flex items-center gap-1.5 shrink-0",
             isL2Plus && "flex-1 flex-wrap min-w-0 overflow-x-auto no-scrollbar justify-start"
           )}>
-            {/* Priority list — max 5. Only shown if unlocked. Order matters. */}
+            {/* Priority list — max 3 (CURRENCY-UNIFICATION removed EP + PP). */}
             {isLayerAtLeast("enlightenment", unlockedLayers) && (
               <MetaPill icon="✨" label="Div" value={formatCompact(divinity)} color="text-violet-300" title="Divinity" />
-            )}
-            {(evolutionPoints > 0 || galacticWins > 0) && (upgrades["ep_auto_converter"] || 0) === 0 && (
-              <MetaPill icon="🌱" label="EP" value={formatCompact(evolutionPoints)} color="text-emerald-300" title="Evolution Points" />
-            )}
-            {prestigePoints > 0 && (
-              <MetaPill icon="✦" label="PP" value={formatCompact(prestigePoints)} color="text-fuchsia-300" title="Prestige Points" />
             )}
             {isLayerAtLeast("apotheosis", unlockedLayers) && (
               <MetaPill icon="👑" label="Faith" value={formatCompact(faith)} color="text-amber-300" title="Faith" />

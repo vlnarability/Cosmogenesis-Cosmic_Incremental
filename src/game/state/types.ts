@@ -634,6 +634,33 @@ export interface GameState {
   //   idleDurationSec            — incremented each tick without player action
   //   pauseDurationSec           — incremented each tick while paused
   achievementMeta: Record<string, number>;
+
+  // ===== AUTOBUYER-SETTINGS — archetype / government targeting =====
+  // Lets the player steer the Auto-Builder / Auto-Researcher toward a
+  // preferred archetype (drift), override the auto-pick government at
+  // Empire stage, and auto-apply a preferred foresight route at L2+.
+  // Null = no preference (the autobuyer falls back to cheapest-first).
+  autoBuyerSettings: {
+    systemTarget: string | null;        // archetype id the Auto-Builder prefers
+    techTarget: string | null;          // archetype id the Auto-Researcher prefers
+    preferredGovernment: string | null; // overrides auto-pick at Empire stage
+    preferredForesightRoute: string | null; // auto-applied at L2+
+  };
+
+  // ===== EVENT-CHAINS — scheduled follow-up events =====
+  // When a player resolves an event choice with a `followUpEvent` field,
+  // a PendingFollowUp is pushed here. The tick scans for due entries and
+  // either fires the chained event (chance roll succeeded) or drops it
+  // (chance roll failed). Resets to [] on prestige — chains are per-run.
+  pendingFollowUps: PendingFollowUp[];
+}
+
+// PendingFollowUp — scheduled follow-up event awaiting its fire time.
+export interface PendingFollowUp {
+  eventId: string;        // the event to fire
+  fireAt: number;         // wall-clock ms timestamp when the event becomes due
+  chance: number;         // 0..1 — rolled when the entry becomes due
+  sourceEventId: string;  // the event that scheduled this follow-up (for logging)
 }
 
 export interface GameStore extends GameState {
@@ -877,4 +904,10 @@ export interface GameStore extends GameState {
   // backgroundSimulations is now COMPUTED from (3 + starsLit) × simMult.
   // No manual spawn action — sims come from lighting constellation stars.
   // (The spawnBackgroundSimulation action was removed; sim amplifier is a shop upgrade.)
+
+  // ===== AUTOBUYER-SETTINGS — setters for archetype/government targeting =====
+  setAutoBuyerSystemTarget: (archetypeId: string | null) => void;
+  setAutoBuyerTechTarget: (archetypeId: string | null) => void;
+  setPreferredGovernment: (govId: string | null) => void;
+  setPreferredForesightRoute: (routeId: string | null) => void;
 }

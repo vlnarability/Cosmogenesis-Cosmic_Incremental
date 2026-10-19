@@ -2,7 +2,8 @@
 
 import { useGameStore } from "@/game/state/store";
 import { EVENT_MAP } from "@/game/data/events";
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock, Link2, Zap } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 // Auto-resolve timeout (seconds). Must match the store's `eventTimer`
 // initial value (set in the game loop when an event fires).
@@ -33,6 +34,16 @@ export function EventModal() {
           <div className="text-[0.65rem] uppercase tracking-[0.25em] text-amber-400 font-mono mb-2 flex items-center gap-1.5">
             <AlertTriangle className="w-3 h-3" />
             Event
+            {/* EVENT-CHAINS — show a "Chain" badge when the active event is
+                chainOnly (only fires via a previous choice's followUpEvent,
+                never from the random pool). Helps the player understand why
+                a follow-up event appeared out of sequence. */}
+            {ev.chainOnly && (
+              <Badge variant="outline" className="ml-auto text-[0.55rem] text-cyan-300 border-cyan-400/40 flex items-center gap-0.5">
+                <Link2 className="w-2.5 h-2.5" />
+                Chain
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0 bg-amber-500/15 border border-amber-500/30">
@@ -85,8 +96,20 @@ export function EventModal() {
             >
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold group-hover:text-amber-400 transition-colors">
-                    {choice.label}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="text-sm font-semibold group-hover:text-amber-400 transition-colors">
+                      {choice.label}
+                    </div>
+                    {/* EVENT-CHAINS — show a "Triggers follow-up" hint badge on
+                        choices that schedule a followUpEvent. Helps the player
+                        see that resolving this choice will spawn another event
+                        after `delaySec` seconds (subject to the chance roll). */}
+                    {choice.followUpEvent && (
+                      <Badge variant="outline" className="text-[0.55rem] text-cyan-300 border-cyan-400/40 flex items-center gap-0.5">
+                        <Zap className="w-2.5 h-2.5" />
+                        Triggers follow-up
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{choice.desc}</div>
                 </div>
