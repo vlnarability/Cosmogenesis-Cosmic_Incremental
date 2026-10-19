@@ -7283,3 +7283,69 @@ Stage Summary:
 - The legacy `activeLayerModal` + `show*` flags stay in `openLayerModal()` so existing code paths (Header chip highlighting, PrestigeTab onView buttons, useKeyboardShortcuts) continue to work — they now also flip `currentTab` to the layer's tab id via `LAYER_TO_TAB`.
 - Each layer content file is now plain HTML (no Radix Dialog primitives) so it can render standalone outside a `<Dialog>`.
 - Verified zero `[role=dialog]` elements on the Constellations tab — the constellation sky renders inline with all 88 stars visible + clickable.
+
+---
+Task ID: AUTOBUYER-SETTINGS + EVENT-CHAINS + CURRENCY-UNIFICATION
+Agent: Z.ai Code (main)
+Task: Implement three user-requested features that all touch `src/game/state/store.ts` and `src/game/state/types.ts`. Done as a single atomic batch to avoid merge conflicts.
+
+Work Log:
+
+### Feature 5 — AUTOBUYER-SETTINGS (archetype drift / government targeting)
+
+- `src/game/state/types.ts` — extended `GameState` with `autoBuyerSettings: { systemTarget: string | null; techTarget: string | null; preferredGovernment: string | null; preferredForesightRoute: string | null; }`. Added 4 setter action signatures on `GameStore`: `setAutoBuyerSystemTarget`, `setAutoBuyerTechTarget`, `setPreferredGovernment`, `setPreferredForesightRoute` (all take `string | null`).
+- `src/game/state/store.ts` — initial state includes `autoBuyerSettings: { systemTarget: null, techTarget: null, preferredGovernment: null, preferredForesightRoute: null }`. Implemented the 4 setters; each validates the id against the matching data map (ARCHETYPE_MAP / GOVERNMENT_MAP / FORESIGHT_ROUTE_MAP) before storing. Null is always accepted (means "no preference"). Each setter logs a clear "set to X" / "cleared" message.
+- `src/game/state/store.ts` — tick Auto-Builder block now reads `s.autoBuyerSettings?.systemTarget` and computes `matchesTarget = !!systemTarget && !!(sys.grantsAffinity && sys.grantsAffinity.archetype === systemTarget)` for each candidate. Sort is now `(matchesTarget DESC, totalCost ASC)` instead of just `totalCost ASC` — cheapest matching candidate wins; when no candidate matches, cheapest overall wins (identical to original behaviour). Same logic applied to the Auto-Researcher block with `techTarget`.
+- `src/game/state/store.ts` — `evolveStage` government auto-pick now reads `s.autoBuyerSettings?.preferredGovernment` first; when set AND the id exists in `GOVERNMENT_MAP` it overrides `pickGovernmentForEmpire(...)`. Log line indicates "(player-preferred)" when the override fired.
+- `src/game/state/store.ts` — `autoBuyerSettings` is part of the `metaState` carry-forward in `triggerPrestige` (persists across prestiges — same as `upgrades`).
+- `src/game/state/store.ts` — v15 migration inits `autoBuyerSettings` (all 4 slots null) for older saves; defensive partial-record backfill (each slot individually defaulted if undefined).
+- `src/components/game/modals/ShopModal.tsx` — new `AutobuyerSettingsPanel` component: collapsible stat-card with 4 shadcn `Select` dropdowns (Auto-Builder archetype, Auto-Researcher archetype, Preferred government, Preferred foresight route). Each dropdown renders "None (no preference)" + all 13 archetypes / 20 governments / foresight routes (currently empty — legacy shim). The Auto-Builder / Auto-Researcher dropdowns are disabled when the player doesn't yet own the matching upgrade (with inline hint). Panel is rendered in BOTH the flat (pre-L2) and tabbed (L2+) shop layouts; gated by `!!unlockedLayers?.enlightenment || hasAutoSystemBuyer || hasAutoTechBuyer`. New `TargetingSelect` helper component centralizes the labelled Select + None option + empty-options hint. Imports ARCHETYPES from `@/game/data/archetypes`, GOVERNMENTS from `@/game/data/governments`, FORESIGHT_ROUTES from `@/game/data/foresight`.
+
+### Feature 6 — EVENT-CHAINS (followUpEvent + chainOnly)
+
+- `src/game/data/events.ts` — extended `EventChoice` interface with `followUpEvent?: { eventId: string; delaySec: number; chance?: number; }`. Extended `GameEvent` interface with `chainOnly?: boolean;`. Updated `eventsForStage()` to filter out `chainOnly: true` events (they're excluded from the random pool).
+- `src/game/data/events.ts` — added `followUpEvent` to two existing choices: `chemical_bloom.absorb` (→ `scavenger_swarm` after 70s, 60% chance) and `predator_shadow.flee` (→ `predator_return` after 50s, 70% chance).
+- `src/game/data/events.ts` — added 3 chain-only sample events at the end of EVENTS:
+  - `predator_return` (chainOnly) — "Predator Returns". Choices: "Stand your ground" (triggers `scavenger_swarm` follow-up after 40s, 50% chance) and "Flee deeper" (no follow-up).
+  - `scavenger_swarm` (chainOnly) — "Scavenger Swarm". Choices: "Share the bounty" (no follow-up) and "Drive them off" (triggers `grudge_recall` after 90s, 50% chance).
+  - `grudge_recall` (chainOnly) — "Grudge Recall". Choices: "Acknowledge the debt" (+2 pop, −3 happiness) and "Ignore the presence" (+1 ATP).
+- `src/game/state/types.ts` — added new `PendingFollowUp` interface (`{ eventId, fireAt, chance, sourceEventId }`) and `pendingFollowUps: PendingFollowUp[]` field on `GameState`.
+- `src/game/state/store.ts` — initial state has `pendingFollowUps: []`. In `resolveEvent`: after applying effects, if the resolved choice has `followUpEvent` AND `EVENT_MAP[followUpEvent.eventId]` exists, push a new PendingFollowUp with `fireAt = Date.now() + delaySec*1000` and `chance = followUpEvent.chance ?? 1`. Log line confirms the scheduling. The pendingFollowUps array is persisted in the same `set()` call as the rest of the event resolution.
+- `src/game/state/store.ts` — tick block BEFORE the random event pool check: scans `pendingFollowUps` for entries whose `fireAt <= Date.now()` (oldest first). Pops the fired entry whether or not the chance roll passes. If `Math.random() < chance` succeeds and `EVENT_MAP[followUp.eventId]` exists, sets `activeEvent = followUp.eventId` + `eventTimer = 60` + `eventCooldown = 5` and logs the chain source. If the chance roll fails, logs "follow-up did not fire". Chain events are NOT gated by `eventFreq` / `eventsAllowed` / `isL2Plus` — they were scheduled by the player's previous choice and always fire (subject to the chance roll). The only gate is "no other event/popup active".
+- `src/game/state/store.ts` — `pendingFollowUps` is added to the tick's final `set()` call so any pops/filters persist. Resets to `[]` on prestige (chains are per-run).
+- `src/game/state/store.ts` — v15 migration inits `pendingFollowUps: []` for older saves.
+- `src/components/game/modals/EventModal.tsx` — shows a "Chain" badge (Link2 icon, cyan) on the header when `ev.chainOnly === true`. Shows a "Triggers follow-up" hint badge (Zap icon, cyan) on any choice with `followUpEvent`. Both badges use `variant="outline"` + the cyan accent to distinguish chain markers from the amber event chrome.
+
+### Feature 7 — CURRENCY-UNIFICATION (EP/PP → Divinity)
+
+- `src/game/state/store.ts` — `buyUpgrade` now spends `divinity` (was `evolutionPoints`). Affordability check `(s.divinity || 0) < cost` (was `s.evolutionPoints < cost`). Deducts from `divinity`. Error message "Not enough Divinity" (was "Not enough Evolution Points"). `debugFreeBuy` still bypasses the check.
+- `src/game/state/store.ts` — `buyUniversalUpgrade` now spends `divinity` (was `prestigePoints`). Same pattern. Error message "Not enough Divinity" (was "Not enough Prestige Points").
+- `src/game/state/store.ts` — REMOVED the `ep_auto_converter` tick block (was: every tick, when player owned the upgrade AND L2 unlocked AND `evolutionPoints > 0`, convert ALL EP→PP at 1:1; rate-limited log). Left a comment block explaining the removal + back-compat note (old saves keep the `upgrades.ep_auto_converter` level but it's inert).
+- `src/game/state/store.ts` — `triggerPrestige` `metaState` now includes `divinity: (s.divinity || 0) + epEarned` (EP earned at prestige is folded into Divinity). `evolutionPoints: s.evolutionPoints + epEarned` still applies for back-compat (the field is preserved but no longer spent anywhere). Prestige log message updated to mention Divinity + the unification.
+- `src/game/data/upgrades.ts` — REMOVED the `ep_auto_converter` upgrade definition (was in the universal-category PP shop section). Replaced with a comment block explaining the removal + noting old saves keep the level but it's inert (the tick logic + upgrade definition were both removed). CURRENCY-UNIFICATION worklog reference added.
+- `src/components/game/modals/ShopModal.tsx` — replaced all `evolutionPoints` / `prestigePoints` references with `divinity`. Cost labels show "✨ N Divinity" instead of "🌱 N EP" / "✦ N PP". Header currency badge shows "✨ X Divinity" instead of dual EP/PP badges. Removed the `epAutoConverterOwned` conditional rendering (the L1 notice banner + the "auto→PP" italic badge). `canAfford` check uses `divinity >= cost`. Renamed the layout flag `ppUnlocked` → `tabbedUnlocked` (the tabbed shop now unlocks at L2 generally, not specifically when PP is earned). Updated all tab labels to remove "(PP)" / "(EP)" suffixes. Footer text rewritten to explain the unified-currency system.
+- `src/components/game/layout/ResourceBar.tsx` — removed the EP pill (was: 🌱 N EP, shown when `ep_auto_converter` was not owned) and the PP pill (was: ✦ N PP, shown when `prestigePoints > 0`). Priority list reduced from max 5 to max 3: Divinity · Faith · Genesis Seeds. Removed the `evolutionPoints`, `galacticWins`, `upgrades`, `prestigePoints` subscriptions that were only used for the EP/PP pills.
+- `src/components/game/layout/Header.tsx` — removed the L4+ "EP/s" stat (was: `peakProductionRate * 0.001 * backgroundSimulations`). With EP no longer a spendable currency, this per-second generation number is meaningless to surface. The L2+ "Div/s" stat already covers divinity generation. Updated the centre-zone stats comment to reflect "max 2 stats" (was "max 3 stats").
+
+### Cross-cutting
+
+- `src/game/state/store.ts` — bumped persist version from 14 → 15. Migration block adds a single v15 section that handles both new fields (`autoBuyerSettings` + `pendingFollowUps`) and notes the `ep_auto_converter` removal (old saves keep the level but it's inert — the upgrade definition + tick logic were both removed in this batch).
+- All three features preserve back-compat: `evolutionPoints` and `prestigePoints` fields stay on `GameState` (old saves load cleanly); `debugFreeBuy` still works in `buyUpgrade` / `buyUniversalUpgrade`; existing actions (`buySystem`, `buyTech`, `evolveStage`, `triggerPrestige`) are unchanged in their core flow — only the targeted extensions were added.
+- Lint: `bun run lint` reports 0 errors, 9 pre-existing warnings (all in `scripts/` + `upload/` folders — none in any modified file).
+- Dev server: `curl -sS -o /dev/null -w "%{http_code}" http://localhost:3000/` returns 200. Dev log shows clean compiles with no runtime errors after all changes.
+
+Files modified:
+- src/game/state/types.ts (+33 lines: autoBuyerSettings field, pendingFollowUps field, PendingFollowUp interface, 4 setter signatures)
+- src/game/state/store.ts (+296 / -45 lines: initial state for both new fields, 4 setters, tick Auto-Builder + Auto-Researcher sort, tick follow-up scan block, resolveEvent scheduling, evolveStage preferredGovernment, triggerPrestige divinity carry-forward, v15 migration)
+- src/game/data/events.ts (+114 lines: EventChoice.followUpEvent, GameEvent.chainOnly, eventsForStage filter, followUpEvent on chemical_bloom.absorb + predator_shadow.flee, 3 new chainOnly events)
+- src/game/data/upgrades.ts (-13 lines: removed ep_auto_converter def; +13 lines comment block noting removal)
+- src/components/game/modals/ShopModal.tsx (+368 / -164 lines: AutobuyerSettingsPanel + TargetingSelect component, Divinity currency migration, removed epAutoConverterOwned, removed flat-layout `evolutionPoints` prop, rewrote tab labels + footer)
+- src/components/game/modals/EventModal.tsx (+29 lines: Chain badge on header, Triggers follow-up badge on choices)
+- src/components/game/layout/ResourceBar.tsx (+25 / -45 lines: removed EP + PP pills + their subscriptions, reduced priority list to max 3)
+- src/components/game/layout/Header.tsx (+19 lines: removed L4+ EP/s stat, updated comment)
+
+Stage Summary:
+- The shop now spends a single currency (Divinity) for ALL upgrades — universal auto-buyers + layer-specific boosts. The two-currency EP/PP system is gone. Old saves keep their `evolutionPoints` + `prestigePoints` + `upgrades.ep_auto_converter` values for back-compat but those fields are no longer read by any shop UI or tick logic.
+- The Auto-Builder / Auto-Researcher can be steered toward a preferred archetype via the new AutobuyerSettingsPanel. Sort order is (matchesTarget DESC, totalCost ASC) — cheapest matching candidate wins; falls back to cheapest-overall when no candidate matches. The preferred government overrides the auto-pick at Empire stage. Preferences persist across prestiges.
+- Events that hint at follow-ups now actually follow up. `chemical_bloom.absorb` → 60% chance → `scavenger_swarm` 70s later. `predator_shadow.flee` → 70% chance → `predator_return` 50s later. `predator_return.fight` → 50% chance → `scavenger_swarm` 40s later. `scavenger_swarm.drive_off` → 50% chance → `grudge_recall` 90s later. The UI shows a "Chain" badge on chainOnly events + a "Triggers follow-up" badge on choices that schedule a follow-up. Chain events fire even at L2+ or with `eventFreq === "off"` (they were scheduled by the player's previous choice, so we honour them).
+- Git: committed as `d2ddf20` with message "AUTOBUYER-SETTINGS + EVENT-CHAINS + CURRENCY-UNIFICATION: add 4 autobuyer targeting setters + tick sort logic; add followUpEvent/chainOnly event mechanic + 3 sample chains + tick scheduling; unify shop currency to Divinity (remove EP/PP spending); remove ep_auto_converter." and pushed to `origin/main`.
