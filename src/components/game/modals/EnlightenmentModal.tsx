@@ -36,6 +36,8 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
@@ -58,24 +60,52 @@ import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 // The store action `illuminateStar(constellationId, starId)` is preserved.
 // ===========================================================================
 
+// ===========================================================================
+// CONSTELLATION-REDESIGN-NOIRLAB — star map redesign.
+// ===========================================================================
+//
+// The L2 constellation map has been redesigned for clarity and discoverability:
+//   - Stars are now 18px grey circles with a subtle glow (not tiny 14px dots)
+//   - The sky is wider (5000px) and the viewport is taller (clamp(500px,
+//     64vh, 900px)) so stars at y=4 and y=96 are both reachable
+//   - When a constellation is COMPLETED, the NOIRLab outline SVG is rendered
+//     as a subtle overlay behind the stars (zIndex 1 < star zIndex 10+)
+//   - A full-screen Expand mode opens an even wider (8000px) sky with the
+//     same panning/click semantics
+//   - Constellation connection lines are now thicker (0.30 / 0.15) and
+//     more opaque (1.0 / 0.45) so the pattern is clearly visible
+// ===========================================================================
+
 // Sky dimensions — the wide panorama.
-const SKY_W = 3000;
+// CONSTELLATION-REDESIGN-NOIRLAB: SKY_W widened from 3000 → 5000 so the 88
+// constellations have more breathing room (stars are no longer clustered).
+const SKY_W = 5000;
 const SKY_H = 500;
 
-// Per-instance offsets for the infinite-wrap 3-copy trick.
-// We render the sky at three x-offsets: -SKY_W (left), 0 (center), +SKY_W
-// (right). The wrapper translates them all by `scrollX`. As the user scrolls,
-// when |scrollX| exceeds SKY_W, we wrap by adding/subtracting SKY_W so the
-// visible area always shows at least one fully-populated instance. The wrap
-// is invisible because all 3 instances render identical content.
-const SKY_OFFSETS: number[] = [-SKY_W, 0, SKY_W];
+// Full-screen overlay uses an even wider sky so panning feels roomier.
+const EXPANDED_SKY_W = 8000;
+// EXPANDED_SKY_H is purely documentary — the expanded viewport renders
+// height: 100% of its flex-1 parent. The constant documents the conceptual
+// height that vertical percentage coordinates are calibrated against.
+const EXPANDED_SKY_H = 600;
 
-// FIX-UI-TABS / react-hooks/set-state-in-effect — module-level helper
-// for the infinite-wrap. Moved out of useEffect (which linted as a
-// cascading-render trigger) and applied at each setScrollX() call site.
-function wrapScrollX(x: number): number {
-  if (x < -SKY_W) return x + SKY_W;
-  if (x > SKY_W) return x - SKY_W;
+// Per-instance offsets for the infinite-wrap 3-copy trick.
+// We render the sky at three x-offsets: -W (left), 0 (center), +W (right).
+// The wrapper translates them all by `scrollX`. As the user scrolls, when
+// |scrollX| exceeds W, we wrap by adding/subtracting W so the visible area
+// always shows at least one fully-populated instance. The wrap is invisible
+// because all 3 instances render identical content.
+const SKY_OFFSETS: number[] = [-SKY_W, 0, SKY_W];
+const EXPANDED_SKY_OFFSETS: number[] = [-EXPANDED_SKY_W, 0, EXPANDED_SKY_W];
+
+// FIX-UI-TABS / react-hooks/set-state-in-effect — module-level helper for the
+// infinite-wrap. Moved out of useEffect (which linted as a cascading-render
+// trigger) and applied at each setScrollX() call site.
+// CONSTELLATION-REDESIGN-NOIRLAB: parameterized over `w` so it works for both
+// the standard (SKY_W) and expanded (EXPANDED_SKY_W) skies.
+function wrapScrollX(x: number, w: number = SKY_W): number {
+  if (x < -w) return x + w;
+  if (x > w) return x - w;
   return x;
 }
 
@@ -210,8 +240,13 @@ export function EnlightenmentContent() {
   // `selectedStar` drives the per-star purchase popup. `scrollX` is the
   // translateX of the wide-sky wrapper (in pixels). `isDragging` is a ref
   // (not state) so we don't trigger re-renders on every mousemove.
+  // `expanded` opens the full-screen star-map overlay; `expandedScrollX` is
+  // a separate scroll position so opening/closing Expand doesn't jump the
+  // standard view.
   const [selectedStar, setSelectedStar] = useState<StarSelection | null>(null);
   const [scrollX, setScrollX] = useState(0);
+  const [expandedScrollX, setExpandedScrollX] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const [dragging, setDragging] = useState(false);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -249,22 +284,29 @@ export function EnlightenmentContent() {
   // Pointer events (works for mouse + touch). We mark `isDragging` via a ref
   // and only flip state for cursor styling — the actual scroll happens by
   // reading the ref inside the move handler.
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
+  // CONSTELLATION-REDESIGN-NOIRLAB: each handler takes an `isExpanded` boolean
+  // so the same handlers drive both the standard sky (uses scrollX/SKY_W) and
+  // the full-screen overlay (uses expandedScrollX/EXPANDED_SKY_W).
+  const onPointerDown = useCallback((e: React.PointerEvent, isExpanded = false) => {
     isDragging.current = true;
     dragStartX.current = e.clientX;
-    dragStartScroll.current = scrollX;
+    dragStartScroll.current = isExpanded ? expandedScrollX : scrollX;
     dragDistance.current = 0;
     setDragging(true);
     // Capture pointer so move events keep firing even if the cursor leaves
     // the viewport bounds mid-drag.
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-  }, [scrollX]);
+  }, [scrollX, expandedScrollX]);
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
+  const onPointerMove = useCallback((e: React.PointerEvent, isExpanded = false) => {
     if (!isDragging.current) return;
     const dx = e.clientX - dragStartX.current;
     dragDistance.current = Math.abs(dx);
-    setScrollX(wrapScrollX(dragStartScroll.current + dx));
+    if (isExpanded) {
+      setExpandedScrollX(wrapScrollX(dragStartScroll.current + dx, EXPANDED_SKY_W));
+    } else {
+      setScrollX(wrapScrollX(dragStartScroll.current + dx, SKY_W));
+    }
   }, []);
 
   const endDrag = useCallback(() => {
@@ -272,9 +314,18 @@ export function EnlightenmentContent() {
     setDragging(false);
   }, []);
 
-  // Arrow-button scroll — jumps by ~10% of the sky width per click.
-  const handleScrollButton = useCallback((dir: "left" | "right") => {
-    setScrollX((x) => wrapScrollX(x + (dir === "left" ? -300 : 300)));
+  // Arrow-button scroll — jumps by ~6% of the sky width per click (was 10%
+  // of the old 3000px sky = 300px). With SKY_W=5000 we step 300px in standard
+  // mode and 500px in expanded mode for proportional feel.
+  const handleScrollButton = useCallback((dir: "left" | "right", isExpanded = false) => {
+    const step = isExpanded ? 500 : 300;
+    const w = isExpanded ? EXPANDED_SKY_W : SKY_W;
+    const delta = dir === "left" ? -step : step;
+    if (isExpanded) {
+      setExpandedScrollX((x) => wrapScrollX(x + delta, w));
+    } else {
+      setScrollX((x) => wrapScrollX(x + delta, w));
+    }
   }, []);
 
   // ===== Selected-star info =====
@@ -322,17 +373,28 @@ export function EnlightenmentContent() {
   // level — 150px is a safe left margin for any modal width ≥ 400px.)
   // The target is wrapped through `wrapScrollX` so the sky stays within the
   // 3-instance bounds — keeps the infinite-scroll illusion intact.
-  const panToConstellation = useCallback((cId: string) => {
+  // CONSTELLATION-REDESIGN-NOIRLAB: takes an `isExpanded` flag so panning from
+  // the sidebar works whether the user is in standard or expanded mode.
+  const panToConstellation = useCallback((cId: string, isExpanded = false) => {
     const cdef = CONSTELLATION_MAP[cId];
     if (!cdef) return;
     const first = cdef.stars[0];
     if (!first) return;
-    const targetX = -(first.x / 100) * SKY_W + 150;
-    setScrollX(wrapScrollX(targetX));
+    const w = isExpanded ? EXPANDED_SKY_W : SKY_W;
+    const targetX = -(first.x / 100) * w + 150;
+    if (isExpanded) {
+      setExpandedScrollX(wrapScrollX(targetX, w));
+    } else {
+      setScrollX(wrapScrollX(targetX, w));
+    }
   }, []);
 
   // ===== Render a single instance of the wide sky at the given x offset =====
   // Called 3 times by the wrapper to produce the infinite-scroll illusion.
+  //
+  // CONSTELLATION-REDESIGN-NOIRLAB: parameterized over `skyW` so the same
+  // function drives both the standard sky (SKY_W=5000) and the full-screen
+  // overlay (EXPANDED_SKY_W=8000).
   //
   // STAR-MAP-FIX: previously the inner sky div had a fixed `height: SKY_H`
   // (500px) while the viewport could be variable height. When the viewport
@@ -343,14 +405,14 @@ export function EnlightenmentContent() {
   // rendered height. Star + label positions use PERCENTAGE positioning
   // (top: `${y}%`) so they always scale to the parent's height. The SVG
   // uses viewBox="0 0 100 100" + preserveAspectRatio="none" to stretch.
-  function renderSkyInstance(offset: number) {
+  function renderSkyInstance(offset: number, skyW: number) {
     return (
       <div
-        key={offset}
+        key={`${offset}-${skyW}`}
         className="absolute top-0"
         style={{
           left: `${offset}px`,
-          width: `${SKY_W}px`,
+          width: `${skyW}px`,
           height: "100%",
         }}
       >
@@ -377,8 +439,60 @@ export function EnlightenmentContent() {
             backgroundSize: "100% 100%",
           }}
         />
+        {/* CONSTELLATION-REDESIGN-NOIRLAB — NOIRLab outline overlay.
+            For each constellation that is COMPLETED (all stars lit), render
+            the NOIRLab outline SVG as a subtle (opacity 0.25) overlay
+            positioned over the constellation's bounding box. The overlay is
+            at zIndex 1 so it sits BEHIND the stars (which are zIndex 10+) but
+            ABOVE the SVG connection lines (auto z-index = 0). object-fit:
+            contain stretches the 360×360 viewBox SVG into the constellation's
+            bounding box while preserving aspect ratio. */}
+        {LABEL_ANCHORS.filter((la) => constellationsCompleted[la.cId]).map((la) => {
+          const cdef = CONSTELLATION_MAP[la.cId];
+          if (!cdef) return null;
+          // Compute the constellation's bounding box from its star coords.
+          const xs = cdef.stars.map((s) => s.x);
+          const ys = cdef.stars.map((s) => s.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          const width = maxX - minX;
+          const height = maxY - minY;
+          // Padding around the bounding box so the outline extends a bit
+          // beyond the star cluster (NOIRLab outlines bleed outside the star
+          // positions, not the other way around).
+          const padX = width * 0.3;
+          const padY = height * 0.3;
+          return (
+            <img
+              key={`${offset}-outline-${la.cId}`}
+              src={`/constellations/${la.cId}-outline.svg`}
+              className="absolute pointer-events-none"
+              style={{
+                // Horizontal positioning in PIXELS (multiplied by skyW/100
+                // because star coords are 0-100 normalized on the X axis).
+                left: `${(minX - padX) * (skyW / 100)}px`,
+                width: `${(width + padX * 2) * (skyW / 100)}px`,
+                // Vertical positioning in PERCENTAGE so the overlay scales
+                // with the viewport's rendered height (same scheme as the
+                // star buttons).
+                top: `${minY - padY}%`,
+                height: `${height + padY * 2}%`,
+                opacity: 0.25,
+                objectFit: "contain",
+                zIndex: 1,
+              }}
+              alt=""
+              aria-hidden
+            />
+          );
+        })}
         {/* Constellation connection lines — SVG fills the parent and uses
-            a normalized 0-100 viewBox so lines scale to any height. */}
+            a normalized 0-100 viewBox so lines scale to any height.
+            CONSTELLATION-REDESIGN-NOIRLAB: thicker stroke (0.30 completed /
+            0.15 dim) and more opaque (1.0 / 0.45) so the constellation
+            pattern is clearly visible. */}
         <svg
           className="absolute inset-0 pointer-events-none"
           width="100%"
@@ -405,16 +519,20 @@ export function EnlightenmentContent() {
                 x2={conn.bx}
                 y2={conn.by}
                 stroke={stroke}
-                strokeWidth={isCompleted ? 0.25 : 0.12}
+                strokeWidth={isCompleted ? 0.3 : 0.15}
                 strokeLinecap="round"
-                opacity={dim ? 0.35 : 0.9}
+                opacity={dim ? 0.45 : 1.0}
                 vectorEffect="non-scaling-stroke"
               />
             );
           })}
         </svg>
         {/* Stars as clickable buttons positioned using PERCENTAGE
-            coordinates so they always scale with the parent's height. */}
+            coordinates so they always scale with the parent's height.
+            CONSTELLATION-REDESIGN-NOIRLAB: stars are now 18px grey circles
+            with a subtle glow (was 14px tiny dots). The unlit-but-started
+            variant uses a lighter grey (#64748b) so the player can tell at a
+            glance which constellations they've begun. */}
         {FLAT_STARS.map((fs) => {
           const lit = !!constellationStars[fs.starId];
           const started = !!constellationsStarted[fs.cId];
@@ -437,19 +555,17 @@ export function EnlightenmentContent() {
                 left: `${fs.x}%`,
                 top: `${fs.y}%`,
                 transform: "translate(-50%, -50%)",
-                width: "14px",
-                height: "14px",
-                background: lit ? accent : started ? "#475569" : "#1e293b",
+                width: "18px",
+                height: "18px",
+                background: lit ? accent : started ? "#64748b" : "#475569",
                 boxShadow: lit
-                  ? `0 0 8px 2px ${accent}88`
-                  : isSelected
-                    ? "0 0 6px 1px #fff"
-                    : "none",
+                  ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
+                  : "0 0 4px 1px #94a3b855",
                 border: isSelected
                   ? "2px solid #fff"
                   : lit
-                    ? `1px solid ${accent}`
-                    : "1px solid transparent",
+                    ? `1.5px solid ${accent}`
+                    : "1.5px solid #64748b",
                 cursor: "pointer",
                 zIndex: isSelected ? 20 : 10,
               }}
@@ -477,13 +593,163 @@ export function EnlightenmentContent() {
                   : isStarted
                     ? "#cbd5e1"
                     : "#475569",
-                opacity: dim ? 0.35 : 0.95,
+                opacity: dim ? 0.45 : 0.95,
               }}
             >
               {cdef.i18nName}
             </span>
           );
         })}
+      </div>
+    );
+  }
+
+  // ===== Render the per-star purchase popup =====
+  // CONSTELLATION-REDESIGN-NOIRLAB: extracted to a function so the same popup
+  // can be rendered in BOTH the standard view AND the full-screen expanded
+  // overlay. Previously the popup was inline JSX in the standard view only —
+  // which meant clicking a star while in expanded mode buried the popup
+  // behind the expanded overlay (z-[100] > popup z-[80]). Now the popup is
+  // rendered conditionally in whichever view is active, so it always appears
+  // in the right stacking context.
+  function renderStarPopup() {
+    if (!selectedInfo) return null;
+    return (
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        onPointerDown={(e) => {
+          // Click on the backdrop closes the popup.
+          if (e.target === e.currentTarget) setSelectedStar(null);
+        }}
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div className="relative glass-strong rounded-lg border border-violet-500/40 shadow-2xl max-w-md w-full p-4">
+          {/* Popup header */}
+          <div className="flex items-start gap-2 mb-3">
+            <span
+              className="inline-block w-3 h-3 rounded-full mt-1.5 shrink-0"
+              style={{ background: CATEGORY_ACCENT[selectedInfo.cdef.category] }}
+              aria-hidden
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-semibold leading-tight">
+                {selectedInfo.designation}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                in <span className="text-foreground/90 font-medium">{selectedInfo.cdef.i18nName}</span> ·{" "}
+                <span className="text-muted-foreground">{CATEGORY_LABEL[selectedInfo.cdef.category]}</span>
+              </div>
+            </div>
+            {selectedInfo.lit && (
+              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shrink-0">
+                <Sparkles className="w-3 h-3 mr-1" />
+                Lit
+              </Badge>
+            )}
+          </div>
+
+          {/* Reward for completing the constellation */}
+          <div className="stat-card mb-2">
+            <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
+              Reward for completing {selectedInfo.cdef.i18nName}
+            </div>
+            {selectedInfo.bonuses.length === 0 ? (
+              <div className="text-xs text-muted-foreground">No bonus (cosmetic).</div>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {selectedInfo.bonuses.map((b) => (
+                  <Badge key={b.label} variant="outline" className={b.cls}>
+                    {b.label} {b.value}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="text-[0.6rem] text-muted-foreground mt-1.5">
+              Plus per-star bonus: <span className="text-cyan-300">+0.5% production</span> for every lit star.
+            </div>
+          </div>
+
+          {/* Progress in this constellation */}
+          <div className="stat-card mb-2">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-muted-foreground">
+                Progress in {selectedInfo.cdef.i18nName}
+              </span>
+              <span className="font-mono text-amber-300">
+                {selectedInfo.progress} / {selectedInfo.total}
+              </span>
+            </div>
+            <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-400/70 transition-all"
+                style={{ width: `${(selectedInfo.progress / selectedInfo.total) * 100}%` }}
+              />
+            </div>
+            {selectedInfo.completed ? (
+              <div className="text-[0.65rem] text-emerald-300 mt-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Constellation complete — bonus active.
+              </div>
+            ) : (
+              <div className="text-[0.65rem] text-muted-foreground mt-1">
+                {selectedInfo.total - selectedInfo.progress} more star(s) to complete this constellation.
+              </div>
+            )}
+          </div>
+
+          {/* Cost */}
+          <div className="stat-card mb-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <TrendingUp className="w-3 h-3 text-amber-300" />
+                Cost to illuminate
+              </span>
+              <Badge
+                variant="outline"
+                className={
+                  selectedInfo.lit
+                    ? "text-emerald-300 border-emerald-400/40"
+                    : selectedInfo.canAfford
+                      ? "text-emerald-300 border-emerald-400/40"
+                      : "text-rose-300 border-rose-400/40"
+                }
+              >
+                {formatNumber(selectedInfo.cost, 0)} Divinity
+              </Badge>
+            </div>
+            {selectedInfo.lit ? (
+              <div className="text-[0.65rem] text-emerald-300 mt-1">
+                This star is already lit.
+              </div>
+            ) : !selectedInfo.canAfford ? (
+              <div className="text-[0.65rem] text-rose-300/80 mt-1">
+                Not enough Divinity. You have {formatNumber(divinity, 0)} / {formatNumber(selectedInfo.cost, 0)}.
+              </div>
+            ) : (
+              <div className="text-[0.65rem] text-muted-foreground mt-1">
+                You have {formatNumber(divinity, 0)} Divinity.
+              </div>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setSelectedStar(null)}
+            >
+              Close
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={selectedInfo.lit || !selectedInfo.canAfford}
+              onClick={handleIlluminate}
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1" />
+              Illuminate
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -503,9 +769,25 @@ export function EnlightenmentContent() {
           <span>
             Drag the wide sky or use ◀ ▶ to pan. Click a star to inspect it and illuminate.
           </span>
-          <Badge variant="outline" className="text-violet-300 border-violet-400/40">
-            {formatNumber(divinity, 0)} Divinity
-          </Badge>
+          <div className="flex items-center gap-2 ml-auto">
+            {isUnlocked && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                onClick={() => setExpanded(true)}
+                title="Open full-screen star map"
+                aria-label="Open full-screen star map"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                Expand
+              </Button>
+            )}
+            <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+              {formatNumber(divinity, 0)} Divinity
+            </Badge>
+          </div>
         </p>
       </div>
 
@@ -525,11 +807,14 @@ export function EnlightenmentContent() {
             <div
               className="relative w-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
               style={{
-                height: "clamp(380px, 56vh, 700px)",
+                // CONSTELLATION-REDESIGN-NOIRLAB: taller clamp so stars at
+                // y=4 (top) and y=96 (bottom) are always within the visible
+                // area (was clamp(380px, 56vh, 700px)).
+                height: "clamp(500px, 64vh, 900px)",
                 cursor: dragging ? "grabbing" : "grab",
               }}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
+              onPointerDown={(e) => onPointerDown(e, false)}
+              onPointerMove={(e) => onPointerMove(e, false)}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
               onPointerLeave={endDrag}
@@ -545,7 +830,7 @@ export function EnlightenmentContent() {
                   willChange: "transform",
                 }}
               >
-                {SKY_OFFSETS.map((off) => renderSkyInstance(off))}
+                {SKY_OFFSETS.map((off) => renderSkyInstance(off, SKY_W))}
               </div>
 
               {/* ◀ Left navigation arrow */}
@@ -556,7 +841,7 @@ export function EnlightenmentContent() {
                 className="absolute left-2 top-1/2 -translate-y-1/2 z-30 h-9 w-9 rounded-full bg-slate-950/80 border border-violet-500/30 hover:bg-slate-800/90 text-violet-100"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleScrollButton("left");
+                  handleScrollButton("left", false);
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 aria-label="Scroll sky left"
@@ -571,7 +856,7 @@ export function EnlightenmentContent() {
                 className="absolute right-2 top-1/2 -translate-y-1/2 z-30 h-9 w-9 rounded-full bg-slate-950/80 border border-violet-500/30 hover:bg-slate-800/90 text-violet-100"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleScrollButton("right");
+                  handleScrollButton("right", false);
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 aria-label="Scroll sky right"
@@ -647,147 +932,12 @@ export function EnlightenmentContent() {
             </div>
 
             {/* ===== STAR PURCHASE POPUP =====
-                A custom fixed-position overlay (avoids nesting two Radix
-                Dialogs, which has focus-trap quirks). The popup floats over
-                the modal content centered horizontally. */}
-            {selectedInfo && (
-              <div
-                className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-                onPointerDown={(e) => {
-                  // Click on the backdrop closes the popup.
-                  if (e.target === e.currentTarget) setSelectedStar(null);
-                }}
-              >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                <div className="relative glass-strong rounded-lg border border-violet-500/40 shadow-2xl max-w-md w-full p-4">
-                  {/* Popup header */}
-                  <div className="flex items-start gap-2 mb-3">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full mt-1.5 shrink-0"
-                      style={{ background: CATEGORY_ACCENT[selectedInfo.cdef.category] }}
-                      aria-hidden
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-base font-semibold leading-tight">
-                        {selectedInfo.designation}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        in <span className="text-foreground/90 font-medium">{selectedInfo.cdef.i18nName}</span> ·{" "}
-                        <span className="text-muted-foreground">{CATEGORY_LABEL[selectedInfo.cdef.category]}</span>
-                      </div>
-                    </div>
-                    {selectedInfo.lit && (
-                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shrink-0">
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        Lit
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Reward for completing the constellation */}
-                  <div className="stat-card mb-2">
-                    <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
-                      Reward for completing {selectedInfo.cdef.i18nName}
-                    </div>
-                    {selectedInfo.bonuses.length === 0 ? (
-                      <div className="text-xs text-muted-foreground">No bonus (cosmetic).</div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {selectedInfo.bonuses.map((b) => (
-                          <Badge key={b.label} variant="outline" className={b.cls}>
-                            {b.label} {b.value}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    <div className="text-[0.6rem] text-muted-foreground mt-1.5">
-                      Plus per-star bonus: <span className="text-cyan-300">+0.5% production</span> for every lit star.
-                    </div>
-                  </div>
-
-                  {/* Progress in this constellation */}
-                  <div className="stat-card mb-2">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">
-                        Progress in {selectedInfo.cdef.i18nName}
-                      </span>
-                      <span className="font-mono text-amber-300">
-                        {selectedInfo.progress} / {selectedInfo.total}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-400/70 transition-all"
-                        style={{ width: `${(selectedInfo.progress / selectedInfo.total) * 100}%` }}
-                      />
-                    </div>
-                    {selectedInfo.completed ? (
-                      <div className="text-[0.65rem] text-emerald-300 mt-1 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" /> Constellation complete — bonus active.
-                      </div>
-                    ) : (
-                      <div className="text-[0.65rem] text-muted-foreground mt-1">
-                        {selectedInfo.total - selectedInfo.progress} more star(s) to complete this constellation.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Cost */}
-                  <div className="stat-card mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3 text-amber-300" />
-                        Cost to illuminate
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={
-                          selectedInfo.lit
-                            ? "text-emerald-300 border-emerald-400/40"
-                            : selectedInfo.canAfford
-                              ? "text-emerald-300 border-emerald-400/40"
-                              : "text-rose-300 border-rose-400/40"
-                        }
-                      >
-                        {formatNumber(selectedInfo.cost, 0)} Divinity
-                      </Badge>
-                    </div>
-                    {selectedInfo.lit ? (
-                      <div className="text-[0.65rem] text-emerald-300 mt-1">
-                        This star is already lit.
-                      </div>
-                    ) : !selectedInfo.canAfford ? (
-                      <div className="text-[0.65rem] text-rose-300/80 mt-1">
-                        Not enough Divinity. You have {formatNumber(divinity, 0)} / {formatNumber(selectedInfo.cost, 0)}.
-                      </div>
-                    ) : (
-                      <div className="text-[0.65rem] text-muted-foreground mt-1">
-                        You have {formatNumber(divinity, 0)} Divinity.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => setSelectedStar(null)}
-                    >
-                      Close
-                    </Button>
-                    <Button
-                      className="flex-1"
-                      disabled={selectedInfo.lit || !selectedInfo.canAfford}
-                      onClick={handleIlluminate}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 mr-1" />
-                      Illuminate
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+                CONSTELLATION-REDESIGN-NOIRLAB: extracted to `renderStarPopup()`
+                above so it can also be rendered inside the full-screen
+                expanded overlay. Only render here when NOT in expanded mode —
+                otherwise the popup would double-mount (once in the standard
+                view, once in the expanded overlay). */}
+            {!expanded && renderStarPopup()}
           </div>
 
           {/* ===== SIDEBAR (constellation list + route picker + cost model) ===== */}
@@ -825,7 +975,7 @@ export function EnlightenmentContent() {
                       return (
                         <button
                           key={c.id}
-                          onClick={() => panToConstellation(c.id)}
+                          onClick={() => panToConstellation(c.id, false)}
                           className="w-full text-left px-2 py-1 rounded text-[0.65rem] flex items-center justify-between gap-1 transition-colors hover:bg-muted/30 border border-transparent"
                           aria-label={`Pan to ${c.i18nName} constellation`}
                         >
@@ -889,6 +1039,128 @@ export function EnlightenmentContent() {
       <div className="text-[0.65rem] text-muted-foreground px-1">
         Click any star to inspect it; then press <span className="text-violet-300">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per star already lit in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per other started constellation. Complete <span className="text-emerald-300">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> constellations to advance to Layer 3.
       </div>
+
+      {/* ===========================================================================
+          CONSTELLATION-REDESIGN-NOIRLAB — FULL-SCREEN EXPANDED OVERLAY
+          ===========================================================================
+          When `expanded` is true, render a full-screen (fixed inset-0 z-[100])
+          overlay with an even wider sky (EXPANDED_SKY_W = 8000px). The overlay
+          shares the same drag-to-pan/click-a-star semantics as the standard
+          view via the parameterized `onPointerDown`/`onPointerMove`/`
+          handleScrollButton`/`panToConstellation` functions. The per-star
+          purchase popup is also rendered here (conditionally — only when
+          `expanded` is true) so clicks on stars in expanded mode pop up the
+          purchase UI in the right stacking context.
+
+          Exit button: closes the overlay and clears the per-star selection
+          so the player doesn't end up with a stray popup after exit.
+          =========================================================================== */}
+      {expanded && isUnlocked && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-[#020417]">
+          {/* Top bar with title + Exit */}
+          <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-violet-500/30 bg-[#050518]/95 backdrop-blur">
+            <div className="flex items-center gap-2 min-w-0">
+              <Eye className="w-5 h-5 text-violet-300 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-violet-100 truncate">Constellation Sky — Full Screen</div>
+                <div className="text-[0.65rem] text-muted-foreground truncate">{completedCount} / {CONSTELLATIONS_REQUIRED_FOR_LAYER_3} for L3 · {litStarsCount} / {totalStars} stars lit</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="text-violet-300 border-violet-400/40">{formatNumber(divinity, 0)} Divinity</Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 gap-1 border-violet-500/40 text-violet-100 hover:bg-violet-500/10"
+                onClick={() => {
+                  setSelectedStar(null);
+                  setExpanded(false);
+                }}
+                title="Exit full-screen"
+                aria-label="Exit full-screen"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                Exit
+              </Button>
+            </div>
+          </div>
+
+          {/* Full-screen sky viewport — same drag/pan semantics as standard */}
+          <div
+            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
+            style={{ cursor: dragging ? "grabbing" : "grab" }}
+            onPointerDown={(e) => onPointerDown(e, true)}
+            onPointerMove={(e) => onPointerMove(e, true)}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onPointerLeave={endDrag}
+          >
+            {/* The 3 sky instances — wider than standard (EXPANDED_SKY_W = 8000). */}
+            <div
+              className="absolute top-0 left-0"
+              style={{
+                transform: `translateX(${expandedScrollX}px)`,
+                width: EXPANDED_SKY_W,
+                height: "100%",
+                willChange: "transform",
+              }}
+            >
+              {EXPANDED_SKY_OFFSETS.map((off) => renderSkyInstance(off, EXPANDED_SKY_W))}
+            </div>
+
+            {/* ◀ Left navigation arrow (bigger in expanded mode) */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full bg-slate-950/80 border border-violet-500/30 hover:bg-slate-800/90 text-violet-100"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleScrollButton("left", true);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label="Scroll sky left"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </Button>
+            {/* ▶ Right navigation arrow (bigger in expanded mode) */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full bg-slate-950/80 border border-violet-500/30 hover:bg-slate-800/90 text-violet-100"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleScrollButton("right", true);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label="Scroll sky right"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </Button>
+
+            {/* Map legend (bottom-left) */}
+            <div className="absolute bottom-3 left-16 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-700/50 bg-slate-950/70 px-3 py-1.5 text-[0.65rem] text-slate-300 backdrop-blur pointer-events-none">
+              {(["zodiac", "northern", "equatorial", "southern"] as ConstellationCategory[]).map((cat) => (
+                <span key={cat} className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: CATEGORY_ACCENT[cat] }} />
+                  {CATEGORY_LABEL[cat]}
+                </span>
+              ))}
+            </div>
+
+            {/* Drag hint (top-right) */}
+            <div className="absolute top-3 right-16 rounded-md border border-violet-500/30 bg-slate-950/70 px-2.5 py-1 text-[0.65rem] text-violet-200/80 backdrop-blur pointer-events-none">
+              drag ◀ ▶ to pan · press Exit to close
+            </div>
+          </div>
+
+          {/* Per-star purchase popup (rendered in expanded context so the
+              popup's z-[80] is correctly placed within the overlay's z-[100]
+              stacking context — appears above the sky viewport). */}
+          {expanded && renderStarPopup()}
+        </div>
+      )}
     </>
   );
 }
