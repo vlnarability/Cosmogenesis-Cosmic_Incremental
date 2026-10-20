@@ -653,6 +653,47 @@ export interface GameState {
   // either fires the chained event (chance roll succeeded) or drops it
   // (chance roll failed). Resets to [] on prestige — chains are per-run.
   pendingFollowUps: PendingFollowUp[];
+
+  // ===== L3-REDESIGN — WORLD FUSION + ETERNAL FLAME + L3 REPLACEMENTS =====
+  // The L3 layer (Transcendence) has been redesigned. Offerings / Rituals /
+  // Scripts / Blood Pacts are replaced by:
+  //   • World Forge — spend Divinity to create new background worlds.
+  //   • Convergence Catalysts — 5 permanent Divine Engine upgrades.
+  //   • World Templates — choose the "mode" of all background worlds.
+  //   • Genesis Seeds — plant seeds that grow into permanent Divinity generators.
+  //   • Astral Resonance — align ALL worlds to a constellation category.
+  //   • World Fusion — merge worlds into higher tiers for more production per
+  //     world (but lower total production until Ascendant tier).
+  //   • Eternal Flame — dump infinite Divinity for a logarithmic multiplier
+  //     on all Divinity generation.
+  //
+  // worldTiers: Record<string, number> — tier id ("1".."10", "ascendant",
+  //   "greater_ascendant", "celestial_core", "void") → count. Tier 1 =
+  //   standard background worlds. Higher tiers are produced by fusion.
+  // cosmicFragments: number — new currency from Void Worlds (preview of
+  //   L9/L10 resources).
+  // eternalFlameInvested: number — total Divinity invested in the Eternal
+  //   Flame. Drives a logarithmic multiplier on all Divinity generation.
+  // worldsForged: number — lifetime count of worlds created via World Forge.
+  //   Persists across prestiges (forged worlds are permanent).
+  // purchasedCatalysts: Record<string, boolean> — catalyst id → purchased.
+  //   5 one-time catalysts that upgrade the Divine Engine permanently.
+  // activeWorldTemplate: string | null — the active world template id (or
+  //   null for none). Switching templates costs 50 Divinity.
+  // plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number } | undefined>
+  //   — 4 genesis seeds (sprout/sapling/elder_tree/world_tree). Once
+  //   planted, they mature after their duration and produce permanent
+  //   Divinity/s. All 4 planted unlocks L4.
+  // alignedCategory: string | null — the active astral resonance category
+  //   ("zodiac" | "northern" | "equatorial" | "southern" | null).
+  worldTiers: Record<string, number>;
+  cosmicFragments: number;
+  eternalFlameInvested: number;
+  worldsForged: number;
+  purchasedCatalysts: Record<string, boolean>;
+  activeWorldTemplate: string | null;
+  plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number } | undefined>;
+  alignedCategory: string | null;
 }
 
 // PendingFollowUp — scheduled follow-up event awaiting its fire time.
@@ -910,4 +951,38 @@ export interface GameStore extends GameState {
   setAutoBuyerTechTarget: (archetypeId: string | null) => void;
   setPreferredGovernment: (govId: string | null) => void;
   setPreferredForesightRoute: (routeId: string | null) => void;
+
+  // ===== L3-REDESIGN — WORLD FUSION + ETERNAL FLAME + L3 REPLACEMENTS =====
+  // Fuse 10 (or 100/1000/10000) worlds of the source tier into 1 of the
+  // target tier. Checks source world count + layer-locked requirements
+  // (e.g. Void World requires L7+ / omnipotence). Deducts source worlds
+  // and adds 1 to the target tier's count.
+  fuseWorlds: (targetTierId: string) => void;
+  // Invest Divinity into the Eternal Flame. The flame multiplier is
+  // logarithmic: 1 + log10(invested + 1) × 0.5. Applies to all bgDivPerSec.
+  investInFlame: (amount: number) => void;
+  // Spend Divinity to forge a new background world (Tier 1). Cost scales
+  // 1.5× per world already forged. worldsForged persists across prestiges.
+  forgeWorld: () => void;
+  // Purchase a one-time Convergence Catalyst (5 total). Each grants a
+  // permanent Divine Engine upgrade (e.g. +10% Div/s, ×2 peak prod, etc.).
+  purchaseCatalyst: (catalystId: string) => void;
+  // Switch the active World Template (5 templates). Costs 50 Divinity to
+  // switch (free to set to null). Templates apply bonuses/risks to all
+  // background world production.
+  setWorldTemplate: (templateId: string | null) => void;
+  // Plant a Genesis Seed (4 total). Each seed matures after its duration
+  // and produces permanent Divinity/s. All 4 planted unlocks L4.
+  plantGenesisSeed: (seedId: string) => void;
+  // Set the active Astral Resonance category (zodiac/northern/equatorial/
+  // southern, or null to clear). Each category gives a Div/s bonus with a
+  // tradeoff (Northern hurts other sources, Equatorial costs Faith, etc.).
+  setAlignedCategory: (category: string | null) => void;
+  // Illuminate the next unlit star in a constellation (bulk purchase).
+  // Respects the same cost formula as illuminateStar — finds the cheapest
+  // unlit star in the constellation and lights it.
+  purchaseNextStar: (constellationId: string) => void;
+  // Illuminate ALL remaining unlit stars in a constellation, stopping when
+  // the player can't afford the next one. debugFreeBuy bypasses affordability.
+  purchaseMaxStars: (constellationId: string) => void;
 }

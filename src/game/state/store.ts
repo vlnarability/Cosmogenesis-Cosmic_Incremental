@@ -74,7 +74,28 @@ import {
   activeRitualPopBonus,
   transcendenceDivinityPerSecond,
   allBloodPactsUsed,
+  // L3-REDESIGN — new systems replacing Offerings/Rituals/Scripts/BloodPacts.
+  CONVERGENCE_CATALYSTS,
+  CONVERGENCE_CATALYST_MAP,
+  WORLD_TEMPLATES,
+  WORLD_TEMPLATE_MAP,
+  GENESIS_SEEDS,
+  GENESIS_SEED_MAP,
+  ASTRAL_CATEGORIES,
+  ASTRAL_CATEGORY_MAP,
+  allGenesisSeedsPlanted,
+  genesisSeedsDivinityPerSec,
+  eternalFlameMultiplier,
 } from "../data/transcendence";
+import {
+  FUSION_TIERS,
+  FUSION_TIER_MAP,
+  productionMultiplierForTier,
+  rawWorldCount,
+  effectiveWorldCount,
+  makeInitialWorldTiers,
+  canFuse,
+} from "../data/worldFusion";
 import {
   PORTFOLIOS,
   PORTFOLIO_MAP,
@@ -698,6 +719,33 @@ function initialMetaState(): Partial<GameState> {
     // Wired keys are documented on the GameState type. Initialized to {} —
     // buildAchievementCtx reads with `|| 0` defaults so missing keys are safe.
     achievementMeta: {},
+
+    // ===== L3-REDESIGN — WORLD FUSION + ETERNAL FLAME + L3 REPLACEMENTS =====
+    // worldTiers: tier id ("1".."10", "ascendant", "greater_ascendant",
+    //   "celestial_core", "void") → count. Starts empty (all tiers = 0).
+    //   The tick accumulates tier-1 worlds from natural production (constellation
+    //   stars + L4/L5/L6 systems + forged worlds). Higher tiers are produced by
+    //   the fuseWorlds action.
+    // cosmicFragments: new currency from Void Worlds (preview of L9/L10
+    //   resources). Starts at 0.
+    // eternalFlameInvested: total Divinity invested in the Eternal Flame.
+    //   Drives a logarithmic multiplier on all Divinity generation.
+    // worldsForged: lifetime count of worlds created via World Forge.
+    //   Persists across prestiges (forged worlds are permanent).
+    // purchasedCatalysts: catalyst id → purchased. 5 one-time catalysts.
+    // activeWorldTemplate: null at fresh-start. Player picks one of 5 templates.
+    // plantedSeeds: undefined for each seed id until planted. Once planted,
+    //   the entry is `{ planted: true, plantedAtTime: gameTime }`. Maturity
+    //   is checked in the tick.
+    // alignedCategory: null at fresh-start. Player aligns to one of 4 categories.
+    worldTiers: makeInitialWorldTiers(),
+    cosmicFragments: 0,
+    eternalFlameInvested: 0,
+    worldsForged: 0,
+    purchasedCatalysts: {},
+    activeWorldTemplate: null,
+    plantedSeeds: {},
+    alignedCategory: null,
   };
 }
 
@@ -1515,7 +1563,12 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Layers 2-6: passive currency generation, timer decay, unlock chain ----
         let divinity = s.divinity || 0;
-        let evolutionPoints = s.evolutionPoints || 0;  // mutable — background sims add EP
+        // CURRENCY-UNIFICATION — `evolutionPoints` is no longer spent in the
+        // shop (Divinity is the unified currency). The field is kept on
+        // GameState for save-compat but is NOT mutated by the tick anymore
+        // (the bgEpPerSec line below was removed in L3-REDESIGN). Old saves
+        // that have a non-zero EP value still load cleanly — the value just
+        // sits there as a historical curiosity.
         let faith = s.faith || 0;
         let heresy = s.heresy || 0;
         // L5 redesign — per-galaxy heresy surge staging variable. When the L5
@@ -1529,6 +1582,17 @@ export const useGameStore = create<GameStore>()(
         let scriptTimers = s.scriptTimers || {};
         let bloodPactsUsed = s.bloodPactsUsed || {};
         const activeHeresyResponse = s.activeHeresyResponse || "hr_ignore";
+
+        // L3-REDESIGN — new mutable state vars for the World Fusion system +
+        // Catalysts + Templates + Genesis Seeds + Astral Resonance + Eternal
+        // Flame. We read the persisted values from `s` and mutate the locals
+        // so the tail set() persists the updated state.
+        let worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
+        // Defensive: ensure every fusion tier key exists on the local copy.
+        for (const t of FUSION_TIERS) {
+          if (typeof worldTiers[t.id] !== "number") worldTiers[t.id] = 0;
+        }
+        let cosmicFragments = s.cosmicFragments || 0;
 
         // Decay temporary ritual timers
         if (Object.keys(activeTemporaryRituals).length > 0) {
@@ -1837,11 +1901,16 @@ export const useGameStore = create<GameStore>()(
             ), 0);
           }
         }
-        // Layer 4 (Genesis): all 4 blood pacts used at least once
+        // Layer 4 (Genesis): L3-REDESIGN — all 4 genesis seeds planted
+        // (was: all 4 blood pacts used; Blood Pacts are deprecated and
+        // removed from the UI. The plantedSeeds check uses the new L3
+        // Genesis Seeds system — Sprout, Sapling, Elder Tree, World Tree.
+        // Old saves that already unlocked L4 via Blood Pacts keep their
+        // `unlockedLayers.genesis = true` flag — no regression.)
         if (unlockedLayers.transcendence && !unlockedLayers.genesis) {
-          if (allBloodPactsUsed(bloodPactsUsed)) {
+          if (allGenesisSeedsPlanted(s.plantedSeeds)) {
             unlockedLayers = { ...unlockedLayers, genesis: true };
-            setTimeout(() => get().addToLog("All 4 Blood Pacts performed. Genesis layer unlocked."), 0);
+            setTimeout(() => get().addToLog("All 4 Genesis Seeds planted. Genesis layer unlocked."), 0);
           }
         }
         // Layer 5 (Apotheosis): L4 redesign — completing the galaxy (all 50 systems
@@ -2375,18 +2444,31 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // ===== BACKGROUND-SIMULATION — Divinity + EP generation =====
-        // At L2+ (Enlightenment unlocked), the base game runs in the background.
-        // Worlds formula (L6 redesign):
-        //   worlds = (3 + starsLit) × simMult            [constellation stars + starter]
-        //          + claimedL4Systems × 10               [L4 galaxy claim]
-        //          + claimedRivalSystems × 18            [L5 rival galaxy conquest]
-        //          + claimedNewSystems × 198            [L6 universal map: 5,000 × 198 = 990,000]
-        //   capped at: 500 (L2/L3), 1000 (L4), 10000 (L5), 1,000,000 (L6+).
-        // Each world generates Divinity at 1% of peakProductionRate/sec AND
-        // EP at 0.1% of peak/sec.
+        // ===== BACKGROUND-SIMULATION — World Fusion + Divinity generation =====
+        // L3-REDESIGN — the background simulation worlds are now stored in
+        // `worldTiers` (Record<string, number>, keys = tier ids "1".."10" +
+        // "ascendant" + "greater_ascendant" + "celestial_core" + "void").
+        // Tier 1 = standard background worlds (constellation + L4/L5/L6 +
+        // forged). Higher tiers are produced by the fuseWorlds action.
+        //
+        // The tick accumulates natural tier-1 production into worldTiers["1"]
+        // (rate-based growth: production × realDt per tick). rawWorldCount
+        // (Σ count across all tiers) is capped at worldCap. effectiveWorlds
+        // (Σ count × productionMult) drives Divinity/s generation.
+        //
+        // Multipliers applied to bgDivPerSec:
+        //   • Eternal Flame — logarithmic on `eternalFlameInvested`.
+        //   • Convergence Catalysts — 5 one-time permanent boosts.
+        //   • World Template — active template's `divinityMult` (e.g. 1.20 for Harmony).
+        //   • Astral Resonance — aligned category's `divinityMult`.
+        //   • Divine Multiplication catalyst — effectiveWorlds × 1.5.
+        //
+        // Risky templates / alignments may collapse a tier-1 world per tick
+        // (Crucible = 5% chance, Southern alignment = 2% chance).
+        // The Ascendant template grows peakProductionRate by +0.5%/min.
+        // The Void template produces Cosmic Fragments per world.
+        // Void World tier also produces Cosmic Fragments.
         let divinityFromBackground = s.divinityFromBackground || 0;
-        let epFromBackground = s.epFromBackground || 0;
         // Compute current sim count from constellation stars + shop upgrade.
         const starsLitCount = Object.values(s.constellationStars || {}).filter(Boolean).length;
         const simMult = 1 + (s.upgrades["simulation_amplifier"] || 0);  // level 0 = ×1, level 1 = ×2, ...
@@ -2405,6 +2487,10 @@ export const useGameStore = create<GameStore>()(
         // L6 Universal Map: each claimed NEW system grants +198 worlds.
         const claimedNewCount = totalNewSystemsClaimed(universalGalaxies);
         const l6Worlds = s.unlockedLayers?.singularity ? claimedNewCount * 198 : 0;
+        // L3-REDESIGN — World Forge: each forged world (lifetime counter
+        // `worldsForged`) adds +1 to the tier-1 world production rate. Forged
+        // worlds persist across prestiges (the player keeps them forever).
+        const forgedWorldsRate = s.worldsForged || 0;
         // Cap depends on the highest layer the player has unlocked:
         //   L2/L3: 500, L4: 1000, L5: 10000, L6+: 1000000.
         const worldCap = s.unlockedLayers?.singularity ? 1_000_000
@@ -2413,27 +2499,149 @@ export const useGameStore = create<GameStore>()(
           : s.unlockedLayers?.transcendence ? 500
           : s.unlockedLayers?.enlightenment ? 500
           : 0;
-        const computedBackgroundSims = worldCap > 0
-          ? Math.min(worldCap, constellationWorlds + l4Worlds + l5Worlds + l6Worlds)
-          : 0;
-        const backgroundSimulations = computedBackgroundSims;
+        // Natural tier-1 production rate (worlds/sec) — added to worldTiers["1"].
+        const naturalTier1Rate = constellationWorlds + l4Worlds + l5Worlds + l6Worlds + forgedWorldsRate;
+        if (worldCap > 0 && naturalTier1Rate > 0) {
+          // Rate-based growth: each tick adds naturalTier1Rate × realDt to
+          // worldTiers["1"]. Cap the raw count at worldCap (trim tier-1 if
+          // the total would exceed worldCap; never touch higher tiers — they
+          // are permanent investments).
+          worldTiers["1"] = (worldTiers["1"] || 0) + naturalTier1Rate * realDt;
+          const raw = rawWorldCount(worldTiers);
+          if (raw > worldCap) {
+            // Trim tier-1 worlds to bring the total under the cap.
+            const overflow = raw - worldCap;
+            worldTiers["1"] = Math.max(0, (worldTiers["1"] || 0) - overflow);
+          }
+        }
+        // backgroundSimulations = min(worldCap, rawWorldCount) — for display.
+        const rawWorlds = rawWorldCount(worldTiers);
+        const backgroundSimulations = worldCap > 0 ? Math.min(worldCap, rawWorlds) : 0;
+        // effectiveWorlds = Σ (count_tier × productionMultiplier_tier).
+        let effectiveWorlds = effectiveWorldCount(worldTiers);
+        // Catalyst: Divine Multiplication — each world counts as 1.5 for Divinity.
+        if (s.purchasedCatalysts?.divine_multiplication) {
+          effectiveWorlds *= 1.5;
+        }
+        // Catalyst: Stellar Furnace — ×2 peak production rate.
+        const stellarFurnaceMult = s.purchasedCatalysts?.stellar_furnace ? 2 : 1;
+        // Catalyst: Harmonic Resonance — +10% Divinity/s.
+        const harmonicResonanceMult = s.purchasedCatalysts?.harmonic_resonance ? 1.10 : 1;
+        // Catalyst: Temporal Dilation — worlds produce 2× Divinity per tick.
+        const temporalDilationMult = s.purchasedCatalysts?.temporal_dilation ? 2 : 1;
+        // Eternal Flame multiplier — logarithmic on `eternalFlameInvested`.
+        const flameMult = eternalFlameMultiplier(s.eternalFlameInvested || 0);
+        // World Template multiplier (1 if no template active).
+        const activeTemplate = s.activeWorldTemplate ? WORLD_TEMPLATE_MAP[s.activeWorldTemplate] : null;
+        const templateMult = activeTemplate ? activeTemplate.divinityMult : 1;
+        // Astral Resonance category multiplier (1 if no alignment).
+        const activeAlign = s.alignedCategory ? ASTRAL_CATEGORY_MAP[s.alignedCategory] : null;
+        const alignMult = activeAlign ? activeAlign.divinityMult : 1;
+        // L3-REDESIGN — EP cleanup: removed the bgEpPerSec calculation and
+        // `evolutionPoints += bgEpGain` line. EP is no longer generated by
+        // the background simulation — Divinity is the unified currency.
         if (backgroundSimulations > 0 && peakProductionRate > 0) {
-          const bgDivPerSec = peakProductionRate * 0.01 * backgroundSimulations;
-          const bgEpPerSec = peakProductionRate * 0.001 * backgroundSimulations;  // EP at 10% of divinity rate
+          // bgDivPerSec = effectiveWorlds × peakProductionRate × 0.01 ×
+          //   stellarFurnaceMult × harmonicResonanceMult × temporalDilationMult
+          //   × flameMult × templateMult × alignMult.
+          const bgDivPerSec = effectiveWorlds
+            * peakProductionRate
+            * 0.01
+            * stellarFurnaceMult
+            * harmonicResonanceMult
+            * temporalDilationMult
+            * flameMult
+            * templateMult
+            * alignMult;
           const bgDivGain = bgDivPerSec * realDt;
-          const bgEpGain = bgEpPerSec * realDt;
           divinity += bgDivGain;
-          evolutionPoints += bgEpGain;
           divinityFromBackground += bgDivGain;
-          epFromBackground += bgEpGain;
           // Log status every 60s of game time (runtime-only marker, not persisted).
           const lastBgLog = (s as any)._lastBgSimLog || 0;
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
             setTimeout(() => get().addToLog(
-              `🌌 Worlds: ${backgroundSimulations} running (${starsLitCount} stars × ${simMult}× mult + 3 starters + ${claimedGalaxyCount} L4 systems × 10 + ${claimedRivalCount} rival × 18 + ${claimedNewCount} new × 198 = cap ${worldCap.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s, +${bgEpPerSec.toFixed(2)} EP/s.`
+              `🌌 Worlds: ${backgroundSimulations.toLocaleString()} running (raw ${rawWorlds.toLocaleString()} × effective ${effectiveWorlds.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s (Flame ×${flameMult.toFixed(2)}${activeTemplate ? `, ${activeTemplate.name} ×${activeTemplate.divinityMult.toFixed(2)}` : ""}${activeAlign ? `, ${activeAlign.name} ×${activeAlign.divinityMult.toFixed(2)}` : ""}).`
             ), 0);
           }
+        }
+
+        // ===== L3-REDESIGN — WORLD TEMPLATE / ASTRAL RESONANCE side effects =====
+        // Active template side effects (Faith/sec, Cosmic Fragments/sec, world
+        // collapse chance, peak production rate growth).
+        if (activeTemplate) {
+          // Monastery: +0.1 Faith/s.
+          if (activeTemplate.faithPerSec > 0) {
+            faith += activeTemplate.faithPerSec * realDt;
+          }
+          // Void template: each world generates +0.01 Cosmic Fragments/s.
+          if (activeTemplate.cosmicFragmentsPerWorldPerSec > 0 && rawWorlds > 0) {
+            cosmicFragments += rawWorlds * activeTemplate.cosmicFragmentsPerWorldPerSec * realDt;
+          }
+          // Crucible: 5% chance per tick a world collapses (lose 1 tier-1).
+          // Only roll if the player actually has tier-1 worlds.
+          if (activeTemplate.collapseChance > 0 && (worldTiers["1"] || 0) > 0) {
+            // Per-tick chance = collapseChance × realDt (so a 5% chance at 1s
+            // tick becomes ~0.5% at 0.1s tick — keeps the rate consistent
+            // regardless of tick rate).
+            const chance = activeTemplate.collapseChance * realDt;
+            if (Math.random() < chance) {
+              worldTiers["1"] = Math.max(0, (worldTiers["1"] || 0) - 1);
+            }
+          }
+          // Ascendant: peak production rate grows +0.5%/min. Applied as a
+          // multiplier on the existing peakProductionRate (compounds over time).
+          if (activeTemplate.peakProductionGrowthPerMin > 0 && peakProductionRate > 0) {
+            const growthPerSec = activeTemplate.peakProductionGrowthPerMin / 60;
+            peakProductionRate *= 1 + growthPerSec * realDt;
+          }
+        }
+        // Active astral resonance side effects.
+        // `alignedCategory` is read from `s` (state) at the top of the tick.
+        // If the Equatorial cost can't be paid, we locally clear it; the
+        // mutation is persisted via the tail set() call's `alignedCategory`
+        // field (see L3-REDESIGN — alignedCategoryResolved below).
+        let alignedCategoryResolved: string | null = s.alignedCategory || null;
+        if (activeAlign) {
+          // Equatorial: costs 1 Faith/tick to maintain. If the player can't
+          // pay, the alignment auto-clears.
+          if (activeAlign.faithPerSecCost > 0) {
+            const cost = activeAlign.faithPerSecCost * realDt;
+            if (faith >= cost) {
+              faith -= cost;
+            } else {
+              // Can't maintain — clear the alignment.
+              alignedCategoryResolved = null;
+              setTimeout(() => get().addToLog(
+                `🌐 Equatorial alignment faded — not enough Faith to maintain.`
+              ), 0);
+            }
+          }
+          // Southern: 2% chance/tick a world collapses (lose 1 tier-1).
+          if (activeAlign.collapseChance > 0 && (worldTiers["1"] || 0) > 0) {
+            const chance = activeAlign.collapseChance * realDt;
+            if (Math.random() < chance) {
+              worldTiers["1"] = Math.max(0, (worldTiers["1"] || 0) - 1);
+            }
+          }
+        }
+
+        // ===== L3-REDESIGN — VOID WORLD Cosmic Fragments generation =====
+        // Each Void World (tier "void") produces 0.01 Cosmic Fragments/sec.
+        // Stacks with the Void template's per-world bonus.
+        const voidWorlds = worldTiers["void"] || 0;
+        if (voidWorlds > 0) {
+          cosmicFragments += voidWorlds * 0.01 * realDt;
+        }
+
+        // ===== L3-REDESIGN — GENESIS SEEDS passive Divinity/s =====
+        // Mature seeds produce permanent Divinity/s. Maturity is checked
+        // against the current game time vs the plantedAtTime.
+        const seedsDivPerSec = genesisSeedsDivinityPerSec(s.plantedSeeds, s.time || 0);
+        if (seedsDivPerSec > 0) {
+          const seedsGain = seedsDivPerSec * realDt;
+          divinity += seedsGain;
+          divinityFromBackground += seedsGain;
         }
 
         // ===== DIVINE INVESTMENT MARKET (new L3 design) =====
@@ -2511,7 +2719,15 @@ export const useGameStore = create<GameStore>()(
             }
             // Crash roll — only when peakProductionRate > 0 (otherwise the
             // portfolio is producing nothing, so crashes feel pointless).
-            if (peakProductionRate > 0 && p.crashChance > 0 && Math.random() < p.crashChance) {
+            // L3-REDESIGN — the Eternal Engine catalyst prevents ALL portfolio
+            // crashes (worlds never lose value). The crash roll is skipped
+            // entirely when the catalyst is purchased.
+            if (
+              peakProductionRate > 0
+              && p.crashChance > 0
+              && !s.purchasedCatalysts?.eternal_engine
+              && Math.random() < p.crashChance
+            ) {
               const worldsLost = Math.max(1, Math.floor(alloc * p.crashLoss));
               portfolioAllocations[p.id] = Math.max(0, alloc - worldsLost);
               if (p.crashLoss >= 1.0) {
@@ -2869,8 +3085,21 @@ export const useGameStore = create<GameStore>()(
           peakProductionRate,
           backgroundSimulations,
           divinityFromBackground,
-          epFromBackground,
-          evolutionPoints,
+          // L3-REDESIGN — `epFromBackground` is kept on GameState for save-compat
+          // but is no longer mutated by the tick (EP generation was removed in
+          // the CURRENCY-UNIFICATION pass). We don't write it here.
+          // `evolutionPoints` likewise — kept for save-compat, no longer
+          // incremented by the tick.
+          // L3-REDESIGN — new state vars persisted by the tick:
+          //   • worldTiers — rate-based growth + cap trimming + fusion mutations.
+          //   • cosmicFragments — generated by Void template + Void World tier.
+          //   • alignedCategory — auto-clears if Equatorial cost can't be paid.
+          //   • (eternalFlameInvested / worldsForged / purchasedCatalysts /
+          //     activeWorldTemplate / plantedSeeds) are mutated only via their
+          //     dedicated actions — not by the tick.
+          worldTiers,
+          cosmicFragments,
+          alignedCategory: alignedCategoryResolved,
           // ACHIEVEMENT-EXPANSION — persist the (possibly mutated)
           // achievementMeta record from the top-of-tick idle update and
           // any mid-tick flag updates (e.g. heresySurvivor).
@@ -3569,19 +3798,41 @@ export const useGameStore = create<GameStore>()(
           // earned at prestige is folded into the player's Divinity
           // balance (the unified shop currency). `evolutionPoints` is
           // kept on GameState for back-compat (old saves still load) but
-          // is no longer mutated anywhere except here for accounting.
-          evolutionPoints: s.evolutionPoints + epEarned,
+          // is NOT mutated anywhere — including here (L3-REDESIGN
+          // finalized the EP cleanup: the field's value never changes
+          // from its initial 0 unless an old save loads with a non-zero
+          // value, in which case that value just sits there forever).
+          evolutionPoints: s.evolutionPoints || 0,
           divinity: (s.divinity || 0) + epEarned,
           totalRuns: s.totalRuns + 1,
           galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
           // BACKGROUND-SIMULATION — META fields persist across prestiges.
           // peakProductionRate never resets (best production ever).
-          // divinityFromBackground + epFromBackground are lifetime counters.
+          // divinityFromBackground is a lifetime counter.
+          // epFromBackground is kept for save-compat (no longer mutated by the tick).
           // backgroundSimulations is NOT stored here — it's computed each tick from
           // (3 + starsLit) × simMult.
           peakProductionRate: s.peakProductionRate || 0,
           divinityFromBackground: s.divinityFromBackground || 0,
-          epFromBackground: s.epFromBackground || 0,
+          // L3-REDESIGN — new state vars persist across prestiges:
+          //   • worldTiers — fused worlds are permanent investments.
+          //   • cosmicFragments — new currency from Void Worlds.
+          //   • eternalFlameInvested — flame multiplier persists.
+          //   • worldsForged — forged worlds are permanent.
+          //   • purchasedCatalysts — catalysts are one-time purchases.
+          //   • activeWorldTemplate — template choice persists.
+          //   • plantedSeeds — seed maturity continues across prestiges
+          //     (plantedAtTime is game time, which resets to 0; mature seeds
+          //     are immediately mature after prestige).
+          //   • alignedCategory — alignment choice persists.
+          worldTiers: s.worldTiers || makeInitialWorldTiers(),
+          cosmicFragments: s.cosmicFragments || 0,
+          eternalFlameInvested: s.eternalFlameInvested || 0,
+          worldsForged: s.worldsForged || 0,
+          purchasedCatalysts: s.purchasedCatalysts || {},
+          activeWorldTemplate: s.activeWorldTemplate || null,
+          plantedSeeds: s.plantedSeeds || {},
+          alignedCategory: s.alignedCategory || null,
           archive,
           archivedArchetypes,
           // ARCHETYPES-REWORK — revealed lineage archetypes persist across
@@ -4202,6 +4453,299 @@ export const useGameStore = create<GameStore>()(
         });
         get().addToLog(`Blood Pact: ${pact.name} (-${pact.popCost} pop, +${pact.divinityGain} Divinity). (+2 PP)`);
       },
+
+      // ============ L3-REDESIGN — NEW SYSTEMS ============
+      // World Fusion — merge 10 (or 100/1000/10000) worlds of a source tier
+      // into 1 of the target tier. The target tier's production multiplier is
+      // 5× (or 100× / 1000× / 10000× / 1000000× for Ascendant+) the source
+      // tier's, but the raw world count drops (10 → 1), so total production
+      // is HALVED until the Ascendant tier (breakeven point).
+      fuseWorlds: (targetTierId) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const tier = FUSION_TIER_MAP[targetTierId];
+        if (!tier) return;
+        if (tier.sourceTier === null) {
+          get().addToLog(`Tier 1 cannot be fused into (it's the base tier).`);
+          return;
+        }
+        const check = canFuse(s.worldTiers || {}, targetTierId, s.unlockedLayers || {});
+        if (!check.ok) {
+          get().addToLog(`Cannot fuse to ${tier.name}: ${check.reason || "requirements not met"}.`);
+          return;
+        }
+        const worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
+        // Defensive: ensure source + target keys exist.
+        if (typeof worldTiers[tier.sourceTier!] !== "number") worldTiers[tier.sourceTier!] = 0;
+        if (typeof worldTiers[targetTierId] !== "number") worldTiers[targetTierId] = 0;
+        worldTiers[tier.sourceTier!] -= tier.sourceCount;
+        worldTiers[targetTierId] += 1;
+        set({ worldTiers });
+        const sourceTier = FUSION_TIER_MAP[tier.sourceTier!];
+        get().addToLog(
+          `🔮 Fused ${tier.sourceCount} ${sourceTier.name} → 1 ${tier.name} (production ×${tier.productionMult.toLocaleString()}).`
+        );
+      },
+
+      // Eternal Flame — invest Divinity for a logarithmic multiplier on all
+      // bgDivPerSec. The multiplier is `1 + log10(invested + 1) × 0.5`. So:
+      //   0 invested = ×1.0, 100 = ×2.0, 1,000 = ×2.5, 10,000 = ×3.0, etc.
+      investInFlame: (amount) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        if (amount <= 0) return;
+        const safeAmount = Math.min(amount, s.divinity || 0);
+        if (safeAmount <= 0) {
+          get().notifyPurchaseError("Not enough Divinity to invest in the Eternal Flame.");
+          return;
+        }
+        const newInvested = (s.eternalFlameInvested || 0) + safeAmount;
+        const newMult = eternalFlameMultiplier(newInvested);
+        const oldMult = eternalFlameMultiplier(s.eternalFlameInvested || 0);
+        set({
+          divinity: (s.divinity || 0) - safeAmount,
+          eternalFlameInvested: newInvested,
+        });
+        get().addToLog(
+          `🔥 Eternal Flame: invested ${safeAmount.toLocaleString()} Divinity. Multiplier ${oldMult.toFixed(2)}× → ${newMult.toFixed(2)}×.`
+        );
+      },
+
+      // World Forge — spend Divinity to create a new background world (Tier 1).
+      // Cost scales 1.5× per world already forged. worldsForged persists across
+      // prestiges (forged worlds are permanent).
+      forgeWorld: () => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const forged = s.worldsForged || 0;
+        const cost = Math.ceil(50 * Math.pow(1.5, forged));
+        if (!s.debugFreeBuy && (s.divinity || 0) < cost) {
+          get().notifyPurchaseError(`Not enough Divinity (need ${cost.toLocaleString()})`);
+          return;
+        }
+        const worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
+        if (typeof worldTiers["1"] !== "number") worldTiers["1"] = 0;
+        worldTiers["1"] += 1;
+        set({
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - cost,
+          worldsForged: forged + 1,
+          worldTiers,
+        });
+        get().addToLog(
+          `🌍 World forged (+1 Tier 1 world).${s.debugFreeBuy ? " (DEBUG: free)" : ` (-${cost.toLocaleString()} Divinity, ${forged + 1} forged lifetime)`}`
+        );
+      },
+
+      // Purchase a one-time Convergence Catalyst (5 total). Each grants a
+      // permanent Divine Engine upgrade.
+      purchaseCatalyst: (catalystId) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const catalyst = CONVERGENCE_CATALYST_MAP[catalystId];
+        if (!catalyst) return;
+        if (s.purchasedCatalysts?.[catalystId]) {
+          get().addToLog(`${catalyst.name} already purchased.`);
+          return;
+        }
+        if (!s.debugFreeBuy && (s.divinity || 0) < catalyst.cost) {
+          get().notifyPurchaseError(`Not enough Divinity (need ${catalyst.cost.toLocaleString()})`);
+          return;
+        }
+        set({
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - catalyst.cost,
+          purchasedCatalysts: {
+            ...(s.purchasedCatalysts || {}),
+            [catalystId]: true,
+          },
+        });
+        get().addToLog(
+          `⚙️ Catalyst purchased: ${catalyst.name}.${s.debugFreeBuy ? " (DEBUG: free)" : ` (-${catalyst.cost.toLocaleString()} Divinity)`}`
+        );
+      },
+
+      // Switch the active World Template. Costs 50 Divinity to switch (free
+      // to set to null). Templates apply bonuses/risks to all background
+      // world production.
+      setWorldTemplate: (templateId) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        if (templateId !== null && !WORLD_TEMPLATE_MAP[templateId]) return;
+        // Same template → no-op.
+        if (s.activeWorldTemplate === templateId) return;
+        // Setting to null is free; switching to a different template costs 50 Divinity.
+        if (templateId !== null && !s.debugFreeBuy) {
+          const switchCost = 50;
+          if ((s.divinity || 0) < switchCost) {
+            get().notifyPurchaseError(`Not enough Divinity to switch templates (need ${switchCost})`);
+            return;
+          }
+          set({
+            activeWorldTemplate: templateId,
+            divinity: (s.divinity || 0) - switchCost,
+          });
+        } else {
+          set({ activeWorldTemplate: templateId });
+        }
+        const t = templateId ? WORLD_TEMPLATE_MAP[templateId] : null;
+        get().addToLog(
+          t
+            ? `🌐 World template: ${t.name} (${t.desc}).${templateId !== null && !s.debugFreeBuy ? " (-50 Divinity)" : ""}`
+            : "World template cleared."
+        );
+      },
+
+      // Plant a Genesis Seed (4 total). Each seed matures after its duration
+      // and produces permanent Divinity/s. All 4 planted unlocks L4.
+      plantGenesisSeed: (seedId) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const seed = GENESIS_SEED_MAP[seedId];
+        if (!seed) return;
+        if (s.plantedSeeds?.[seedId]?.planted) {
+          get().addToLog(`${seed.name} already planted.`);
+          return;
+        }
+        if (!s.debugFreeBuy && (s.divinity || 0) < seed.cost) {
+          get().notifyPurchaseError(`Not enough Divinity (need ${seed.cost.toLocaleString()})`);
+          return;
+        }
+        set({
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - seed.cost,
+          plantedSeeds: {
+            ...(s.plantedSeeds || {}),
+            [seedId]: { planted: true, plantedAtTime: s.time || 0 },
+          },
+        });
+        const matureIn = seed.maturitySec;
+        get().addToLog(
+          `🌱 Seed planted: ${seed.name}.${s.debugFreeBuy ? " (DEBUG: free)" : ` (-${seed.cost.toLocaleString()} Divinity)`} Matures in ${matureIn}s (+${seed.divinityPerSec} Div/s permanently).`
+        );
+      },
+
+      // Set the active Astral Resonance category (zodiac/northern/equatorial/
+      // southern, or null to clear). Each category gives a Div/s bonus with a
+      // tradeoff.
+      setAlignedCategory: (category) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        if (category !== null && !ASTRAL_CATEGORY_MAP[category]) return;
+        if (s.alignedCategory === category) return;
+        set({ alignedCategory: category });
+        const c = category ? ASTRAL_CATEGORY_MAP[category] : null;
+        get().addToLog(
+          c
+            ? `🌐 Astral Resonance aligned to ${c.name} (${c.desc}).`
+            : "Astral Resonance cleared."
+        );
+      },
+
+      // Illuminate the next unlit star in a constellation (bulk purchase).
+      // Respects the same cost formula as illuminateStar — finds the cheapest
+      // unlit star in the constellation and lights it.
+      purchaseNextStar: (constellationId) => {
+        const s = get();
+        if (!s.unlockedLayers?.enlightenment) return;
+        const cdef = CONSTELLATION_MAP[constellationId];
+        if (!cdef) return;
+        const cs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // Find the cheapest unlit star in this constellation.
+        let best: { starId: string; cost: number } | null = null;
+        for (const st of cdef.stars) {
+          if (cs.constellationStars[st.id]) continue;
+          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult });
+          if (!best || cost < best.cost) best = { starId: st.id, cost };
+        }
+        if (!best) {
+          get().addToLog(`${cdef.name} has no unlit stars remaining.`);
+          return;
+        }
+        // Affordability check (bypassed by debugFreeBuy).
+        if (!s.debugFreeBuy && (s.divinity || 0) < best.cost) {
+          get().notifyPurchaseError(
+            `Not enough Divinity for next star in ${cdef.name} (need ${best.cost.toLocaleString()})`
+          );
+          return;
+        }
+        // Illuminate the star via the existing action (handles cost deduction,
+        // constellation progress, PP gain, log message).
+        get().illuminateStar(constellationId, best.starId);
+      },
+
+      // Illuminate ALL remaining unlit stars in a constellation, stopping when
+      // the player can't afford the next one. debugFreeBuy bypasses affordability.
+      purchaseMaxStars: (constellationId) => {
+        const s = get();
+        if (!s.unlockedLayers?.enlightenment) return;
+        const cdef = CONSTELLATION_MAP[constellationId];
+        if (!cdef) return;
+        const cs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
+        const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // Build a sorted list of unlit stars by ascending cost.
+        const unlit: Array<{ starId: string; cost: number }> = [];
+        for (const st of cdef.stars) {
+          if (cs.constellationStars[st.id]) continue;
+          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult });
+          unlit.push({ starId: st.id, cost });
+        }
+        if (unlit.length === 0) {
+          get().addToLog(`${cdef.name} has no unlit stars remaining.`);
+          return;
+        }
+        unlit.sort((a, b) => a.cost - b.cost);
+        // Recompute cost after each purchase (the cost formula grows by
+        // WITHIN_CONSTELLATION_GROWTH per lit star). We illuminate the stars
+        // one by one via the existing `illuminateStar` action so the state
+        // stays consistent (progress, started, completed flags).
+        let purchased = 0;
+        let totalCost = 0;
+        // Capture the current divinity once; the loop re-reads it from get()
+        // because each illuminateStar call mutates state.
+        for (const candidate of unlit) {
+          // Re-fetch the latest state on each iteration.
+          const cur = get();
+          // Re-check the star is still unlit (defensive — shouldn't change
+          // since we just illuminated it).
+          if (cur.constellationStars?.[candidate.starId]) continue;
+          // Recompute the cost (the formula grows after each lit star).
+          const curCs: ConstellationState = {
+            constellationStars: cur.constellationStars || {},
+            constellationProgress: cur.constellationProgress || {},
+            constellationsStarted: cur.constellationsStarted || {},
+            constellationsCompleted: cur.constellationsCompleted || {},
+          };
+          const cost = starCost(constellationId, curCs, candidate.starId, { foresightDiscountMult });
+          if (!cur.debugFreeBuy && (cur.divinity || 0) < cost) {
+            // Can't afford this one — stop.
+            break;
+          }
+          cur.illuminateStar(constellationId, candidate.starId);
+          purchased++;
+          totalCost += cost;
+        }
+        if (purchased === 0) {
+          get().addToLog(
+            `Couldn't afford any stars in ${cdef.name}.`
+          );
+        } else {
+          get().addToLog(
+            `✦ ${cdef.name}: purchased ${purchased} star${purchased === 1 ? "" : "s"} (${totalCost.toLocaleString()} Divinity total).`
+          );
+        }
+      },
+
 
       // ============ LAYER 4 — GENESIS ============
       setPendingWorldConfig: (cfg) => {
@@ -6226,14 +6770,14 @@ export const useGameStore = create<GameStore>()(
             infinity: true,
             eternity: true,
           },
-          evolutionPoints: (s.evolutionPoints || 0) + 1000,
+          evolutionPoints: s.evolutionPoints || 0,
           divinity: (s.divinity || 0) + 50000,
           faith: (s.faith || 0) + 5000,
           divineRelics: [...currentRelics, ...starterRelics],
           // Seed enough for L10 testing: high peak + some constellation stars lit
           peakProductionRate: Math.max(s.peakProductionRate || 0, 5000),
         });
-        get().addToLog("DEBUG: All prestige layers unlocked. +1000 EP, +50000 Divinity, +5000 Faith granted. 3 starter relics seeded. Peak production set to 5000/s for L10 testing.");
+        get().addToLog("DEBUG: All prestige layers unlocked. +50000 Divinity, +5000 Faith granted. 3 starter relics seeded. Peak production set to 5000/s for L10 testing.");
       },
 
       // DEBUG: Free Buy — when enabled, all purchases cost 0 resources.
@@ -6294,20 +6838,22 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`DEBUG: +${DEBUG_GRANT_AMOUNT} of every primary resource granted.`);
       },
 
-      // +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds,
-      // +100 Singularity Cores.
+      // +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores,
+      // +1000 Cosmic Fragments. (CURRENCY-UNIFICATION — EP/PP no longer granted
+      // as separate currencies; Divinity is the unified currency.)
       debugGrantCurrency: () => {
         const s = get();
         set({
-          evolutionPoints: (s.evolutionPoints || 0) + 1000,
-          prestigePoints: (s.prestigePoints || 0) + 1000,
+          evolutionPoints: s.evolutionPoints || 0,
+          prestigePoints: s.prestigePoints || 0,
           divinity: (s.divinity || 0) + 1000,
           faith: (s.faith || 0) + 100,
           genesisSeeds: (s.genesisSeeds || 0) + 100,
           singularityCores: (s.singularityCores || 0) + 100,
+          cosmicFragments: (s.cosmicFragments || 0) + 1000,
         });
         get().addToLog(
-          "DEBUG: +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores granted."
+          "DEBUG: +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores, +1000 Cosmic Fragments granted."
         );
       },
 
@@ -6428,7 +6974,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 15,
+      version: 16,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -6905,6 +7451,44 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.pendingFollowUps) {
           persisted.pendingFollowUps = [];
         }
+
+        // v16 migration (L3-REDESIGN — World Fusion + Eternal Flame +
+        // Catalysts + Templates + Genesis Seeds + Astral Resonance):
+        //   • Initialize the new `worldTiers` record (tier id → count).
+        //     All tiers start at 0 EXCEPT Tier 1, which is seeded from the
+        //     cached `backgroundSimulations` value so existing L2+ players
+        //     don't see their world count drop to 0 on first load (the
+        //     natural production will quickly bring it back up to the same
+        //     level via the rate-based growth in the tick).
+        //   • Initialize `cosmicFragments` to 0.
+        //   • Initialize `eternalFlameInvested` to 0.
+        //   • Initialize `worldsForged` to 0.
+        //   • Initialize `purchasedCatalysts` to {} (no catalysts purchased).
+        //   • Initialize `activeWorldTemplate` to null.
+        //   • Initialize `plantedSeeds` to {} (no seeds planted).
+        //   • Initialize `alignedCategory` to null.
+        if (!persisted.worldTiers) {
+          // Seed tier-1 from the cached backgroundSimulations value so the
+          // player doesn't lose their accumulated worlds on migration.
+          const seedTier1 = Math.max(0, Math.floor(persisted.backgroundSimulations || 0));
+          persisted.worldTiers = makeInitialWorldTiers();
+          persisted.worldTiers["1"] = seedTier1;
+        } else {
+          // Defensive — ensure every fusion tier key exists on the
+          // persisted record (in case a future tier is added).
+          for (const t of FUSION_TIERS) {
+            if (typeof persisted.worldTiers[t.id] !== "number") {
+              persisted.worldTiers[t.id] = 0;
+            }
+          }
+        }
+        if (persisted.cosmicFragments === undefined) persisted.cosmicFragments = 0;
+        if (persisted.eternalFlameInvested === undefined) persisted.eternalFlameInvested = 0;
+        if (persisted.worldsForged === undefined) persisted.worldsForged = 0;
+        if (!persisted.purchasedCatalysts) persisted.purchasedCatalysts = {};
+        if (persisted.activeWorldTemplate === undefined) persisted.activeWorldTemplate = null;
+        if (!persisted.plantedSeeds) persisted.plantedSeeds = {};
+        if (persisted.alignedCategory === undefined) persisted.alignedCategory = null;
 
         return persisted;
       },

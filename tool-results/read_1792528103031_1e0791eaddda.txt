@@ -1,0 +1,914 @@
+     1→// Core game type definitions for Evolution Idle
+     2→
+     3→import type { WorldConfig } from "../data/genesis";
+     4→import type { GalaxySystemState } from "../data/galaxyMap";
+     5→import type { RivalSystemState } from "../data/galaxies";
+     6→import type {
+     7→  UniversalGalaxyState,
+     8→  Rift,
+     9→  RealityAnchor,
+    10→} from "../data/universalMap";
+    11→
+    12→export type ResourceId =
+    13→  | "atp" | "glucose" | "proteins" | "lipids" | "elements"
+    14→  | "food" | "water" | "materials" | "organic_matter" | "knowledge" | "culture"
+    15→  | "wood" | "lumber" | "stone" | "clay" | "science" | "happiness" | "military_power"
+    16→  | "production" | "gold" | "influence" | "energy" | "alloys" | "data"
+    17→  | "divinity" | "evolution_points" | "enlightenment_points" | "transcendence_points";
+    18→
+    19→export type StageId =
+    20→  | "cell" | "creature" | "tribal" | "civilization" | "empire" | "solar" | "galactic";
+    21→
+    22→export type TabId =
+    23→  | "actions" | "systems" | "production" | "tech" | "story"
+    24→  | "codex" | "achievements" | "archive" | "log" | "shop" | "prestige"
+    25→  // LAYER-AS-TAB — 10 prestige-layer inline tabs (each renders a layer's
+    26→  // content inline in GameShell instead of opening a modal). The tab id
+    27→  // maps to its layer id via `LAYER_TO_TAB` in store.ts.
+    28→  | "trials" | "constellations" | "market" | "galaxy" | "conquest"
+    29→  | "universe" | "lab" | "diplomacy" | "war" | "genesis_engine";
+    30→
+    31→export interface ResourceDef {
+    32→  id: ResourceId;
+    33→  name: string;
+    34→  category: "primary" | "divinity" | "meta";
+    35→  firstStage: StageId;
+    36→  color: string;
+    37→  icon: string; // emoji
+    38→}
+    39→
+    40→export interface StageAction {
+    41→  id: string;
+    42→  name: string;
+    43→  desc: string;
+    44→  stage: StageId;
+    45→  icon: string;
+    46→  cost?: Partial<Record<ResourceId, number>>;
+    47→  produces: Partial<Record<ResourceId, number>>;
+    48→  cooldown?: number; // seconds
+    49→  unlockRequirement?: string;
+    50→  scaleWith?: "population" | "happiness" | "tech";
+    51→}
+    52→
+    53→export interface SystemDef {
+    54→  id: string;
+    55→  name: string;
+    56→  desc: string;
+    57→  stage: StageId;
+    58→  icon: string;
+    59→  category: string;
+    60→  baseCost: Partial<Record<ResourceId, number>>;
+    61→  costGrowth: number; // multiplier per owned
+    62→  produces: Partial<Record<ResourceId, number>>;
+    63→  capacityBoost?: Partial<Record<ResourceId, number>>;
+    64→  upkeep?: Partial<Record<ResourceId, number>>;
+    65→  maxOwned?: number;
+    66→  requiredTech?: string;
+    67→  grantsAffinity?: { archetype: string; amount: number };
+    68→  // If set, the system is only visible/buildable when the player's
+    69→  // `lockedArchetype` matches this archetype id (archetype-locked
+    70→  // systems in Tribal→Galactic stages).
+    71→  requiredArchetype?: string;
+    72→  // Population-growth systems: flat per-second contribution to
+    73→  // `populationProgress` (independent of resource production).
+    74→  popGrowth?: number;
+    75→}
+    76→
+    77→export interface TechDef {
+    78→  id: string;
+    79→  name: string;
+    80→  desc: string;
+    81→  stage: StageId;
+    82→  cost: Partial<Record<ResourceId, number>>;
+    83→  branch: string;
+    84→  tier: number;
+    85→  requires?: string[];
+    86→  effects: string;
+    87→  multiplier?: { target: "production" | "manual" | "capacity" | "population"; value: number };
+    88→  grantsAffinity?: { archetype: string; amount: number };
+    89→  // If set, the tech is only visible/researchable when the player's
+    90→  // `lockedArchetype` matches this archetype id.
+    91→  requiredArchetype?: string;
+    92→}
+    93→
+    94→export interface StageDef {
+    95→  id: StageId;
+    96→  name: string;
+    97→  tagline: string;
+    98→  desc: string;
+    99→  icon: string;
+   100→  accent: string; // hex
+   101→  bgGradient: string; // css
+   102→  duration: string;
+   103→  evolveRequires: {
+   104→    minPopulation: number;
+   105→    minSystems: number;
+   106→    minTech: number;
+   107→  };
+   108→  storyIntro: string;
+   109→  storyOutro: string;
+   110→}
+   111→
+   112→// Upgrade effect types. "manual_mult" and the "manual" category were removed
+   113→// (no manual actions scale that way anymore). "acceleration" was added for
+   114→// time-warping upgrades, plus several new automation / prestige effects.
+   115→// "layer" category + 18 layer-specific effect types were added for the
+   116→// SHOP-LAYER-ITEMS task — these only appear in the shop once their layer is
+   117→// unlocked (see UpgradeDef.requiresLayer).
+   118→export type UpgradeEffectType =
+   119→  | "auto_mult"
+   120→  | "cost_reduction"
+   121→  | "start_bonus"
+   122→  | "cap_boost"
+   123→  | "evolve_boost"
+   124→  | "auto_system_buyer"
+   125→  | "auto_tech_buyer"
+   126→  | "auto_evolver"
+   127→  | "frontier_spirit"
+   128→  | "ancestral_bounty"
+   129→  | "challenge_mastery"
+   130→  | "temporal_acceleration"
+   131→  | "deep_memory"
+   132→  | "cosmic_understanding"
+   133→  | "universal_boost"
+   134→  | "universal_speed"
+   135→  // Layer-specific (require their layer unlocked to appear in shop):
+   136→  | "foresight_discount"
+   137→  | "constellation_boost"
+   138→  | "ritual_extension"
+   139→  | "market_savvy"
+   140→  | "world_blueprint"
+   141→  | "disaster_shield"
+   142→  | "prophet_inspiration"
+   143→  | "heresy_ward"
+   144→  | "rift_redirect"
+   145→  | "dimension_boost"
+   146→  | "mutation_master"
+   147→  | "genetic_stabilizer"
+   148→  | "diplomatic_gift"
+   149→  | "amplifier_overcharge"
+   150→  | "war_preparation"
+   151→  | "temporal_shield"
+   152→  | "paradox_insight"
+   153→  | "universe_foundation"
+   154→  // Universal auto-buyers (PP-SHOP-TABS — purchased with Prestige Points):
+   155→  // Each unlocks a periodic automation chain in the tick. The auto-buyer
+   156→  // for layer N unlocks when layer N+1 unlocks (per the chain spec).
+   157→  | "auto_light_stars"           // L2 → L3 unlock
+   158→  | "auto_invest_market"          // L3 → L4 unlock
+   159→  | "auto_claim_systems"          // L4 → L5 unlock
+   160→  | "auto_manage_heresy"          // L6 → L7 unlock
+   161→  | "auto_place_anchors"          // L6 → L7 unlock (anchor placement)
+   162→  | "auto_negotiate"              // L8 → L9 unlock
+   163→  | "auto_attack_old_gods"        // L9 → L10 unlock
+   164→  | "auto_author_universes"       // L10 finished
+   165→  | "ep_auto_converter";          // L2+ — converts EP to PP at 1:1
+   166→
+   167→export interface UpgradeDef {
+   168→  id: string;
+   169→  name: string;
+   170→  desc: (level: number) => string;
+   171→  baseCost: number;
+   172→  maxLevel: number;
+   173→  costGrowth: number;
+   174→  category: "automation" | "economy" | "acceleration" | "prestige" | "universal" | "layer";
+   175→  requiresWins?: number;
+   176→  // Layer id matching a key in `GameState.unlockedLayers`
+   177→  // (e.g. "enlightenment", "transcendence", "genesis", "apotheosis",
+   178→  // "singularity", "omnipotence", "divinity", "infinity", "eternity").
+   179→  // When set, the upgrade is hidden from the shop until that layer is unlocked.
+   180→  requiresLayer?: string;
+   181→  effect: { type: UpgradeEffectType; value: number };
+   182→}
+   183→
+   184→export interface StoryEntry {
+   185→  id: string;
+   186→  title: string;
+   187→  body: string;
+   188→  stage: StageId | "meta";
+   189→  layer: string;
+   190→  trigger: string;
+   191→  category: "primary" | "stage" | "layer" | "choice" | "milestone";
+   192→}
+   193→
+   194→export interface ArchiveEntry {
+   195→  runId: string;
+   196→  timestamp: number;
+   197→  stage: StageId;
+   198→  archetype: string;
+   199→  score: number;
+   200→  epEarned: number;
+   201→  duration: number;
+   202→  ending: string;
+   203→  notes?: string;
+   204→  favorite?: boolean;
+   205→}
+   206→
+   207→export interface EventHistoryEntry {
+   208→  eventId: string;
+   209→  eventName: string;
+   210→  eventIcon: string;
+   211→  choiceId: string;
+   212→  choiceLabel: string;
+   213→  timestamp: number;
+   214→  gameTime: number;
+   215→}
+   216→
+   217→export interface GameState {
+   218→  // Run state
+   219→  stageIndex: number;
+   220→  time: number;
+   221→  population: number;
+   222→  populationProgress: number; // 0-1 toward next population point
+   223→  maxPopulation: number; // peak population this run (for achievements)
+   224→  resources: Record<string, number>;
+   225→  capacities: Record<string, number>;
+   226→  ownedSystems: Record<string, number>;
+   227→  systemEnabled: Record<string, boolean>; // per-system on/off toggle
+   228→  technologies: Record<string, boolean>;
+   229→  archetypeAffinity: Record<string, number>; // drift during run
+   230→  lockedArchetype: string | null; // locked at Creature→Tribal
+   231→  // GOVERNMENT-SYSTEMS — auto-assigned when the player enters Empire stage.
+   232→  // Derived from locked archetype (forced archetype government) OR, when no
+   233→  // archetype government applies, from the most-researched Civilization-stage
+   234→  // tech branch (Military / Science / Culture / Economics). Null until Empire.
+   235→  activeGovernment: string | null;
+   236→  log: string[];
+   237→
+   238→  // Meta state
+   239→  evolutionPoints: number;
+   240→  totalRuns: number;
+   241→  galacticWins: number;
+   242→  stageClearCounts: Record<StageId, number>;
+   243→  fastestCellClear: number; // seconds, best time clearing Cell stage
+   244→  totalEventsResolved: number; // across all runs
+   245→  totalPlayTime: number; // seconds across all runs
+   246→  totalActions: number; // manual actions clicked across all runs
+   247→  totalSystemsBuilt: number; // systems built across all runs
+   248→  totalTechResearched: number; // techs researched across all runs
+   249→  upgrades: Record<string, number>;
+   250→  storyUnlocked: Record<string, boolean>;
+   251→  storyAcknowledged: Record<string, boolean>;
+   252→  archive: ArchiveEntry[];
+   253→  archivedArchetypes: string[];
+   254→  // ARCHETYPES-REWORK — which of the 13 lineage archetypes the player has
+   255→  // EVER locked in (at Creature → Tribal evolution). Persists across
+   256→  // prestiges. Drives the "???" reveal state on the ArchetypeRadar —
+   257→  // undiscovered archetypes display as ??? until first lock-in.
+   258→  //
+   259→  // NOTE: distinct from `discoveredArchetypes` (Genesis Engine Layer-10
+   260→  // procedural archetypes — keys are `arch_NNN`, not lineage ids).
+   261→  revealedLineageArchetypes: Record<string, boolean>;
+   262→  unlockedLayers: Record<string, boolean>;
+   263→  achievements: Record<string, boolean>; // earned achievements
+   264→  newAchievements: string[]; // queue of newly-earned achievement IDs for toast
+   265→
+   266→  // Layer 1 — Challenges
+   267→  unlockedChallenges: boolean; // unlocked after first Galactic win
+   268→  activeChallenge: string | null; // challenge id currently in progress
+   269→  completedChallenges: Record<string, number>; // challengeId -> repeat count completed
+   270→  challengeRepeatCounts: Record<string, number>; // challengeId -> current repeat attempt
+   271→  showChallenges: boolean; // challenge modal visibility
+   272→
+   273→  // Auto-action timers (game-time markers for periodic automation)
+   274→  // PP-SHOP-TABS — extended with universal auto-buyer timers (one per layer's
+   275→  // automation upgrade). Each timer marks the next game-time the auto-buyer
+   276→  // is allowed to fire. -1 / missing means "not yet active".
+   277→  autoTimers: {
+   278→    system: number;
+   279→    tech: number;
+   280→    evolve: number;
+   281→    challenge: number;
+   282→    // Universal auto-buyers (PP-SHOP-TABS):
+   283→    light_stars: number;       // auto_light_stars — every 20s
+   284→    invest_market: number;     // auto_invest_market — every 30s
+   285→    claim_systems: number;      // auto_claim_systems — every 15s
+   286→    manage_heresy: number;      // auto_manage_heresy — every 15s
+   287→    place_anchors: number;      // auto_place_anchors — every 60s
+   288→    negotiate: number;          // auto_negotiate — every 30s
+   289→    attack_old_gods: number;    // auto_attack_old_gods — every 10s
+   290→    author_universes: number;   // auto_author_universes — every 120s
+   291→  };
+   292→
+   293→  // Layer 2 — Enlightenment (Foresight / Constellation Map)
+   294→  // Currency = Divinity (earned at prestige while this layer is unlocked).
+   295→  divinity: number;
+   296→  /** LEGACY compat: kept for old saves. Always `{}` in the new design. */
+   297→  foresightNodes: Record<string, boolean>;
+   298→  /** Currently active foresight route id (cosmetic / bonus layer). */
+   299→  activeForesightRoute: string | null;
+   300→  showEnlightenment: boolean;
+   301→
+   302→  // Layer 2 — Constellation Map (the new L2 loop — see src/game/data/constellations.ts)
+   303→  /** starId → true (lit). All stars across all 88 constellations live in one map. */
+   304→  constellationStars: Record<string, boolean>;
+   305→  /** constellationId → count of lit stars. */
+   306→  constellationProgress: Record<string, number>;
+   307→  /** constellationId → started (≥1 lit star). */
+   308→  constellationsStarted: Record<string, boolean>;
+   309→  /** constellationId → fully lit (all stars illuminated). */
+   310→  constellationsCompleted: Record<string, boolean>;
+   311→  /** LEGACY compat: kept for old saves. Always `{}` in the new design. */
+   312→  constellationNodes: Record<string, boolean>;
+   313→  /** Connections revealed by Stargaze (constellationId → true). */
+   314→  constellationRevealed: Record<string, boolean>;
+   315→  /**
+   316→   * Active Cosmic Bridge link (null when not active). When active, illuminating
+   317→   * a star in either endpoint constellation ALSO illuminates the cheapest
+   318→   * unlit star in the other endpoint for free. Decays in the tick.
+   319→   */
+   320→  cosmicBridgeLink: { from: string; to: string; remaining: number } | null;
+   321→  /** Recommended-next glow: when true (Stargaze has been used), the modal
+   322→   *  highlights the cheapest affordable next star across all constellations. */
+   323→  stargazeRecommendedActive: boolean;
+   324→
+   325→  // Layer 3 — Transcendence
+   326→  transcendenceOfferingsUsed: Record<string, number>; // offeringId -> repeat count
+   327→  purchasedRituals: Record<string, boolean>; // permanent rituals purchased
+   328→  activeTemporaryRituals: Record<string, number>; // ritualId -> remaining seconds
+   329→  activeScripts: Record<string, boolean>; // scriptId -> on
+   330→  bloodPactsUsed: Record<string, boolean>; // tierId -> used this run
+   331→  scriptTimers: Record<string, number>; // scriptId -> last-fired game-time
+   332→  showTranscendence: boolean;
+   333→
+   334→  // Layer 4 — Genesis
+   335→  genesisSeeds: number; // currency for authoring worlds
+   336→  authoredWorlds: WorldConfig[]; // list of authored world configs (permanent bonuses)
+   337→  pendingWorldConfig: Partial<WorldConfig>; // current authoring selections
+   338→  showGenesis: boolean;
+   339→
+   340→  // Layer 5 — Apotheosis
+   341→  faith: number; // currency for divine laws / miracles
+   342→  enactedDivineLaws: Record<string, boolean>;
+   343→  activeWorshipMode: string | null;
+   344→  performedMiracles: Record<string, number>; // miracleId -> count
+   345→  miracleTimers: Record<string, number>; // miracleId -> remaining seconds (for temporary effects)
+   346→  heresy: number; // 0-100; DERIVED display value = average of owned galaxies' galaxyHeresy (run ends at 100)
+   347→  activeHeresyResponse: string; // default "hr_ignore"
+   348→  showApotheosis: boolean;
+   349→
+   350→  // Layer 6 — Singularity (Universal Map redesign — adds rifts + anchors).
+   351→  // Singularity Cores are the L6 currency (spent to close rifts + place
+   352→  // reality anchors). Relics apply their bonus to the tick.
+   353→  singularityCores: number; // currency for closing rifts + placing anchors
+   354→  showSingularity: boolean;
+   355→  // L6 Universal Map — 50 galaxies (10 L5 starter+rival + 40 NEW neutral).
+   356→  // Each NEW galaxy has 10-150 systems (totaling exactly 5,000). Each claimed
+   357→  // NEW system grants +198 worlds (5,000 × 198 = 990,000 new worlds; with
+   358→  // L4+L5's 10,000 baseline → 1,000,000 total at L6 cap).
+   359→  universalGalaxies: UniversalGalaxyState[];
+   360→  /** Active Old-God rifts the player must close. */
+   361→  rifts: Rift[];
+   362→  /** Reality Anchors placed on the universal map (anti-corruption coverage). */
+   363→  realityAnchors: RealityAnchor[];
+   364→  /** Countdown (seconds) to the next rift spawn. */
+   365→  riftSpawnTimer: number;
+   366→  /** # rifts closed this run (L6 → L7 unlock needs 20). */
+   367→  riftsClosed: number;
+   368→  /** # anchors placed (persists across prestiges; L6 → L7 unlock needs 10). */
+   369→  anchorsPlaced: number;
+   370→
+   371→  // Layer 7 — Omnipotence (Bio-engineering)
+   372→  activeOmnipotenceStance: string; // "contained" | "balanced" | "embraced"
+   373→  instability: number; // 0-100; at 100 creatures go rogue (lose a system, reset to 50)
+   374→  showOmnipotence: boolean;
+   375→  // NEW: Creature Lab
+   376→  creatures: Array<import("../data/omnipotence").Creature>;
+   377→  legions: Array<import("../data/omnipotence").Legion>;
+   378→  geneticInstability: number; // alias of instability (kept for clarity)
+   379→  creatureDesignDraft: { bodyType: string; diet: string; special: string; name: string } | null;
+   380→  // NEW: Skirmish Arena — outpost raids + creature XP/levels
+   381→  outpostRaids: Array<import("../data/omnipotence").OutpostRaid>;
+   382→  raidsRepelled: number;                          // count toward L7 → L8 unlock
+   383→  activeOutpostRaid: string | null;              // currently selected raid id
+   384→  creatureXp: Record<string, number>;            // creature id → XP
+   385→  creatureLevels: Record<string, number>;        // creature id → level (1+)
+   386→  outpostRaidSpawnTimer: number;                  // seconds until next raid spawn tick
+   387→  // NOTE: Auto-Manage Heresy uses `autoTimers.manage_heresy` (defined under
+   388→  // GameState.autoTimers) — no separate field needed here.
+   389→
+   390→  // Layer 8 — Divinity (the layer; not the resource) — Divine Alliance
+   391→  showDivinityLayer: boolean;
+   392→  // NEW: Divine Alliance
+   393→  minorGods: Array<import("../data/divinity_layer").MinorGod>;
+   394→  godRelationships: Record<string, number>; // godId -> 0-100
+   395→  alliances: Record<string, boolean>; // godId -> allied
+   396→
+   397→  // Layer 9 — Infinity — Divine War
+   398→  showInfinity: boolean;
+   399→  // NEW: Divine War
+   400→  oldGodBattles: Record<string, import("../data/infinity").BattleState>;
+   401→  divineFragments: number;
+   402→
+   403→  // Layer 10 — Eternity — Genesis Engine (crucible + divine relics + 100 archetypes)
+   404→  chosenEnding: string | null; // "preserve" | "reset" | null — shown on ending screen
+   405→  cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
+   406→  showEternity: boolean;
+   407→  // Dimension system — the active dimension (visual/naming reskin). Persists across prestiges.
+   408→  activeDimension: string; // "mundane" | "fantasy" | "cyberpunk" | ...
+   409→  visitedDimensions: string[]; // list of dimension ids the player has explored
+   410→  // L10-ENDING-L5-UI-UNLOCKTECH — dimensions the player has visited (always
+   411→  // starts with ["mundane"]). Future: unlocks additional dimensions by
+   412→  // finishing L10 in each one. Currently only "mundane" is selectable on the
+   413→  // ending-screen dimension picker.
+   414→  visitedDimensions: string[];
+   415→  // NEW: Genesis Engine state
+   416→  //   divineRelics        — inventory of relics (each with rules + revealed state)
+   417→  //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)
+   418→  //   discoveredArchetypes — archetype id → discovered (need all 100 to win)
+   419→  //   universeSimulating  — true during the 30s Big Bang animation
+   420→  //   simulationStartTime — game-time when the current Big Bang started
+   421→  //   lastSimulationResult — null until the first Big Bang completes
+   422→  divineRelics: Array<import("../data/genesisEngine").DivineRelic>;
+   423→  crucibleRelicIds: string[];
+   424→  discoveredArchetypes: Record<string, boolean>;
+   425→  universeSimulating: boolean;
+   426→  simulationStartTime: number;
+   427→  lastSimulationResult: {
+   428→    stable: boolean;
+   429→    archetypeId: string | null;
+   430→    relicsGained: number;
+   431→    relicsLost: number;
+   432→    instability: number;
+   433→  } | null;
+   434→
+   435→  // UI state
+   436→  currentTab: TabId;
+   437→  speed: number;
+   438→  paused: boolean;
+   439→  showShop: boolean;
+   440→  showEvolve: boolean;
+   441→  showSettings: boolean;
+   442→  /**
+   443→   * FIX-UI-TABS — Tab restructure. Log/Archive/Codex/Awards no longer
+   444→   * live on the main tab bar; they're accessed via the gear dropdown
+   445→   * and open in a shared modal. `activeInfoModal` holds the target id
+   446→   * ("log" | "archive" | "codex" | "achievements") or null when closed.
+   447→   * The InfoModal component in GameShell wraps the corresponding tab
+   448→   * component (LogTab / ArchiveTab / CodexTab / AchievementsTab) in a
+   449→   * Dialog.
+   450→   */
+   451→  activeInfoModal: "log" | "archive" | "codex" | "achievements" | null;
+   452→  /**
+   453→   * P6 — Modal Consolidation. Single source-of-truth for which layer modal
+   454→   * is open. Holds the layer id ("enlightenment", "transcendence", ...,
+   455→   * "eternity", "challenges") or null when closed. The LayerModal component
+   456→   * renders the appropriate lazy-loaded content inside a single shared
+   457→   * <Dialog> wrapper based on this value.
+   458→   *
+   459→   * The legacy per-layer `show*` booleans are still set in parallel for
+   460→   * save-compat / any code that still reads them.
+   461→   */
+   462→  activeLayerModal: string | null;
+   463→  /**
+   464→   * P7 — Error states. When a purchase fails (buySystem / buyTech /
+   465→   * buyUpgrade / buyUniversalUpgrade) due to insufficient resources, the
+   466→   * store sets this field. UIs that show purchase buttons subscribe to it
+   467→   * and surface the message inline (auto-fades after ~2s via the consumer
+   468→   * hook). `ts` is the timestamp of the failure, used by consumers to
+   469→   * retrigger their fade-out timer when the same message repeats.
+   470→   */
+   471→  lastPurchaseError: { message: string; ts: number } | null;
+   472→  activeStoryPopup: string | null;
+   473→  activeEvent: string | null; // ID of the currently-offered random event
+   474→  eventTimer: number; // seconds remaining before auto-resolve (60s timeout with default choice)
+   475→  eventCooldown: number; // seconds until next event can fire
+   476→  eventHistory: EventHistoryEntry[]; // log of past event choices this run
+   477→  hasSeenIntro: boolean;
+   478→  lastSaved: number;
+   479→
+   480→  // Tutorial
+   481→  tutorialStep: number;
+   482→  tutorialActive: boolean;
+   483→  tutorialDismissed: boolean;
+   484→  // Settings
+   485→  eventFrequency: "off" | "normal" | "frequent";
+   486→
+   487→  // Theme customization (Part 1 — Stage Theme System)
+   488→  activeStageTheme: string;          // default "stage-cell"
+   489→  activeLayerTheme: string | null;   // null = no overlay
+   490→  activeSpecialTheme: string | null; // null = none (overrides stage+layer when set)
+   491→  unlockedThemes: Record<string, boolean>; // which themes are unlocked
+   492→  // Theme mode: "auto" = themes follow stage/layer automatically; "custom" = lock player's manual pick
+   493→  themeMode: "auto" | "custom";
+   494→
+   495→  // ===== QUICK WINS =====
+   496→  // WIN 2 — Active ability cooldowns (runtime; persisted across refresh for fairness)
+   497→  activeAbilityCooldowns: Record<string, number>; // ability id → seconds remaining
+   498→  activeAbilityEffects: Record<string, number>;   // effect id ("surge"|"overclock"|"divine_combo") → seconds remaining
+   499→
+   500→  // WIN 3 — Ritual combo tracking
+   501→  lastRitualTime: number;     // game-time of last ritual perform
+   502→  lastRitualId: string | null; // for "3 different rituals" requirement
+   503→  ritualComboCount: number;   // 0-3 — distinct rituals within 60s window
+   504→  ritualComboTimer: number;   // seconds remaining of Divine Combo bonus (+50% production)
+   505→
+   506→  // WIN 5 — Prestige Points (universal currency)
+   507→  prestigePoints: number;
+   508→
+   509→  // WIN 7 — Random layer event timers (game-time markers for periodic layer events)
+   510→  layerEventTimers: {
+   511→    trial_of_fortune: number;
+   512→    vision: number;
+   513→    divine_whim: number;
+   514→    heresy_surge: number;
+   515→  };
+   516→
+   517→  // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
+   518→  // Layer 1 — Trial Realms were REMOVED in CLEANUP-LEGACY. The canonical L1
+   519→  // system is now `challenges.ts` (10 run-modifier challenges tracked via
+   520→  // `activeChallenge` + `completedChallenges`).
+   521→  // Layer 2 — Constellation Map: state fields live above (next to foresightNodes);
+   522→  // constellationRevealed, constellationStars, constellationProgress, constellationsStarted,
+   523→  // constellationsCompleted are declared alongside the other L2 fields.
+   524→  // Layer 3 — Divine Market (price simulation)
+   525→  marketPrices: Record<string, number>;        // resource id → current price
+   526→  priceHistory: Record<string, number[]>;     // resource id → last N prices (sparkline)
+   527→  marketOwnedResources: Record<string, number>; // resource id → units owned
+   528→  marketTickTimer: number;                     // seconds until next price tick
+   529→  // FEATURE 3 — Market Crashes
+   530→  marketCrashTimer: number;                    // seconds until next crash check
+   531→  marketCrashActive: boolean;
+   532→  marketCrashDuration: number;                 // seconds remaining of crash
+   533→  // Layer 3 — DIVINE INVESTMENT MARKET (new design). Worlds (background
+   534→  // simulations) can be allocated across 5 investment portfolios (Growth,
+   535→  // Transcendence, Chaos, Stability Bonds, Old God Futures). Each portfolio
+   536→  // pays Divinity dividends × its baseYield, but riskier portfolios may crash
+   537→  // and consume a fraction of allocated worlds. See src/game/data/marketPortfolios.ts.
+   538→  /** portfolioId → number of worlds currently allocated to that portfolio. */
+   539→  portfolioAllocations: Record<string, number>;
+   540→  /** portfolioId → seconds remaining before worlds can be deallocated
+   541→   *  (Stability Bonds lock worlds for 120s on allocation). */
+   542→  portfolioLockTimers: Record<string, number>;
+   543→  /** portfolioId → current price (random walk, 50–200; starts at 100). Buy low,
+   544→   *  sell high — the price is currently cosmetic (drives the sparkline + the
+   545→   *  "cheap / expensive" hint on the card). */
+   546→  portfolioPrices: Record<string, number>;
+   547→  /** Lifetime Divinity earned from portfolio dividends (META — display only). */
+   548→  portfolioDividendsEarned: number;
+   549→  // Layer 4 — Sacred Grid was REMOVED in the L4 redesign (replaced by
+   550→  // `galaxySystems` below). Natural Disasters were also removed.
+   551→  // Layer 4 — Galaxy Claim (the new L4 loop). 50 star systems on a hex spiral.
+   552→  // Each claimed system grants its bonus (production/cap/EP/pop), +10 worlds
+   553→  // to the Divine Engine, and adjacency synergy if 2+ neighbors are claimed.
+   554→  galaxySystems: GalaxySystemState[];
+   555→  // Layer 5 — Heresy Web (8×4 = 32 follower cells) — per-galaxy grids live in
+   556→  // `galaxyFollowerGrid` below.
+   557→  heresySpreadTimer: number;                   // seconds until next spread tick (per-galaxy cycle)
+   558→  heresySeedTimer: number;                     // seconds until next auto-seed of a heretic (per-galaxy cycle)
+   559→  /** Per-galaxy threshold tracking. Keys are `${galaxyId}:${threshold}` (threshold ∈ {25,50,75}). */
+   560→  heresyThresholdsSeeded: Record<string, boolean>;
+   561→  // FEATURE 5 — Prophets (now per-galaxy: { galaxyId, cellIndex, lastConvertedAt })
+   562→  prophets: Array<{ galaxyId: string; cellIndex: number; lastConvertedAt: number }>;
+   563→  prophetConvertTimer: number;                  // seconds until next prophet conversion tick
+   564→  // === NEW (L5 redesign — Galactic Conquest) ===
+   565→  /** Per-galaxy heresy level (galaxyId → 0-100). Resets to 50 after a system-loss tick. */
+   566→  galaxyHeresy: Record<string, number>;
+   567→  /** Per-galaxy 8×4 heresy follower grid (galaxyId → 32 cells). */
+   568→  galaxyFollowerGrid: Record<string, Array<{ state: string; type: string }>>;
+   569→  /** Per-galaxy rival star systems (galaxyId → list of { id, claimed, explored }). */
+   570→  galaxyRivalSystems: Record<string, RivalSystemState[]>;
+   571→  /** galaxyId → fully conquered. Drives the L5 → L6 unlock (3+ conquered). */
+   572→  conqueredGalaxies: Record<string, boolean>;
+   573→  /** Currently selected galaxy tab in the Apotheosis modal (cosmetic; persisted). */
+   574→  selectedGalaxyId: string;
+   575→  // Layer 6 — Dimension Engine was REMOVED in the Universal Map redesign.
+   576→  // The canonical L6 state lives in `universalGalaxies` (built via
+   577→  // makeInitialUniversalGalaxies() from the data layer).
+   578→
+   579→  // ===== FEATURE ENHANCEMENTS (L7–L10) =====
+   580→  // FEATURE 7 — Mutations: creatures can mutate on creation (50% stronger, +20% instability)
+   581→  // Mutated flag stored on the creature itself (see omnipotence.ts Creature interface)
+   582→  // FEATURE 8 — Amplifiers: divine network nodes that double Negotiate gains
+   583→  amplifiers: Array<{ id: number; godId: string }>;
+   584→  // FEATURE 9 — Temporal Storms (per-battle): shuffle timeline, delays/accelerates enemy attacks
+   585→  temporalStorms: Record<string, boolean>;     // oldGodId → storm active
+   586→
+   587→  // ===== BACKGROUND-SIMULATION =====
+   588→  // The base game (Cell → Galactic) becomes abstracted and simulated in the
+   589→  // background once the player unlocks Layer 2 (Enlightenment). Sims are
+   590→  // computed from constellation stars lit, NOT from prestiging.
+   591→  // peakProductionRate: best per-second total resource production ever
+   592→  //   achieved across all runs (META — persists across prestiges).
+   593→  // backgroundSimulations: COMPUTED each tick = (3 starter + starsLit) × simMult.
+   594→  //   No longer a stored counter — derived from constellation state + shop upgrade.
+   595→  //   Stored as a cached value for display, recomputed every tick.
+   596→  // divinityFromBackground: lifetime Divinity earned from background sims (META).
+   597→  // epFromBackground: lifetime EP earned from background sims (META).
+   598→  peakProductionRate: number;
+   599→  backgroundSimulations: number;
+   600→  divinityFromBackground: number;
+   601→  epFromBackground: number;
+   602→
+   603→  // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
+   604→  // Maps a logical action id (e.g. "pause", "speed1", "shop", "genesis")
+   605→  // → the keyboard key the player has bound to it. Keys are stored as the
+   606→  // `KeyboardEvent.key` value (e.g. " " for space, "Escape" for Esc, "1"
+   607→  // for the 1 key, "b" for B). The useKeyboardShortcuts hook reads from
+   608→  // this map at fire-time and checks the action's layer-unlock gate.
+   609→  // Default values live in `DEFAULT_KEYBOARD_SHORTCUTS` (store.ts).
+   610→  keyboardShortcuts: Record<string, string>;
+   611→
+   612→  // ===== ACHIEVEMENT META (ACHIEVEMENT-EXPANSION) =====
+   613→  // Persistent bag of counters + UI-driven flags that don't naturally have a
+   614→  // home elsewhere on GameState. Each value is either a number (counter) or
+   615→  // a boolean (encoded as 0/1). The bag is keyed by a small fixed set of
+   616→  // string ids — see ACHIEVEMENT_META_KEYS in store.ts. buildAchievementCtx
+   617→  // reads from this record to populate the AchievementCheckCtx.
+   618→  //
+   619→  // Wired keys (non-exhaustive):
+   620→  //   bigBangsTriggered         — incremented when a Big Bang completes
+   621→  //   stableUniversesCreated    — incremented when a stable universe emerges
+   622→  //   mutationsTriggered         — incremented on each creature mutation
+   623→  //   marketTradesTotal          — incremented on each market trade
+   624→  //   galaxySystemsClaimedTotal  — incremented on each galaxy system claim
+   625→  //   trialsAbandoned            — incremented when a challenge is abandoned
+   626→  //   fastestTrialClearSec       — updated when a challenge completes quickly
+   627→  //   fastestGalacticClearSec    — updated when Galactic ascension is reached
+   628→  //   heresySurvivor             — set to 1 when a heresy run-ender is survived
+   629→  //   titleClicks                — UI-driven (Header title click)
+   630→  //   versionClicks              — UI-driven (Header version click)
+   631→  //   aiThemeActive              — UI-driven (set when AI theme selected)
+   632→  //   viewedCredits              — UI-driven (set when L10 ending screen shown)
+   633→  //   offlineProgressUsed        — set when applyOfflineProgress runs
+   634→  //   idleDurationSec            — incremented each tick without player action
+   635→  //   pauseDurationSec           — incremented each tick while paused
+   636→  achievementMeta: Record<string, number>;
+   637→
+   638→  // ===== AUTOBUYER-SETTINGS — archetype / government targeting =====
+   639→  // Lets the player steer the Auto-Builder / Auto-Researcher toward a
+   640→  // preferred archetype (drift), override the auto-pick government at
+   641→  // Empire stage, and auto-apply a preferred foresight route at L2+.
+   642→  // Null = no preference (the autobuyer falls back to cheapest-first).
+   643→  autoBuyerSettings: {
+   644→    systemTarget: string | null;        // archetype id the Auto-Builder prefers
+   645→    techTarget: string | null;          // archetype id the Auto-Researcher prefers
+   646→    preferredGovernment: string | null; // overrides auto-pick at Empire stage
+   647→    preferredForesightRoute: string | null; // auto-applied at L2+
+   648→  };
+   649→
+   650→  // ===== EVENT-CHAINS — scheduled follow-up events =====
+   651→  // When a player resolves an event choice with a `followUpEvent` field,
+   652→  // a PendingFollowUp is pushed here. The tick scans for due entries and
+   653→  // either fires the chained event (chance roll succeeded) or drops it
+   654→  // (chance roll failed). Resets to [] on prestige — chains are per-run.
+   655→  pendingFollowUps: PendingFollowUp[];
+   656→}
+   657→
+   658→// PendingFollowUp — scheduled follow-up event awaiting its fire time.
+   659→export interface PendingFollowUp {
+   660→  eventId: string;        // the event to fire
+   661→  fireAt: number;         // wall-clock ms timestamp when the event becomes due
+   662→  chance: number;         // 0..1 — rolled when the entry becomes due
+   663→  sourceEventId: string;  // the event that scheduled this follow-up (for logging)
+   664→}
+   665→
+   666→export interface GameStore extends GameState {
+   667→  // Actions
+   668→  tick: (dt: number) => void;
+   669→  performAction: (actionId: string) => void;
+   670→  buySystem: (systemId: string, qty: number) => void;
+   671→  toggleSystem: (systemId: string) => void;
+   672→  enableAllSystems: (enabled: boolean) => void;
+   673→  buyTech: (techId: string) => void;
+   674→  buyUpgrade: (upgradeId: string) => void;
+   675→  evolveStage: () => void;
+   676→  triggerPrestige: () => void;
+   677→  setTab: (tab: TabId) => void;
+   678→  setSpeed: (speed: number) => void;
+   679→  togglePause: () => void;
+   680→  setShowShop: (v: boolean) => void;
+   681→  setShowEvolve: (v: boolean) => void;
+   682→  setShowSettings: (v: boolean) => void;
+   683→  setShowChallenges: (v: boolean) => void;
+   684→  /**
+   685→   * FIX-UI-TABS — Opens a shared InfoModal showing the target tab content
+   686→   * (Log / Archive / Codex / Awards) wrapped in a Dialog. Closes any
+   687→   * other open info modal first so only one is on screen at a time.
+   688→   */
+   689→  openInfoModal: (target: "log" | "archive" | "codex" | "achievements") => void;
+   690→  /** Closes the shared InfoModal (clears `activeInfoModal`). */
+   691→  closeInfoModal: () => void;
+   692→  /**
+   693→   * P6 — Modal Consolidation. Opens the shared LayerModal showing the layer
+   694→   * with the given id. Also sets the corresponding legacy `show*` flag for
+   695→   * save-compat / any code that still reads `show*` directly.
+   696→   *
+   697→   * Accepted ids: "challenges", "enlightenment", "transcendence", "genesis",
+   698→   * "apotheosis", "singularity", "omnipotence", "divinity", "infinity",
+   699→   * "eternity". Unknown ids are ignored.
+   700→   */
+   701→  openLayerModal: (layerId: string) => void;
+   702→  /** Closes the shared LayerModal. Clears `activeLayerModal` AND all legacy `show*` flags. */
+   703→  closeLayerModal: () => void;
+   704→  /**
+   705→   * P7 — Sets the latest purchase-error message. Called by buySystem /
+   706→   * buyTech / buyUpgrade / buyUniversalUpgrade when the player can't afford
+   707→   * the item. UIs subscribe to `lastPurchaseError` and show the message
+   708→   * inline for ~2 seconds (then fade).
+   709→   */
+   710→  notifyPurchaseError: (message: string) => void;
+   711→  setActiveChallenge: (challengeId: string | null) => void;
+   712→  dismissTutorial: () => void;
+   713→  resolveEvent: (eventId: string, choiceId: string) => void;
+   714→  setEventFrequency: (freq: "off" | "normal" | "frequent") => void;
+   715→  /**
+   716→   * ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for the
+   717→   * counter/flag achievements ("Title Clicker", "Easter Egg: Hidden
+   718→   * Message", "AI Detected", "View Credits"). UIs call with `(key)` to
+   719→   * increment a counter or `(key, 0, { replace: 1 })` to set a 0/1 flag.
+   720→   */
+   721→  bumpAchievementMeta: (
+   722→    key: string,
+   723→    delta?: number,
+   724→    opts?: { cap?: number; replace?: number }
+   725→  ) => void;
+   726→  dismissStory: (id: string) => void;
+   727→  dismissAchievementToast: () => void;
+   728→  applyOfflineProgress: () => { elapsed: number; resourcesGained: Record<string, number>; applied: boolean } | null;
+   729→  hardReset: () => void;
+   730→  saveGame: () => void;
+   731→  loadGame: () => void;
+   732→  exportSave: () => string;
+   733→  importSave: (data: string) => boolean;
+   734→  addToLog: (msg: string) => void;
+   735→  debugUnlockAll: () => void;
+   736→  debugFreeBuy: boolean;
+   737→  toggleDebugFreeBuy: () => void;
+   738→  triggerDebugEvent: (eventId: string | "random") => void;
+   739→  // DEBUG-SHORTCUTS — additional debug actions for fast testing.
+   740→  /** +1000 of every primary resource (atp/glucose/proteins/lipids/.../data). */
+   741→  debugGrantResources: () => void;
+   742→  /** +1000 EP, +1000 PP, +1000 Divinity, +100 Faith, +100 Genesis Seeds, +100 Singularity Cores. */
+   743→  debugGrantCurrency: () => void;
+   744→  /** Unlock the next locked layer (find highest unlocked + 1). Logs "All layers already unlocked." if all 10 are open. */
+   745→  debugCompleteLayer: () => void;
+   746→  /** +1 cosmicBoonStacks (L10 ending currency). Logs "DEBUG: +1 Cosmic Boon granted." */
+   747→  debugGenerateBoon: () => void;
+   748→  /** Immediately call triggerPrestige(). */
+   749→  debugForcePrestige: () => void;
+   750→  /** Toggle game speed between 100× and 1×. */
+   751→  debugToggle100x: () => void;
+   752→  /** Rebind a keyboard shortcut by action id (e.g. "pause", "shop"). */
+   753→  setKeyboardShortcut: (actionId: string, key: string) => void;
+   754→  /** Reset all keyboard shortcuts to defaults. */
+   755→  resetKeyboardShortcuts: () => void;
+   756→
+   757→  // Layer 2 — Enlightenment (Foresight / Constellation Map)
+   758→  setShowEnlightenment: (v: boolean) => void;
+   759→  setForesightRoute: (routeId: string | null) => void;
+   760→  /**
+   761→   * Layer 2 — Constellation Map: illuminate a single star within a constellation.
+   762→   * Deducts Divinity via `starCost()`, sets `constellationStars[starId] = true`,
+   763→   * increments `constellationProgress[constellationId]`, marks the constellation
+   764→   * as started, and — if all stars lit — marks it completed (bonus applies).
+   765→   */
+   766→  illuminateStar: (constellationId: string, starId: string) => void;
+   767→
+   768→  // Layer 3 — Transcendence
+   769→  setShowTranscendence: (v: boolean) => void;
+   770→  performOffering: (offeringId: string) => void;
+   771→  performRitual: (ritualId: string) => void;
+   772→  toggleScript: (scriptId: string) => void;
+   773→  performBloodPact: (tierId: string) => void;
+   774→
+   775→  // Layer 4 — Genesis
+   776→  setShowGenesis: (v: boolean) => void;
+   777→  setPendingWorldConfig: (cfg: Partial<WorldConfig>) => void;
+   778→  authorWorld: () => void;
+   779→  /** Scan an unexplored galaxy system (L4). Costs GALAXY_SCAN_COST Genesis Seeds; reveals bonus + rare resource. */
+   780→  scanGalaxySystem: (systemId: string) => void;
+   781→  /** Claim an explored-but-unclaimed galaxy system (L4). Cost scales 1.15× per existing claim; +10 worlds + bonuses. */
+   782→  claimGalaxySystem: (systemId: string) => void;
+   783→
+   784→  // Layer 5 — Apotheosis
+   785→  setShowApotheosis: (v: boolean) => void;
+   786→  enactDivineLaw: (lawId: string) => void;
+   787→  setWorshipMode: (modeId: string | null) => void;
+   788→  performMiracle: (miracleId: string) => void;
+   789→  setHeresyResponse: (responseId: string) => void;
+   790→
+   791→  // Layer 6 — Singularity (Universal Map redesign)
+   792→  setShowSingularity: (v: boolean) => void;
+   793→  /** Close an active rift — spend Singularity Cores (scales with severity). */
+   794→  closeRift: (riftId: string) => void;
+   795→  /** Place a Reality Anchor on a galaxy — spend Singularity Cores (scales with anchors placed). */
+   796→  placeRealityAnchor: (galaxyId: string) => void;
+   797→  /** Attack a NEW neutral universal galaxy — spend Faith, claim 1 system. */
+   798→  attackUniversalGalaxy: (galaxyId: string) => void;
+   799→
+   800→  // Layer 7 — Omnipotence (Bio-engineering)
+   801→  setShowOmnipotence: (v: boolean) => void;
+   802→  setOmnipotenceStance: (stanceId: string) => void;
+   803→  // NEW: Creature Lab actions
+   804→  setCreatureDesignDraft: (draft: { bodyType: string; diet: string; special: string; name: string } | null) => void;
+   805→  createCreature: () => void;
+   806→  addCreatureToLegion: (creatureId: string, legionId: string) => void;
+   807→  removeCreatureFromLegion: (creatureId: string, legionId: string) => void;
+   808→  createLegion: (name: string) => void;
+   809→  deleteLegion: (legionId: string) => void;
+   810→  // NEW: Skirmish Arena (outpost raids) actions
+   811→  spawnOutpostRaid: (outpostDefId?: string) => void;
+   812→  deployLegionToRaid: (raidId: string, legionId: string) => void;
+   813→  attackOutpost: (raidId: string) => void;
+   814→  setActiveOutpostRaid: (raidId: string | null) => void;
+   815→
+   816→  // Layer 8 — Divinity (layer) — Divine Alliance
+   817→  setShowDivinityLayer: (v: boolean) => void;
+   818→  // NEW: Divine Alliance actions
+   819→  negotiateWithGod: (godId: string) => void;
+   820→  tradeWithGod: (godId: string) => void;
+   821→  formAlliance: (godId: string) => void;
+   822→
+   823→  // Layer 9 — Infinity — Divine War
+   824→  setShowInfinity: (v: boolean) => void;
+   825→  // NEW: Divine War actions
+   826→  startOldGodBattle: (oldGodId: string) => void;
+   827→  deployLegionToBattle: (oldGodId: string, legionId: string) => void;
+   828→  callAllyToBattle: (oldGodId: string, godId: string) => void;
+   829→  attackOldGod: (oldGodId: string) => void;
+   830→
+   831→  // Layer 10 — Eternity — Genesis Engine
+   832→  setShowEternity: (v: boolean) => void;
+   833→  chooseEnding: (endingId: "preserve" | "reset") => void;
+   834→  selectDimension: (dimensionId: string) => void;
+   835→  // LEGACY stubs (kept for save-compat — Genesis Engine redesign removed these)
+   836→  setUniverseRule: (slotIndex: number, optionId: string) => void;
+   837→  toggleKeptGod: (godId: string) => void;
+   838→  // NEW: Genesis Engine actions
+   839→  /** Add a relic to the crucible (max 5, no duplicates). Cannot be removed once added. */
+   840→  addRelicToCrucible: (relicId: string) => void;
+   841→  /** Remove ALL relics from the crucible (reset). Allowed only when not simulating. */
+   842→  clearCrucible: () => void;
+   843→  /** Spend Divinity to reveal a relic's rule NAME (cost: REVEAL_COST_RULE). */
+   844→  revealRelicRule: (relicId: string, ruleIndex: number) => void;
+   845→  /** Spend Divinity to reveal a relic's rule AMOUNT (cost: REVEAL_COST_AMOUNT). */
+   846→  revealRelicAmount: (relicId: string, ruleIndex: number) => void;
+   847→  /** Begin a Big Bang (requires ≥1 relic in crucible, not already simulating). 30s sim. */
+   848→  triggerBigBang: () => void;
+   849→  /** Complete the Big Bang after 30s. Stable → discover archetype + new relics. Unstable → lose relics. */
+   850→  completeBigBang: () => void;
+   851→
+   852→  // Theme customization
+   853→  setStageTheme: (id: string) => void;
+   854→  setLayerTheme: (id: string | null) => void;
+   855→  setSpecialTheme: (id: string | null) => void;
+   856→  setThemeMode: (mode: "auto" | "custom") => void;
+   857→
+   858→  // ===== QUICK WINS =====
+   859→  // WIN 5 — Universal shop upgrade purchase (spends Prestige Points)
+   860→  buyUniversalUpgrade: (upgradeId: string) => void;
+   861→
+   862→  // ===== REBUILD: LAYERS 1-6 UNIQUE GAMEPLAY LOOPS =====
+   863→  // Layer 1 — Trial Realms were REMOVED in CLEANUP-LEGACY. The canonical L1
+   864→  // system is now `challenges.ts` (10 run-modifier challenges managed via
+   865→  // setActiveChallenge / etc).
+   866→
+   867→  // Layer 3 — Divine Market
+   868→  marketBuyResource: (resourceId: string, qty: number) => void;
+   869→  marketSellResource: (resourceId: string, qty: number) => void;
+   870→  marketOffering: (resourceId: string, qty: number) => void; // spend resource → gain Divinity scaled by price
+   871→
+   872→  // Layer 3 — DIVINE INVESTMENT MARKET (new design). Allocates worlds (from
+   873→  // the background-simulation pool) to one of the 5 portfolios in
+   874→  // src/game/data/marketPortfolios.ts. Each portfolio pays Divinity dividends
+   875→  // × its baseYield per tick; riskier portfolios may crash and consume a
+   876→  // fraction of the allocated worlds. See store.ts `tick` for the dividend
+   877→  // and crash math.
+   878→  allocateWorlds: (portfolioId: string, count: number) => void;
+   879→  deallocateWorlds: (portfolioId: string, count: number) => void;
+   880→  /** Spend Divinity to light the cheapest affordable constellation star.
+   881→   *  Bridges the L3 dividend economy back into L2 (speed-up shortcut). */
+   882→  buyStarFromMarket: () => { constellationId: string; starId: string; cost: number } | null;
+   883→
+   884→  // Layer 5 — Heresy Web (Galactic Conquest redesign; per-galaxy)
+   885→  convertFollower: (galaxyId: string, cellIndex: number) => void;
+   886→  purgeFollower: (galaxyId: string, cellIndex: number) => void;
+   887→  initFollowerGrid: (galaxyId: string) => void;
+   888→  /** Attack a rival galaxy: spend Faith, claim the next unclaimed system. */
+   889→  attackGalaxy: (galaxyId: string) => void;
+   890→  /** Select a galaxy tab in the Apotheosis modal (cosmetic; persists). */
+   891→  setSelectedGalaxyId: (galaxyId: string) => void;
+   892→
+   893→  // ===== FEATURE ENHANCEMENTS =====
+   894→  // FEATURE 5 — Prophets (per-galaxy: place/remove on a galaxy's heresy grid)
+   895→  placeProphet: (galaxyId: string, cellIndex: number) => void;
+   896→  removeProphet: (galaxyId: string, cellIndex: number) => void;
+   897→  // FEATURE 8 — Amplifiers
+   898→  placeAmplifier: (godId: string) => void;
+   899→  removeAmplifier: (godId: string) => void;
+   900→  // FEATURE 9 — Temporal Storms
+   901→  stabilizeTime: (oldGodId: string) => void;
+   902→
+   903→  // ===== BACKGROUND-SIMULATION =====
+   904→  // backgroundSimulations is now COMPUTED from (3 + starsLit) × simMult.
+   905→  // No manual spawn action — sims come from lighting constellation stars.
+   906→  // (The spawnBackgroundSimulation action was removed; sim amplifier is a shop upgrade.)
+   907→
+   908→  // ===== AUTOBUYER-SETTINGS — setters for archetype/government targeting =====
+   909→  setAutoBuyerSystemTarget: (archetypeId: string | null) => void;
+   910→  setAutoBuyerTechTarget: (archetypeId: string | null) => void;
+   911→  setPreferredGovernment: (govId: string | null) => void;
+   912→  setPreferredForesightRoute: (routeId: string | null) => void;
+   913→}
+   914→

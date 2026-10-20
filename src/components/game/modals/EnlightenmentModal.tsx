@@ -238,17 +238,25 @@ export function EnlightenmentContent() {
   // Actions
   const illuminateStar = useGameStore((s) => s.illuminateStar);
   const setForesightRoute = useGameStore((s) => s.setForesightRoute);
+  // L3-REDESIGN — constellation bulk purchase actions.
+  const purchaseNextStar = useGameStore((s) => s.purchaseNextStar);
+  const purchaseMaxStars = useGameStore((s) => s.purchaseMaxStars);
 
   const isUnlocked = !!unlockedLayers.enlightenment;
 
   // ===== UI state =====
-  // `selectedStar` drives the per-star purchase popup. `scrollX` is the
+  // `selectedStar` drives the per-star purchase popup. `selectedConstellation`
+  // drives the constellation-bulk-purchase popup (L3-REDESIGN). `scrollX` is the
   // translateX of the wide-sky wrapper (in pixels). `isDragging` is a ref
   // (not state) so we don't trigger re-renders on every mousemove.
   // `expanded` opens the full-screen star-map overlay; `expandedScrollX` is
   // a separate scroll position so opening/closing Expand doesn't jump the
   // standard view.
   const [selectedStar, setSelectedStar] = useState<StarSelection | null>(null);
+  // L3-REDESIGN — constellation-bulk-purchase popup state. When non-null,
+  // opens a popup showing the constellation's progress + two buttons:
+  // "Purchase Next Star" and "Purchase Max Stars".
+  const [selectedConstellation, setSelectedConstellation] = useState<string | null>(null);
   const [scrollX, setScrollX] = useState(0);
   const [expandedScrollX, setExpandedScrollX] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -579,7 +587,11 @@ export function EnlightenmentContent() {
             />
           );
         })}
-        {/* Constellation name labels — percentage positioning. */}
+        {/* Constellation name labels — percentage positioning.
+            L3-REDESIGN — labels are now CLICKABLE (pointer-events-auto +
+            cursor-pointer + hover:underline) and open the constellation
+            bulk-purchase popup when clicked. Previously they were
+            pointer-events-none (display only). */}
         {LABEL_ANCHORS.map((la) => {
           const cdef = CONSTELLATION_MAP[la.cId];
           if (!cdef) return null;
@@ -590,7 +602,7 @@ export function EnlightenmentContent() {
           return (
             <span
               key={`${offset}-label-${la.cId}`}
-              className="absolute text-[10px] italic font-serif pointer-events-none select-none whitespace-nowrap"
+              className="absolute text-[10px] italic font-serif select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline"
               style={{
                 left: `${la.left}%`,
                 top: `${la.top}%`,
@@ -601,6 +613,19 @@ export function EnlightenmentContent() {
                     : "#475569",
                 opacity: dim ? 0.45 : 0.95,
               }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                // Suppress click if this was the end of a drag.
+                if (dragDistance.current > 5) return;
+                e.stopPropagation();
+                setSelectedConstellation(la.cId);
+              }}
+              role="button"
+              tabIndex={0}
+              title={`Open ${cdef.i18nName} constellation details`}
+              aria-label={`Open ${cdef.i18nName} constellation details`}
             >
               {cdef.i18nName}
             </span>
@@ -753,6 +778,267 @@ export function EnlightenmentContent() {
             >
               <Sparkles className="w-3.5 h-3.5 mr-1" />
               Illuminate
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Render the constellation bulk-purchase popup =====
+  // L3-REDESIGN — when the player clicks a constellation NAME (not a star),
+  // this popup opens showing the constellation's progress + two buttons:
+  //   • "Purchase Next Star" — illuminates the next unlit star (cheapest
+  //     unlit star in the constellation).
+  //   • "Purchase Max Stars" — illuminates ALL remaining unlit stars at once
+  //     (respecting affordability — stops when can't afford the next one,
+  //     unless debugFreeBuy is on).
+  function renderConstellationPopup() {
+    if (!selectedConstellation) return null;
+    const cdef = CONSTELLATION_MAP[selectedConstellation];
+    if (!cdef) return null;
+    const progress = constellationProgress[selectedConstellation] || 0;
+    const total = cdef.stars.length;
+    const started = !!constellationsStarted[selectedConstellation];
+    const completed = !!constellationsCompleted[selectedConstellation];
+    // Find the next unlit star + compute the cost for the "Purchase Next Star" button.
+    const cs: ConstellationState = {
+      constellationStars,
+      constellationProgress,
+      constellationsStarted,
+      constellationsCompleted,
+    };
+    const fdLvl = (upgrades?.foresight_discount as number) || 0;
+    const foresightDiscountMult = Math.pow(0.80, fdLvl);
+    let nextStar: { starId: string; cost: number } | null = null;
+    // Also compute the total cost for "Purchase Max Stars" — sum of all
+    // remaining unlit stars' costs, recomputing the cost after each purchase
+    // (since the formula grows by WITHIN_CONSTELLATION_GROWTH per lit star).
+    // We simulate the purchases on a copy of the state to compute the cost
+    // accurately without mutating the actual state.
+    let maxTotalCost = 0;
+    let maxAffordableCost = 0;
+    let maxAffordableCount = 0;
+    const simState: ConstellationState = {
+      constellationStars: { ...cs.constellationStars },
+      constellationProgress: { ...cs.constellationProgress },
+      constellationsStarted: { ...cs.constellationsStarted },
+      constellationsCompleted: { ...cs.constellationsCompleted },
+    };
+    // Simulate purchasing all unlit stars in order of ascending cost.
+    const unlitStars = cdef.stars
+      .filter((st) => !cs.constellationStars[st.id])
+      .map((st) => ({ starId: st.id, cost: starCost(selectedConstellation, cs, st.id, { foresightDiscountMult }) }))
+      .sort((a, b) => a.cost - b.cost);
+    let simDivinity = divinity;
+    for (const cand of unlitStars) {
+      // Recompute cost with the simulated state (progress grows after each).
+      const cost = starCost(selectedConstellation, simState, cand.starId, { foresightDiscountMult });
+      maxTotalCost += cost;
+      if (debugFreeBuy || simDivinity >= cost) {
+        maxAffordableCost += cost;
+        maxAffordableCount++;
+        if (!debugFreeBuy) simDivinity -= cost;
+        // Mark as lit in the simulated state.
+        simState.constellationStars[cand.starId] = true;
+        simState.constellationProgress[selectedConstellation] = (simState.constellationProgress[selectedConstellation] || 0) + 1;
+      } else {
+        // Can't afford — stop counting affordable ones (but keep summing
+        // total cost so the "Purchase Max" button can show the full cost).
+      }
+    }
+    // Find the cheapest unlit star for the "Purchase Next Star" button.
+    if (unlitStars.length > 0) {
+      nextStar = unlitStars[0];
+    }
+    const canBuyNext = !!nextStar && (debugFreeBuy || divinity >= nextStar.cost);
+    const canBuyMax = maxAffordableCount > 0;
+    return (
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) setSelectedConstellation(null);
+        }}
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div className="relative glass-strong rounded-lg border border-violet-500/40 shadow-2xl max-w-md w-full p-4">
+          {/* Popup header — constellation name + category */}
+          <div className="flex items-start gap-2 mb-3">
+            <span
+              className="inline-block w-3 h-3 rounded-full mt-1.5 shrink-0"
+              style={{ background: CATEGORY_ACCENT[cdef.category] }}
+              aria-hidden
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-semibold leading-tight">
+                {cdef.i18nName}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                <span className="text-foreground/90 font-medium">{cdef.name}</span> ·{" "}
+                <span className="text-muted-foreground">{CATEGORY_LABEL[cdef.category]}</span>
+              </div>
+            </div>
+            {completed && (
+              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shrink-0">
+                <Sparkles className="w-3 h-3 mr-1" />
+                Complete
+              </Badge>
+            )}
+          </div>
+
+          {/* Reward for completing the constellation */}
+          <div className="stat-card mb-2">
+            <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
+              Reward for completing {cdef.i18nName}
+            </div>
+            {bonusSummary(cdef.bonus).length === 0 ? (
+              <div className="text-xs text-muted-foreground">No bonus (cosmetic).</div>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {bonusSummary(cdef.bonus).map((b) => (
+                  <Badge key={b.label} variant="outline" className={b.cls}>
+                    {b.label} {b.value}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="text-[0.6rem] text-muted-foreground mt-1.5">
+              Plus per-star bonus: <span className="text-cyan-300">+0.5% production</span> for every lit star.
+            </div>
+          </div>
+
+          {/* Progress in this constellation */}
+          <div className="stat-card mb-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-muted-foreground">
+                Progress in {cdef.i18nName}
+              </span>
+              <span className="font-mono text-amber-300">
+                {progress} / {total}
+              </span>
+            </div>
+            <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-400/70 transition-all"
+                style={{ width: `${(progress / total) * 100}%` }}
+              />
+            </div>
+            {completed ? (
+              <div className="text-[0.65rem] text-emerald-300 mt-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Constellation complete — bonus active.
+              </div>
+            ) : (
+              <div className="text-[0.65rem] text-muted-foreground mt-1">
+                {total - progress} more star(s) to complete this constellation.
+              </div>
+            )}
+          </div>
+
+          {/* Action buttons: Purchase Next Star + Purchase Max Stars */}
+          <div className="space-y-2">
+            {/* Purchase Next Star */}
+            <div className="stat-card">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium">Purchase Next Star</div>
+                  <div className="text-[0.6rem] text-muted-foreground leading-snug">
+                    {nextStar
+                      ? <>Illuminates the cheapest unlit star in {cdef.i18nName}.</>
+                      : "No unlit stars remaining."}
+                  </div>
+                  {nextStar && (
+                    <div className="text-[0.6rem] mt-1">
+                      <span className="text-muted-foreground">Cost: </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          canBuyNext
+                            ? "text-emerald-300 border-emerald-400/40"
+                            : "text-rose-300 border-rose-400/40"
+                        }
+                      >
+                        {formatNumber(nextStar.cost, 0)} Divinity
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="shrink-0"
+                  disabled={!canBuyNext}
+                  onClick={() => {
+                    if (!selectedConstellation) return;
+                    purchaseNextStar(selectedConstellation);
+                    // Re-check after purchase — if no more unlit stars, close popup.
+                    setTimeout(() => {
+                      const updated = useGameStore.getState();
+                      const cdef2 = CONSTELLATION_MAP[selectedConstellation];
+                      if (!cdef2) return;
+                      const allLit = cdef2.stars.every((st) => updated.constellationStars?.[st.id]);
+                      if (allLit) setSelectedConstellation(null);
+                    }, 0);
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1" />
+                  Light Next
+                </Button>
+              </div>
+            </div>
+
+            {/* Purchase Max Stars */}
+            <div className="stat-card">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium">Purchase Max Stars</div>
+                  <div className="text-[0.6rem] text-muted-foreground leading-snug">
+                    Illuminates ALL {unlitStars.length} remaining unlit star{unlitStars.length === 1 ? "" : "s"}
+                    {unlitStars.length === 0 ? "." : " (stops when can't afford next)."}
+                  </div>
+                  {unlitStars.length > 0 && (
+                    <div className="text-[0.6rem] mt-1 flex flex-wrap gap-1">
+                      <span className="text-muted-foreground">Total cost (all): </span>
+                      <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+                        {formatNumber(maxTotalCost, 0)} Div
+                      </Badge>
+                      <span className="text-muted-foreground">Affordable: </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          canBuyMax
+                            ? "text-emerald-300 border-emerald-400/40"
+                            : "text-rose-300 border-rose-400/40"
+                        }
+                      >
+                        {maxAffordableCount} star{maxAffordableCount === 1 ? "" : "s"} ({formatNumber(maxAffordableCost, 0)} Div)
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="shrink-0"
+                  disabled={!canBuyMax}
+                  onClick={() => {
+                    if (!selectedConstellation) return;
+                    purchaseMaxStars(selectedConstellation);
+                    // Close popup after bulk purchase — the player can re-open
+                    // if they want to keep buying.
+                    setSelectedConstellation(null);
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1" />
+                  Light All
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Close button */}
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setSelectedConstellation(null)}
+            >
+              Close
             </Button>
           </div>
         </div>
@@ -944,6 +1230,10 @@ export function EnlightenmentContent() {
                 otherwise the popup would double-mount (once in the standard
                 view, once in the expanded overlay). */}
             {!expanded && renderStarPopup()}
+            {/* L3-REDESIGN — constellation bulk-purchase popup. Rendered in
+                BOTH the standard view AND the expanded overlay (the
+                parameterized pattern from CONSTELLATION-REDESIGN-NOIRLAB). */}
+            {!expanded && renderConstellationPopup()}
           </div>
 
           {/* ===== SIDEBAR (constellation list + route picker + cost model) ===== */}
@@ -1080,6 +1370,7 @@ export function EnlightenmentContent() {
                 className="h-8 px-3 gap-1 border-violet-500/40 text-violet-100 hover:bg-violet-500/10"
                 onClick={() => {
                   setSelectedStar(null);
+                  setSelectedConstellation(null);
                   setExpanded(false);
                 }}
                 title="Exit full-screen"
@@ -1095,6 +1386,7 @@ export function EnlightenmentContent() {
                 className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 onClick={() => {
                   setSelectedStar(null);
+                  setSelectedConstellation(null);
                   setExpanded(false);
                 }}
                 title="Close (×)"
@@ -1179,6 +1471,10 @@ export function EnlightenmentContent() {
               popup's z-[80] is correctly placed within the overlay's z-[100]
               stacking context — appears above the sky viewport). */}
           {expanded && renderStarPopup()}
+          {/* L3-REDESIGN — constellation bulk-purchase popup rendered in the
+              expanded overlay's stacking context (z-[100] parent creates a
+              new context; the popup's z-[80] is the highest child). */}
+          {expanded && renderConstellationPopup()}
         </div>
       )}
     </>

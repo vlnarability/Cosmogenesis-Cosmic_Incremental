@@ -1,402 +1,375 @@
 // ===========================================================================
-// LAYER 3 — TRANSCENDENCE
+// LAYER 3 — TRANSCENDENCE (REDESIGNED)
 // ===========================================================================
-// The ascended god sheds the last of its clay. Transcendence is the layer of
-// sacrifice and ritual: Offerings consume run resources for Divinity, Rituals
-// spend Divinity for permanent or temporary effects, Scripts automate the
-// busywork of godhood, and Blood Pacts trade population for raw Divinity.
-// Completing all 4 Blood Pact tiers unlocks Layer 4 (Genesis).
+// The ascended god manipulates the Divine Engine directly. No more
+// Offerings, Rituals, Scripts, or Blood Pacts — those were Cell-stage
+// holdovers that didn't connect to the engine.
+//
+// New systems:
+//   • World Forge — spend Divinity to create new background worlds
+//   • Convergence Catalysts — permanent Divine Engine upgrades
+//   • World Templates — choose how simulations run (mode selection)
+//   • Genesis Seeds — plant permanent Divinity generators (4 tiers, unlock L4)
+//   • Eternal Flame — dump infinite Divinity for a growing multiplier
+//   • Astral Resonance — align all worlds to a constellation category
+//   • World Fusion — merge worlds into higher tiers (see worldFusion.ts)
+//   • Investment Portfolios — allocate worlds for risk/reward dividends (kept)
 // ===========================================================================
 
-import type { ResourceId } from "../state/types";
-
-// ----- Offerings -----
-// Sacrifice resources → gain Divinity. Each offering scales by repeat count.
-export interface Offering {
+// ----- Convergence Catalysts -----
+// Permanent Divine Engine upgrades purchased with Divinity. Each is one-time.
+export interface Catalyst {
   id: string;
   name: string;
   desc: string;
   icon: string;
-  cost: Partial<Record<ResourceId, number>>; // resources consumed per perform
-  divinityGain: number; // base Divinity gained per perform
-  repeatMult: number; // each repeat makes the offering scale by this factor
+  cost: number; // Divinity cost
+  effect: {
+    divinityMult?: number; // +X to all Divinity/s
+    peakMult?: number; // × peak production rate
+    worldTickMult?: number; // × world tick speed (production multiplier)
+    worldCountMult?: number; // each world counts as X for Divinity
+    crashImmune?: boolean; // worlds never crash
+  };
 }
 
-export const OFFERINGS: Offering[] = [
+export const CONVERGENCE_CATALYSTS: Catalyst[] = [
   {
-    id: "offering_glucose",
-    name: "Libation of Sugar",
-    desc: "Pour glucose into the cosmic cup. +2 Divinity per pour.",
-    icon: "🍬",
-    cost: { glucose: 500 },
-    divinityGain: 2,
-    repeatMult: 1.10,
+    id: "harmonic_resonance",
+    name: "Harmonic Resonance",
+    desc: "Permanent: +10% Divinity/s from all worlds.",
+    icon: "🎵",
+    cost: 100,
+    effect: { divinityMult: 0.10 },
   },
   {
-    id: "offering_proteins",
-    name: "Heart of Flesh",
-    desc: "Burn proteins as incense. +5 Divinity per offering.",
-    icon: "🧬",
-    cost: { proteins: 800 },
-    divinityGain: 5,
-    repeatMult: 1.15,
+    id: "stellar_furnace",
+    name: "Stellar Furnace",
+    desc: "Permanent: ×2 peak production rate.",
+    icon: "🔥",
+    cost: 500,
+    effect: { peakMult: 2 },
   },
   {
-    id: "offering_gold",
-    name: "Coin of the Dead",
-    desc: "Melt gold to feed the throne. +10 Divinity per melt.",
-    icon: "🪙",
-    cost: { gold: 1200 },
-    divinityGain: 10,
-    repeatMult: 1.20,
+    id: "temporal_dilation",
+    name: "Temporal Dilation",
+    desc: "Permanent: worlds produce 2× Divinity per tick.",
+    icon: "⏳",
+    cost: 1000,
+    effect: { worldTickMult: 2 },
   },
   {
-    id: "offering_alloys",
-    name: "Star-metal Sacrifice",
-    desc: "Refine alloys into Divinity. +25 Divinity per rite.",
-    icon: "🔩",
-    cost: { alloys: 2000 },
-    divinityGain: 25,
-    repeatMult: 1.25,
+    id: "divine_multiplication",
+    name: "Divine Multiplication",
+    desc: "Permanent: each world counts as 1.5 for Divinity purposes.",
+    icon: "✦",
+    cost: 2000,
+    effect: { worldCountMult: 1.5 },
   },
   {
-    id: "offering_data",
-    name: "The Quiet Word",
-    desc: "Surrender data to the deep. +60 Divinity per word.",
-    icon: "💾",
-    cost: { data: 3000 },
-    divinityGain: 60,
-    repeatMult: 1.30,
-  },
-  {
-    id: "offering_influence",
-    name: "The Crown Unworn",
-    desc: "Forgo influence. +150 Divinity per act of abdication.",
-    icon: "👑",
-    cost: { influence: 4000 },
-    divinityGain: 150,
-    repeatMult: 1.35,
+    id: "eternal_engine",
+    name: "Eternal Engine",
+    desc: "Permanent: worlds never lose value (crash-immune).",
+    icon: "♾️",
+    cost: 5000,
+    effect: { crashImmune: true },
   },
 ];
 
-export const OFFERING_MAP: Record<string, Offering> = Object.fromEntries(
-  OFFERINGS.map((o) => [o.id, o])
+export const CATALYST_MAP: Record<string, Catalyst> = Object.fromEntries(
+  CONVERGENCE_CATALYSTS.map((c) => [c.id, c])
 );
 
-// ----- Rituals -----
-// Spend Divinity for permanent or temporary effects.
-// "permanent" rituals apply a one-time bonus forever; "temporary" rituals
-// have a duration and grant their effect while active.
-export type RitualKind = "permanent" | "temporary";
-
-export interface RitualEffect {
-  productionMult?: number;
-  capMult?: number;
-  epMult?: number;
-  popGrowthMult?: number;
-  divinityPerSec?: number; // passive Divinity generation
+/** Aggregate catalyst effects. */
+export function catalystBonus(
+  purchased: Record<string, boolean>
+): {
+  divinityMult: number;
+  peakMult: number;
+  worldTickMult: number;
+  worldCountMult: number;
+  crashImmune: boolean;
+} {
+  let divinityMult = 0;
+  let peakMult = 1;
+  let worldTickMult = 1;
+  let worldCountMult = 1;
+  let crashImmune = false;
+  for (const c of CONVERGENCE_CATALYSTS) {
+    if (purchased[c.id]) {
+      if (c.effect.divinityMult) divinityMult += c.effect.divinityMult;
+      if (c.effect.peakMult) peakMult *= c.effect.peakMult;
+      if (c.effect.worldTickMult) worldTickMult *= c.effect.worldTickMult;
+      if (c.effect.worldCountMult) worldCountMult *= c.effect.worldCountMult;
+      if (c.effect.crashImmune) crashImmune = true;
+    }
+  }
+  return { divinityMult, peakMult, worldTickMult, worldCountMult, crashImmune };
 }
 
-export interface Ritual {
+// ----- World Templates -----
+// Choose the "mode" of all background worlds. Only one active at a time.
+export interface WorldTemplate {
   id: string;
   name: string;
   desc: string;
   icon: string;
-  kind: RitualKind;
-  cost: number; // Divinity to perform
-  durationSec?: number; // for temporary rituals
-  effect: RitualEffect;
+  divinityMult: number; // × multiplier on Divinity/s from worlds
+  faithPerSec?: number; // passive Faith generation (positive) or cost (negative)
+  crashChance?: number; // chance per tick a world collapses
+  cosmicFragmentPerSec?: number; // passive Cosmic Fragment generation
+  peakGrowthPerMin?: number; // peak production rate grows by X% per minute
 }
 
-export const RITUALS: Ritual[] = [
+export const WORLD_TEMPLATES: WorldTemplate[] = [
   {
-    id: "ritual_eternal_flame",
-    name: "Eternal Flame",
-    desc: "Permanent: +10% all production.",
-    icon: "🕯️",
-    kind: "permanent",
-    cost: 50,
-    effect: { productionMult: 0.10 },
+    id: "harmony",
+    name: "Harmony",
+    desc: "+20% Divinity/s, no risk.",
+    icon: "🌿",
+    divinityMult: 1.20,
   },
   {
-    id: "ritual_unbound_vessel",
-    name: "Unbound Vessel",
-    desc: "Permanent: +20% all capacities.",
-    icon: "🏺",
-    kind: "permanent",
-    cost: 60,
-    effect: { capMult: 0.20 },
+    id: "crucible",
+    name: "Crucible",
+    desc: "+100% Divinity/s, but 5% chance per tick a world collapses (lost permanently).",
+    icon: "🌋",
+    divinityMult: 2.0,
+    crashChance: 0.05,
   },
   {
-    id: "ritual_chorus_of_gods",
-    name: "Chorus of Gods",
-    desc: "Permanent: +25% EP per prestige.",
-    icon: "🎶",
-    kind: "permanent",
-    cost: 75,
-    effect: { epMult: 0.25 },
+    id: "monastery",
+    name: "Monastery",
+    desc: "+10% Divinity/s AND +0.1 Faith/s.",
+    icon: "📿",
+    divinityMult: 1.10,
+    faithPerSec: 0.1,
   },
   {
-    id: "ritual_blood_chant",
-    name: "Blood Chant",
-    desc: "Permanent: +20% population growth.",
-    icon: "🩸",
-    kind: "permanent",
-    cost: 55,
-    effect: { popGrowthMult: 0.20 },
+    id: "ascendant",
+    name: "Ascendant",
+    desc: "+50% Divinity/s AND peak production rate grows +0.5%/min.",
+    icon: "🕊️",
+    divinityMult: 1.50,
+    peakGrowthPerMin: 0.005,
   },
   {
-    id: "ritual_silent_hour",
-    name: "The Silent Hour",
-    desc: "Temporary (600s): +50% production. Reset on prestige.",
-    icon: "🌌",
-    kind: "temporary",
-    cost: 30,
-    durationSec: 600,
-    effect: { productionMult: 0.50 },
+    id: "void",
+    name: "Void",
+    desc: "-50% Divinity/s but each world generates +0.01 Cosmic Fragments/s.",
+    icon: "🌑",
+    divinityMult: 0.50,
+    cosmicFragmentPerSec: 0.01,
   },
+];
+
+export const TEMPLATE_MAP: Record<string, WorldTemplate> = Object.fromEntries(
+  WORLD_TEMPLATES.map((t) => [t.id, t])
+);
+
+export function templateBonus(templateId: string | null): WorldTemplate | null {
+  if (!templateId) return null;
+  return TEMPLATE_MAP[templateId] || null;
+}
+
+// ----- Genesis Seeds -----
+// Plant seeds that grow into permanent Divinity generators. 4 tiers.
+// All 4 must be planted (not necessarily mature) to unlock L4 (Genesis).
+export interface GenesisSeed {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  cost: number; // Divinity to plant
+  maturitySec: number; // seconds to mature
+  divinityPerSec: number; // permanent Divinity/s when mature
+}
+
+export const GENESIS_SEEDS: GenesisSeed[] = [
   {
-    id: "ritual_fountain",
-    name: "Fountain of Divinity",
-    desc: "Temporary (300s): +1 Divinity per second while active.",
-    icon: "⛲",
-    kind: "temporary",
+    id: "sprout",
+    name: "Sprout",
+    desc: "Matures in 60s. Produces +0.5 Div/s permanently when mature.",
+    icon: "🌱",
     cost: 25,
-    durationSec: 300,
-    effect: { divinityPerSec: 1 },
+    maturitySec: 60,
+    divinityPerSec: 0.5,
   },
   {
-    id: "ritual_grand_mystery",
-    name: "The Grand Mystery",
-    desc: "Temporary (1200s): +30% all production, +1 Divinity/sec.",
-    icon: "🌀",
-    kind: "temporary",
-    cost: 120,
-    durationSec: 1200,
-    effect: { productionMult: 0.30, divinityPerSec: 1 },
+    id: "sapling",
+    name: "Sapling",
+    desc: "Matures in 300s. Produces +2 Div/s permanently when mature.",
+    icon: "🌳",
+    cost: 100,
+    maturitySec: 300,
+    divinityPerSec: 2,
+  },
+  {
+    id: "elder_tree",
+    name: "Elder Tree",
+    desc: "Matures in 600s. Produces +10 Div/s permanently when mature.",
+    icon: "🌲",
+    cost: 500,
+    maturitySec: 600,
+    divinityPerSec: 10,
+  },
+  {
+    id: "world_tree",
+    name: "World Tree",
+    desc: "Matures in 1800s. Produces +50 Div/s permanently when mature.",
+    icon: "🌴",
+    cost: 2000,
+    maturitySec: 1800,
+    divinityPerSec: 50,
   },
 ];
 
-export const RITUAL_MAP: Record<string, Ritual> = Object.fromEntries(
-  RITUALS.map((r) => [r.id, r])
+export const SEED_MAP: Record<string, GenesisSeed> = Object.fromEntries(
+  GENESIS_SEEDS.map((s) => [s.id, s])
 );
 
-// ----- Scripts -----
-// Toggleable automation. Each script performs an automated action while on.
-export interface Script {
-  id: string;
-  name: string;
-  desc: string;
-  icon: string;
-  intervalSec: number; // how often it fires
+/** Check if all 4 seeds are planted (L4 unlock condition). */
+export function allSeedsPlanted(plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>): boolean {
+  return GENESIS_SEEDS.every((s) => plantedSeeds[s.id]?.planted);
 }
 
-export const SCRIPTS: Script[] = [
-  {
-    id: "script_auto_offering",
-    name: "Auto-Libation",
-    desc: "Performs the cheapest affordable Offering every 30s.",
-    icon: "💧",
-    intervalSec: 30,
-  },
-  {
-    id: "script_auto_prestige",
-    name: "Cycle of Becoming",
-    desc: "Auto-triggers prestige when stage >= Galactic (every 600s max).",
-    icon: "🔄",
-    intervalSec: 600,
-  },
-  {
-    id: "script_auto_ritual",
-    name: "Ritualist",
-    desc: "Auto-performs the Silent Hour ritual when affordable & inactive.",
-    icon: "📜",
-    intervalSec: 120,
-  },
-  {
-    id: "script_auto_blood_pact",
-    name: "Crimson Ledger",
-    desc: "Auto-performs the cheapest unused Blood Pact every 300s.",
-    icon: "🩸",
-    intervalSec: 300,
-  },
-  {
-    id: "script_divinity_tithe",
-    name: "Divinity Tithe",
-    desc: "Drains 1% of all resources per second into +0.5 Divinity/sec.",
-    icon: "⚗️",
-    intervalSec: 1,
-  },
-];
-
-export const SCRIPT_MAP: Record<string, Script> = Object.fromEntries(
-  SCRIPTS.map((s) => [s.id, s])
-);
-
-// ----- Blood Pacts -----
-// Sacrifice population for a one-time Divinity payout. Each tier can be used
-// at most once per run. Using all 4 tiers unlocks Layer 4 (Genesis).
-export interface BloodPactTier {
-  id: string;
-  name: string;
-  desc: string;
-  icon: string;
-  popCost: number; // population sacrificed
-  divinityGain: number; // Divinity gained
+/** Check if a seed is mature (gameTime - plantedAt >= maturitySec). */
+export function isSeedMature(seedId: string, plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>, gameTime: number): boolean {
+  const entry = plantedSeeds[seedId];
+  if (!entry?.planted) return false;
+  const seed = SEED_MAP[seedId];
+  if (!seed) return false;
+  return gameTime - entry.plantedAtTime >= seed.maturitySec;
 }
 
-export const BLOOD_PACTS: BloodPactTier[] = [
-  {
-    id: "pact_minor",
-    name: "The Minor Pact",
-    desc: "Sacrifice 25 population for 30 Divinity.",
-    icon: "🩸",
-    popCost: 25,
-    divinityGain: 30,
-  },
-  {
-    id: "pact_lesser",
-    name: "The Lesser Pact",
-    desc: "Sacrifice 100 population for 120 Divinity.",
-    icon: "🗡️",
-    popCost: 100,
-    divinityGain: 120,
-  },
-  {
-    id: "pact_greater",
-    name: "The Greater Pact",
-    desc: "Sacrifice 500 population for 750 Divinity.",
-    icon: "⚔️",
-    popCost: 500,
-    divinityGain: 750,
-  },
-  {
-    id: "pact_grand",
-    name: "The Grand Pact",
-    desc: "Sacrifice 2000 population for 4000 Divinity.",
-    icon: "💀",
-    popCost: 2000,
-    divinityGain: 4000,
-  },
-];
-
-export const BLOOD_PACT_MAP: Record<string, BloodPactTier> = Object.fromEntries(
-  BLOOD_PACTS.map((p) => [p.id, p])
-);
-
-// ----- Helpers -----
-
-/**
- * Aggregated production bonus from all active (permanent or currently-active
- * temporary) rituals. Returns an additive multiplier (e.g. 0.10 = +10%).
- *
- * Permanent rituals are keyed by `purchasedRituals[id] === true`.
- * Temporary rituals are keyed by `activeTemporaryRituals[id] = remainingSec`.
- */
-export function activeRitualProductionBonus(
-  purchasedRituals: Record<string, boolean>,
-  activeTemporaryRituals: Record<string, number>
-): number {
-  let bonus = 0;
-  for (const r of RITUALS) {
-    if (r.kind === "permanent") {
-      if (purchasedRituals[r.id]) bonus += r.effect.productionMult || 0;
-    } else {
-      // Temporary: only counts while remaining time > 0
-      if ((activeTemporaryRituals[r.id] || 0) > 0) {
-        bonus += r.effect.productionMult || 0;
-      }
-    }
-  }
-  return bonus;
-}
-
-/**
- * Total cap bonus from all active rituals.
- */
-export function activeRitualCapBonus(
-  purchasedRituals: Record<string, boolean>,
-  activeTemporaryRituals: Record<string, number>
-): number {
-  let bonus = 0;
-  for (const r of RITUALS) {
-    if (r.kind === "permanent") {
-      if (purchasedRituals[r.id]) bonus += r.effect.capMult || 0;
-    } else {
-      if ((activeTemporaryRituals[r.id] || 0) > 0) bonus += r.effect.capMult || 0;
-    }
-  }
-  return bonus;
-}
-
-/**
- * Total EP bonus from all active rituals.
- */
-export function activeRitualEpBonus(
-  purchasedRituals: Record<string, boolean>,
-  activeTemporaryRituals: Record<string, number>
-): number {
-  let bonus = 0;
-  for (const r of RITUALS) {
-    if (r.kind === "permanent") {
-      if (purchasedRituals[r.id]) bonus += r.effect.epMult || 0;
-    } else {
-      if ((activeTemporaryRituals[r.id] || 0) > 0) bonus += r.effect.epMult || 0;
-    }
-  }
-  return bonus;
-}
-
-/**
- * Total population-growth bonus from all active rituals.
- */
-export function activeRitualPopBonus(
-  purchasedRituals: Record<string, boolean>,
-  activeTemporaryRituals: Record<string, number>
-): number {
-  let bonus = 0;
-  for (const r of RITUALS) {
-    if (r.kind === "permanent") {
-      if (purchasedRituals[r.id]) bonus += r.effect.popGrowthMult || 0;
-    } else {
-      if ((activeTemporaryRituals[r.id] || 0) > 0) bonus += r.effect.popGrowthMult || 0;
-    }
-  }
-  return bonus;
-}
-
-/**
- * Total Divinity per second generated by active temporary rituals + the
- * Divinity Tithe script (if enabled).
- */
-export function transcendenceDivinityPerSecond(
-  activeTemporaryRituals: Record<string, number>,
-  titheScriptActive: boolean
-): number {
+/** Total Divinity/s from all mature seeds. */
+export function matureSeedDivinityPerSec(plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>, gameTime: number): number {
   let total = 0;
-  for (const r of RITUALS) {
-    if (r.kind === "temporary" && (activeTemporaryRituals[r.id] || 0) > 0) {
-      total += r.effect.divinityPerSec || 0;
+  for (const seed of GENESIS_SEEDS) {
+    if (isSeedMature(seed.id, plantedSeeds, gameTime)) {
+      total += seed.divinityPerSec;
     }
   }
-  if (titheScriptActive) total += 0.5;
   return total;
 }
 
-/**
- * Returns true when all 4 blood pact tiers have been used at least once
- * (i.e. Layer 4 unlock condition).
- */
-export function allBloodPactsUsed(
-  used: Record<string, boolean>
-): boolean {
-  return BLOOD_PACTS.every((p) => used[p.id]);
+// ----- Astral Resonance -----
+// Align ALL worlds to a constellation category. One active at a time.
+export interface ResonanceAlignment {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  divinityMult: number; // × multiplier on Divinity/s from worlds
+  faithCostPerTick?: number; // Faith drain per tick to maintain
+  crashChance?: number; // chance per tick a world collapses
 }
 
-/**
- * Returns the actual Divinity gain for an offering at a given repeat count
- * (scales by repeatMult each repeat).
- */
-export function offeringDivinityAtRepeat(offering: Offering, repeats: number): number {
-  return Math.floor(offering.divinityGain * Math.pow(offering.repeatMult, repeats));
+export const RESONANCE_ALIGNMENTS: ResonanceAlignment[] = [
+  {
+    id: "zodiac",
+    name: "Zodiac Alignment",
+    desc: "+10% Divinity/s. No downside.",
+    icon: "♈",
+    divinityMult: 1.10,
+  },
+  {
+    id: "northern",
+    name: "Northern Alignment",
+    desc: "+15% Divinity/s, but -5% from non-world sources.",
+    icon: "🐻",
+    divinityMult: 1.15,
+  },
+  {
+    id: "equatorial",
+    name: "Equatorial Alignment",
+    desc: "+20% Divinity/s, costs 1 Faith/tick to maintain.",
+    icon: "🌍",
+    divinityMult: 1.20,
+    faithCostPerTick: 1,
+  },
+  {
+    id: "southern",
+    name: "Southern Alignment",
+    desc: "+25% Divinity/s, but 2% chance/tick a world collapses.",
+    icon: "⛵",
+    divinityMult: 1.25,
+    crashChance: 0.02,
+  },
+];
+
+export const RESONANCE_MAP: Record<string, ResonanceAlignment> = Object.fromEntries(
+  RESONANCE_ALIGNMENTS.map((a) => [a.id, a])
+);
+
+export function resonanceBonus(alignmentId: string | null): ResonanceAlignment | null {
+  if (!alignmentId) return null;
+  return RESONANCE_MAP[alignmentId] || null;
 }
+
+// ----- World Forge -----
+// Cost formula: base × 1.5^worldsForged
+export const WORLD_FORGE_BASE_COST = 50;
+export const WORLD_FORGE_GROWTH = 1.5;
+
+export function worldForgeCost(worldsForged: number): number {
+  return Math.ceil(WORLD_FORGE_BASE_COST * Math.pow(WORLD_FORGE_GROWTH, worldsForged));
+}
+
+// ----- Eternal Flame -----
+// Player dumps infinite Divinity. Multiplier = 1 + log10(invested + 1) × 0.5
+// Re-exported from worldFusion.ts for convenience.
+export { eternalFlameMultiplier } from "./worldFusion";
+
+// ----- Legacy stubs (kept for save-compat, no longer used in UI) -----
+// These are kept so old saves with offeringsUsed / purchasedRituals /
+// activeScripts / bloodPactsUsed don't break on load. The tick logic
+// for these has been removed — they're inert.
+export const LEGACY_OFFERINGS_COUNT = 6;
+export const LEGACY_RITUALS_COUNT = 7;
+export const LEGACY_SCRIPTS_COUNT = 5;
+export const LEGACY_BLOOD_PACTS_COUNT = 4;
+
+// ===== ALIASES for the subagent's expected export names =====
+// The store.ts was written by a subagent that used different naming
+// conventions. These aliases ensure compatibility.
+export const CONVERGENCE_CATALYST_MAP = CATALYST_MAP;
+export const WORLD_TEMPLATE_MAP = TEMPLATE_MAP;
+export const GENESIS_SEED_MAP = SEED_MAP;
+export const ASTRAL_CATEGORIES = RESONANCE_ALIGNMENTS;
+export const ASTRAL_CATEGORY_MAP = RESONANCE_MAP;
+
+export function allGenesisSeedsPlanted(
+  plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>
+): boolean {
+  return allSeedsPlanted(plantedSeeds);
+}
+
+export function genesisSeedsDivinityPerSec(
+  plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>,
+  gameTime: number
+): number {
+  return matureSeedDivinityPerSec(plantedSeeds, gameTime);
+}
+
+// ===== LEGACY EXPORTS (kept for save-compat, store still imports them) =====
+// These are no-ops / empty arrays — the old Offerings/Rituals/Scripts/BloodPacts
+// systems have been removed from the UI. The store still imports them for
+// legacy tick logic that references them (harmless no-ops).
+export const OFFERINGS: any[] = [];
+export const OFFERING_MAP: Record<string, any> = {};
+export const RITUALS: any[] = [];
+export const RITUAL_MAP: Record<string, any> = {};
+export const SCRIPTS: any[] = [];
+export const SCRIPT_MAP: Record<string, any> = {};
+export const BLOOD_PACTS: any[] = [];
+export const BLOOD_PACT_MAP: Record<string, any> = {};
+
+export function offeringDivinityAtRepeat(..._args: any[]): number { return 0; }
+export function activeRitualProductionBonus(..._args: any[]): number { return 0; }
+export function activeRitualCapBonus(..._args: any[]): number { return 0; }
+export function activeRitualEpBonus(..._args: any[]): number { return 0; }
+export function activeRitualPopBonus(..._args: any[]): number { return 0; }
+export function transcendenceDivinityPerSecond(..._args: any[]): number { return 0; }
+export function allBloodPactsUsed(..._args: any[]): boolean { return false; }
+export function activeRitualDivinityPerSecBonus(..._args: any[]): number { return 0; }
