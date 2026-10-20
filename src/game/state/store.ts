@@ -3489,11 +3489,46 @@ export const useGameStore = create<GameStore>()(
         // The metaState preserves peakProductionRate, divinityFromBackground, epFromBackground
         // (all META — persist across prestiges). backgroundSimulations is recomputed each tick.
 
-        // ---- Fail any in-progress challenge on prestige (challenge not completed) ----
-        const failedChallenge = s.activeChallenge;
+        // ---- Challenge completion/failure on prestige ----
+        // ENDURANCE-FIX: "clearStage: galactic" requires prestiging FROM
+        // Galactic. The tick's completion check `stageIndex > 6` is never
+        // true because prestige resets stageIndex to 0. So we check HERE
+        // (before the reset) whether the active challenge's completion
+        // condition is met by this prestige, and if so mark it complete
+        // instead of failing it.
+        const activeChId = s.activeChallenge;
+        let completedChallengesOnPrestige = { ...(s.completedChallenges || {}) };
+        let challengeJustCompleted = false;
         const newChallengeRepeatCounts = { ...(s.challengeRepeatCounts || {}) };
-        if (failedChallenge) {
-          delete newChallengeRepeatCounts[failedChallenge];
+
+        if (activeChId) {
+          const ch = CHALLENGE_MAP[activeChId];
+          if (ch) {
+            // Check if this prestige satisfies the challenge's clearStage
+            // condition (e.g., endurance = clearStage: galactic, which
+            // means evolving past Galactic = prestiging from Galactic).
+            const isClearStageGalactic =
+              ch.completeWhen.type === "clearStage" &&
+              ch.completeWhen.stage === "galactic" &&
+              s.stageIndex >= 6;
+            // Also check reachGalactic (prestige from Galactic = reached Galactic)
+            const isReachGalactic =
+              ch.completeWhen.type === "reachGalactic" &&
+              s.stageIndex >= 6;
+
+            if (isClearStageGalactic || isReachGalactic) {
+              // Challenge completed by this prestige!
+              const completedCount = (completedChallengesOnPrestige[activeChId] || 0) + 1;
+              completedChallengesOnPrestige[activeChId] = completedCount;
+              delete newChallengeRepeatCounts[activeChId];
+              challengeJustCompleted = true;
+              // +1 Prestige Point for completing a challenge
+              setTimeout(() => get().addToLog(`🏆 Challenge complete: ${ch.name} (repeat ${completedCount}). Mastery bonus made permanent.`), 0);
+            } else {
+              // Challenge NOT completed by this prestige — fail it.
+              delete newChallengeRepeatCounts[activeChId];
+            }
+          }
         }
 
         const fresh = initialRunState();
@@ -3579,7 +3614,10 @@ export const useGameStore = create<GameStore>()(
           // Layer 1 — Challenges
           unlockedChallenges: newUnlockedChallenges,
           activeChallenge: null, // challenge ends on prestige (failed or completed)
-          completedChallenges: s.completedChallenges || {},
+          // ENDURANCE-FIX — use completedChallengesOnPrestige (which includes
+          // any challenge completed BY this prestige, e.g. endurance's
+          // clearStage: galactic is satisfied by prestiging from Galactic).
+          completedChallenges: completedChallengesOnPrestige,
           challengeRepeatCounts: newChallengeRepeatCounts,
           showChallenges: false,
           // Reset auto-action timers (PP-SHOP-TABS — universal auto-buyer timers also reset on prestige).
