@@ -220,6 +220,8 @@ function bonusSummary(bonus: ConstellationDef["bonus"]): { label: string; value:
 export function EnlightenmentContent() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
   const divinity = useGameStore((s) => s.divinity);
+  // DEBUG-FREE-BUY — needed for the canAfford bypass in the star popup
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
   // L2 state
   const constellationStars = useGameStore((s) => s.constellationStars || {});
   const constellationProgress = useGameStore((s) => s.constellationProgress || {});
@@ -338,7 +340,8 @@ export function EnlightenmentContent() {
     if (!star) return null;
     const lit = !!constellationStars[selectedStar.starId];
     const cost = starCost(selectedStar.constellationId, constellationState, selectedStar.starId, { foresightDiscountMult });
-    const canAfford = divinity >= cost;
+    // DEBUG-FREE-BUY — bypass affordability check when free-buy is on
+    const canAfford = debugFreeBuy || divinity >= cost;
     const started = !!constellationsStarted[selectedStar.constellationId];
     const completed = !!constellationsCompleted[selectedStar.constellationId];
     const progress = constellationProgress[selectedStar.constellationId] || 0;
@@ -356,7 +359,7 @@ export function EnlightenmentContent() {
       designation: starDesignation(star.id, cdef.i18nName),
       bonuses: bonusSummary(cdef.bonus),
     };
-  }, [selectedStar, constellationStars, constellationState, foresightDiscountMult, constellationsStarted, constellationsCompleted, constellationProgress, divinity]);
+  }, [selectedStar, constellationStars, constellationState, foresightDiscountMult, constellationsStarted, constellationsCompleted, constellationProgress, divinity, debugFreeBuy]);
 
   // Handle the "Illuminate" button — fire the store action, then close the
   // popup so the player can see the now-lit star on the sky.

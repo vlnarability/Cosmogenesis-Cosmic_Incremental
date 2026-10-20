@@ -7349,3 +7349,46 @@ Stage Summary:
 - The Auto-Builder / Auto-Researcher can be steered toward a preferred archetype via the new AutobuyerSettingsPanel. Sort order is (matchesTarget DESC, totalCost ASC) — cheapest matching candidate wins; falls back to cheapest-overall when no candidate matches. The preferred government overrides the auto-pick at Empire stage. Preferences persist across prestiges.
 - Events that hint at follow-ups now actually follow up. `chemical_bloom.absorb` → 60% chance → `scavenger_swarm` 70s later. `predator_shadow.flee` → 70% chance → `predator_return` 50s later. `predator_return.fight` → 50% chance → `scavenger_swarm` 40s later. `scavenger_swarm.drive_off` → 50% chance → `grudge_recall` 90s later. The UI shows a "Chain" badge on chainOnly events + a "Triggers follow-up" badge on choices that schedule a follow-up. Chain events fire even at L2+ or with `eventFreq === "off"` (they were scheduled by the player's previous choice, so we honour them).
 - Git: committed as `d2ddf20` with message "AUTOBUYER-SETTINGS + EVENT-CHAINS + CURRENCY-UNIFICATION: add 4 autobuyer targeting setters + tick sort logic; add followUpEvent/chainOnly event mechanic + 3 sample chains + tick scheduling; unify shop currency to Divinity (remove EP/PP spending); remove ep_auto_converter." and pushed to `origin/main`.
+
+---
+
+## CONSTELLATION-REDESIGN-NOIRLAB — L2 star map redesign
+
+Major UI overhaul of the L2 Enlightenment constellation star map (`EnlightenmentModal.tsx`) for clarity, discoverability, and click-target accessibility. Six concrete UX fixes:
+
+1. **Grey circles for stars** — bumped star buttons from 14px tiny dots to 18px grey circles. Unlit = `#475569` (slate-600) with `#64748b` border; started = `#64748b` (slate-500); lit = category accent. Every star now has a subtle `0 0 4px 1px #94a3b855` glow so it's distinguishable from the starfield background even when dim.
+2. **More space between stars** — `SKY_W` widened from 3000 → 5000 so the 88 constellations have more breathing room. Viewport height raised from `clamp(380px, 56vh, 700px)` to `clamp(500px, 64vh, 900px)` so stars at y=4 (top) and y=96 (bottom) are both within the visible area.
+3. **NOIRLab constellation outlines** — when a constellation is fully lit (all stars illuminated → `constellationsCompleted[cId]` is true), render `<img src="/constellations/{cId}-outline.svg">` as a subtle overlay (opacity 0.25, zIndex 1, behind stars at zIndex 10+) positioned over the constellation's bounding box. Horizontal positioning in PIXELS (`(minX - padX) * skyW/100`), vertical positioning in PERCENTAGE so the overlay scales with viewport height (same scheme as the star buttons themselves). `object-fit: contain` preserves the SVG's 1:1 aspect ratio. The 176 NOIRLab SVG files (outline + pattern for each of 88 constellations, 1.2 MB total) live in `public/constellations/` and were committed with this change.
+4. **Expand button** — added `Maximize2`/`Minimize2` lucide-react icons. The Expand button sits in the header next to the Divinity badge; opens a full-screen overlay (`fixed inset-0 z-[100] flex flex-col bg-[#020417]`) with an even wider sky (`EXPANDED_SKY_W = 8000`). The overlay has its own top bar (title + Divinity badge + Exit button), its own scroll position (`expandedScrollX`, separate from `scrollX` so opening/closing Expand doesn't jump the standard sky), and bigger arrows/legend/hint. Exit clears the per-star selection too so no stray popup.
+5. **Every star clickable** — the taller viewport (≥500px) plus the existing percentage-based vertical positioning means stars at y=0 land at pixel 0 (top edge) and stars at y=100 land at pixel 500 (bottom edge) — both within the visible area. The expanded overlay's `flex-1` body is even taller.
+6. **More visible constellation pattern lines** — SVG connection lines: `strokeWidth` 0.25→0.30 (completed) / 0.12→0.15 (dim); `opacity` 0.9→1.0 (lit) / 0.35→0.45 (dim). The constellation pattern is now clearly visible against the starfield.
+
+### Architecture notes
+
+- `wrapScrollX(x, w=SKY_W)` was parameterized over the sky width so the same wrap helper drives both the standard sky (5000px) and the expanded sky (8000px).
+- `onPointerDown` / `onPointerMove` / `handleScrollButton` / `panToConstellation` each take an `isExpanded = false` boolean parameter and dispatch to the correct scroll state + width. Default `false` keeps existing call sites working — the standard view passes `false` explicitly, the expanded overlay passes `true`.
+- `renderSkyInstance(offset, skyW)` is parameterized over the sky width so the same function renders both skies. The React `key` includes `skyW` so React can distinguish the two contexts.
+- `renderStarPopup()` is a new function (not a variable) that encapsulates the per-star purchase popup. Rendered conditionally: `{!expanded && renderStarPopup()}` in the standard view, `{expanded && renderStarPopup()}` in the expanded overlay. This avoids double-mounting the popup and ensures it appears in the correct stacking context — z-[80] inside whichever view is active (the expanded overlay's z-[100] parent creates a new stacking context where z-80 is the highest child).
+- The NOIRLab outline overlay mixes pixel/percentage positioning intentionally: horizontal uses pixels so the overlay stays aligned with the stars as the sky width changes (standard 5000px vs expanded 8000px); vertical uses percentage so the overlay scales with the viewport's rendered height — same scheme as the star buttons themselves.
+
+### Verification
+
+- `bun run lint`: 0 errors, 10 warnings (all pre-existing in unrelated files: `scripts/playtest-*.js`, `src/game/data/galaxies.ts`, `upload/logic.js`). No new warnings introduced by this change.
+- Dev server log: file compiles cleanly (multiple `✓ Compiled in XXXms` entries after each save, no errors).
+- Every star is reachable: with viewport height ≥500px and star coords in [0, 100], stars at y=0 land at pixel 0 (top edge) and stars at y=100 land at pixel 500 (bottom edge) — both within the visible area.
+
+### Files modified
+
+- `src/components/game/modals/EnlightenmentModal.tsx` (~+450 / -90 lines: imports, EXPANDED_SKY constants, parameterized wrapScrollX, expanded/expandedScrollX state, isExpanded-aware drag/scroll/pan handlers, renderSkyInstance refactored to (offset, skyW) + NOIRLab outline overlay, SVG line strokeWidth/opacity bumps, 18px grey-circle star buttons, header Expand button, taller viewport height, renderStarPopup() function extraction, full-screen expanded overlay before `</>`)
+- `public/constellations/*.svg` (176 new files, 1.2 MB total — prerequisite NOIRLab outline + pattern SVGs; previously untracked, committed with this change so the outline-overlay feature works on a fresh clone)
+- `agent-ctx/CONSTELLATION-REDESIGN-NOIRLAB-main.md` (new — work record for this task following the agent-ctx convention)
+
+### Known limitations
+
+- The NOIRLab outline SVG is a 360×360 square bounding box approximation of the constellation's actual IAU shape — the outline won't pixel-perfectly align with the in-game star positions (which are packed for visual variety per category, not a literal equatorial projection). The opacity 0.25 + zIndex 1 (behind stars at zIndex 10+) makes this acceptable as a "subtle overlay" per the user's spec.
+- The expanded overlay's scroll position is independent of the standard view's scroll position. This is intentional — opening/closing Expand shouldn't jump the standard sky. But it also means the player has to re-pan to find their place when switching modes. Future enhancement: optionally sync the two on expand/exit.
+
+### Git
+
+- Committed as `ceeeb2b` with message "CONSTELLATION-REDESIGN-NOIRLAB: redesign star map with grey circles, more spacing, NOIRLab constellation outlines, Expand button, taller viewport. Every star clickable." (178 files changed, +13161 / -191).
+- Pushed to `origin/main` (`b5d2aa6..ceeeb2b main -> main`).

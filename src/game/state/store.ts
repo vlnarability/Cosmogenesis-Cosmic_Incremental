@@ -4528,7 +4528,8 @@ export const useGameStore = create<GameStore>()(
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
         const foresightDiscountMult = Math.pow(0.80, fdLvl);
         const cost = starCost(constellationId, cs, starId, { foresightDiscountMult });
-        if ((s.divinity || 0) < cost) return;
+        // DEBUG-FREE-BUY — bypass cost check when free-buy is enabled
+        if (!s.debugFreeBuy && (s.divinity || 0) < cost) return;
         // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
         const cbLvl = (s.upgrades?.constellation_boost as number) || 0;
         const ppGain = 1 + 0.25 * cbLvl;
@@ -4546,8 +4547,9 @@ export const useGameStore = create<GameStore>()(
         }
         // NOTE: Cosmic Bridge propagation REMOVED — active abilities were cut from L2.
         // Stars are lit only by purchasing them with Divinity.
+        // DEBUG-FREE-BUY — don't deduct Divinity when free-buy is on
         set({
-          divinity: (s.divinity || 0) - cost,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - cost,
           constellationStars: newStars,
           constellationProgress: newProgress,
           constellationsStarted: newStarted,
