@@ -3816,8 +3816,14 @@ export const useGameStore = create<GameStore>()(
         }
         // NOTE: Background simulations are now computed from (3 + starsLit) × simMult,
         // not incremented on prestige. No log needed here — the sim system runs at L2+.
-        if (failedChallenge) {
-          get().addToLog(`Trial abandoned: ${CHALLENGE_MAP[failedChallenge]?.name}. You may try again.`);
+        // ENDURANCE-FIX — failedChallenge variable was replaced by the new
+        // completion/failure logic above. Log trial abandonment only if the
+        // challenge was NOT completed by this prestige.
+        if (activeChId && !challengeJustCompleted) {
+          const abandonedCh = CHALLENGE_MAP[activeChId];
+          if (abandonedCh) {
+            get().addToLog(`Trial abandoned: ${abandonedCh.name}. You may try again.`);
+          }
         }
         if (divinityGain > 0) {
           get().addToLog(`Layer 2: +${divinityGain} Divinity accrued (Enlightenment).`);
