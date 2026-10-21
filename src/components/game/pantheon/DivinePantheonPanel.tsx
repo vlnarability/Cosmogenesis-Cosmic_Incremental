@@ -74,7 +74,7 @@ export function DivinePantheonPanel() {
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div>
             <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Idea 8 — Divine Pantheon
+              <Sparkles className="w-3 h-3" /> Divine Pantheon
             </div>
             <h3 className="text-sm font-semibold mt-0.5">Avatar of the God</h3>
             <p className="text-[0.65rem] text-muted-foreground mt-0.5 leading-snug max-w-md">

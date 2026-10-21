@@ -2655,7 +2655,7 @@ export const useGameStore = create<GameStore>()(
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
             setTimeout(() => get().addToLog(
-              `🌌 Worlds: ${backgroundSimulations.toLocaleString()} running (raw ${rawWorlds.toLocaleString()} × effective ${effectiveWorlds.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s (Flame ×${flameMult.toFixed(2)}${activeTemplate ? `, ${activeTemplate.name} ×${activeTemplate.divinityMult.toFixed(2)}` : ""}${activeAlign ? `, ${activeAlign.name} ×${activeAlign.divinityMult.toFixed(2)}` : ""}).`
+              `🌌 Worlds: ${backgroundSimulations.toLocaleString()} running (raw ${rawWorlds.toLocaleString()} × effective ${effectiveWorlds.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s (Flame ×${flameMult.toFixed(2)}${activeTemplate ? `, ${activeTemplate.name} ×${activeTemplate.divinityMult.toFixed(2)}` : ""}).`
             ), 0);
           }
         }

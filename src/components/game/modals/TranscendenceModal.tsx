@@ -264,9 +264,9 @@ export function TranscendenceContent() {
               </div>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mt-2 leading-snug">
-              Each world produces Divinity at 1% of peak production × Eternal Flame multiplier ×
-              active template × alignment. Fuse 10 worlds into 1 higher-tier world for 5× production
-              per world (but lower total until Ascendant tier).
+              Each world produces Divinity based on your peak production rate.
+              Fuse 10 worlds of one tier into 1 of the next tier for 5× production per world
+              (Ascendant tier and above are pure boosts).
             </div>
           </section>
 
@@ -803,9 +803,9 @@ export function TranscendenceContent() {
       <div className="text-[0.65rem] text-muted-foreground px-1 space-y-0.5">
         <div>
           <span className="text-amber-300">Divine Engine</span> — your background worlds (Tier 1) produce
-          Divinity at 1% of peak production × Eternal Flame × active template × alignment. Forge worlds
-          with Divinity, fuse them into higher tiers for more production per world (but lower total until
-          Ascendant tier — breakeven at 100× = 100 Tier 10 → 1 Ascendant).
+          Divinity based on your peak production rate, multiplied by Eternal Flame + active template.
+          Forge worlds with Divinity, fuse them into higher tiers for more production per world
+          (Ascendant tier and above are pure boosts).
         </div>
         <div>
           <span className="text-amber-300">Eternal Flame</span> — invest infinite Divinity for a

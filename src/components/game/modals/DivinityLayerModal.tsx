@@ -121,7 +121,7 @@ export function DivinityLayerContent() {
                 </Badge>
               </div>
               <div className="text-[0.6rem] text-sky-300/80 mb-2">
-                FEATURE 8 — Place Amplifiers (30 Divinity each, max 3) on minor gods to double Negotiate gains with them.
+                Place Amplifiers (30 Divinity each, max 3) on minor gods to double Negotiate gains with them.
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {MINOR_GODS.map((g) => {

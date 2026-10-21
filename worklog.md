@@ -7525,3 +7525,78 @@ Files modified:
 - src/components/game/layout/DivineEngineFullTab.tsx (full rewrite ~430 lines: 3D viz + slider UI)
 - src/game/state/types.ts (+9 lines: evolutionSliders JSDoc)
 - src/game/state/store.ts (~+50 lines: initial state, setEvolutionSlider pool logic, tick rebalance, peakProductionRate const→let, v18 migration)
+
+---
+Task ID: 3D-ZOOM + UI-REVIEW
+Agent: Z.ai Code (main)
+Task: (1) Review all 10 layer UIs for clutter/confusion. (2) Fix 3D world viz — blurry + stars too close together + add zoom. Suggest major changes, fix minor ones.
+
+Work Log:
+
+### Bug fix: Runtime ReferenceError "activeAlign is not defined"
+
+- src/game/state/store.ts (tick log message, line ~2658): the 60s bg-sim log message referenced `activeAlign` which was removed when Astral Resonance was deleted. The message would throw "activeAlign is not defined" every 60s when the tick log fired — surfaced as a Next.js runtime error overlay blocking the page.
+- Fix: removed the `${activeAlign ? ...}` clause from the template string. The log now reads: `🌌 Worlds: N running (raw X × effective Y). +Z Div/s (Flame ×M, Template name ×T).`
+
+### 3D World Visualization fixes (DivineEngineFullTab.tsx)
+
+1. **Spread worlds further apart** — increased world sphere radius range from 30..160 → 60..380 (6× wider spread). Switched from `Math.cbrt(rng())` (uniform volume) to `Math.sqrt(rng())` (shell-weighted) so worlds cluster on the outer shell instead of clumping at the center — produces a galaxy-sphere look. Tier-1 cap raised 200 → 220 dots. Background starfield pushed out to radius 500..700 (was 250..350) so distant stars don't overlap with the world sphere.
+
+2. **Sharper rendering** — replaced the soft 2-layer box-shadow (`0 0 size*0.8 ... color@88, 0 0 size*1.6 ... color@55`) with a tighter single-layer glow + 1px solid border. The old shadow was so wide and so soft that small dots looked like blurry blobs. New style: `border: 1px solid color` for definition + `boxShadow: 0 0 max(4, size*0.6)px size*0.25 color@66` for visibility. Opacity raised 0.9 → 0.95. Added `willChange: "transform"` to every dot + the inner scene container to hint the compositor (avoids repaint cost during rotation).
+
+3. **Zoom controls added** — 3 ways to zoom:
+   - Buttons: ZoomOut (-0.30) + ZoomIn (+0.30) in a compact pill control with a "1.00×" display in the middle. Disabled at ZOOM_MIN=0.4 / ZOOM_MAX=3.0.
+   - Mouse wheel: `onWheel` handler steps zoom by `ZOOM_STEP × min(3, |deltaY|/50)` per scroll — fast scroll = bigger step, gentle scroll = finer step. `e.preventDefault()` stops page scroll.
+   - Touch pinch: `onTouchMove` handler tracks the 2-finger distance ratio vs the initial distance and applies it as a multiplicative zoom. Stored in a `pinchStart` ref so the gesture is consistent.
+   - Reset button now also resets zoom to 1.0 (was only resetting rotation).
+- Implementation: the inner scene's `transform` is now `translate(-50%, -50%) scale3d(zoom, zoom, zoom) rotateX(Ndeg) rotateY(Ndeg)`. Perspective on the container is `1100 / zoom` px — so higher zoom = smaller perspective = closer view (same as a real camera zoom). Bumped perspective baseline 900 → 1100 to give more depth at zoom=1.
+- TIER_SIZES bumped slightly (5..60 vs old 6..56) to compensate for the wider sphere — small dots are still readable.
+
+### Minor UI cleanup (developer-style references + stale text)
+
+After visiting all 10 layer tabs via agent-browser, I found and fixed:
+
+- src/components/game/modals/TranscendenceModal.tsx (2 spots): removed stale `× alignment` reference from the Divinity production formula text and the footer summary (Astral Resonance was deleted, but the formula still mentioned it). Reworded the formula to be less technical: "Each world produces Divinity based on your peak production rate. Fuse 10 worlds of one tier into 1 of the next tier for 5× production per world (Ascendant tier and above are pure boosts)."
+- src/components/game/modals/OmnipotenceModal.tsx (L7 Lab): removed "FEATURE 7 — " prefix from the mutation description. Now reads: "Each creature has a 10% chance to mutate on creation. Mutated creatures are 50% more powerful but add +20% to genetic instability."
+- src/components/game/pantheon/DivinePantheonPanel.tsx (L8 Pantheon header): removed "Idea 8 — " prefix from the panel header. Now reads: "DIVINE PANTHEON" (uppercase tracking-wide styling).
+- src/components/game/modals/DivinityLayerModal.tsx (L8 Amplifier blurb): removed "FEATURE 8 — " prefix. Now reads: "Place Amplifiers (30 Divinity each, max 3) on minor gods to double Negotiate gains with them."
+
+### Major UI suggestions (NOT implemented — for user review)
+
+After reviewing all 10 layer tabs + Divine Engine full tab, these are the larger issues I noticed but didn't fix:
+
+1. **L1 Trials — redundant descriptions**: Each challenge card shows 2 descriptions — a long-form (3-4 sentences) AND a short italic "DEBUFF (REPEAT 1)" form (1 sentence). These are redundant. The short form should be the primary (it's a card UI, not a wiki); the long form can live in a tooltip/codex.
+2. **Divine Engine sidebar vs full tab overlap**: When on the Divine Engine tab, the sidebar (DivineEnginePanel) shows the same stats (worlds, Div/s, peak prod, Flame mult) as the full tab's stat grid. Consider hiding the sidebar when currentTab === "divine_engine" to avoid duplicate UI.
+3. **L10 Eternity — unclear "amount" label**: The relic inventory shows "Reveal rule name: 1000 Div · amount: 2000 Div" — the "amount:" label is vague. Rename to "Reveal strength" or "Reveal bonus amount" to clarify what 2000 Divinity is buying.
+4. **"Running in background" badge on every layer header** (L1-L9): shown on all 9 unlocked layers (L10 doesn't show it). The badge is identical on each layer — it indicates the layer's tick is still running while you view the layer tab. Consider making it smaller, less prominent, or only showing on layers where the player might think pausing the view pauses the layer (e.g. L1 Trials where challenge progress is gated by ticks).
+5. **Divine Engine — peak prod stat is abstract**: "Peak Prod 5K resources/s" is technical — players may not realize this is the META best-production rate from the base game. Consider relabeling to "Best Base Production" or adding a tooltip explaining it's derived from the base game's peak per-tick production.
+6. **L3 Market — too many sections per scroll**: The L3 tab has 6+ stat cards stacked vertically (Overview, Fusion, Forge, Catalysts, Templates, Seeds, Portfolios, Footer). Each card is well-designed but the sheer count is overwhelming. Consider grouping them into sub-tabs (e.g. "Worlds" / "Boosts" / "Investments") to reduce scroll fatigue.
+7. **Layer tab labels are inconsistent**: Tab labels are "Trials / Constellations / Market / Galaxy / Conquest / Universe / Lab / Diplomacy / War / Genesis Engine". Some are nouns (Market, Lab), some are actions (Conquest, War). Diplomacy is the only one whose name doesn't match the L-numbered naming convention. Consider aligning all tab labels to be either noun-style or verb-style.
+
+### Verification
+
+- bun run lint: 0 errors, 10 pre-existing warnings (unrelated files).
+- Dev server: clean compiles, HTTP 200.
+- agent-browser end-to-end:
+  • Loaded page, enabled debug mode, unlocked all layers, granted resources + currency.
+  • Opened Divine Engine tab — saw "3D World Visualization" heading + "Drag · scroll to zoom" hint + Zoom out/in buttons (with "1.00×" display) + Reset button.
+  • Verified 280+ elements with translate3d (220 worlds + 100 stars) — fully rendered.
+  • Verified initial transform: `translate(-50%, -50%) scale3d(1, 1, 1) rotateX(-18deg) rotateY(28deg)`.
+  • Clicked Zoom In 3× — scale3d went 1.0 → 1.9 (each click adds 0.3, matches ZOOM_STEP × 2 = 0.30).
+  • Clicked Zoom Out 2× — scale3d went 1.9 → 1.3.
+  • Clicked Reset — scale3d back to 1.0, rotateX back to -18°, rotateY continuing to auto-rotate.
+  • Verified the runtime error "activeAlign is not defined" no longer appears in the issues overlay.
+  • Verified L7 Lab: "Each creature has a 10% chance to mutate..." (no "FEATURE 7 —" prefix).
+  • Verified L8 Pantheon header: "DIVINE PANTHEON" (no "Idea 8 —" prefix).
+  • Verified L8 Amplifier blurb: "Place Amplifiers..." (no "FEATURE 8 —" prefix).
+  • Verified L3 Market formula: "Each world produces Divinity based on your peak production rate. Fuse 10 worlds..." (no stale "alignment" reference).
+- Console: only HMR/Fast Refresh messages. No runtime errors.
+
+### Files modified
+
+- src/game/state/store.ts (1 line: removed `activeAlign` reference from tick log template string)
+- src/components/game/layout/DivineEngineFullTab.tsx (~+90 lines net: zoom state, clampZoom/zoomIn/zoomOut/onWheel/onTouchMove callbacks, ZOOM_MIN/ZOOM_MAX/ZOOM_STEP constants, scale3d in transform, perspective: 1100/zoom, zoom buttons + display, sharper dot styling with border + reduced box-shadow, will-change hints, slightly bigger axis triad, world sphere radius 30..160 → 60..380, sqrt distribution, starfield radius 250..350 → 500..700, TIER_SIZES bumped, container height clamp(320..560) → clamp(360..600))
+- src/components/game/modals/TranscendenceModal.tsx (2 spots: removed `× alignment` from formula text + footer summary)
+- src/components/game/modals/OmnipotenceModal.tsx (1 line: removed "FEATURE 7 — " prefix from mutation blurb)
+- src/components/game/modals/DivinityLayerModal.tsx (1 line: removed "FEATURE 8 — " prefix from Amplifier blurb)
+- src/components/game/pantheon/DivinePantheonPanel.tsx (1 line: removed "Idea 8 — " prefix from header)
