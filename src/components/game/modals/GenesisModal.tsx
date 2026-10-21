@@ -93,8 +93,8 @@ export function GenesisContent() {
   const exploredCount = galaxySystems.filter((g) => g.explored).length;
   const nextClaimCost = galaxyClaimCost(claimedCount);
   const worldBonus = claimedCount * 10;
-  const canScan = genesisSeeds >= GALAXY_SCAN_COST;
-  const canClaim = genesisSeeds >= nextClaimCost;
+  const canScan = divinity >= GALAXY_SCAN_COST;
+  const canClaim = divinity >= nextClaimCost;
 
   // Connection lines between adjacent claimed systems (deduped: A→B and B→A
   // are the same line).
@@ -150,7 +150,7 @@ export function GenesisContent() {
             Survey 50 star systems on a star map. Scan the unknown, then claim with Divinity to grow the Divine Engine.
           </span>
           <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
-            {formatNumber(genesisSeeds, 0)} Seeds
+            {formatNumber(divinity, 0)} Divinity
           </Badge>
         </p>
       </div>
@@ -326,12 +326,12 @@ export function GenesisContent() {
                               <div className={claimed ? "text-cyan-300" : "text-emerald-300"}>
                                 {claimed
                                   ? "✓ Claimed"
-                                  : `Claim cost: ${nextClaimCost} Seeds`}
+                                  : `Claim cost: ${nextClaimCost} Divinity`}
                               </div>
                             </>
                           ) : (
                             <div className="text-violet-300">
-                              Unexplored — Scan for {GALAXY_SCAN_COST} Seeds
+                              Unexplored — Scan for {GALAXY_SCAN_COST} Divinity
                             </div>
                           )}
                           <div className="text-muted-foreground">
@@ -345,9 +345,9 @@ export function GenesisContent() {
               </svg>
               <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed">
                 Hover to highlight neighbors. Click an unexplored star to{" "}
-                <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Seeds) or an
+                <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Divinity) or an
                 explored unclaimed star to{" "}
-                <span className="text-emerald-300">claim</span> ({nextClaimCost} Seeds).{" "}
+                <span className="text-emerald-300">claim</span> ({nextClaimCost} Divinity).{" "}
                 <span className="text-amber-300">★</span> = synergy (2+ claimed neighbors, +50% bonus).
               </div>
             </div>
@@ -365,7 +365,7 @@ export function GenesisContent() {
                 </div>
                 <div className="flex flex-wrap gap-1 mt-2">
                   <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">
-                    {formatNumber(genesisSeeds, 0)} Seeds
+                    {formatNumber(divinity, 0)} Divinity
                   </Badge>
                   <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
                     {exploredCount} explored
@@ -431,7 +431,7 @@ export function GenesisContent() {
                         ? "text-violet-300 border-violet-400/40"
                         : "text-rose-300 border-rose-400/40"}
                     >
-                      {GALAXY_SCAN_COST} Seeds
+                      {GALAXY_SCAN_COST} Divinity
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-[0.7rem]">
@@ -444,7 +444,7 @@ export function GenesisContent() {
                         ? "text-cyan-300 border-cyan-400/40"
                         : "text-rose-300 border-rose-400/40"}
                     >
-                      {nextClaimCost} Seeds
+                      {nextClaimCost} Divinity
                     </Badge>
                   </div>
                 </div>
