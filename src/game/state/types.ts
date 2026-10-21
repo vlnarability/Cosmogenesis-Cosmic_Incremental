@@ -580,6 +580,12 @@ export interface GameState {
   // Mutated flag stored on the creature itself (see omnipotence.ts Creature interface)
   // FEATURE 8 — Amplifiers: divine network nodes that double Negotiate gains
   amplifiers: Array<{ id: number; godId: string }>;
+  // IDEA-8 — Divine Pantheon: 5 named Avatars that grant global Divine Engine
+  // bonuses based on their Domain (ascendant/harvester/sentinel/architect/
+  // voidborn). Each slot unlocks with scaling Divinity cost; an Avatar is
+  // created inside an unlocked slot by picking a Domain (free). Power Level
+  // 1-10 upgrades cost scaling Divinity. Slots persist across prestiges.
+  divinePantheon: Array<import("../data/divinePantheon").PantheonSlot>;
   // FEATURE 9 — Temporal Storms (per-battle): shuffle timeline, delays/accelerates enemy attacks
   temporalStorms: Record<string, boolean>;     // oldGodId → storm active
 
@@ -947,6 +953,12 @@ export interface GameStore extends GameState {
   // FEATURE 8 — Amplifiers
   placeAmplifier: (godId: string) => void;
   removeAmplifier: (godId: string) => void;
+  // IDEA-8 — Divine Pantheon: unlock / create / upgrade / rename / dismiss
+  unlockPantheonSlot: (slotIndex: number) => void;
+  createPantheonAvatar: (slotIndex: number, domain: import("../data/divinePantheon").AvatarDomain) => void;
+  upgradePantheonAvatar: (slotIndex: number) => void;
+  renamePantheonAvatar: (slotIndex: number, name: string) => void;
+  dismissPantheonAvatar: (slotIndex: number) => void;
   // FEATURE 9 — Temporal Storms
   stabilizeTime: (oldGodId: string) => void;
 

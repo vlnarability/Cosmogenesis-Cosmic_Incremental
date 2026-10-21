@@ -19,6 +19,7 @@ import { Lock, Handshake, CheckCircle2, Sparkles, Radio } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { formatNumber } from "../shared/format";
 import { OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
+import { DivinePantheonPanel } from "../pantheon/DivinePantheonPanel";
 
 const PERSONALITY_COLORS: Record<string, string> = {
   warm: "text-amber-300 border-amber-400/40",
@@ -89,6 +90,9 @@ export function DivinityLayerContent() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* IDEA-8 — Divine Pantheon panel (5 avatar slots). */}
+            <DivinePantheonPanel />
+
             {/* Diplomacy Network overview */}
             <div className="stat-card">
               <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">

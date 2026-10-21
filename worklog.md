@@ -7392,3 +7392,56 @@ Major UI overhaul of the L2 Enlightenment constellation star map (`Enlightenment
 
 - Committed as `ceeeb2b` with message "CONSTELLATION-REDESIGN-NOIRLAB: redesign star map with grey circles, more spacing, NOIRLab constellation outlines, Expand button, taller viewport. Every star clickable." (178 files changed, +13161 / -191).
 - Pushed to `origin/main` (`b5d2aa6..ceeeb2b main -> main`).
+
+---
+Task ID: IDEA-8-DIVINE-PANTHEON
+Agent: Z.ai Code (main)
+Task: Implement Idea 8 — Divine Pantheon. God fragments essence into 5 named Avatars, each picking a Domain that grants a global Divine Engine bonus. Final pending approved idea (after Ideas 2/5/6 done in earlier session).
+
+Work Log:
+- src/game/data/divinePantheon.ts (NEW, ~210 lines): AvatarDomain type, Avatar + PantheonSlot interfaces, PANTHEON_SLOTS=5, MAX_AVATAR_POWER=10, PANHEON_SLOT_UNLOCK_COSTS=[500, 5_000, 50_000, 500_000, 5_000_000] Divinity, AVATAR_UPGRADE_BASE_COST=100, DOMAIN_BONUS_PER_LEVEL per domain, DOMAIN_META (icon/label/blurb/accent/bonusLabel) for all 5 domains (Ascendant/Harvester/Sentinel/Architect/Voidborn), ALL_DOMAINS ordered list, NAME_PREFIXES + NAME_SUFFIXES (24 each) for random name generator, randomAvatarName() picker, avatarUpgradeCost(slotIdx, currentLevel) = ceil(100 × 2^(level-1) × (slotIdx+1)), makeInitialPantheon() = 5 locked slots, pantheonBonus(slots) returns aggregated {divinityMult, faithMult, voidShardsMult, peakMult, crashReduction, totalAvatars, totalPower}.
+- src/game/state/types.ts (+15 lines): added `divinePantheon: Array<PantheonSlot>` field on GameState (after `amplifiers`). Added 5 action signatures: `unlockPantheonSlot(slotIndex)`, `createPantheonAvatar(slotIndex, domain)`, `upgradePantheonAvatar(slotIndex)`, `renamePantheonAvatar(slotIndex, name)`, `dismissPantheonAvatar(slotIndex)`.
+- src/game/state/store.ts (+145 lines net):
+  • Imported PANTHEON_SLOTS, MAX_AVATAR_POWER, PANHEON_SLOT_UNLOCK_COSTS, randomAvatarName, avatarUpgradeCost, makeInitialPantheon, pantheonBonus, + types (AvatarDomain, PantheonSlot, Avatar, PantheonBonus).
+  • Initial state includes `divinePantheon: makeInitialPantheon()` (5 locked slots).
+  • Implemented 5 actions (unlockPantheonSlot, createPantheonAvatar, upgradePantheonAvatar, renamePantheonAvatar, dismissPantheonAvatar) — all with proper layer-unlock gating (must be L8+ Divinity), slot-bound validation, sequential-unlock rule (slot N requires slot N-1 unlocked), domain validation, name trim/24-char-cap, power-level cap (MAX_AVATAR_POWER), and clear log messages.
+  • Tick block: added pantheonBonus() computation; new `pantheonDivinityMult` × bgDivPerSec, `pantheonPeakMult` × peakProductionRate (peakForDiv), `pantheonFaithMult` × Faith slider gain, `pantheonVoidShardsMult` × Aggression slider gain + Southern Conduit gain + Void World gain, `pantheonCrashReduction` × Crucible collapse chance.
+  • triggerPrestige metaState: added `divinePantheon: s.divinePantheon` — slots + Avatars + Power Levels persist across prestiges (matches Worlds Forge + Eternal Flame precedent). Slot unlocks paid for with meta-currency Divinity, so persistent.
+  • Bumped persist version 16 → 17. Added v17 migration: initializes divinePantheon to makeInitialPantheon() if absent; defensively normalizes partial saves (ensures 5 slots with correct {id, avatar, unlocked} shape, validates domain against the 5 known ids, clamps powerLevel to [1, 10]).
+- src/components/game/pantheon/DivinePantheonPanel.tsx (NEW, ~280 lines): client component rendering 5 slots in a responsive grid (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3). Each slot has 3 visual states:
+  1. Locked: dashed-border circle with Lock icon + "Unlock — 💎 N" button (disabled if can't afford). Shows "Unlock slot N first" when previous slot not yet unlocked.
+  2. Empty (unlocked, no Avatar): 5-button Domain picker (Crown/FlaskConical/Shield/Triangle/Wand2 lucide icons, color-coded per domain). Clicking creates a new Avatar with a random name.
+  3. Occupied: avatar portrait + name + Domain badge + blurb + Power Level progress bar + bonus label + "+1 Power (💎 N)" button + Rename/Dismiss row. Rename mode replaces name with an Input (Enter to save, Escape to cancel).
+  Header includes summary: "N/5 avatars · Σ L{totalPower}" badge, Divinity balance, and 5 bonus chips (🌅 Divinity / 🌾 Faith / 🛡️ Crash / 📐 Peak / 🕳️ Void) showing the aggregated active bonuses.
+- src/components/game/modals/DivinityLayerModal.tsx (+3 lines): imported DivinePantheonPanel and rendered it inside the L8 `isUnlocked` branch, before the Diplomacy Network overview. Now the first thing the player sees when opening L8 is the Pantheon panel.
+- src/components/game/layout/ResourceBar.tsx (+22 lines): added `divinePantheon` subscription + useMemo computing the total Ascendant-domain multiplier across all occupied slots. Renders a new "🔱 Pantheon +N%" MetaPill at L8+ when at least one Ascendant Avatar is active. Pill has tooltip "Divine Pantheon: +N% Divinity/s from Ascendant Avatars". Pill hides when pantheonDivMult=0 (no Ascendant Avatar) to avoid visual noise on fresh L8 unlock.
+
+Verification:
+- bun run lint: 0 errors, 10 pre-existing warnings (all in unrelated files: scripts/playtest-*.js, src/game/data/galaxies.ts, upload/logic.js).
+- Dev server: clean compiles throughout. No runtime errors in dev.log.
+- agent-browser end-to-end test:
+  • Loaded /, dismissed story popups, opened Settings, clicked "Evolution Idle · v1.0" 5× to enable debug, clicked "Unlock All Layers" + "Grant Resources" + "Grant Currency".
+  • Closed Settings, clicked Diplomacy tab → saw "Layer 8 — Divinity (Divine Alliance)" heading + "Avatar of the God" heading (new Pantheon panel) + "Unlock — 💎 500" button (slot 1).
+  • Clicked Unlock slot 1 → 5 Domain picker buttons appeared (Ascendant/Harvester/Sentinel/Architect/Voidborn) + Slot 2 unlock now shows 💎 5,000.
+  • Clicked Ascendant → Avatar "Kaeleth" created, Power Level 1/10, "+5% Divinity/s" bonus label, "+1 Power (💎 100)" upgrade button.
+  • Clicked +1 Power → cost updated 💎 100 → 💎 200 (BASE × 2^1 × 1 = 200), confirming upgrade worked. Power Level 2/10, "+10% Divinity/s" bonus.
+  • ResourceBar now shows "🔱 +10% PANTHEON" pill (alongside existing ✨ Div + 👑 Faith pills).
+  • Bonus chips at top of Pantheon panel: 🌅 Divinity +10% · 🌾 Faith +0% · 🛡️ Crash -0% · 📐 Peak +0% · 🕳️ Void +0% (only Ascendant active).
+  • Reloaded page → Avatar persisted (localStorage shows divinePantheon slot 0: {name:"Kaeleth", domain:"ascendant", powerLevel:2, unlocked:true}). Persist version 17. Migration worked.
+  • Console: only "[HMR] connected" / "[Fast Refresh] done" — no errors.
+- localStorage verification: JSON.parse(localStorage.getItem('evolution_idle_v2')).state.divinePantheon returns the expected 5-slot array with slot 0 occupied and slots 1-4 locked.
+
+Stage Summary:
+- IDEA-8 — DIVINE PANTHEON is fully implemented end-to-end: data layer + types + store (5 actions, tick integration, prestige carry-forward, v17 migration) + dedicated UI panel integrated into L8 Diplomacy tab + ResourceBar pill showing live Ascendant multiplier.
+- All 5 Domains functional: Ascendant (+Divinity/s), Harvester (+Faith/s), Sentinel (Crash reduction, capped 80%), Architect (+Peak production), Voidborn (+Void Shards). Bonuses stack additively across slots; Sentinel + Voidborn require their respective mechanics (Crucible template crash chance / Void World + Void Shard generation) to actually have an effect.
+- Persist version bumped 16 → 17. Old saves auto-migrate: divinePantheon initialized to 5 locked slots. Partial saves defensively normalized.
+- Slots + Avatars + Power Levels persist across prestiges (metaState carries divinePantheon).
+- All 4 pending approved ideas (2/5/6/8) are now complete. The design doc's major systems are realized: 10 prestige layers, 13 archetypes, 20 governments, 88 constellations, Divine Engine (World Forge + Templates + Catalysts + Seeds + Flame + Fusion + Market + Pantheon), Autobuyer Settings, Event Chains, Currency Unification, Constellation Redesign (NOIRLab).
+
+Files modified:
+- src/game/data/divinePantheon.ts (NEW ~210 lines)
+- src/game/state/types.ts (+15 lines: PantheonSlot field + 5 action signatures)
+- src/game/state/store.ts (+145 lines: import block, initial state, 5 actions, tick integration, metaState carry-forward, v17 migration)
+- src/components/game/pantheon/DivinePantheonPanel.tsx (NEW ~280 lines)
+- src/components/game/modals/DivinityLayerModal.tsx (+3 lines: import + render panel)
+- src/components/game/layout/ResourceBar.tsx (+22 lines: pantheonDivMult + Pantheon pill)

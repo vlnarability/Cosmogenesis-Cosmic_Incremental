@@ -47,6 +47,22 @@ export function ResourceBar() {
   // const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const faith = useGameStore((s) => s.faith);
 
+  // IDEA-8 — Divine Pantheon: show a compact pill at L8+ when at least one
+  // Avatar is active. The pill surfaces the aggregate Divinity bonus from
+  // the Ascendant domain (the most universally useful indicator). Hides
+  // when no Avatar is present (avoids visual noise on fresh L8 unlock).
+  const divinePantheon = useGameStore((s) => s.divinePantheon);
+  const pantheonDivMult = useMemo(() => {
+    if (!divinePantheon || !Array.isArray(divinePantheon)) return 0;
+    let m = 0;
+    for (const slot of divinePantheon) {
+      if (slot?.avatar?.domain === "ascendant") {
+        m += slot.avatar.powerLevel * 0.05;
+      }
+    }
+    return m;
+  }, [divinePantheon]);
+
   const stage = STAGES[stageIndex];
   const { isAtLeast } = useActiveLayer();
   const isL2Plus = isAtLeast("enlightenment");
@@ -101,12 +117,23 @@ export function ResourceBar() {
             "flex items-center gap-1.5 shrink-0",
             isL2Plus && "flex-1 flex-wrap min-w-0 overflow-x-auto no-scrollbar justify-start"
           )}>
-            {/* Priority list — max 3 (CURRENCY-UNIFICATION removed EP + PP). */}
+            {/* Priority list — max 3 (CURRENCY-UNIFICATION removed EP + PP).
+                IDEA-8 — Pantheon pill at L8+ when an Ascendant Avatar is
+                active, surfacing the active Divinity multiplier. */}
             {isLayerAtLeast("enlightenment", unlockedLayers) && (
               <MetaPill icon="✨" label="Div" value={formatCompact(divinity)} color="text-violet-300" title="Divinity" />
             )}
             {isLayerAtLeast("apotheosis", unlockedLayers) && (
               <MetaPill icon="👑" label="Faith" value={formatCompact(faith)} color="text-amber-300" title="Faith" />
+            )}
+            {isLayerAtLeast("divinity", unlockedLayers) && pantheonDivMult > 0 && (
+              <MetaPill
+                icon="🔱"
+                label="Pantheon"
+                value={`+${(pantheonDivMult * 100).toFixed(0)}%`}
+                color="text-cyan-300"
+                title={`Divine Pantheon: +${(pantheonDivMult * 100).toFixed(0)}% Divinity/s from Ascendant Avatars`}
+              />
             )}
             {/* MERGED: Genesis Seeds removed from display — merged with Divinity */}
           </div>
