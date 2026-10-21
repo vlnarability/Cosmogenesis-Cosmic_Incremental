@@ -56,7 +56,9 @@ function bonusPct(value: number): string {
 
 export function GenesisContent() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
-  
+  const divinity = useGameStore((s) => s.divinity);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+
   const galaxySystems = useGameStore((s) => s.galaxySystems || []);
   const scanGalaxySystem = useGameStore((s) => s.scanGalaxySystem);
   const claimGalaxySystem = useGameStore((s) => s.claimGalaxySystem);
@@ -93,8 +95,8 @@ export function GenesisContent() {
   const exploredCount = galaxySystems.filter((g) => g.explored).length;
   const nextClaimCost = galaxyClaimCost(claimedCount);
   const worldBonus = claimedCount * 10;
-  const canScan = divinity >= GALAXY_SCAN_COST;
-  const canClaim = divinity >= nextClaimCost;
+  const canScan = debugFreeBuy || divinity >= GALAXY_SCAN_COST;
+  const canClaim = debugFreeBuy || divinity >= nextClaimCost;
 
   // Connection lines between adjacent claimed systems (deduped: A→B and B→A
   // are the same line).
