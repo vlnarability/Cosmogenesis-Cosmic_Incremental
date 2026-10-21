@@ -54,14 +54,14 @@ export interface SacredGeography {
   name: string;
   icon: string;
   blurb: string;
-  epMult: number; // EP multiplier granted
+  divinityMult: number; // Divinity multiplier granted (was epMult — EP merged with Divinity)
 }
 
 export const SACRED_GEOGRAPHIES: SacredGeography[] = [
-  { id: "sg_spire", name: "The Spire", icon: "🗼", blurb: "A needle of meaning through the world's heart.", epMult: 0.50 },
-  { id: "sg_labyrinth", name: "The Labyrinth", icon: "🔱", blurb: "Tests become the path itself.", epMult: 0.75 },
-  { id: "sg_garden", name: "The Garden", icon: "🌺", blurb: "All paths lead to fruit.", epMult: 0.40 },
-  { id: "sg_desert", name: "The Desert", icon: "🏜️", blurb: "The trial of patience yields the most.", epMult: 1.00 },
+  { id: "sg_spire", name: "The Spire", icon: "🗼", blurb: "A needle of meaning through the world's heart.", divinityMult: 0.50 },
+  { id: "sg_labyrinth", name: "The Labyrinth", icon: "🔱", blurb: "Tests become the path itself.", divinityMult: 0.75 },
+  { id: "sg_garden", name: "The Garden", icon: "🌺", blurb: "All paths lead to fruit.", divinityMult: 0.40 },
+  { id: "sg_desert", name: "The Desert", icon: "🏜️", blurb: "The trial of patience yields the most.", divinityMult: 1.00 },
 ];
 
 // ----- Dormant Seeds (4) -----
@@ -70,14 +70,14 @@ export interface DormantSeed {
   name: string;
   icon: string;
   blurb: string;
-  popGrowthMult: number;
+  productionMult: number; // Production multiplier (was popGrowthMult — pop irrelevant at L2+)
 }
 
 export const DORMANT_SEEDS: DormantSeed[] = [
-  { id: "ds_ember", name: "Ember Seed", icon: "🔥", blurb: "Population burns hot and fast.", popGrowthMult: 0.50 },
-  { id: "ds_tide", name: "Tide Seed", icon: "🌊", blurb: "Population flows steadily onward.", popGrowthMult: 0.25 },
-  { id: "ds_root", name: "Root Seed", icon: "🌱", blurb: "Population grows slow and deep.", popGrowthMult: 0.15 },
-  { id: "ds_void", name: "Void Seed", icon: "⚫", blurb: "Population grows, but barely.", popGrowthMult: 0.05 },
+  { id: "ds_ember", name: "Ember Seed", icon: "🔥", blurb: "Production burns hot and fast.", productionMult: 0.50 },
+  { id: "ds_tide", name: "Tide Seed", icon: "🌊", blurb: "Production flows steadily onward.", productionMult: 0.25 },
+  { id: "ds_root", name: "Root Seed", icon: "🌱", blurb: "Production grows slow and deep.", productionMult: 0.15 },
+  { id: "ds_void", name: "Void Seed", icon: "⚫", blurb: "Production grows, but barely.", productionMult: 0.05 },
 ];
 
 // ----- Difficulty Tiers (4) -----
@@ -87,14 +87,14 @@ export interface DifficultyTier {
   icon: string;
   blurb: string;
   productionMult: number; // higher difficulty = bigger production bonus
-  epMult: number;
+  divinityMult: number;
 }
 
 export const DIFFICULTY_TIERS: DifficultyTier[] = [
-  { id: "dt_gentle", name: "Gentle", icon: "🍃", blurb: "A soft universe. Modest bonuses.", productionMult: 0.10, epMult: 0.10 },
-  { id: "dt_tempered", name: "Tempered", icon: "⚔️", blurb: "A balanced trial.", productionMult: 0.25, epMult: 0.25 },
-  { id: "dt_severe", name: "Severe", icon: "🏔️", blurb: "A harsh universe. Strong bonuses.", productionMult: 0.50, epMult: 0.50 },
-  { id: "dt_impossible", name: "Impossible", icon: "💀", blurb: "A universe that does not forgive. Massive bonuses.", productionMult: 1.00, epMult: 1.00 },
+  { id: "dt_gentle", name: "Gentle", icon: "🍃", blurb: "A soft universe. Modest bonuses.", productionMult: 0.10, divinityMult: 0.10 },
+  { id: "dt_tempered", name: "Tempered", icon: "⚔️", blurb: "A balanced trial.", productionMult: 0.25, divinityMult: 0.25 },
+  { id: "dt_severe", name: "Severe", icon: "🏔️", blurb: "A harsh universe. Strong bonuses.", productionMult: 0.50, divinityMult: 0.50 },
+  { id: "dt_impossible", name: "Impossible", icon: "💀", blurb: "A universe that does not forgive. Massive bonuses.", productionMult: 1.00, divinityMult: 1.00 },
 ];
 
 // ----- Authored World Config -----
@@ -154,27 +154,27 @@ export function worldCapMult(worlds: WorldConfig[]): number {
 }
 
 /**
- * Sum of EP multipliers from all authored worlds.
+ * Sum of Divinity multipliers from all authored worlds (was epMult — EP merged with Divinity).
  */
 export function worldEpMultiplier(worlds: WorldConfig[]): number {
   let mult = 0;
   for (const w of worlds) {
     const sg = SACRED_GEOGRAPHY_MAP[w.sacredGeographyId];
     const tier = DIFFICULTY_TIER_MAP[w.difficultyTierId];
-    if (sg) mult += sg.epMult;
-    if (tier) mult += tier.epMult;
+    if (sg) mult += sg.divinityMult;
+    if (tier) mult += tier.divinityMult || 0;
   }
   return mult;
 }
 
 /**
- * Sum of population-growth multipliers from all authored worlds.
+ * Sum of production multipliers from all authored worlds (was popGrowthMult — pop irrelevant at L2+).
  */
 export function worldPopGrowthMult(worlds: WorldConfig[]): number {
   let mult = 0;
   for (const w of worlds) {
     const seed = DORMANT_SEED_MAP[w.dormantSeedId];
-    if (seed) mult += seed.popGrowthMult;
+    if (seed) mult += seed.productionMult;
   }
   return mult;
 }

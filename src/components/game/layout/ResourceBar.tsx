@@ -43,7 +43,8 @@ export function ResourceBar() {
   // CURRENCY-UNIFICATION — Divinity is now the single shop currency; the
   // old EP/PP subscriptions are gone.
   const divinity = useGameStore((s) => s.divinity);
-  const genesisSeeds = useGameStore((s) => s.genesisSeeds);
+  // MERGED: genesisSeeds removed — merged with Divinity
+  // const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const faith = useGameStore((s) => s.faith);
 
   const stage = STAGES[stageIndex];
@@ -107,9 +108,7 @@ export function ResourceBar() {
             {isLayerAtLeast("apotheosis", unlockedLayers) && (
               <MetaPill icon="👑" label="Faith" value={formatCompact(faith)} color="text-amber-300" title="Faith" />
             )}
-            {isLayerAtLeast("genesis", unlockedLayers) && (
-              <MetaPill icon="🥚" label="Seed" value={formatCompact(genesisSeeds)} color="text-emerald-300" title="Genesis Seeds" />
-            )}
+            {/* MERGED: Genesis Seeds removed from display — merged with Divinity */}
           </div>
         </div>
       </div>

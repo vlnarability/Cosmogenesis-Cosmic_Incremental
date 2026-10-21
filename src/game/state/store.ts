@@ -3803,7 +3803,8 @@ export const useGameStore = create<GameStore>()(
           // from its initial 0 unless an old save loads with a non-zero
           // value, in which case that value just sits there forever).
           evolutionPoints: s.evolutionPoints || 0,
-          divinity: (s.divinity || 0) + epEarned,
+          // MERGED: epEarned + divinityGain + genesisSeedGain all folded into divinity
+          divinity: (s.divinity || 0) + epEarned + divinityGain + genesisSeedGain,
           totalRuns: s.totalRuns + 1,
           galacticWins: s.galacticWins + (s.stageIndex >= 6 ? 1 : 0),
           // BACKGROUND-SIMULATION — META fields persist across prestiges.
@@ -3888,7 +3889,7 @@ export const useGameStore = create<GameStore>()(
           },
 
           // Layer 2 — Enlightenment (persist meta state, currency accrues)
-          divinity: (s.divinity || 0) + divinityGain,
+          // divinity already set above with all gains folded in
           foresightNodes: s.foresightNodes || {}, // LEGACY — always {}
           activeForesightRoute: s.activeForesightRoute,
           showEnlightenment: false,
@@ -3914,7 +3915,7 @@ export const useGameStore = create<GameStore>()(
           showTranscendence: false,
 
           // Layer 4 — Genesis (persist authored worlds; reset pending config)
-          genesisSeeds: (s.genesisSeeds || 0) + genesisSeedGain,
+          genesisSeeds: (s.genesisSeeds || 0) + genesisSeedGain,  // KEPT for back-compat (inert)
           authoredWorlds: s.authoredWorlds || [],
           pendingWorldConfig: {},
           showGenesis: false,
@@ -4763,7 +4764,8 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         const seedCost = 1;
-        if ((s.genesisSeeds || 0) < seedCost) {
+        // MERGED: was genesisSeeds, now divinity
+        if (!s.debugFreeBuy && (s.divinity || 0) < seedCost) {
           get().addToLog(`Need ${seedCost} Genesis Seed to author a world.`);
           return;
         }
@@ -4777,7 +4779,7 @@ export const useGameStore = create<GameStore>()(
           createdAt: Date.now(),
         };
         set({
-          genesisSeeds: (s.genesisSeeds || 0) - seedCost,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - seedCost,  // MERGED: was genesisSeeds
           authoredWorlds: [...(s.authoredWorlds || []), world],
           pendingWorldConfig: {},
         });
@@ -5285,13 +5287,14 @@ export const useGameStore = create<GameStore>()(
         const state = galaxySystems.find((g) => g.id === systemId);
         if (!state) return;
         if (state.explored || state.claimed) return;
-        if ((s.genesisSeeds || 0) < GALAXY_SCAN_COST) {
+        // MERGED: was genesisSeeds, now divinity
+        if (!s.debugFreeBuy && (s.divinity || 0) < GALAXY_SCAN_COST) {
           get().addToLog(`📡 Need ${GALAXY_SCAN_COST} Genesis Seeds to scan ${sys.name}.`);
           return;
         }
         state.explored = true;
         set({
-          genesisSeeds: (s.genesisSeeds || 0) - GALAXY_SCAN_COST,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - GALAXY_SCAN_COST,  // MERGED: was genesisSeeds
           galaxySystems,
         });
         const rareLabel = sys.rareResource || "none";
@@ -5320,13 +5323,14 @@ export const useGameStore = create<GameStore>()(
         if (state.claimed) return;
         const claimedCount = galaxySystems.filter((g) => g.claimed).length;
         const cost = galaxyClaimCost(claimedCount);
-        if ((s.genesisSeeds || 0) < cost) {
+        // MERGED: was genesisSeeds, now divinity
+        if (!s.debugFreeBuy && (s.divinity || 0) < cost) {
           get().addToLog(`⭐ Need ${cost} Genesis Seeds to claim ${sys.name}.`);
           return;
         }
         state.claimed = true;
         set({
-          genesisSeeds: (s.genesisSeeds || 0) - cost,
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - cost,  // MERGED: was genesisSeeds
           galaxySystems,
           // ACHIEVEMENT-EXPANSION — track total systems claimed across all
           // runs (drives "Galactic Surveyor" achievement).
