@@ -83,7 +83,11 @@ export function TabNav() {
   const setTab = useGameStore((s) => s.setTab);
   const setShowShop = useGameStore((s) => s.setShowShop);
   const showShop = useGameStore((s) => s.showShop);
-  const evolutionPoints = useGameStore((s) => s.evolutionPoints);
+  // CURRENCY-UNIFICATION — the Shop tab badge now shows Divinity (the unified
+  // shop currency). EP is no longer spent anywhere — the field stays on
+  // GameState for back-compat with old saves but is never surfaced to the
+  // player.
+  const divinity = useGameStore((s) => s.divinity);
   const openLayerModal = useGameStore((s) => s.openLayerModal);
   const activeLayerModal = useGameStore((s) => s.activeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
@@ -177,7 +181,7 @@ export function TabNav() {
               <Store className="w-4 h-4" />
               <span>
                 Shop
-                {evolutionPoints > 0 && ` · ${formatCompact(evolutionPoints)} EP`}
+                {divinity > 0 && ` · ${formatCompact(divinity)} Div`}
               </span>
             </button>
           </div>

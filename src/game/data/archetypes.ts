@@ -316,12 +316,12 @@ export const ARCHETYPES: ArchetypeDef[] = [
     glyph: "☥",
     blurb: "Death-touched, ritual-bound. The past never leaves.",
     bonus: {
-      label: "Undying: +20% dead-system prod, +50% EP, pop never falls",
+      label: "Undying: +20% dead-system prod, +50% Divinity, pop never falls",
       desc: "What is dead may never die — but rarely breeds.",
       buffs: [
         "+20% production from disabled systems",
         "Population never decreases from events",
-        "+50% EP from prestige",
+        "+50% Divinity from prestige",
       ],
       debuff: "-25% population growth (the dead don't breed)",
       populationGrowthMult: -0.25,

@@ -146,7 +146,7 @@ export function OmnipotenceContent() {
                 />
               </div>
               <div className="text-[0.6rem] text-muted-foreground mt-1">
-                Active bonuses: +{(lb.productionMult * 100).toFixed(0)}% prod, +{(lb.capMult * 100).toFixed(0)}% cap, +{(lb.epMult * 100).toFixed(0)}% EP, +{(lb.popGrowthMult * 100).toFixed(0)}% pop
+                Active bonuses: +{(lb.productionMult * 100).toFixed(0)}% prod, +{(lb.capMult * 100).toFixed(0)}% cap, +{(lb.epMult * 100).toFixed(0)}% Div, +{(lb.popGrowthMult * 100).toFixed(0)}% pop
               </div>
             </div>
 

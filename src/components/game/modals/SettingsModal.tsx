@@ -102,7 +102,10 @@ export function SettingsModal() {
   const population = useGameStore((s) => s.population);
   const totalRuns = useGameStore((s) => s.totalRuns);
   const galacticWins = useGameStore((s) => s.galacticWins);
-  const evolutionPoints = useGameStore((s) => s.evolutionPoints);
+  // CURRENCY-UNIFICATION — show Divinity as the unified currency. EP field
+  // is kept on GameState for back-compat with old saves but is no longer
+  // surfaced to the player.
+  const divinity = useGameStore((s) => s.divinity);
   const achievements = useGameStore((s) => s.achievements || {});
   const stageIndex = useGameStore((s) => s.stageIndex);
   const lastSaved = useGameStore((s) => s.lastSaved);
@@ -235,7 +238,7 @@ export function SettingsModal() {
               <StatCard icon={<Star className="w-3 h-3" />} label="Total Runs" value={String(totalRuns)} />
               <StatCard icon={<Award className="w-3 h-3" />} label="Achievements" value={`${earnedAchievements}/${ACHIEVEMENTS.length}`} />
               <StatCard icon={<Database className="w-3 h-3" />} label="Galactic Wins" value={String(galacticWins)} />
-              <StatCard icon={<Star className="w-3 h-3" />} label="Evolution Pts" value={formatNumber(evolutionPoints, 0)} />
+              <StatCard icon={<Star className="w-3 h-3" />} label="Divinity" value={formatNumber(divinity, 0)} />
               <StatCard icon={<Star className="w-3 h-3" />} label="Stage" value={`${stageIndex + 1}/7`} />
               <StatCard icon={<Save className="w-3 h-3" />} label="Last Saved" value={lastSavedDate.split(",")[0] || "now"} />
             </div>
@@ -616,7 +619,7 @@ export function SettingsModal() {
                       variant="outline"
                       onClick={debugGrantCurrency}
                       className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
-                      title="+1000 EP / PP / Divinity · +100 Faith / Seeds / Cores"
+                      title="+1000 Divinity · +100 Faith / Seeds / Cores"
                     >
                       <Bug className="w-3 h-3 mr-1" />
                       Grant Currency

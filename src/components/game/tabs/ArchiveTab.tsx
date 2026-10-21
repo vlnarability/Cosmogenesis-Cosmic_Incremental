@@ -81,7 +81,7 @@ export function ArchiveTab() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-xs text-amber-400 font-bold">+{entry.epEarned} EP</div>
+                          <div className="text-xs text-amber-400 font-bold">+{entry.epEarned} Div</div>
                           <div className="text-[0.65rem] text-muted-foreground">Score: {formatNumber(entry.score, 0)}</div>
                         </div>
                       </div>

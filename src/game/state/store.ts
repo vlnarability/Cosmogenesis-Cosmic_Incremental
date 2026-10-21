@@ -754,7 +754,7 @@ function initialMetaState(): Partial<GameState> {
     // IDEA-2: World Archetype Injection
     activeWorldArchetype: null,
     // IDEA-5: Evolution Sliders — defaults: speed 1.0, aggression 0, curiosity 0, faith 0
-    evolutionSliders: { speed: 1.0, aggression: 0, curiosity: 0, faith: 0 },
+    evolutionSliders: { speed: 0, aggression: 0, curiosity: 0, faith: 0 },
     eternalFlameInvested: 0,
     worldsForged: 0,
     purchasedCatalysts: {},
@@ -1101,8 +1101,9 @@ export const useGameStore = create<GameStore>()(
 
         // BACKGROUND-SIMULATION — update peakProductionRate if this tick's
         // total per-second production exceeds the previous best. META field:
-        // persists across prestiges, never resets.
-        const peakProductionRate = Math.max(s.peakProductionRate || 0, totalProductionRate);
+        // persists across prestiges, never resets. Declared `let` so the
+        // Ascendant template + Curiosity evolution slider can grow it.
+        let peakProductionRate = Math.max(s.peakProductionRate || 0, totalProductionRate);
 
         // Clamp resources to capacities (no overflow)
         for (const r of Object.keys(resources)) {
@@ -2580,12 +2581,16 @@ export const useGameStore = create<GameStore>()(
           // Extremophile: crash immunity (checked separately)
         }
 
-        // IDEA-5: Evolution Sliders
-        const sliders = s.evolutionSliders || { speed: 1.0, aggression: 0, curiosity: 0, faith: 0 };
-        const sliderSpeedMult = sliders.speed; // 0.1 to 10
-        const sliderAggression = sliders.aggression / 100; // 0 to 1
-        const sliderCuriosity = sliders.curiosity / 100; // 0 to 1
-        const sliderFaith = sliders.faith / 100; // 0 to 1
+        // IDEA-5: Evolution Sliders — 4 sliders share a 10-point pool.
+        //   speed      0..10 → +10% Divinity/s per point (0 = ×1.0, 10 = ×2.0)
+        //   aggression 0..10 → +10% Void Shards per point (0..1.0)
+        //   curiosity  0..10 → peak production grows by ~0.01%/s × value
+        //   faith      0..10 → +10% Faith/s per point (0..1.0)
+        const sliders = s.evolutionSliders || { speed: 0, aggression: 0, curiosity: 0, faith: 0 };
+        const sliderSpeedMult = 1 + (sliders.speed || 0) * 0.10;       // 1.0 → 2.0
+        const sliderAggression = (sliders.aggression || 0) / 10;        // 0 → 1.0
+        const sliderCuriosity = (sliders.curiosity || 0) / 10;          // 0 → 1.0
+        const sliderFaith = (sliders.faith || 0) / 10;                  // 0 → 1.0
 
         // IDEA-8 — Divine Pantheon: aggregated Domain bonuses.
         // Each Avatar in a Pantheon slot contributes a global multiplier
@@ -2628,12 +2633,14 @@ export const useGameStore = create<GameStore>()(
           if (sliderAggression > 0) {
             voidShards += backgroundSimulations * 0.001 * sliderAggression * realDt * pantheonVoidShardsMult;
           }
-          // IDEA-5: Curiosity slider — peak production rate grows slowly
+          // IDEA-5: Curiosity slider — peak production rate grows slowly.
+          // At curiosity=10, peak grows by ~0.6% per minute (0.01%/s × value).
+          // The growth compounds on peakProductionRate itself. Skipped when
+          // peak=0 (no production baseline to grow from). peakProductionRate
+          // is a `let` (declared at the top of the tick) so this works.
           if (sliderCuriosity > 0 && peakProductionRate > 0) {
-            // Peak production grows by 0.01% per tick at 100% curiosity
-            const peakGrowth = peakProductionRate * 0.0001 * sliderCuriosity * realDt;
-            // This is a soft growth — won't explode because it's 0.01%/s at max
-            void peakGrowth; // no-op until wired to the actual peak field
+            const peakGrowthPerSec = peakProductionRate * 0.0001 * sliderCuriosity;
+            peakProductionRate += peakGrowthPerSec * realDt;
           }
           // IDEA-5: Faith slider — worlds generate Faith (×pantheonFaithMult)
           if (sliderFaith > 0) {
@@ -6940,14 +6947,26 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`World archetype set: ${name}.`);
       },
 
-      // IDEA-5: Evolution Sliders
+      // IDEA-5: Evolution Sliders — 4 sliders share a 10-point pool. The
+      // player picks how to distribute up to 10 points across speed /
+      // aggression / curiosity / faith. Setting one slider to a value that
+      // would exceed the pool is clamped to the maximum it can take without
+      // going over. Each slider is 0..10. Setting a value below 0 is
+      // clamped to 0. Free reallocation at any time (no cost).
       setEvolutionSlider: (key, value) => {
         const s = get();
-        const clamped = key === 'speed' ? Math.max(0.1, Math.min(10, value)) : Math.max(0, Math.min(100, value));
+        const current = s.evolutionSliders || { speed: 0, aggression: 0, curiosity: 0, faith: 0 };
+        const clamped = Math.max(0, Math.min(10, value));
+        // Compute remaining pool: 10 - (sum of OTHER sliders' current values).
+        const otherSum = (Object.keys(current) as Array<keyof typeof current>)
+          .filter((k) => k !== key)
+          .reduce((acc, k) => acc + (current[k] || 0), 0);
+        const maxAllowed = Math.max(0, 10 - otherSum);
+        const finalValue = Math.min(clamped, maxAllowed);
         set({
           evolutionSliders: {
-            ...(s.evolutionSliders || { speed: 1.0, aggression: 0, curiosity: 0, faith: 0 }),
-            [key]: clamped,
+            ...current,
+            [key]: finalValue,
           },
         });
       },
@@ -7175,7 +7194,7 @@ export const useGameStore = create<GameStore>()(
         }
         return window.localStorage;
       }),
-      version: 17,
+      version: 18,
       partialize: (s) => s,
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
@@ -7718,6 +7737,43 @@ export const useGameStore = create<GameStore>()(
             };
           }
           persisted.divinePantheon = fresh;
+        }
+
+        // v18 migration (IDEA-5 — SLIDER-POOL): the 4 evolution sliders
+        // now share a 10-point pool. Each slider is 0..10 and the sum
+        // must be ≤ 10. Old saves have speed in [0.1, 10] and the other
+        // 3 in [0, 100]. We map:
+        //   • speed     → cap at 10 (0.1→0.1 stays; 10→10 stays)
+        //   • aggression → /10 (so 0..100 → 0..10)
+        //   • curiosity → /10 (so 0..100 → 0..10)
+        //   • faith     → /10 (so 0..100 → 0..10)
+        // After conversion, if sum > 10, trim proportionally so the sum
+        // fits. Fresh state (no evolutionSliders field at all) gets the
+        // all-zero default — the player starts with no allocation.
+        if (!persisted.evolutionSliders) {
+          persisted.evolutionSliders = { speed: 0, aggression: 0, curiosity: 0, faith: 0 };
+        } else {
+          const old = persisted.evolutionSliders;
+          const migrated = {
+            speed: Math.max(0, Math.min(10, Number(old.speed) || 0)),
+            aggression: Math.max(0, Math.min(10, (Number(old.aggression) || 0) / 10)),
+            curiosity: Math.max(0, Math.min(10, (Number(old.curiosity) || 0) / 10)),
+            faith: Math.max(0, Math.min(10, (Number(old.faith) || 0) / 10)),
+          };
+          // If sum > 10, trim the largest sliders first.
+          let sum = migrated.speed + migrated.aggression + migrated.curiosity + migrated.faith;
+          if (sum > 10) {
+            const order: Array<keyof typeof migrated> = ["speed", "aggression", "curiosity", "faith"];
+            order.sort((a, b) => migrated[b] - migrated[a]);
+            for (const k of order) {
+              if (sum <= 10) break;
+              const overflow = sum - 10;
+              const trimmed = Math.max(0, migrated[k] - overflow);
+              sum -= migrated[k] - trimmed;
+              migrated[k] = trimmed;
+            }
+          }
+          persisted.evolutionSliders = migrated;
         }
 
         return persisted;

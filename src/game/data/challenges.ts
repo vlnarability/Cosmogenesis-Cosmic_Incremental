@@ -116,7 +116,7 @@ export const CHALLENGES: Challenge[] = [
       effects: {},
     },
     mastery: {
-      label: "+10% EP earned from prestige.",
+      label: "+10% Divinity earned from prestige.",
       bonus: { epMult: 0.10 },
     },
     completeWhen: { type: "reachStage", stage: "galactic" },
@@ -196,7 +196,7 @@ export const CHALLENGES: Challenge[] = [
       effects: {},
     },
     mastery: {
-      label: "+10% EP earned from prestige.",
+      label: "+10% Divinity earned from prestige.",
       bonus: { epMult: 0.10 },
     },
     completeWhen: { type: "reachStage", stage: "galactic" },
@@ -212,7 +212,7 @@ export const CHALLENGES: Challenge[] = [
       effects: { productionMult: 0.5 },
     },
     mastery: {
-      label: "+15% EP earned from prestige, permanently.",
+      label: "+15% Divinity earned from prestige, permanently.",
       bonus: { epMult: 0.15 },
     },
     completeWhen: { type: "reachStage", stage: "galactic" },

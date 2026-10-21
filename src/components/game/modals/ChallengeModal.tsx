@@ -196,7 +196,7 @@ function formatEffects(eff: ChallengeEffects): string {
   }
   if (eff.epMult !== undefined) {
     const v = eff.epMult;
-    parts.push(`+${(v * 100).toFixed(0)}% EP`);
+    parts.push(`+${(v * 100).toFixed(0)}% Div`);
   }
   if (eff.disableTech) parts.push("no tech");
   if (eff.disableMilitary) parts.push("no military");

@@ -478,7 +478,7 @@ export function ApotheosisContent() {
                 <div className={`h-full transition-all ${heresy >= 75 ? "bg-rose-500" : "bg-rose-400/70"}`} style={{ width: `${Math.min(75, heresy) / 75 * 100}%` }} />
               </div>
               <div className="text-[0.6rem] text-muted-foreground mt-1">
-                Enacted {enactedCount} laws. Active bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% prod, +{(lawBonus.capMult * 100).toFixed(0)}% cap, +{(lawBonus.epMult * 100).toFixed(0)}% EP, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% pop
+                Enacted {enactedCount} laws. Active bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% prod, +{(lawBonus.capMult * 100).toFixed(0)}% cap, +{(lawBonus.epMult * 100).toFixed(0)}% Div, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% pop
               </div>
             </div>
 

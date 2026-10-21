@@ -53,7 +53,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_remembrance",
     name: "Law of Remembrance",
-    desc: "+50% EP per prestige.",
+    desc: "+50% Divinity per prestige.",
     icon: "📜",
     faithCost: 400,
     bonus: { epMult: 0.50 },
@@ -77,7 +77,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_eternal",
     name: "Law of the Eternal Throne",
-    desc: "+15% production, +15% cap, +15% EP, +15% pop. The balanced summit.",
+    desc: "+15% production, +15% cap, +15% Divinity, +15% pop. The balanced summit.",
     icon: "👑",
     faithCost: 800,
     bonus: { productionMult: 0.15, capMult: 0.15, epMult: 0.15, popGrowthMult: 0.15 },

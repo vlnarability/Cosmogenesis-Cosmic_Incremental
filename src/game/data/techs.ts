@@ -334,13 +334,13 @@ export const TECHS: TechDef[] = [
   {
     id: "epigenetic_memory",
     name: "Epigenetic Memory",
-    desc: "Carry learned patterns across divisions. +10% EP from prestige.",
+    desc: "Carry learned patterns across divisions. +10% Divinity from prestige.",
     stage: "cell",
     cost: { glucose: 100, proteins: 35, atp: 50, science: 20 },
     branch: "Genetics",
     tier: 5,
     requires: ["horizontal_transfer"],
-    effects: "+10% EP from prestige",
+    effects: "+10% Divinity from prestige",
     multiplier: { target: "production", value: 0.10 },
   },
   {
@@ -579,13 +579,13 @@ export const TECHS: TechDef[] = [
   {
     id: "memory_formation",
     name: "Memory Formation",
-    desc: "Persist experience across generations. +10% EP from prestige.",
+    desc: "Persist experience across generations. +10% Divinity from prestige.",
     stage: "creature",
     cost: { food: 80, knowledge: 60, culture: 10 },
     branch: "Neural",
     tier: 5,
     requires: ["brain_development"],
-    effects: "+10% EP from prestige",
+    effects: "+10% Divinity from prestige",
     multiplier: { target: "production", value: 0.10 },
   },
   {

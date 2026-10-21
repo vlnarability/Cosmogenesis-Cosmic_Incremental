@@ -104,7 +104,7 @@ export function DivinityLayerContent() {
               <div className="flex flex-wrap gap-1">
                 <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(bonus.productionMult * 100).toFixed(0)}% prod</Badge>
                 <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(bonus.capMult * 100).toFixed(0)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(bonus.epMult * 100).toFixed(0)}% EP</Badge>
+                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(bonus.epMult * 100).toFixed(0)}% Div</Badge>
                 <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(bonus.popGrowthMult * 100).toFixed(0)}% pop</Badge>
               </div>
             </div>

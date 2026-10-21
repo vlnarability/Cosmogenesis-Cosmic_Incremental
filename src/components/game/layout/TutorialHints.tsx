@@ -52,7 +52,7 @@ const HINTS: Hint[] = [
   {
     id: "evolve_ready",
     title: "Ready to evolve",
-    body: "Your Evolve button is now active! Evolving to the next stage unlocks new systems, techs, and resources. Score carries forward — bigger scores mean more Evolution Points when you prestige.",
+    body: "Your Evolve button is now active! Evolving to the next stage unlocks new systems, techs, and resources. Score carries forward — bigger scores mean more Divinity when you prestige.",
     cta: "Evolve now",
     action: (setTab) => setTab("actions"),
     show: (s) => {
@@ -68,12 +68,12 @@ const HINTS: Hint[] = [
   },
   {
     id: "first_prestige_shop",
-    title: "Spend your Evolution Points",
-    body: "You've earned Evolution Points (EP)! Open the Shop (top-right) and buy \"Auto-Builder\" first (8 EP) — it auto-purchases systems every 8s so you can focus on strategy instead of clicking. Then grab Auto-Researcher and Auto-Evolver to fully automate the base game.",
+    title: "Spend your Divinity",
+    body: "You've earned Divinity! Open the Shop (top-right) and buy \"Auto-Builder\" first (8 Divinity) — it auto-purchases systems every 8s so you can focus on strategy instead of clicking. Then grab Auto-Researcher and Auto-Evolver to fully automate the base game.",
     cta: "Open Shop",
     action: () => useGameStore.getState().setShowShop(true),
     show: (s) =>
-      (s.evolutionPoints || 0) >= 8 &&
+      (s.divinity || 0) >= 8 &&
       (s.upgrades["auto_system_buyer"] || 0) === 0 &&
       (s.galacticWins || 0) >= 1,
   },

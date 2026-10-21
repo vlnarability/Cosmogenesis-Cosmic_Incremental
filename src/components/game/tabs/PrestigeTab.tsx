@@ -296,7 +296,7 @@ export function PrestigeTab() {
             icon="🌱"
             unlocked={!!unlockedChallenges}
             unlockText="First Galactic win"
-            currencyName="Evolution Points"
+            currencyName="Divinity"
             onView={() => openLayerModal("challenges")}
             viewLabel="View Trials"
           >
@@ -419,7 +419,7 @@ export function PrestigeTab() {
           >
             <ProgressRow label="Authored worlds" value={authoredWorlds.length} max={99} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Each authored world grants permanent production / capacity / EP / pop bonuses.
+              Each authored world grants permanent production / capacity / Divinity / pop bonuses.
             </div>
             <LayerNextProgress
               progress={{

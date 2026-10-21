@@ -1059,7 +1059,7 @@ export function EnlightenmentContent() {
           Layer 2 — Enlightenment (Constellation Sky)
           <BackgroundLayerBadge layerId="enlightenment" />
         </h2>
-        <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
             Drag the wide sky or use ◀ ▶ to pan. Click a star to inspect it and illuminate.
           </span>
@@ -1082,7 +1082,7 @@ export function EnlightenmentContent() {
               {formatNumber(divinity, 0)} Divinity
             </Badge>
           </div>
-        </p>
+        </div>
       </div>
 
       {!isUnlocked ? (

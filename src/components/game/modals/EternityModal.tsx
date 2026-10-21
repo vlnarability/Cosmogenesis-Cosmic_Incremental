@@ -172,7 +172,7 @@ export function EternityContent() {
           Layer 10 — Eternity (Genesis Engine)
           <BackgroundLayerBadge layerId="eternity" />
         </h2>
-        <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
             Load relics into the Crucible, trigger Big Bangs, and discover all 100 archetypes.
           </span>
@@ -189,7 +189,7 @@ export function EternityContent() {
               </Badge>
             )}
           </div>
-        </p>
+        </div>
       </div>
 
         {!isUnlocked ? (

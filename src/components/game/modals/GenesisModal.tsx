@@ -398,7 +398,7 @@ export function GenesisContent() {
                 <div className="grid grid-cols-2 gap-1">
                   <BonusRow icon={Gauge}    label="Prod" pct={summary.productionMult} tone="cyan" />
                   <BonusRow icon={Package}  label="Cap"   pct={summary.capMult}        tone="amber" />
-                  <BonusRow icon={Sparkles} label="EP"    pct={summary.epMult}         tone="emerald" />
+                  <BonusRow icon={Sparkles} label="Div"   pct={summary.epMult}         tone="emerald" />
                   <BonusRow icon={Users}   label="Pop"   pct={summary.popGrowthMult}   tone="violet" />
                 </div>
               </div>

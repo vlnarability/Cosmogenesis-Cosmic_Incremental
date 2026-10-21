@@ -7445,3 +7445,83 @@ Files modified:
 - src/components/game/pantheon/DivinePantheonPanel.tsx (NEW ~280 lines)
 - src/components/game/modals/DivinityLayerModal.tsx (+3 lines: import + render panel)
 - src/components/game/layout/ResourceBar.tsx (+22 lines: pantheonDivMult + Pantheon pill)
+
+---
+Task ID: DIVINE-ENGINE-3D + SLIDER-POOL
+Agent: Z.ai Code (main)
+Task: Two user-requested changes: (1) make the Divine Engine world visualization 3D and rotatable 360° in any direction; (2) refactor Evolution Sliders to share a 10-point pool with free reallocation.
+
+Work Log:
+
+### Part 1 — 3D World Visualization (CSS 3D transforms)
+
+- src/components/game/layout/DivineEngineFullTab.tsx (full rewrite ~430 lines):
+  • Added new `WorldVisualization3D` component using pure CSS 3D transforms (no external deps).
+  • Each world is positioned via `transform: translate3d(x, y, z)` inside a container with `transform-style: preserve-3d`. The container itself is rotated via `transform: rotateX(Ndeg) rotateY(Ndeg)`.
+  • Parent wrapper sets `perspective: 900px` + `perspective-origin: 50% 50%` to give the 3D depth.
+  • Worlds are distributed uniformly inside a sphere (random direction via theta/phi, radius = 30 + cbrt(rng) * 130, range 30..160) so they don't clump at center.
+  • Each world has a colored glow (`box-shadow` with the tier color at 50% alpha) so dots are visible at all angles.
+  • Background starfield: 80 distant points at radius 250..350 with reduced opacity (0.3) — gives parallax depth when rotating.
+  • Pointer-event drag handler:
+    - `onPointerDown` captures the pointer via `setPointerCapture`, stores the drag-start position + initial rotation in a ref, sets `isDragging=true`.
+    - `onPointerMove` computes dx/dy from drag-start and applies 0.4° per pixel of drag. rotY is unbounded (`% 360` for full 360° horizontal rotation), rotX is clamped to [-89°, 89°] so the scene never fully flips (which would invert controls).
+    - `onPointerUp` / `onPointerCancel` releases the pointer capture + clears drag state.
+  • Auto-rotation: a `useEffect` runs a `requestAnimationFrame` loop that advances rotY by 6°/s when `isDragging === false`. The effect re-subscribes when isDragging changes (so it pauses during drag).
+  • Reset button: sets rotX = -15°, rotY = 20° (the initial defaults).
+  • Coordinate axis triad in bottom-right corner — small red/green/blue lines for X/Y/Z that follow the same rotation. Visual aid for orientation.
+  • Top-left: "Drag to rotate · 360°" badge + Reset button (with pointer-events-auto so they're clickable through the overlay).
+  • Bottom-left: tier legend showing only tiers with count > 0 (kept from the 2D version).
+  • Container height: `clamp(320px, 56vh, 560px)` for responsive sizing.
+- The old 2D SVG starfield is replaced by `WorldVisualization3D`. The `computeStarDots` function (which returned flat {x, y} for the SVG) is replaced by `computeWorldDots` which returns {x, y, z} for 3D positioning. TIER_SIZES were bumped from 1.5..8 (SVG units) to 6..56 (pixels) so dots are visible at the new pixel-scale.
+
+### Part 2 — Evolution Sliders 10-point shared pool
+
+- src/game/state/types.ts (+9 lines net): rewrote the `evolutionSliders` JSDoc to document the new semantics (0..10 each, sum ≤ 10, default 0).
+- src/game/state/store.ts:
+  • Initial state: `evolutionSliders: { speed: 0, aggression: 0, curiosity: 0, faith: 0 }` (was `{ speed: 1.0, aggression: 0, ... }`).
+  • `setEvolutionSlider(key, value)`: now computes the remaining pool = 10 - sum(other 3 sliders) and clamps the new value to [0, min(10, maxAllowed)]. So setting speed=8 when aggression=5 → speed becomes 5 (only 5 pool left).
+  • Tick block — new slider scaling:
+    - `sliderSpeedMult = 1 + speed × 0.10` (0 → ×1.0, 10 → ×2.0). Was `sliders.speed` (0.1..10 multiplier).
+    - `sliderAggression = aggression / 10` (0..1.0). Was `aggression / 100`.
+    - `sliderCuriosity = curiosity / 10` (0..1.0). Was `curiosity / 100`.
+    - `sliderFaith = faith / 10` (0..1.0). Was `faith / 100`.
+  • Curiosity slider now ACTUALLY grows peakProductionRate (was a `void peakGrowth;` no-op). The block computes `peakGrowthPerSec = peakProductionRate * 0.0001 * sliderCuriosity` and assigns `peakProductionRate += peakGrowthPerSec * realDt`.
+  • For this to work, declared `peakProductionRate` as `let` (was `const`). This also fixes a pre-existing latent bug: the Ascendant template's growth block on line ~2690 tried `peakProductionRate *= 1 + growthPerSec * realDt` on a const variable, which would throw "TypeError: Assignment to constant variable" at runtime — never triggered because peakProductionGrowthPerMin was 0 in the active template, but still broken.
+  • Persist version bumped 17 → 18. Migration block added:
+    - Old saves (with speed in 0.1..10 and others in 0..100) are migrated: speed is capped to 10; aggression/curiosity/faith are divided by 10. Then if sum > 10, sliders are trimmed largest-first until sum ≤ 10.
+    - Fresh saves (no evolutionSliders field) get the all-0 default.
+- src/components/game/layout/DivineEngineFullTab.tsx (Evolution Sliders section):
+  • Header now shows a "Pool: N.N / 10" badge (amber when full, cyan when partially allocated, muted when at 0).
+  • Each slider uses the new shared `SliderRow` sub-component (icon + label + value display + slider + help text). Sliders step by 0.5 (so the player can fine-tune).
+  • Speed displays "×N.NN Div/s" (computed via 1 + speed × 0.10).
+  • Aggression displays "+N% Void Shards" (speed × 10).
+  • Curiosity displays "+0.0NN% peak/s" (curiosity × 0.01).
+  • Faith displays "+N% Faith/s" (faith × 10).
+  • Footer text: "Distribute 10 points across the 4 sliders. Set one higher and the pool shrinks for the others. Reallocate freely at any time."
+
+Verification:
+- bun run lint: 0 errors, 10 pre-existing warnings (all in unrelated files).
+- Dev server: clean compiles throughout. No runtime errors.
+- agent-browser end-to-end:
+  • Loaded /, enabled debug mode (clicked version 5×), unlocked all layers, granted resources + currency.
+  • Opened Divine Engine tab — saw "3D World Visualization" heading + "Drag to rotate (360°)" badge + Reset button + "Tier 1 World" legend.
+  • Verified 280 elements with `translate3d` style (200 world dots + 80 background stars) — the 3D scene is fully rendered.
+  • Verified the scene's `transform` attribute: `translate(-50%, -50%) rotateX(-15deg) rotateY(22deg)` initially, advancing ~6°/s via auto-rotation.
+  • Clicked Reset button → rotation reset to `rotateX(-15deg) rotateY(22deg)` (from `rotateX(-27deg) rotateY(82deg)`). Confirmed Reset works.
+  • Set speed slider to 5 via `setEvolutionSlider('speed', 5)` → state = {speed:5, aggression:0, curiosity:0, faith:0}. UI showed "Pool: 5.0 / 10" + "×1.50 Div/s" for Speed.
+  • Tried `setEvolutionSlider('aggression', 8)` → aggression clamped to 5 (the remaining pool). State = {speed:5, aggression:5, curiosity:0, faith:0}.
+  • Tried `setEvolutionSlider('faith', 99)` → faith clamped to 0 (no pool left). State unchanged.
+  • Reduced speed to 2 (frees 3 pool) → setEvolutionSlider('curiosity', 10) → curiosity clamped to 3 (only 3 pool left).
+  • UI updated: Pool: 10.0 / 10, Speed ×1.20 Div/s, Aggression +50% Void Shards, Curiosity +0.030% peak/s.
+  • No errors in console. Dev log clean.
+
+Stage Summary:
+- The Divine Engine world visualization is now a 3D scene rendered with pure CSS 3D transforms (no Three.js, no extra deps). Drag-to-rotate works in any direction (up/down via rotX clamped to ±89°, left/right via rotY unbounded 360°). Auto-rotates 6°/s when not dragging. Reset button restores the default angle.
+- Evolution Sliders now share a 10-point pool. Each slider is 0..10. Setting one higher reduces the pool available for the others. Default is all-0. The player can reallocate freely at any time. Migration converts old saves (0-100 scale) to the new 0-10 scale.
+- Curiosity slider actually grows peakProductionRate now (was a no-op). The peakProductionRate local variable is now `let` (was `const`), which also fixes a latent TypeError bug in the Ascendant template growth block.
+- Persist version bumped 17 → 18 with full migration for old slider values.
+
+Files modified:
+- src/components/game/layout/DivineEngineFullTab.tsx (full rewrite ~430 lines: 3D viz + slider UI)
+- src/game/state/types.ts (+9 lines: evolutionSliders JSDoc)
+- src/game/state/store.ts (~+50 lines: initial state, setEvolutionSlider pool logic, tick rebalance, peakProductionRate const→let, v18 migration)

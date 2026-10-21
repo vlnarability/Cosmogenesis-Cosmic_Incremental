@@ -105,7 +105,7 @@ function AchievementsContent() {
             <div className="stat-card">
               <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
-                EP Bonus
+                Divinity Bonus
               </div>
               <div className="text-lg font-bold text-amber-400 tabular-nums">
                 +{(epBonus * 100).toFixed(1)}%

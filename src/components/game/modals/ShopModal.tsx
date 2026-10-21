@@ -390,9 +390,9 @@ export function ShopModal() {
         {/* Footer — explains the unified-currency system. */}
         <div className="text-[0.65rem] text-muted-foreground px-1 pt-2 border-t border-border/40 mt-2">
           <span className="text-violet-300/80">Divinity</span> is the unified shop
-          currency — earned each time you prestige (formerly Evolution Points) and
-          from layer activity (formerly Prestige Points). All upgrades — universal
-          auto-buyers + layer-specific boosts — spend from the same Divinity pool.
+          currency — earned each time you prestige and from layer activity.
+          All upgrades — universal auto-buyers + layer-specific boosts — spend
+          from the same Divinity pool.
         </div>
 
         <div className="flex justify-end pt-2">

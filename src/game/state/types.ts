@@ -697,12 +697,18 @@ export interface GameState {
   // all worlds get that archetype's effect (multiplier, crash immunity, etc.)
   activeWorldArchetype: string | null;
 
-  // IDEA-5: Evolution Sliders — 4 sliders that control world behavior
+  // IDEA-5: Evolution Sliders — 4 sliders that share a 10-point pool. Each
+  // slider is 0..10 and the SUM of all 4 must be ≤ 10. The player allocates
+  // freely at any time (no cost, no commitment). Default is all 0 (sum 0).
+  //   speed       — +10% Divinity/s per point (0 → ×1.0, 10 → ×2.0)
+  //   aggression  — +10% Void Shards per point (0 → 0, 10 → ×1.0)
+  //   curiosity   — +1% peak production growth per point per minute
+  //   faith       — +10% Faith from worlds per point (0 → 0, 10 → ×1.0)
   evolutionSliders: {
-    speed: number;       // 0.1 to 10.0 — multiplies world Divinity/s (higher = more Div/s but faster burnout in Crucible)
-    aggression: number;  // 0 to 100 — higher = more Void Shards but worlds collapse more often
-    curiosity: number;   // 0 to 100 — higher = peak production rate grows faster
-    faith: number;       // 0 to 100 — higher = more Faith generation from worlds
+    speed: number;
+    aggression: number;
+    curiosity: number;
+    faith: number;
   };
   eternalFlameInvested: number;
   worldsForged: number;
