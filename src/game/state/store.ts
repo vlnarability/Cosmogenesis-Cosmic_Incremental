@@ -871,7 +871,7 @@ export const useGameStore = create<GameStore>()(
           hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
-          galaxySummary.productionMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
+          galaxySummary.divinityMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
           horizontalTransferBonus;       // FIX-ARCHETYPE-LOCKED — +5% prod per system
         const layerCapBonus =
           constB.capMult +
@@ -879,14 +879,14 @@ export const useGameStore = create<GameStore>()(
           dLaw.capMult +
           hybrids.capMult + allianceB.capMult +
           fragmentB.capMult +
-          galaxySummary.capMult;  // L4 Galaxy Claim capacity bonuses
+          0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult + ritualPop + wPop +
           dLaw.popGrowthMult +
           hybrids.popGrowthMult + allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
-          galaxySummary.productionMult;  // L4 Galaxy Claim pop-growth bonuses
+          galaxySummary.divinityMult;  // L4 Galaxy Claim pop-growth bonuses
 
         // QUICK WIN 2 — Active abilities: Surge (×3 prod) + Overclock (×2 layer bonuses)
         const surgeActive = (s.activeAbilityEffects?.surge || 0) > 0;

@@ -22,11 +22,11 @@ export type StageId =
 export type TabId =
   | "actions" | "systems" | "production" | "tech" | "story"
   | "codex" | "achievements" | "archive" | "log" | "shop" | "prestige"
-  // LAYER-AS-TAB — 10 prestige-layer inline tabs (each renders a layer's
-  // content inline in GameShell instead of opening a modal). The tab id
-  // maps to its layer id via `LAYER_TO_TAB` in store.ts.
+  // LAYER-AS-TAB — 10 prestige-layer inline tabs
   | "trials" | "constellations" | "market" | "galaxy" | "conquest"
-  | "universe" | "lab" | "diplomacy" | "war" | "genesis_engine";
+  | "universe" | "lab" | "diplomacy" | "war" | "genesis_engine"
+  // DIVINE-ENGINE-TAB — the god's control panel for reality
+  | "divine_engine";
 
 export interface ResourceDef {
   id: ResourceId;

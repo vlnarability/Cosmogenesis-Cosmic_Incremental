@@ -15,7 +15,7 @@
 // unlocks Layer 5 (Apotheosis).
 // ===========================================================================
 
-export type GalaxyBonusType = "production" | "capacity" | "divinity";
+export type GalaxyBonusType = "divinity" | "cost";
 
 export interface GalaxyBonus {
   type: GalaxyBonusType;
@@ -73,9 +73,8 @@ function mulberry32(seed: number): () => number {
 
 // ----- Bonus value pools -----
 const BONUS_VALUES: Record<GalaxyBonusType, number[]> = {
-  production: [0.05, 0.10, 0.15, 0.20],
-  capacity:   [0.05, 0.10, 0.15],
-  divinity:   [0.10, 0.25, 0.50],
+  divinity: [0.05, 0.10, 0.15, 0.20, 0.25, 0.50],
+  cost:     [-0.05, -0.10, -0.15],
 };
 
 // ----- Proximity threshold for adjacency synergy (in normalized 0-100 space) -----
@@ -112,12 +111,11 @@ function buildGalaxySystems(): GalaxySystem[] {
 
   for (let i = 0; i < positions.length; i++) {
     const pos = positions[i];
-    // Bonus type: production 45% / capacity 30% / divinity 25%
+    // Bonus type: divinity 75% / cost reduction 25%
     const typeRoll = rng();
     let type: GalaxyBonusType;
-    if (typeRoll < 0.45) type = "production";
-    else if (typeRoll < 0.75) type = "capacity";
-    else type = "divinity";
+    if (typeRoll < 0.75) type = "divinity";
+    else type = "cost";
     const values = BONUS_VALUES[type];
     const value = values[Math.floor(rng() * values.length)];
     // Void Shards: ~1 in 5 systems has them
@@ -159,9 +157,8 @@ export function getGalaxySystemNeighbors(systemId: string): GalaxySystem[] {
 // ----- Bonus aggregation helpers (used by the tick) -----
 
 export interface GalaxyBonusSummary {
-  productionMult: number;
-  capMult: number;
   divinityMult: number;
+  costMult: number;
   /** Number of claimed systems (for display + unlock check). */
   claimedCount: number;
   /** Number of systems that earned the +50% proximity synergy. */
@@ -182,9 +179,8 @@ export function summarizeGalaxyBonuses(
     galaxySystems.filter((s) => s.claimed).map((s) => s.id)
   );
   const summary: GalaxyBonusSummary = {
-    productionMult: 0,
-    capMult: 0,
     divinityMult: 0,
+    costMult: 0,
     claimedCount: claimedSet.size,
     synergyCount: 0,
     voidShardsCount: 0,
@@ -198,9 +194,8 @@ export function summarizeGalaxyBonuses(
     if (synergy > 1) summary.synergyCount += 1;
     const v = sys.bonus.value * synergy;
     switch (sys.bonus.type) {
-      case "production": summary.productionMult += v; break;
-      case "capacity":   summary.capMult += v; break;
       case "divinity":   summary.divinityMult += v; break;
+      case "cost":       summary.costMult = (summary.costMult || 0) + v; break;
     }
     if (sys.hasVoidShards) summary.voidShardsCount += 1;
   }

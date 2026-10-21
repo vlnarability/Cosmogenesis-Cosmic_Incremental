@@ -9,6 +9,7 @@ import { THEME_MAP } from "@/game/data/themes";
 import { Header } from "./Header";
 import { StagePanel } from "./StagePanel";
 import { DivineEnginePanel } from "./DivineEnginePanel";
+import { DivineEngineFullTab } from "./DivineEngineFullTab";
 import { ResourceBar } from "./ResourceBar";
 import { TabNav } from "./TabNav";
 import { ActionsTab } from "../tabs/ActionsTab";
@@ -256,6 +257,11 @@ export function GameShell() {
               {currentTab === "archive" && <ArchiveTab />}
               {currentTab === "prestige" && <PrestigeTab />}
               {currentTab === "log" && <LogTab />}
+
+              {/* DIVINE-ENGINE-TAB — the god's full control panel.
+                  Shows the DivineEnginePanel + world tier visualization
+                  as a full-tab experience (not just a sidebar). */}
+              {currentTab === "divine_engine" && <DivineEngineFullTab />}
 
               {/* LAYER-AS-TAB — the 10 prestige-layer content components
                   render INLINE here, in the same panel as the other tabs,

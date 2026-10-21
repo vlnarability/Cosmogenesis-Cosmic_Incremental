@@ -153,7 +153,7 @@ export function OmnipotenceContent() {
             {/* Stances */}
             <section>
               <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">Stance (trade instability vs. bonus)</div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                 {OMNIPOTENCE_STANCES.map((s) => {
                   const active = activeStance === s.id;
                   return (

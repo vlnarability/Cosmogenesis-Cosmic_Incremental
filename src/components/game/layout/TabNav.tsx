@@ -21,6 +21,7 @@ import {
   Church,
   Infinity as InfinityIcon,
   Star,
+  Globe,
 } from "lucide-react";
 
 // ============================================================
@@ -141,8 +142,21 @@ export function TabNav() {
             ))}
           </div>
 
-          {/* Row 2 — Story + Shop (right-aligned) */}
+          {/* Row 2 — Divine Engine + Story + Shop (right-aligned) */}
           <div className="flex items-center justify-end gap-1 overflow-x-auto no-scrollbar">
+            {/* Divine Engine tab — visible at L2+ */}
+            {isL2Plus && (
+              <button
+                onClick={() => setTab("divine_engine")}
+                className={cn("tab-btn shrink-0", currentTab === "divine_engine" && "active")}
+                style={{ color: "rgb(196 181 253)" }}
+                title="Enter the Divine Engine"
+              >
+                <Globe className="w-4 h-4" />
+                <span>Divine Engine</span>
+              </button>
+            )}
+
             {visibleReferenceTabs.map((tab) => (
               <button
                 key={tab.id}

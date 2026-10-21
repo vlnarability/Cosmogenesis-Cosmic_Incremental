@@ -347,7 +347,7 @@ export function EternityContent() {
               </div>
               <div className="stat-card p-2">
                 {/* Crucible slots */}
-                <div className="grid grid-cols-5 gap-1 mb-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 mb-2">
                   {[0, 1, 2, 3, 4].map((slotIdx) => {
                     const relic = crucibleRelics[slotIdx];
                     return (

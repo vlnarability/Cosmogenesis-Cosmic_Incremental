@@ -172,7 +172,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aries_beta", "aries_gamma"],
       ["aries_gamma", "aries_delta"],
     ],
-    bonus: { productionMult: 0.07 },
+    bonus: { divinityMult: 0.07 },
   },
   {
     id: "taurus",
@@ -197,7 +197,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["taurus_zeta", "taurus_eta"],
       ["taurus_eta", "taurus_delta"],
     ],
-    bonus: { productionMult: 0.06, capMult: 0.03 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "gemini",
@@ -222,7 +222,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["gemini_zeta", "gemini_eta"],
       ["gemini_eta", "gemini_theta"],
     ],
-    bonus: { productionMult: 0.05, divinityMult: 0.04 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "cancer",
@@ -242,7 +242,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cancer_gamma", "cancer_delta"],
       ["cancer_alpha", "cancer_eps"],
     ],
-    bonus: { capMult: 0.05, productionMult: 0.02 },
+    bonus: { divinityMult: 0.07 },
   },
   {
     id: "leo",
@@ -267,7 +267,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["leo_zeta", "leo_beta"],
       ["leo_beta", "leo_eta"],
     ],
-    bonus: { productionMult: 0.06, divinityMult: 0.03 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "virgo",
@@ -291,7 +291,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["virgo_alpha", "virgo_zeta"],
       ["virgo_zeta", "virgo_eta"],
     ],
-    bonus: { productionMult: 0.05, capMult: 0.04 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "libra",
@@ -338,7 +338,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["scorpius_zeta", "scorpius_eta"],
       ["scorpius_eta", "scorpius_theta"],
     ],
-    bonus: { productionMult: 0.11000000000000001 },
+    bonus: { divinityMult: 0.11000000000000001 },
   },
   {
     id: "sagittarius",
@@ -365,7 +365,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["sag_eps", "sag_beta"],
       ["sag_beta", "sag_theta"],
     ],
-    bonus: { productionMult: 0.05, divinityMult: 0.10 },
+    bonus: { divinityMult: 0.15000000000000002 },
   },
   {
     id: "capricornus",
@@ -387,7 +387,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cap_gamma", "cap_eps"],
       ["cap_delta", "cap_zeta"],
     ],
-    bonus: { capMult: 0.06, divinityMult: 0.03 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "aquarius",
@@ -411,7 +411,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aqua_alpha", "aqua_zeta"],
       ["aqua_zeta", "aqua_eta"],
     ],
-    bonus: { productionMult: 0.04, capMult: 0.04 },
+    bonus: { divinityMult: 0.08 },
   },
   {
     id: "pisces",
@@ -435,7 +435,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["pis_zeta", "pis_eps"],
       ["pis_zeta", "pis_eta"],
     ],
-    bonus: { productionMult: 0.08 },
+    bonus: { divinityMult: 0.08 },
   },
 
   // ===== NORTHERN (8) =====
@@ -462,7 +462,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["um_zeta", "um_eta"],
       ["um_delta", "um_alpha"],
     ],
-    bonus: { productionMult: 0.06, divinityMult: 0.05 },
+    bonus: { divinityMult: 0.11 },
   },
   {
     id: "ursa_minor",
@@ -486,7 +486,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["umi_beta", "umi_zeta"],
       ["umi_zeta", "umi_eta"],
     ],
-    bonus: { capMult: 0.05, divinityMult: 0.04 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "cassiopeia",
@@ -506,7 +506,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cas_gamma", "cas_delta"],
       ["cas_delta", "cas_eps"],
     ],
-    bonus: { productionMult: 0.04, divinityMult: 0.06 },
+    bonus: { divinityMult: 0.1 },
   },
   {
     id: "cygnus",
@@ -528,7 +528,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cyg_zeta", "cyg_eps"],
       ["cyg_alpha", "cyg_gamma"],
     ],
-    bonus: { productionMult: 0.09 },
+    bonus: { divinityMult: 0.09 },
   },
   {
     id: "lyra",
@@ -550,7 +550,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lyr_eps", "lyr_delta"],
       ["lyr_delta", "lyr_alpha"],
     ],
-    bonus: { productionMult: 0.04, divinityMult: 0.11 },
+    bonus: { divinityMult: 0.15 },
   },
   {
     id: "draco",
@@ -576,7 +576,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["dra_zeta", "dra_eta"],
       ["dra_eta", "dra_theta"],
     ],
-    bonus: { capMult: 0.04, costMult: -0.03, divinityMult: 0.05 },
+    bonus: { costMult: -0.03, divinityMult: 0.09 },
   },
   {
     id: "pegasus",
@@ -599,7 +599,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["peg_alpha", "peg_eps"],
       ["peg_beta", "peg_zeta"],
     ],
-    bonus: { productionMult: 0.05, capMult: 0.05 },
+    bonus: { divinityMult: 0.1 },
   },
   {
     id: "andromeda",
@@ -621,7 +621,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["and_beta", "and_eps"],
       ["and_eps", "and_zeta"],
     ],
-    bonus: { productionMult: 0.05, divinityMult: 0.09 },
+    bonus: { divinityMult: 0.14 },
   },
 
   // ===== EQUATORIAL (4) =====
@@ -652,7 +652,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["ori_theta", "ori_iota"],
       ["ori_iota", "ori_delta"],
     ],
-    bonus: { productionMult: 0.13 },
+    bonus: { divinityMult: 0.13 },
   },
   {
     id: "perseus",
@@ -675,7 +675,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["per_gamma", "per_delta"],
       ["per_delta", "per_beta"],
     ],
-    bonus: { productionMult: 0.05, divinityMult: 0.05 },
+    bonus: { divinityMult: 0.1 },
   },
   {
     id: "hercules",
@@ -702,7 +702,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["her_delta", "her_eta"],
       ["her_gamma", "her_theta"],
     ],
-    bonus: { productionMult: 0.11, capMult: 0.03 },
+    bonus: { divinityMult: 0.14 },
   },
   {
     id: "aquila",
@@ -722,7 +722,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aql_alpha", "aql_delta"],
       ["aql_alpha", "aql_eps"],
     ],
-    bonus: { productionMult: 0.05, divinityMult: 0.04 },
+    bonus: { divinityMult: 0.09 },
   },
 
   // ===== SOUTHERN (4) =====
@@ -741,7 +741,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["crux_alpha", "crux_delta"],
       ["crux_beta", "crux_gamma"],
     ],
-    bonus: { productionMult: 0.06, divinityMult: 0.08 },
+    bonus: { divinityMult: 0.14 },
   },
   {
     id: "centaurus",
@@ -763,7 +763,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cen_beta", "cen_zeta"],
       ["cen_delta", "cen_gamma"],
     ],
-    bonus: { productionMult: 0.06, capMult: 0.04 },
+    bonus: { divinityMult: 0.1 },
   },
   {
     id: "carina",
@@ -783,7 +783,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["car_beta", "car_delta"],
       ["car_gamma", "car_eps"],
     ],
-    bonus: { productionMult: 0.05, capMult: 0.05 },
+    bonus: { divinityMult: 0.1 },
   },
   {
     id: "bootes",
@@ -803,7 +803,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["boo_beta", "boo_eps"],
       ["boo_beta", "boo_delta"],
     ],
-    bonus: { productionMult: 0.1 },
+    bonus: { divinityMult: 0.1 },
   },
 
   // ===== ADDITIONAL NORTHERN (15) =====
@@ -831,7 +831,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cep_eps", "cep_zeta"],
       ["cep_zeta", "cep_delta"],
     ],
-    bonus: { capMult: 0.03, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "corona_borealis",
@@ -853,7 +853,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["crb_alpha", "crb_gamma"],
       ["crb_gamma", "crb_eps"],
     ],
-    bonus: { productionMult: 0.02, divinityMult: 0.02 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "canes_venatici",
@@ -871,7 +871,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cvn_alpha", "cvn_gamma"],
       ["cvn_gamma", "cvn_delta"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "delphinus",
@@ -892,7 +892,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["del_delta", "del_alpha"],
       ["del_gamma", "del_eps"],
     ],
-    bonus: { productionMult: 0.02, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.03 },
   },
   {
     id: "sagitta",
@@ -910,7 +910,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["sge_beta", "sge_alpha"],
       ["sge_alpha", "sge_delta"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "vulpecula",
@@ -930,7 +930,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["vul_gamma", "vul_delta"],
       ["vul_alpha", "vul_eps"],
     ],
-    bonus: { productionMult: 0.01, capMult: 0.01 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "equuleus",
@@ -948,7 +948,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["equ_beta", "equ_gamma"],
       ["equ_alpha", "equ_delta"],
     ],
-    bonus: { productionMult: 0.01 },
+    bonus: { divinityMult: 0.01 },
   },
   {
     id: "lacerta",
@@ -968,7 +968,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lac_alpha", "lac_gamma"],
       ["lac_alpha", "lac_eps"],
     ],
-    bonus: { productionMult: 0.01 },
+    bonus: { divinityMult: 0.01 },
   },
   {
     id: "auriga",
@@ -991,7 +991,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aur_gamma", "aur_alpha"],
       ["aur_beta", "aur_zeta"],
     ],
-    bonus: { productionMult: 0.03, capMult: 0.01 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "lynx",
@@ -1015,7 +1015,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lyn_eps", "lyn_zeta"],
       ["lyn_zeta", "lyn_eta"],
     ],
-    bonus: { productionMult: 0.02, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.03 },
   },
   {
     id: "leo_minor",
@@ -1033,7 +1033,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lm_alpha", "lm_gamma"],
       ["lm_gamma", "lm_delta"],
     ],
-    bonus: { productionMult: 0.01 },
+    bonus: { divinityMult: 0.01 },
   },
   {
     id: "coma_berenices",
@@ -1053,7 +1053,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["com_alpha", "com_delta"],
       ["com_alpha", "com_eps"],
     ],
-    bonus: { productionMult: 0.01, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "camelopardalis",
@@ -1073,7 +1073,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cam_beta", "cam_delta"],
       ["cam_alpha", "cam_eps"],
     ],
-    bonus: { capMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "scutum",
@@ -1091,7 +1091,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["sct_beta", "sct_alpha"],
       ["sct_alpha", "sct_delta"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "canis_minor",
@@ -1107,7 +1107,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cma_beta", "cma_alpha"],
       ["cma_alpha", "cma_gamma"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
 
   // ===== ADDITIONAL EQUATORIAL (18) =====
@@ -1151,7 +1151,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["hya_iota", "hya_kappa"],
       ["hya_kappa", "hya_lambda"],
     ],
-    bonus: { productionMult: 0.07, capMult: 0.07 },
+    bonus: { divinityMult: 0.14 },
   },
   {
     id: "eridanus",
@@ -1185,7 +1185,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["eri_kappa", "eri_lambda"],
       ["eri_lambda", "eri_mu"],
     ],
-    bonus: { productionMult: 0.05, capMult: 0.03 },
+    bonus: { divinityMult: 0.08 },
   },
   {
     id: "cetus",
@@ -1212,7 +1212,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cet_eta", "cet_theta"],
       ["cet_theta", "cet_beta"],
     ],
-    bonus: { capMult: 0.04, costMult: -0.01 },
+    bonus: { costMult: -0.01, divinityMult: 0.04 },
   },
   {
     id: "ophiuchus",
@@ -1239,7 +1239,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["oph_gamma", "oph_eta"],
       ["oph_beta", "oph_theta"],
     ],
-    bonus: { productionMult: 0.04, capMult: 0.04 },
+    bonus: { divinityMult: 0.08 },
   },
   {
     id: "serpens",
@@ -1269,7 +1269,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["ser_theta", "ser_iota"],
       ["ser_delta", "ser_kappa"],
     ],
-    bonus: { productionMult: 0.04, capMult: 0.03 },
+    bonus: { divinityMult: 0.07 },
   },
   {
     id: "canis_major",
@@ -1293,7 +1293,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cma2_alpha", "cma2_zeta"],
       ["cma2_eps", "cma2_eta"],
     ],
-    bonus: { productionMult: 0.03, divinityMult: 0.03 },
+    bonus: { divinityMult: 0.06 },
   },
   {
     id: "monoceros",
@@ -1313,7 +1313,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["mon_alpha", "mon_eps"],
       ["mon_delta", "mon_beta"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "lepus",
@@ -1333,7 +1333,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lep_beta", "lep_delta"],
       ["lep_alpha", "lep_eps"],
     ],
-    bonus: { capMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "corvus",
@@ -1354,7 +1354,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["crv_delta", "crv_beta"],
       ["crv_beta", "crv_alpha"],
     ],
-    bonus: { capMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "crater",
@@ -1375,7 +1375,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["crt_eps", "crt_delta"],
       ["crt_delta", "crt_beta"],
     ],
-    bonus: { capMult: 0.02, costMult: -0.01 },
+    bonus: { costMult: -0.01, divinityMult: 0.02 },
   },
   {
     id: "sextans",
@@ -1413,7 +1413,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["pyx_alpha", "pyx_gamma"],
       ["pyx_gamma", "pyx_delta"],
     ],
-    bonus: { capMult: 0.01 },
+    bonus: { divinityMult: 0.01 },
   },
   {
     id: "puppis",
@@ -1437,7 +1437,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["pup_gamma", "pup_eps"],
       ["pup_gamma", "pup_eta"],
     ],
-    bonus: { productionMult: 0.04 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "vela",
@@ -1463,7 +1463,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["vel_eps", "vel_eta"],
       ["vel_gamma", "vel_theta"],
     ],
-    bonus: { capMult: 0.05, divinityMult: 0.02 },
+    bonus: { divinityMult: 0.07 },
   },
   {
     id: "fornax",
@@ -1501,7 +1501,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["psa_gamma", "psa_delta"],
       ["psa_alpha", "psa_eps"],
     ],
-    bonus: { capMult: 0.03 },
+    bonus: { divinityMult: 0.03 },
   },
   {
     id: "triangulum",
@@ -1518,7 +1518,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["tri_beta", "tri_gamma"],
       ["tri_gamma", "tri_alpha"],
     ],
-    bonus: { productionMult: 0.02, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.03 },
   },
   {
     id: "antlia",
@@ -1534,7 +1534,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["ant_beta", "ant_alpha"],
       ["ant_alpha", "ant_gamma"],
     ],
-    bonus: { productionMult: 0.02 },
+    bonus: { divinityMult: 0.02 },
   },
 
   // ===== ADDITIONAL SOUTHERN (27) =====
@@ -1646,7 +1646,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lup_gamma", "lup_zeta"],
       ["lup_beta", "lup_delta"],
     ],
-    bonus: { productionMult: 0.03, capMult: 0.01 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "ara",
@@ -1666,7 +1666,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["ara_gamma", "ara_delta"],
       ["ara_alpha", "ara_eps"],
     ],
-    bonus: { capMult: 0.02, divinityMult: 0.02 },
+    bonus: { divinityMult: 0.04 },
   },
   {
     id: "dorado",
@@ -1801,7 +1801,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["hor_gamma", "hor_delta"],
       ["hor_beta", "hor_eps"],
     ],
-    bonus: { capMult: 0.01, costMult: -0.01 },
+    bonus: { costMult: -0.01, divinityMult: 0.01 },
   },
   {
     id: "sculptor",
@@ -1880,7 +1880,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["nor_gamma", "nor_delta"],
       ["nor_alpha", "nor_eps"],
     ],
-    bonus: { capMult: 0.01, costMult: -0.01 },
+    bonus: { costMult: -0.01, divinityMult: 0.01 },
   },
   {
     id: "circinus",
@@ -2048,7 +2048,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cra_alpha", "cra_gamma"],
       ["cra_gamma", "cra_eps"],
     ],
-    bonus: { capMult: 0.01, divinityMult: 0.01 },
+    bonus: { divinityMult: 0.02 },
   },
   {
     id: "hydrus",
@@ -2157,10 +2157,11 @@ export function starCost(
 // ---------------------------------------------------------------------------
 
 export interface ConstellationAggregateBonus {
-  productionMult: number;
-  capMult: number;
-  epMult: number;
-  popGrowthMult: number;
+  // SIMPLIFIED: only divinity + cost remain. Everything else folded into divinity.
+  productionMult: number; // kept at 0 — folded into divinityMult
+  capMult: number; // kept at 0 — folded into divinityMult
+  epMult: number; // kept at 0 — folded into divinityMult
+  popGrowthMult: number; // kept at 0 — folded into divinityMult
   costMult: number;
   divinityMult: number;
 }
@@ -2190,9 +2191,8 @@ export function constellationBonus(state: ConstellationState): ConstellationAggr
   // POP-MERGER: popGrowthMult bonuses folded into productionMult.
   for (const c of CONSTELLATIONS) {
     if (!state.constellationsCompleted?.[c.id]) continue;
-    out.productionMult += (c.bonus.productionMult || 0) + (c.bonus.popGrowthMult || 0);
-    out.capMult += c.bonus.capMult || 0;
-    out.divinityMult += (c.bonus.divinityMult || 0) + (c.bonus.epMult || 0);
+    // SIMPLIFY: production + capacity + EP all folded into divinityMult
+    out.divinityMult += (c.bonus.divinityMult || 0) + (c.bonus.epMult || 0) + (c.bonus.productionMult || 0) + (c.bonus.capMult || 0) + (c.bonus.popGrowthMult || 0);
     out.costMult += c.bonus.costMult || 0;
   }
   return out;
