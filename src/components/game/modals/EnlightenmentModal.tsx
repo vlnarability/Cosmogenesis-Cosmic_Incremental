@@ -211,12 +211,14 @@ function starDesignation(starId: string, constellationName: string): string {
 // Format the constellation's completion bonus as a list of pill badges.
 function bonusSummary(bonus: ConstellationDef["bonus"]): { label: string; value: string; cls: string }[] {
   const out: { label: string; value: string; cls: string }[] = [];
-  if (bonus.productionMult) out.push({ label: "Production", value: `+${(bonus.productionMult * 100).toFixed(1)}%`, cls: "text-cyan-300 border-cyan-400/40" });
+  // EP-MERGER: fold epMult into productionMult display (EP is gone, merged with Divinity)
+  // POP-MERGER: fold popGrowthMult into productionMult display (pop is irrelevant at L2+)
+  const effectiveProduction = (bonus.productionMult || 0) + (bonus.popGrowthMult || 0);
+  const effectiveDivinity = (bonus.divinityMult || 0) + (bonus.epMult || 0);
+  if (effectiveProduction) out.push({ label: "Production", value: `+${(effectiveProduction * 100).toFixed(1)}%`, cls: "text-cyan-300 border-cyan-400/40" });
   if (bonus.capMult) out.push({ label: "Capacity", value: `+${(bonus.capMult * 100).toFixed(1)}%`, cls: "text-amber-300 border-amber-400/40" });
-  if (bonus.epMult) out.push({ label: "EP", value: `+${(bonus.epMult * 100).toFixed(1)}%`, cls: "text-emerald-300 border-emerald-400/40" });
-  if (bonus.popGrowthMult) out.push({ label: "Pop growth", value: `+${(bonus.popGrowthMult * 100).toFixed(1)}%`, cls: "text-violet-300 border-violet-400/40" });
   if (bonus.costMult) out.push({ label: "Cost", value: `${(bonus.costMult * 100).toFixed(1)}%`, cls: "text-pink-300 border-pink-400/40" });
-  if (bonus.divinityMult) out.push({ label: "Divinity", value: `+${(bonus.divinityMult * 100).toFixed(0)}%`, cls: "text-yellow-300 border-yellow-400/40" });
+  if (effectiveDivinity) out.push({ label: "Divinity", value: `+${(effectiveDivinity * 100).toFixed(0)}%`, cls: "text-yellow-300 border-yellow-400/40" });
   return out;
 }
 
@@ -1204,8 +1206,7 @@ export function EnlightenmentContent() {
               <div className="mt-2 flex flex-wrap gap-1">
                 <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(cb.productionMult * 100).toFixed(1)}% prod</Badge>
                 <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(cb.capMult * 100).toFixed(1)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(cb.epMult * 100).toFixed(1)}% EP</Badge>
-                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(cb.popGrowthMult * 100).toFixed(1)}% pop</Badge>
+                {/* EP + pop badges removed — EP merged with Divinity, pop is irrelevant at L2+ */}
                 {cb.costMult < 0 && (
                   <Badge variant="outline" className="text-pink-300 border-pink-400/40">{(cb.costMult * 100).toFixed(1)}% cost</Badge>
                 )}
@@ -1322,7 +1323,7 @@ export function EnlightenmentContent() {
                     ))}
                   </div>
                   <div className="text-[0.6rem] text-amber-300/80 mt-1">
-                    Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.epMult * 100).toFixed(0)}% EP, +{(rb.popGrowthMult * 100).toFixed(0)}% pop
+                    Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.divinityMult * 100).toFixed(0)}% Divinity
                   </div>
                 </details>
               </div>

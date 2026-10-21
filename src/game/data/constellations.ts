@@ -33,17 +33,17 @@ export interface ConstellationStar {
 }
 
 export interface ConstellationBonus {
-  /** Additive production multiplier (0.05 = +5%). */
+  /** Additive production multiplier (0.05 = +5%). Boosts resource output → feeds peakProductionRate → more Divinity/s. */
   productionMult?: number;
-  /** Additive capacity multiplier. */
+  /** Additive capacity multiplier. Higher caps = more resource headroom → higher peak production. */
   capMult?: number;
-  /** Additive EP multiplier (applied at prestige). */
+  /** @deprecated EP is gone (merged with Divinity). Folded into divinityMult. Kept for save-compat. */
   epMult?: number;
-  /** Additive population growth multiplier. */
+  /** @deprecated Population growth doesn't matter at L2+ (base game is backgrounded). Folded into productionMult. Kept for save-compat. */
   popGrowthMult?: number;
   /** Cost reduction (negative = cheaper systems/techs). */
   costMult?: number;
-  /** Bonus Divinity earned on prestige. */
+  /** Bonus Divinity multiplier (additive). Directly boosts Divinity generation from background worlds. */
   divinityMult?: number;
 }
 
@@ -172,7 +172,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aries_beta", "aries_gamma"],
       ["aries_gamma", "aries_delta"],
     ],
-    bonus: { productionMult: 0.04, popGrowthMult: 0.03 },
+    bonus: { productionMult: 0.07 },
   },
   {
     id: "taurus",
@@ -222,7 +222,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["gemini_zeta", "gemini_eta"],
       ["gemini_eta", "gemini_theta"],
     ],
-    bonus: { productionMult: 0.05, epMult: 0.04 },
+    bonus: { productionMult: 0.05, divinityMult: 0.04 },
   },
   {
     id: "cancer",
@@ -242,7 +242,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cancer_gamma", "cancer_delta"],
       ["cancer_alpha", "cancer_eps"],
     ],
-    bonus: { capMult: 0.05, popGrowthMult: 0.02 },
+    bonus: { capMult: 0.05, productionMult: 0.02 },
   },
   {
     id: "leo",
@@ -267,7 +267,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["leo_zeta", "leo_beta"],
       ["leo_beta", "leo_eta"],
     ],
-    bonus: { productionMult: 0.06, epMult: 0.03 },
+    bonus: { productionMult: 0.06, divinityMult: 0.03 },
   },
   {
     id: "virgo",
@@ -338,7 +338,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["scorpius_zeta", "scorpius_eta"],
       ["scorpius_eta", "scorpius_theta"],
     ],
-    bonus: { productionMult: 0.07, popGrowthMult: 0.04 },
+    bonus: { productionMult: 0.11000000000000001 },
   },
   {
     id: "sagittarius",
@@ -387,7 +387,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cap_gamma", "cap_eps"],
       ["cap_delta", "cap_zeta"],
     ],
-    bonus: { capMult: 0.06, epMult: 0.03 },
+    bonus: { capMult: 0.06, divinityMult: 0.03 },
   },
   {
     id: "aquarius",
@@ -435,7 +435,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["pis_zeta", "pis_eps"],
       ["pis_zeta", "pis_eta"],
     ],
-    bonus: { productionMult: 0.05, popGrowthMult: 0.03 },
+    bonus: { productionMult: 0.08 },
   },
 
   // ===== NORTHERN (8) =====
@@ -462,7 +462,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["um_zeta", "um_eta"],
       ["um_delta", "um_alpha"],
     ],
-    bonus: { productionMult: 0.06, epMult: 0.05 },
+    bonus: { productionMult: 0.06, divinityMult: 0.05 },
   },
   {
     id: "ursa_minor",
@@ -486,7 +486,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["umi_beta", "umi_zeta"],
       ["umi_zeta", "umi_eta"],
     ],
-    bonus: { capMult: 0.05, epMult: 0.04 },
+    bonus: { capMult: 0.05, divinityMult: 0.04 },
   },
   {
     id: "cassiopeia",
@@ -506,7 +506,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cas_gamma", "cas_delta"],
       ["cas_delta", "cas_eps"],
     ],
-    bonus: { productionMult: 0.04, epMult: 0.06 },
+    bonus: { productionMult: 0.04, divinityMult: 0.06 },
   },
   {
     id: "cygnus",
@@ -528,7 +528,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cyg_zeta", "cyg_eps"],
       ["cyg_alpha", "cyg_gamma"],
     ],
-    bonus: { productionMult: 0.05, popGrowthMult: 0.04 },
+    bonus: { productionMult: 0.09 },
   },
   {
     id: "lyra",
@@ -550,7 +550,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lyr_eps", "lyr_delta"],
       ["lyr_delta", "lyr_alpha"],
     ],
-    bonus: { productionMult: 0.04, epMult: 0.06, divinityMult: 0.05 },
+    bonus: { productionMult: 0.04, divinityMult: 0.11 },
   },
   {
     id: "draco",
@@ -576,7 +576,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["dra_zeta", "dra_eta"],
       ["dra_eta", "dra_theta"],
     ],
-    bonus: { capMult: 0.04, epMult: 0.05, costMult: -0.03 },
+    bonus: { capMult: 0.04, costMult: -0.03, divinityMult: 0.05 },
   },
   {
     id: "pegasus",
@@ -621,7 +621,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["and_beta", "and_eps"],
       ["and_eps", "and_zeta"],
     ],
-    bonus: { productionMult: 0.05, epMult: 0.04, divinityMult: 0.05 },
+    bonus: { productionMult: 0.05, divinityMult: 0.09 },
   },
 
   // ===== EQUATORIAL (4) =====
@@ -652,7 +652,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["ori_theta", "ori_iota"],
       ["ori_iota", "ori_delta"],
     ],
-    bonus: { productionMult: 0.08, popGrowthMult: 0.05 },
+    bonus: { productionMult: 0.13 },
   },
   {
     id: "perseus",
@@ -675,7 +675,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["per_gamma", "per_delta"],
       ["per_delta", "per_beta"],
     ],
-    bonus: { productionMult: 0.05, epMult: 0.05 },
+    bonus: { productionMult: 0.05, divinityMult: 0.05 },
   },
   {
     id: "hercules",
@@ -702,7 +702,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["her_delta", "her_eta"],
       ["her_gamma", "her_theta"],
     ],
-    bonus: { productionMult: 0.06, popGrowthMult: 0.05, capMult: 0.03 },
+    bonus: { productionMult: 0.11, capMult: 0.03 },
   },
   {
     id: "aquila",
@@ -722,7 +722,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["aql_alpha", "aql_delta"],
       ["aql_alpha", "aql_eps"],
     ],
-    bonus: { productionMult: 0.05, epMult: 0.04 },
+    bonus: { productionMult: 0.05, divinityMult: 0.04 },
   },
 
   // ===== SOUTHERN (4) =====
@@ -803,7 +803,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["boo_beta", "boo_eps"],
       ["boo_beta", "boo_delta"],
     ],
-    bonus: { productionMult: 0.05, popGrowthMult: 0.05 },
+    bonus: { productionMult: 0.1 },
   },
 
   // ===== ADDITIONAL NORTHERN (15) =====
@@ -831,7 +831,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["cep_eps", "cep_zeta"],
       ["cep_zeta", "cep_delta"],
     ],
-    bonus: { capMult: 0.03, epMult: 0.01 },
+    bonus: { capMult: 0.03, divinityMult: 0.01 },
   },
   {
     id: "corona_borealis",
@@ -892,7 +892,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["del_delta", "del_alpha"],
       ["del_gamma", "del_eps"],
     ],
-    bonus: { productionMult: 0.02, epMult: 0.01 },
+    bonus: { productionMult: 0.02, divinityMult: 0.01 },
   },
   {
     id: "sagitta",
@@ -1015,7 +1015,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["lyn_eps", "lyn_zeta"],
       ["lyn_zeta", "lyn_eta"],
     ],
-    bonus: { productionMult: 0.02, epMult: 0.01 },
+    bonus: { productionMult: 0.02, divinityMult: 0.01 },
   },
   {
     id: "leo_minor",
@@ -1053,7 +1053,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["com_alpha", "com_delta"],
       ["com_alpha", "com_eps"],
     ],
-    bonus: { productionMult: 0.01, epMult: 0.01 },
+    bonus: { productionMult: 0.01, divinityMult: 0.01 },
   },
   {
     id: "camelopardalis",
@@ -1518,7 +1518,7 @@ export const CONSTELLATIONS: ConstellationDef[] = [
       ["tri_beta", "tri_gamma"],
       ["tri_gamma", "tri_alpha"],
     ],
-    bonus: { productionMult: 0.02, epMult: 0.01 },
+    bonus: { productionMult: 0.02, divinityMult: 0.01 },
   },
   {
     id: "antlia",
@@ -2186,14 +2186,14 @@ export function constellationBonus(state: ConstellationState): ConstellationAggr
   const litStars = Object.values(state.constellationStars || {}).filter(Boolean).length;
   out.productionMult += litStars * PER_STAR_PRODUCTION_BONUS;
   // Per-completed-constellation bonus.
+  // EP-MERGER: epMult bonuses folded into divinityMult (EP is gone).
+  // POP-MERGER: popGrowthMult bonuses folded into productionMult.
   for (const c of CONSTELLATIONS) {
     if (!state.constellationsCompleted?.[c.id]) continue;
-    out.productionMult += c.bonus.productionMult || 0;
+    out.productionMult += (c.bonus.productionMult || 0) + (c.bonus.popGrowthMult || 0);
     out.capMult += c.bonus.capMult || 0;
-    out.epMult += c.bonus.epMult || 0;
-    out.popGrowthMult += c.bonus.popGrowthMult || 0;
+    out.divinityMult += (c.bonus.divinityMult || 0) + (c.bonus.epMult || 0);
     out.costMult += c.bonus.costMult || 0;
-    out.divinityMult += c.bonus.divinityMult || 0;
   }
   return out;
 }

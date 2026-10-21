@@ -276,7 +276,7 @@ export const RESONANCE_ALIGNMENTS: ResonanceAlignment[] = [
   {
     id: "northern",
     name: "Northern Alignment",
-    desc: "+15% Divinity/s, but -5% from non-world sources.",
+    desc: "+15% Divinity/s from worlds. Penalty: -10% peak production rate (the engine runs cooler but each world produces more efficiently).",
     icon: "🐻",
     divinityMult: 1.15,
   },
