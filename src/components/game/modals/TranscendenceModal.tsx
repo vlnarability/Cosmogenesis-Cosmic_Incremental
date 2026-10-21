@@ -6,7 +6,6 @@ import {
   CONVERGENCE_CATALYSTS,
   WORLD_TEMPLATES,
   GENESIS_SEEDS,
-  ASTRAL_CATEGORIES,
   eternalFlameMultiplier,
 } from "@/game/data/transcendence";
 import {
@@ -46,7 +45,6 @@ import {
   Hammer,
   Sparkles,
   TreePine,
-  Compass,
   TrendingUp,
   Coins,
   Layers,
@@ -90,7 +88,6 @@ export function TranscendenceContent() {
   const purchasedCatalysts = useGameStore((s) => s.purchasedCatalysts || {});
   const activeWorldTemplate = useGameStore((s) => s.activeWorldTemplate);
   const plantedSeeds = useGameStore((s) => s.plantedSeeds || {});
-  const alignedCategory = useGameStore((s) => s.alignedCategory);
 
   // DIVINE INVESTMENT MARKET — portfolios (kept as-is).
   const portfolioAllocations = useGameStore((s) => s.portfolioAllocations || {});
@@ -114,7 +111,6 @@ export function TranscendenceContent() {
   const purchaseCatalyst = useGameStore((s) => s.purchaseCatalyst);
   const setWorldTemplate = useGameStore((s) => s.setWorldTemplate);
   const plantGenesisSeed = useGameStore((s) => s.plantGenesisSeed);
-  const setAlignedCategory = useGameStore((s) => s.setAlignedCategory);
 
   const isUnlocked = !!unlockedLayers.transcendence;
 
@@ -639,54 +635,7 @@ export function TranscendenceContent() {
             </div>
           </section>
 
-          {/* ===== 8. ASTRAL RESONANCE ===== */}
-          <section className="stat-card">
-            <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
-              <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
-                <Compass className="w-3 h-3" /> Astral Resonance
-              </div>
-              <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
-                {alignedCategory ? ASTRAL_CATEGORIES.find((c) => c.id === alignedCategory)?.name : "unaligned"}
-              </Badge>
-            </div>
-            <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Align ALL worlds to a constellation category. Only one active at a time. Setting to null clears alignment.
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
-              {ASTRAL_CATEGORIES.map((c) => {
-                const isActive = alignedCategory === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setAlignedCategory(isActive ? null : c.id)}
-                    className={`stat-card text-left p-2 ${isActive ? "border-amber-400/60 bg-amber-500/10" : ""}`}
-                  >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-base">{c.icon}</span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[0.55rem] ${isActive ? "text-amber-300 border-amber-400/40" : "text-emerald-300 border-emerald-400/40"}`}
-                      >
-                        +{(c.divinityMult * 100 - 100).toFixed(0)}%
-                      </Badge>
-                    </div>
-                    <div className="text-[0.65rem] font-medium">{c.name}</div>
-                    <div className="text-[0.55rem] text-muted-foreground leading-snug">{c.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-            {alignedCategory && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setAlignedCategory(null)}
-                className="h-7 mt-2 text-[0.65rem]"
-              >
-                Clear alignment
-              </Button>
-            )}
-          </section>
+          {/* ===== ASTRAL RESONANCE REMOVED — system was not clear enough per user feedback ===== */}
 
           {/* ===== 9. INVESTMENT PORTFOLIOS (kept as-is) ===== */}
           <section className="stat-card">

@@ -683,7 +683,6 @@ export interface GameState {
   //   — 4 genesis seeds (sprout/sapling/elder_tree/world_tree). Once
   //   planted, they mature after their duration and produce permanent
   //   Divinity/s. All 4 planted unlocks L4.
-  // alignedCategory: string | null — the active astral resonance category
   //   ("zodiac" | "northern" | "equatorial" | "southern" | null).
   worldTiers: Record<string, number>;
   voidShards: number;
@@ -692,7 +691,6 @@ export interface GameState {
   purchasedCatalysts: Record<string, boolean>;
   activeWorldTemplate: string | null;
   plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number } | undefined>;
-  alignedCategory: string | null;
 }
 
 // PendingFollowUp — scheduled follow-up event awaiting its fire time.
@@ -976,7 +974,6 @@ export interface GameStore extends GameState {
   // Set the active Astral Resonance category (zodiac/northern/equatorial/
   // southern, or null to clear). Each category gives a Div/s bonus with a
   // tradeoff (Northern hurts other sources, Equatorial costs Faith, etc.).
-  setAlignedCategory: (category: string | null) => void;
   // Illuminate the next unlit star in a constellation (bulk purchase).
   // Respects the same cost formula as illuminateStar — finds the cheapest
   // unlit star in the constellation and lights it.

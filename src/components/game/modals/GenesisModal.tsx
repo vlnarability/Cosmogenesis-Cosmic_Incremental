@@ -34,7 +34,7 @@ import { EmptyState } from "../shared/EmptyState";
 // Star radius (SVG units). 4 keeps the 50-star map readable inside a
 // 520-ish-wide viewBox while still fitting on narrow phone screens (the
 // container scrolls horizontally when needed).
-const STAR_SIZE = 4;
+const STAR_SIZE = 2;
 
 const BONUS_ICON: Record<GalaxyBonusType, string> = {
   production: "⚙️",
@@ -178,11 +178,12 @@ export function GenesisContent() {
               </div>
             )}
             {/* Hex map */}
-            <div className="stat-card overflow-x-auto">
+            <div className="stat-card">
               <svg
                 viewBox={layout.viewBox}
+                preserveAspectRatio="xMidYMid meet"
                 className="w-full h-auto"
-                style={{ minWidth: 560, maxHeight: "62vh" }}
+                style={{ maxHeight: "60vh" }}
                 role="img"
                 aria-label="Galaxy star map"
               >
