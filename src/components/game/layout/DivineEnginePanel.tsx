@@ -102,6 +102,7 @@ export function DivineEnginePanel() {
   // P6 — Modal Consolidation: replaced per-layer setShow* setters with the
   // single openLayerModal(layerId) action.
   const openLayerModal = useGameStore((s) => s.openLayerModal);
+  const setTab = useGameStore((s) => s.setTab);
 
   const { activeLayerId, activeLayerRank } = useActiveLayer();
   const nextId = nextLayerId(activeLayerId);
@@ -235,6 +236,18 @@ export function DivineEnginePanel() {
           </Button>
         )}
       </div>
+
+      {/* === Enter Divine Engine button === */}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 w-full text-xs gap-1 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+        onClick={() => setTab("divine_engine")}
+        title="Enter the Divine Engine — full control panel"
+      >
+        <Globe className="w-3 h-3" />
+        Enter Divine Engine
+      </Button>
     </div>
   );
 }

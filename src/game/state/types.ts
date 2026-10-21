@@ -686,6 +686,18 @@ export interface GameState {
   //   ("zodiac" | "northern" | "equatorial" | "southern" | null).
   worldTiers: Record<string, number>;
   voidShards: number;
+
+  // IDEA-2: World Archetype Injection — god picks an archetype,
+  // all worlds get that archetype's effect (multiplier, crash immunity, etc.)
+  activeWorldArchetype: string | null;
+
+  // IDEA-5: Evolution Sliders — 4 sliders that control world behavior
+  evolutionSliders: {
+    speed: number;       // 0.1 to 10.0 — multiplies world Divinity/s (higher = more Div/s but faster burnout in Crucible)
+    aggression: number;  // 0 to 100 — higher = more Void Shards but worlds collapse more often
+    curiosity: number;   // 0 to 100 — higher = peak production rate grows faster
+    faith: number;       // 0 to 100 — higher = more Faith generation from worlds
+  };
   eternalFlameInvested: number;
   worldsForged: number;
   purchasedCatalysts: Record<string, boolean>;
@@ -948,6 +960,10 @@ export interface GameStore extends GameState {
   setAutoBuyerTechTarget: (archetypeId: string | null) => void;
   setPreferredGovernment: (govId: string | null) => void;
   setPreferredForesightRoute: (routeId: string | null) => void;
+  // IDEA-2: Set the active world archetype (null = no archetype)
+  setWorldArchetype: (archetypeId: string | null) => void;
+  // IDEA-5: Set an evolution slider value
+  setEvolutionSlider: (key: 'speed' | 'aggression' | 'curiosity' | 'faith', value: number) => void;
 
   // ===== L3-REDESIGN — WORLD FUSION + ETERNAL FLAME + L3 REPLACEMENTS =====
   // Fuse 10 (or 100/1000/10000) worlds of the source tier into 1 of the
