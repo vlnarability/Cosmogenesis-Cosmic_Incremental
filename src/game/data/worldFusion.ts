@@ -130,13 +130,18 @@ export function makeInitialWorldTiers(): Record<string, number> {
 }
 
 export function canFuse(
-  targetTierId: string,
   worldTiers: Record<string, number>,
+  targetTierId: string,
   unlockedLayers?: Record<string, boolean>
-): boolean {
+): { ok: boolean; reason?: string } {
   const tier = FUSION_TIER_MAP[targetTierId];
-  if (!tier || !tier.sourceTier) return false;
-  if (unlockedLayers && tier.requiresLayer && !unlockedLayers[tier.requiresLayer]) return false;
+  if (!tier || !tier.sourceTier) return { ok: false, reason: "invalid tier" };
+  if (unlockedLayers && tier.requiresLayer && !unlockedLayers[tier.requiresLayer]) {
+    return { ok: false, reason: `requires ${tier.requiresLayer} layer` };
+  }
   const available = Math.max(0, Math.floor(worldTiers[tier.sourceTier] || 0));
-  return available >= tier.sourceCount;
+  if (available < tier.sourceCount) {
+    return { ok: false, reason: `need ${tier.sourceCount} ${FUSION_TIER_MAP[tier.sourceTier].name}, have ${available}` };
+  }
+  return { ok: true };
 }
