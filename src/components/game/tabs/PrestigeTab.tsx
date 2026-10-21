@@ -110,7 +110,6 @@ export function PrestigeTab() {
 
   const bloodPactsUsed = useGameStore((s) => s.bloodPactsUsed || {});
 
-  const genesisSeeds = useGameStore((s) => s.genesisSeeds);
   const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
 
   const faith = useGameStore((s) => s.faith);
@@ -414,7 +413,6 @@ export function PrestigeTab() {
             icon="🥚"
             unlocked={!!unlockedLayers.genesis}
             unlockText="All 4 Blood Pacts performed"
-            currencyName={`Genesis Seeds: ${formatNumber(genesisSeeds, 0)}`}
             onView={() => openLayerModal("genesis")}
             viewLabel="View Genesis"
             viewIcon={<Egg className="w-3 h-3 mr-1" />}

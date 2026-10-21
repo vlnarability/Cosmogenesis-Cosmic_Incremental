@@ -117,7 +117,7 @@ export interface WorldTemplate {
   divinityMult: number; // × multiplier on Divinity/s from worlds
   faithPerSec?: number; // passive Faith generation (positive) or cost (negative)
   crashChance?: number; // chance per tick a world collapses
-  cosmicFragmentPerSec?: number; // passive Cosmic Fragment generation
+  voidShardPerSec?: number; // passive Void Shard generation
   peakGrowthPerMin?: number; // peak production rate grows by X% per minute
 }
 
@@ -156,10 +156,10 @@ export const WORLD_TEMPLATES: WorldTemplate[] = [
   {
     id: "void",
     name: "Void",
-    desc: "-50% Divinity/s but each world generates +0.01 Cosmic Fragments/s.",
+    desc: "-50% Divinity/s but each world generates +0.01 Void Shards/s.",
     icon: "🌑",
     divinityMult: 0.50,
-    cosmicFragmentPerSec: 0.01,
+    voidShardPerSec: 0.01,
   },
 ];
 
@@ -345,7 +345,7 @@ export function allGenesisSeedsPlanted(
   return allSeedsPlanted(plantedSeeds);
 }
 
-export function genesisSeedsDivinityPerSec(
+export function plantedSeedsDivinityPerSec(
   plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>,
   gameTime: number
 ): number {

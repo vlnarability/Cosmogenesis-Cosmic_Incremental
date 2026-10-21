@@ -11,7 +11,7 @@
 //   Ascendant = 100 Tier 10 → 100× a Tier 10 = breakeven (equal production).
 //   Greater Ascendant = 100 Ascendant → 1000× an Ascendant = 10× boost.
 //   Celestial Core = 1000 Greater Ascendant → 10000× = 10× boost.
-//   Void World = 10000 Celestial Core → 1000000× = 10× boost + Cosmic Fragments.
+//   Void World = 10000 Celestial Core → 1000000× = 10× boost + Void Shards.
 //   Void World locked until L7+ (omnipotence).
 // ===========================================================================
 
@@ -67,7 +67,7 @@ export const FUSION_TIERS: FusionTier[] = [
     desc: "10000× a Greater Ascendant. Another 10× boost." },
   { id: "void", name: "Void World", icon: "🌑", sourceTier: "celestial_core", sourceCount: 10000, productionMult: VOID_MULT,
     requiresLayer: "omnipotence", producesCosmicFragments: true,
-    desc: "1000000× a Celestial Core. 10× boost + produces Cosmic Fragments. Locked until L7." },
+    desc: "1000000× a Celestial Core. 10× boost + produces Void Shards. Locked until L7." },
 ];
 
 export const FUSION_TIER_MAP: Record<string, FusionTier> = Object.fromEntries(

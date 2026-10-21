@@ -332,7 +332,6 @@ export interface GameState {
   showTranscendence: boolean;
 
   // Layer 4 — Genesis
-  genesisSeeds: number; // currency for authoring worlds
   authoredWorlds: WorldConfig[]; // list of authored world configs (permanent bonuses)
   pendingWorldConfig: Partial<WorldConfig>; // current authoring selections
   showGenesis: boolean;
@@ -670,7 +669,7 @@ export interface GameState {
   // worldTiers: Record<string, number> — tier id ("1".."10", "ascendant",
   //   "greater_ascendant", "celestial_core", "void") → count. Tier 1 =
   //   standard background worlds. Higher tiers are produced by fusion.
-  // cosmicFragments: number — new currency from Void Worlds (preview of
+  // voidShards: number — new currency from Void Worlds (preview of
   //   L9/L10 resources).
   // eternalFlameInvested: number — total Divinity invested in the Eternal
   //   Flame. Drives a logarithmic multiplier on all Divinity generation.
@@ -687,7 +686,7 @@ export interface GameState {
   // alignedCategory: string | null — the active astral resonance category
   //   ("zodiac" | "northern" | "equatorial" | "southern" | null).
   worldTiers: Record<string, number>;
-  cosmicFragments: number;
+  voidShards: number;
   eternalFlameInvested: number;
   worldsForged: number;
   purchasedCatalysts: Record<string, boolean>;

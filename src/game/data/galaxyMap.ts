@@ -1,23 +1,21 @@
 // ===========================================================================
-// LAYER 4 — GENESIS (Galaxy Claim redesign)
+// LAYER 4 — GENESIS (Galaxy Claim — random star placement)
 // ===========================================================================
-// Replaces the old 5x4 Sacred Grid. The ascended god surveys a spiral galaxy
-// of 50 star systems (axial hex coordinates) and claims them with Genesis
-// Seeds. Each claimed system grants:
-//   • its per-system bonus (production / capacity / EP / pop),
-//   • +10 worlds to the Divine Engine (toward the 1,000 cap at L4),
-//   • adjacency synergy (+50% bonus value if 2+ neighbors are also claimed),
-//   • and a rare resource (alloys or data) if the system hosts one.
+// 50 star systems randomly placed on a starfield. The ascended god surveys
+// and claims them with Divinity. Each claimed system grants:
+//   • its per-system bonus (production / capacity / divinity),
+//   • +10 worlds to the Divine Engine,
+//   • proximity synergy (+50% bonus if 2+ nearby systems are also claimed),
+//   • Void Shards (rare resource, ~1 in 5 systems).
 //
-// ~1 in 3 systems starts UNEXPLORED — players must scan them (small Genesis
-// Seed cost) to reveal their bonus + rare resource before claiming.
+// ~1 in 3 systems starts UNEXPLORED — players must scan them (small Divinity
+// cost) to reveal their bonus before claiming.
 //
 // Filling the entire galaxy (all 50 systems claimed) completes L4 and
 // unlocks Layer 5 (Apotheosis).
 // ===========================================================================
 
-export type GalaxyBonusType = "production" | "capacity" | "ep" | "pop";
-export type GalaxyRareResource = "alloys" | "data" | null;
+export type GalaxyBonusType = "production" | "capacity" | "divinity";
 
 export interface GalaxyBonus {
   type: GalaxyBonusType;
@@ -29,12 +27,12 @@ export interface GalaxySystem {
   id: string;
   /** Star name (curated list of 50 real-ish star names). */
   name: string;
-  /** Axial hex coordinates for the spiral layout. */
-  hex: { q: number; r: number };
+  /** Normalized position on the star map (0-100 × 0-100). */
+  pos: { x: number; y: number };
   /** Random per-system bonus applied when claimed. */
   bonus: GalaxyBonus;
-  /** Optional rare resource the system hosts. */
-  rareResource: GalaxyRareResource;
+  /** Whether this system has Void Shards (rare resource, ~1 in 5). */
+  hasVoidShards: boolean;
   /** Whether the system starts explored (≈ 2/3 of systems). */
   explored: boolean;
   /** Always false at fresh galaxy initialization. */
@@ -56,7 +54,7 @@ const STAR_NAMES: string[] = [
   "Regulus", "Bellatrix", "Canopus", "Castor", "Pollux",
   "Mira", "Algol", "Mizar", "Alkaid", "Phecda",
   "Dubhe", "Merak", "Thuban", "Kochab", "Yildun",
-  "Errai", "Sadr", "Albireo", "Etamin", "Rasalhague",
+  "Errai", "Sadr", "Albireo", "Etamin", "Rasalhogue",
   "Sabik", "Markab", "Nunki", "Peacock", "Ankaa",
   "Avior", "Miaplacidus", "Atria", "Menkent", "Hadar",
   "Toliman", "Agena", "Mimosa", "Acamar", "Zaurak",
@@ -73,83 +71,65 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// ----- Axial hex directions (pointy-top, Red Blob Games convention) -----
-// 0:East +1:NorthEast 2:NorthWest 3:West 4:SouthWest 5:SouthEast
-const HEX_DIRECTIONS: ReadonlyArray<{ q: number; r: number }> = [
-  { q: +1, r: 0 },   // East
-  { q: +1, r: -1 },  // NorthEast
-  { q: 0,  r: -1 },  // NorthWest
-  { q: -1, r: 0 },   // West
-  { q: -1, r: +1 },  // SouthWest
-  { q: 0,  r: +1 },  // SouthEast
-];
-
-// The 6 neighbor offsets of any axial hex (q, r).
-export const HEX_NEIGHBOR_OFFSETS: ReadonlyArray<{ q: number; r: number }> = HEX_DIRECTIONS;
-
-// ----- Spiral generator: produces N hex positions starting at origin -----
-// Algorithm: walk outward ring by ring. To enter ring k, move one step
-// SouthWest from the last hex of ring (k-1); then for each of the 6 sides,
-// take k steps in the corresponding direction.
-function generateHexSpiral(numCells: number): Array<{ q: number; r: number }> {
-  if (numCells <= 0) return [];
-  const results: Array<{ q: number; r: number }> = [{ q: 0, r: 0 }];
-  let current = { q: 0, r: 0 };
-  for (let ring = 1; results.length < numCells; ring++) {
-    current = { q: current.q + HEX_DIRECTIONS[4].q, r: current.r + HEX_DIRECTIONS[4].r };
-    for (let side = 0; side < 6 && results.length < numCells; side++) {
-      for (let step = 0; step < ring && results.length < numCells; step++) {
-        results.push({ q: current.q, r: current.r });
-        current = {
-          q: current.q + HEX_DIRECTIONS[side].q,
-          r: current.r + HEX_DIRECTIONS[side].r,
-        };
-      }
-    }
-  }
-  return results;
-}
-
-// ----- Bonus value pools (small enough that 50 systems combined stay sane) -----
+// ----- Bonus value pools -----
 const BONUS_VALUES: Record<GalaxyBonusType, number[]> = {
   production: [0.05, 0.10, 0.15, 0.20],
   capacity:   [0.05, 0.10, 0.15],
-  ep:         [0.10, 0.25, 0.50],
-  pop:        [0.10, 0.25, 0.50],
+  divinity:   [0.10, 0.25, 0.50],
 };
 
+// ----- Proximity threshold for adjacency synergy (in normalized 0-100 space) -----
+// Two systems within this distance are "nearby" for synergy purposes.
+const PROXIMITY_THRESHOLD = 18;
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+// ----- Generate 50 random star positions (deterministic via seeded PRNG) -----
 function buildGalaxySystems(): GalaxySystem[] {
   const rng = mulberry32(0xc0ffee);
-  const hexes = generateHexSpiral(50);
   const systems: GalaxySystem[] = [];
-  for (let i = 0; i < hexes.length; i++) {
-    const hex = hexes[i];
-    // Bonus type roll: production 40% / capacity 30% / EP 20% / pop 10%.
+
+  // Generate 50 random positions, ensuring minimum spacing
+  const positions: { x: number; y: number }[] = [];
+  const MIN_DIST = 8; // minimum distance between any two stars
+  for (let i = 0; i < 50; i++) {
+    let pos: { x: number; y: number };
+    let attempts = 0;
+    do {
+      pos = {
+        x: 5 + rng() * 90,  // 5-95 range (padding from edges)
+        y: 5 + rng() * 90,
+      };
+      attempts++;
+    } while (
+      attempts < 100 &&
+      positions.some((p) => distance(p, pos) < MIN_DIST)
+    );
+    positions.push(pos);
+  }
+
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
+    // Bonus type: production 45% / capacity 30% / divinity 25%
     const typeRoll = rng();
     let type: GalaxyBonusType;
-    if (typeRoll < 0.40) type = "production";
-    else if (typeRoll < 0.70) type = "capacity";
-    else if (typeRoll < 0.90) type = "ep";
-    else type = "pop";
+    if (typeRoll < 0.45) type = "production";
+    else if (typeRoll < 0.75) type = "capacity";
+    else type = "divinity";
     const values = BONUS_VALUES[type];
     const value = values[Math.floor(rng() * values.length)];
-    // Rare resource: ~1 in 5 systems hosts one, split evenly between alloys & data.
-    // Always consume the same number of rng draws per iteration so the
-    // sequence is stable even if the distribution tweaks later.
-    const rareRoll = rng();
-    const rareTypeRoll = rng();
-    let rareResource: GalaxyRareResource = null;
-    if (rareRoll < 0.20) {
-      rareResource = rareTypeRoll < 0.5 ? "alloys" : "data";
-    }
-    // ~1 in 3 systems start unexplored.
+    // Void Shards: ~1 in 5 systems has them
+    const hasVoidShards = rng() < 0.20;
+    // ~1 in 3 systems start unexplored
     const explored = rng() >= 1 / 3;
     systems.push({
       id: `sys_${String(i + 1).padStart(2, "0")}`,
       name: STAR_NAMES[i] ?? `System ${i + 1}`,
-      hex,
+      pos,
       bonus: { type, value },
-      rareResource,
+      hasVoidShards,
       explored,
       claimed: false,
     });
@@ -166,39 +146,14 @@ export const GALAXY_SYSTEM_MAP: Record<string, GalaxySystem> = Object.fromEntrie
 
 // ----- Lookup helpers -----
 
-/** Returns the galaxy systems adjacent to `systemId` on the hex grid. */
+/** Returns galaxy systems nearby to `systemId` (within PROXIMITY_THRESHOLD). */
 export function getGalaxySystemNeighbors(systemId: string): GalaxySystem[] {
   const sys = GALAXY_SYSTEM_MAP[systemId];
   if (!sys) return [];
-  const neighbors: GalaxySystem[] = [];
-  for (const off of HEX_NEIGHBOR_OFFSETS) {
-    const nq = sys.hex.q + off.q;
-    const nr = sys.hex.r + off.r;
-    const found = GALAXY_SYSTEMS.find((s) => s.hex.q === nq && s.hex.r === nr);
-    if (found) neighbors.push(found);
-  }
-  return neighbors;
-}
-
-/** Convert axial hex coords to pixel position for SVG rendering (pointy-top). */
-export function hexToPixel(q: number, r: number, size: number): { x: number; y: number } {
-  return {
-    x: size * Math.sqrt(3) * (q + r / 2),
-    y: size * (3 / 2) * r,
-  };
-}
-
-/** Returns the 6 vertex offsets (relative to center) for a pointy-top hex. */
-export function hexPolygonPoints(size: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angleDeg = 60 * i - 30; // 30, 90, 150, 210, 270, 330
-    const angleRad = (Math.PI / 180) * angleDeg;
-    const x = size * Math.cos(angleRad);
-    const y = size * Math.sin(angleRad);
-    pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
-  }
-  return pts.join(" ");
+  return GALAXY_SYSTEMS.filter((s) => {
+    if (s.id === sys.id) return false;
+    return distance(sys.pos, s.pos) <= PROXIMITY_THRESHOLD;
+  });
 }
 
 // ----- Bonus aggregation helpers (used by the tick) -----
@@ -206,23 +161,19 @@ export function hexPolygonPoints(size: number): string {
 export interface GalaxyBonusSummary {
   productionMult: number;
   capMult: number;
-  epMult: number;
-  popGrowthMult: number;
+  divinityMult: number;
   /** Number of claimed systems (for display + unlock check). */
   claimedCount: number;
-  /** Number of systems that earned the +50% adjacency synergy. */
+  /** Number of systems that earned the +50% proximity synergy. */
   synergyCount: number;
-  /** Counts of rare resources among claimed systems. */
-  alloysCount: number;
-  dataCount: number;
+  /** Number of claimed systems with Void Shards. */
+  voidShardsCount: number;
 }
 
 /**
- * Aggregates all bonuses from claimed galaxy systems, applying the adjacency
- * synergy bonus: a system adjacent to 2+ other claimed systems gains +50%
+ * Aggregates all bonuses from claimed galaxy systems, applying the proximity
+ * synergy bonus: a system with 2+ nearby claimed systems gains +50%
  * to its bonus value.
- *
- * @param galaxySystems - the live per-system state from GameState (claimed/explored flags)
  */
 export function summarizeGalaxyBonuses(
   galaxySystems: GalaxySystemState[]
@@ -233,12 +184,10 @@ export function summarizeGalaxyBonuses(
   const summary: GalaxyBonusSummary = {
     productionMult: 0,
     capMult: 0,
-    epMult: 0,
-    popGrowthMult: 0,
+    divinityMult: 0,
     claimedCount: claimedSet.size,
     synergyCount: 0,
-    alloysCount: 0,
-    dataCount: 0,
+    voidShardsCount: 0,
   };
   if (claimedSet.size === 0) return summary;
   for (const sys of GALAXY_SYSTEMS) {
@@ -251,11 +200,9 @@ export function summarizeGalaxyBonuses(
     switch (sys.bonus.type) {
       case "production": summary.productionMult += v; break;
       case "capacity":   summary.capMult += v; break;
-      case "ep":         summary.epMult += v; break;
-      case "pop":        summary.popGrowthMult += v; break;
+      case "divinity":   summary.divinityMult += v; break;
     }
-    if (sys.rareResource === "alloys") summary.alloysCount += 1;
-    else if (sys.rareResource === "data") summary.dataCount += 1;
+    if (sys.hasVoidShards) summary.voidShardsCount += 1;
   }
   return summary;
 }
@@ -275,10 +222,10 @@ export function isGalaxyComplete(galaxySystems: GalaxySystemState[]): boolean {
   return galaxySystems.every((s) => s.claimed);
 }
 
-/** Cost (in Genesis Seeds) to claim the next system — scales 1.15× per claim. */
+/** Cost (in Divinity) to claim the next system — scales 1.15× per claim. */
 export function galaxyClaimCost(claimedCount: number): number {
   return Math.ceil(10 * Math.pow(1.15, claimedCount));
 }
 
-/** Cost (in Genesis Seeds) to scan an unexplored system. */
+/** Cost (in Divinity) to scan an unexplored system. */
 export const GALAXY_SCAN_COST = 5;

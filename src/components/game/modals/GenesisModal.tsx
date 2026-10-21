@@ -8,8 +8,6 @@ import {
   GALAXY_TOTAL_SYSTEMS,
   galaxyClaimCost,
   getGalaxySystemNeighbors,
-  hexPolygonPoints,
-  hexToPixel,
   summarizeGalaxyBonuses,
   type GalaxyBonusType,
 } from "@/game/data/galaxyMap";
@@ -33,10 +31,10 @@ import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
 
-// Hex radius (SVG units). 22 keeps the 50-system spiral readable inside a
+// Star radius (SVG units). 4 keeps the 50-star map readable inside a
 // 520-ish-wide viewBox while still fitting on narrow phone screens (the
 // container scrolls horizontally when needed).
-const HEX_SIZE = 22;
+const STAR_SIZE = 4;
 
 const BONUS_ICON: Record<GalaxyBonusType, string> = {
   production: "⚙️",
@@ -58,7 +56,7 @@ function bonusPct(value: number): string {
 
 export function GenesisContent() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
-  const genesisSeeds = useGameStore((s) => s.genesisSeeds);
+  
   const galaxySystems = useGameStore((s) => s.galaxySystems || []);
   const scanGalaxySystem = useGameStore((s) => s.scanGalaxySystem);
   const claimGalaxySystem = useGameStore((s) => s.claimGalaxySystem);
@@ -73,7 +71,7 @@ export function GenesisContent() {
   const layout = useMemo(() => {
     const pts = GALAXY_SYSTEMS.map((sys) => {
       const state = galaxySystems.find((g) => g.id === sys.id);
-      const px = hexToPixel(sys.hex.q, sys.hex.r, HEX_SIZE);
+      const px = { x: sys.pos.x, y: sys.pos.y };
       return { sys, state, x: px.x, y: px.y };
     });
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -83,7 +81,7 @@ export function GenesisContent() {
       minY = Math.min(minY, p.y);
       maxY = Math.max(maxY, p.y);
     }
-    const pad = HEX_SIZE * 1.6;
+    const pad = STAR_SIZE * 3;
     return {
       pts,
       viewBox: `${(minX - pad).toFixed(2)} ${(minY - pad).toFixed(2)} ${((maxX - minX) + pad * 2).toFixed(2)} ${((maxY - minY) + pad * 2).toFixed(2)}`,
@@ -149,7 +147,7 @@ export function GenesisContent() {
         </h2>
         <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
           <span>
-            Survey 50 star systems on a hex spiral. Scan the unknown, then claim with Genesis Seeds to grow the Divine Engine.
+            Survey 50 star systems on a star map. Scan the unknown, then claim with Divinity to grow the Divine Engine.
           </span>
           <Badge variant="outline" className="text-emerald-300 border-emerald-400/40 whitespace-nowrap">
             {formatNumber(genesisSeeds, 0)} Seeds
@@ -173,7 +171,7 @@ export function GenesisContent() {
                   compact
                   icon={<Telescope className="w-6 h-6" />}
                   title="No systems claimed yet."
-                  description="Scan a system to reveal its bonus, then claim it with Genesis Seeds. Click an unexplored hex (with a ?) to begin."
+                  description="Scan a system to reveal its bonus, then claim it with Divinity. Click an unexplored star (with a ?) to begin."
                 />
               </div>
             )}
@@ -184,9 +182,9 @@ export function GenesisContent() {
                 className="w-full h-auto"
                 style={{ minWidth: 560, maxHeight: "62vh" }}
                 role="img"
-                aria-label="Galaxy hex map"
+                aria-label="Galaxy star map"
               >
-                {/* Connection lines (under hexes) */}
+                {/* Connection lines (under stars) */}
                 <g>
                   {connectionLines.map((l) => (
                     <line
@@ -239,8 +237,8 @@ export function GenesisContent() {
                             else if (!claimed) claimGalaxySystem(sys.id);
                           }}
                         >
-                          <polygon
-                            points={hexPolygonPoints(HEX_SIZE)}
+                          <circle
+                            r={STAR_SIZE}
                             fill={fill}
                             stroke={isHovered ? "#fde047" : stroke}
                             strokeWidth={strokeW}
@@ -314,7 +312,7 @@ export function GenesisContent() {
                       <TooltipContent side="top" className="max-w-[240px]">
                         <div className="text-[0.7rem] space-y-0.5">
                           <div className="font-semibold text-cyan-200">{sys.name}</div>
-                          <div className="text-muted-foreground">Hex ({sys.hex.q}, {sys.hex.r})</div>
+                          <div className="text-muted-foreground">Position ({sys.pos.x.toFixed(1)}, {sys.pos.y.toFixed(1)})</div>
                           {explored ? (
                             <>
                               <div>
@@ -346,9 +344,9 @@ export function GenesisContent() {
                 })}
               </svg>
               <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed">
-                Hover to highlight neighbors. Click an unexplored hex to{" "}
+                Hover to highlight neighbors. Click an unexplored star to{" "}
                 <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Seeds) or an
-                explored unclaimed hex to{" "}
+                explored unclaimed star to{" "}
                 <span className="text-emerald-300">claim</span> ({nextClaimCost} Seeds).{" "}
                 <span className="text-amber-300">★</span> = synergy (2+ claimed neighbors, +50% bonus).
               </div>
@@ -462,8 +460,8 @@ export function GenesisContent() {
 
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
-          The galaxy spiral is the Layer 4 gameplay loop — scan unknown systems to reveal their bonus and
-          rare resource, then claim them with Genesis Seeds. Adjacency matters: systems with 2+ claimed
+          The galaxy star map is the Layer 4 gameplay loop — scan unknown systems to reveal their bonus and
+          rare resource, then claim them with Divinity. Adjacency matters: systems with 2+ claimed
           neighbors gain a <span className="text-amber-300">+50% synergy bonus</span>.
         </div>
     </>
