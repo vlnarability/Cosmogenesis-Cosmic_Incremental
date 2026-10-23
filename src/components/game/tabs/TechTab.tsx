@@ -131,31 +131,53 @@ function groupByBranch(techs: TechDef[]): Record<string, TechDef[]> {
   }, {} as Record<string, TechDef[]>);
 }
 
-// Render a list of branch sections with their techs.
+// Render tech branches as SUBTABS — only the selected branch's techs are shown.
 function BranchList({ branches }: { branches: Record<string, TechDef[]> }) {
+  const branchNames = Object.keys(branches);
+  const [activeBranch, setActiveBranch] = useState(branchNames[0] || "");
+  const currentBranch = branches[activeBranch] ? activeBranch : branchNames[0] || "";
+  const list = branches[currentBranch] || [];
+
   return (
-    <>
-      {Object.entries(branches).map(([branch, list]) => (
-        <Card key={branch} className="glass-panel">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <GitBranch className="w-3.5 h-3.5 text-accent" />
-              {branch} Path
-              <BranchBadge list={list} />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {list
-                .sort((a, b) => a.tier - b.tier)
-                .map((tech) => (
-                  <TechCard key={tech.id} tech={tech} />
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </>
+    <div className="space-y-3">
+      <div className="flex items-center gap-1 border-b border-border pb-2 flex-wrap">
+        {branchNames.map((branch) => {
+          const blist = branches[branch] || [];
+          const researched = blist.filter((t) => useGameStore.getState().technologies[t.id]).length;
+          return (
+            <button
+              key={branch}
+              onClick={() => setActiveBranch(branch)}
+              className={cn(
+                "px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-1.5",
+                branch === currentBranch
+                  ? "bg-primary/15 border border-primary text-primary font-semibold"
+                  : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              )}
+            >
+              {branch}
+              <span className="text-[0.55rem] opacity-70">{researched}/{blist.length}</span>
+            </button>
+          );
+        })}
+      </div>
+      <Card className="glass-panel">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <GitBranch className="w-3.5 h-3.5 text-accent" />
+            {currentBranch} Path
+            <BranchBadge list={list} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {list.sort((a, b) => a.tier - b.tier).map((tech) => (
+              <TechCard key={tech.id} tech={tech} />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -176,17 +198,20 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
 
   const owned = !!technologies[tech.id];
   const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
-  // P7 — canAfford is used to tint the button text red when the player can't
-  // afford. The click still fires and surfaces an inline "Not enough
-  // [resource]" error via the PurchaseErrorBanner.
   const canAfford = debugFreeBuy || Object.entries(tech.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+  // EITHER-OR — check if an exclusive tech is already researched
+  const lockedByExclusive = tech.exclusiveWith?.find((exclId) => technologies[exclId]);
+  const lockedByExclusiveName = lockedByExclusive ? TECH_MAP[lockedByExclusive]?.name : undefined;
+  const disabled = owned || !prereqMet || !canAfford || !!lockedByExclusive;
 
   return (
-    <div className={`stat-card transition-opacity ${owned ? "opacity-60" : !prereqMet ? "opacity-50" : ""}`}>
+    <div className={`stat-card transition-opacity ${owned ? "opacity-60" : !prereqMet ? "opacity-50" : lockedByExclusive ? "opacity-40 border-red-500/30" : ""}`}>
       <div className="flex items-start justify-between gap-2 mb-1">
         <div className="flex items-center gap-2 min-w-0">
           {owned ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : lockedByExclusive ? (
+            <Lock className="w-4 h-4 text-red-400 shrink-0" />
           ) : !prereqMet ? (
             <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
           ) : (
@@ -272,14 +297,10 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           size="sm"
           variant={owned ? "outline" : "default"}
           className="h-7 ml-auto"
-          // P7 — Keep the button ENABLED even when the player can't afford,
-          // so the click fires and the store surfaces the inline
-          // "Not enough [resource]" error. Disable only when owned (already
-          // researched) or when prereqs aren't met (the buy would no-op).
-          disabled={owned || !prereqMet}
+          disabled={disabled}
           onClick={() => buyTech(tech.id)}
         >
-          {owned ? "Researched" : !prereqMet ? "Locked" : "Research"}
+          {owned ? "Researched" : lockedByExclusive ? `Locked by ${lockedByExclusiveName}` : !prereqMet ? "Locked" : !canAfford ? "Can't afford" : "Research"}
         </Button>
       </div>
     </div>

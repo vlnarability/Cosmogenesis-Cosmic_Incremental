@@ -25,6 +25,7 @@ export const TECHS: TechDef[] = [
     effects: "+20% ATP production",
     multiplier: { target: "production", value: 0.20 },
     grantsAffinity: { archetype: "fungoid", amount: 1 },
+    exclusiveWith: ["photosynthesis"],
   },
   {
     id: "organelle_specialization",
@@ -49,6 +50,7 @@ export const TECHS: TechDef[] = [
     effects: "+15% glucose, unlocks plantoid affinity",
     multiplier: { target: "production", value: 0.15 },
     grantsAffinity: { archetype: "plantoid", amount: 3 },
+    exclusiveWith: ["enzymatic_pathways"],
   },
   {
     id: "cellular_division",
@@ -416,6 +418,7 @@ export const TECHS: TechDef[] = [
     effects: "Unlock pet systems, +20% food, mammalian affinity",
     multiplier: { target: "production", value: 0.20 },
     grantsAffinity: { archetype: "mammalian", amount: 3 },
+    exclusiveWith: ["apex_predator"],
   },
   {
     id: "mating_seasons",
@@ -514,6 +517,7 @@ export const TECHS: TechDef[] = [
     effects: "+50% military power",
     multiplier: { target: "production", value: 0.50 },
     grantsAffinity: { archetype: "reptilian", amount: 2 },
+    exclusiveWith: ["domestication"],
   },
 
   // --- Creature Path 2: Sensory & Neural (9 techs) ---

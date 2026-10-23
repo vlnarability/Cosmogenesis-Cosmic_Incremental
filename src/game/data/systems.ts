@@ -658,6 +658,32 @@ export const SYSTEMS: SystemDef[] = [
     grantsAffinity: { archetype: "lithoid", amount: 1 },
     maxOwned: 25,
   },
+  {
+    id: "radiotrophic_membrane",
+    name: "Radiotrophic Membrane",
+    desc: "A membrane that feeds on ionizing radiation — glucose from the dark.",
+    stage: "cell",
+    icon: "☢",
+    category: "Drift",
+    baseCost: { glucose: 150, proteins: 50, elements: 40 },
+    costGrowth: 1.38,
+    produces: { glucose: 0.6 },
+    grantsAffinity: { archetype: "extremophile", amount: 1 },
+    maxOwned: 20,
+  },
+  {
+    id: "chemosynthetic_nodule",
+    name: "Chemosynthetic Nodule",
+    desc: "Extract energy from mineral vents — ATP without sunlight.",
+    stage: "cell",
+    icon: "⚗",
+    category: "Drift",
+    baseCost: { glucose: 100, lipids: 30, elements: 25 },
+    costGrowth: 1.35,
+    produces: { atp: 0.8 },
+    grantsAffinity: { archetype: "extremophile", amount: 2 },
+    maxOwned: 20,
+  },
 
   // ===== CREATURE =====
   {

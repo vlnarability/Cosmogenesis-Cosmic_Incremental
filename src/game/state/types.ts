@@ -89,6 +89,8 @@ export interface TechDef {
   // If set, the tech is only visible/researchable when the player's
   // `lockedArchetype` matches this archetype id.
   requiredArchetype?: string;
+  // EITHER-OR — researching this tech LOCKS OUT the listed tech ids.
+  exclusiveWith?: string[];
 }
 
 export interface StageDef {

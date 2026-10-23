@@ -46,14 +46,19 @@ export function SystemsTab() {
   const isL5Plus = isAtLeast("apotheosis");
 
   const stage = STAGES[stageIndex];
-  // FIX-ARCHETYPE-LOCKED — hide systems whose requiredArchetype doesn't
-  // match the player's locked archetype. They aren't visible at all.
+  // RARE-ARCHETYPE GATING — hide rare-archetype systems until archetype_insight
+  const hasArchetypeInsight = (upgrades["archetype_insight"] || 0) > 0;
+  const RARE_ARCHETYPES = new Set(["necroid", "lithoid", "toxoid", "extremophile"]);
+  // FIX-ARCHETYPE-LOCKED — hide systems whose requiredArchetype doesn't match.
+  // Also hide rare-archetype affinity systems until archetype_insight.
   const currentSystems = useMemo(
     () =>
-      systemsForStage(stage.id).filter(
-        (sys) => !sys.requiredArchetype || lockedArchetype === sys.requiredArchetype
-      ),
-    [stage.id, lockedArchetype]
+      systemsForStage(stage.id).filter((sys) => {
+        if (sys.requiredArchetype && lockedArchetype !== sys.requiredArchetype) return false;
+        if (!hasArchetypeInsight && sys.grantsAffinity && RARE_ARCHETYPES.has(sys.grantsAffinity.archetype)) return false;
+        return true;
+      }),
+    [stage.id, lockedArchetype, hasArchetypeInsight]
   );
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
   const hasAutoBalancer = (upgrades["auto_balancer"] || 0) > 0;
@@ -95,6 +100,12 @@ export function SystemsTab() {
   const hasLegacy = legacyStages.length > 0;
   const hasMiddle = middleStages.length > 0;
 
+  // SYSTEMS-ORGANIZATION — split into Core (economy) + Lineage (drift organelles)
+  const coreSystems = currentSystems.filter((sys) => sys.category !== "Drift");
+  const driftSystems = currentSystems.filter((sys) => sys.category === "Drift");
+  const hasDrift = driftSystems.length > 0;
+  const [sysSubtab, setSysSubtab] = useState<"core" | "lineage">("core");
+
   return (
     <div className="space-y-4">
       {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
@@ -128,7 +139,7 @@ export function SystemsTab() {
         </CardHeader>
       </Card>
 
-      {/* Current stage systems — always shown (old stages hidden) */}
+      {/* Current stage systems — subtabs: Core / Lineage */}
       {currentSystems.length === 0 ? (
         <Card className="glass-panel">
           <CardContent className="py-8 text-center text-muted-foreground">
@@ -137,36 +148,91 @@ export function SystemsTab() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {currentSystems.map((sys) => {
-            const owned = ownedSystems[sys.id] || 0;
-            const cost = systemCost(sys, owned, costReduction);
-            const canAfford = debugFreeBuy || Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
-            const atMax = sys.maxOwned ? owned >= sys.maxOwned : false;
-            const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
-            const enabled = systemEnabled[sys.id] !== false;
-            const capped = owned > 0 && isSystemCapped(sys.id, resources, capacities);
-            return (
-              <SystemCard
-                key={sys.id}
-                sys={sys}
-                owned={owned}
-                cost={cost}
-                canAfford={canAfford}
-                atMax={atMax}
-                techLocked={!!techLocked}
-                requiredTechName={techLocked ? TECH_MAP[sys.requiredTech!]?.name : undefined}
-                enabled={enabled}
-                capped={capped}
-                onBuy={(qty) => buySystem(sys.id, qty)}
-                onToggle={() => toggleSystem(sys.id)}
-              />
-            );
-          })}
+        <div className="space-y-3">
+          {/* Subtab navigation — Core (economy) / Lineage (drift organelles) */}
+          {hasDrift && (
+            <div className="flex items-center gap-1 border-b border-border pb-2">
+              <button
+                onClick={() => setSysSubtab("core")}
+                className={cn(
+                  "px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-1.5",
+                  sysSubtab === "core"
+                    ? "bg-primary/15 border border-primary text-primary font-semibold"
+                    : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                🏗️ Core
+                <span className="text-[0.55rem] opacity-70">
+                  {coreSystems.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{coreSystems.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setSysSubtab("lineage")}
+                className={cn(
+                  "px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-1.5",
+                  sysSubtab === "lineage"
+                    ? "bg-amber-500/15 border border-amber-400 text-amber-300 font-semibold"
+                    : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                🧬 Lineage
+                <span className="text-[0.55rem] opacity-70">
+                  {driftSystems.filter((s) => (ownedSystems[s.id] || 0) > 0).length}/{driftSystems.length}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Core subtab — grouped by category */}
+          {(sysSubtab === "core" || !hasDrift) && (
+            <SystemsCategoryGrid systems={coreSystems} groupBy="category" />
+          )}
+
+          {/* Lineage subtab — grouped by biological membrane type (NOT by
+              archetype — avoids revealing drift before archetype locks) */}
+          {sysSubtab === "lineage" && hasDrift && (
+            <SystemsCategoryGrid systems={driftSystems} groupBy="membrane" />
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// SYSTEMS-ORGANIZATION — group drift (organelle) systems by their
+// biological membrane structure instead of by archetype. This avoids
+// revealing the archetype name/glyph in the group header before the
+// player's archetype is locked. Categories per the user's spec:
+//   • Non-membrane-bound (cell wall, ribosomes, cytoskeleton)
+//   • Single membrane-bound (vacuole, lysosome, golgi, ER)
+//   • Double membrane-bound (nucleus, mitochondria, chloroplast)
+//   • Multi-membrane-bound (made-up/fantasy organelles go here)
+function getOrganelleMembraneType(sys: typeof SYSTEMS[number]): string {
+  const id = sys.id;
+  // Non-membrane-bound: external structures, cell wall components,
+  // mineral features, developmental structures
+  const nonMembrane = new Set([
+    "cell_wall", "chitin_wall", "chitin_synthesis", "compound_eye",
+    "jointed_appendage", "spiracle", "crystal_lattice", "mineral_shell",
+    "silicon_metabolism", "tectonic_core", "root_hair", "hyphal_network",
+    "spore_case", "mycorrhizal_bond", "mantle_formation", "radula",
+    "neural_crest", "neural_plate", "notochord", "ganglion",
+    "photosynthetic_membrane",
+  ]);
+  if (nonMembrane.has(id)) return "Non-membrane-bound";
+  // Single membrane-bound: organelles with a single membrane
+  const singleMembrane = new Set([
+    "ink_sac", "chromatophore",
+  ]);
+  if (singleMembrane.has(id)) return "Single membrane-bound";
+  // Double membrane-bound: organelles with double membranes
+  const doubleMembrane = new Set([
+    "chloroplast",
+  ]);
+  if (doubleMembrane.has(id)) return "Double membrane-bound";
+  // Multi-membrane-bound: made-up/fantasy organelles + specialized
+  // evolutionary features that don't fit traditional biology
+  return "Multi-membrane-bound";
 }
 
 // Helper grid sub-component (renders SystemCards for a list of systems)
@@ -216,6 +282,53 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
   );
 }
 
+// SystemsCategoryGrid — renders systems grouped by category or membrane type,
+// each group as a collapsible Accordion section.
+function SystemsCategoryGrid({
+  systems,
+  groupBy,
+}: {
+  systems: SystemDef[];
+  groupBy: "category" | "membrane";
+}) {
+  const ownedSystems = useGameStore((s) => s.ownedSystems);
+  const groups = useMemo(() => {
+    const map: Record<string, SystemDef[]> = {};
+    for (const sys of systems) {
+      const key = groupBy === "membrane" ? getOrganelleMembraneType(sys) : (sys.category || "Other");
+      (map[key] = map[key] || []).push(sys);
+    }
+    return Object.entries(map);
+  }, [systems, groupBy]);
+
+  if (systems.length === 0) {
+    return <div className="text-xs text-muted-foreground py-4 text-center">No systems in this category.</div>;
+  }
+
+  return (
+    <Accordion type="multiple" defaultValue={groups.map(([key]) => key)} className="space-y-2">
+      {groups.map(([key, list]) => {
+        const owned = list.filter((s) => ownedSystems[s.id]).length;
+        return (
+          <AccordionItem key={key} value={key} className="glass-panel rounded-lg border border-border/40 px-0">
+            <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-sm font-semibold">{key}</span>
+                <Badge variant="outline" className="text-[0.55rem] ml-auto">
+                  {owned}/{list.length} built
+                </Badge>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3">
+              <SystemsGrid systems={list} />
+            </AccordionContent>
+          </AccordionItem>
+        );
+      })}
+    </Accordion>
+  );
+}
+
 interface SystemCardProps {
   sys: typeof SYSTEMS[number];
   owned: number;
@@ -231,9 +344,37 @@ interface SystemCardProps {
 }
 
 function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTechName, enabled, capped, onBuy, onToggle }: SystemCardProps) {
-  const [qty, setQty] = useState(1);
+  // qty: 1, 10, 100 for fixed amounts; -1 for "Max" (buy as many as affordable)
+  const [qty, setQty] = useState<number>(1);
   const resources = useGameStore((s) => s.resources);
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
   const archDef = sys.grantsAffinity ? ARCHETYPE_MAP[sys.grantsAffinity.archetype] : null;
+
+  // Compute actual affordable qty for Max + total cost for display
+  const costReduction = useGameStore((s) => (s.upgrades["frugality"] || 0) * 0.04);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+  const actualQty = qty === -1 ? (() => {
+    let count = 0, tempOwned = owned;
+    const tempRes = { ...resources };
+    for (let i = 0; i < 10000; i++) {
+      if (sys.maxOwned && tempOwned >= sys.maxOwned) break;
+      const nextCost = systemCost(sys, tempOwned, costReduction);
+      if (!debugFreeBuy && !Object.entries(nextCost).every(([r, v]) => (tempRes[r] || 0) >= (v as number))) break;
+      for (const [r, v] of Object.entries(nextCost)) tempRes[r] = (tempRes[r] || 0) - (v as number);
+      tempOwned++; count++;
+    }
+    return count;
+  })() : qty;
+  const totalCost = useMemo(() => {
+    const result: Record<string, number> = {};
+    let tempOwned = owned;
+    for (let i = 0; i < Math.min(actualQty, 1000); i++) {
+      const nextCost = systemCost(sys, tempOwned, costReduction);
+      for (const [r, v] of Object.entries(nextCost)) result[r] = (result[r] || 0) + (v as number);
+      tempOwned++;
+    }
+    return result;
+  }, [actualQty, owned, sys, costReduction]);
 
   return (
     <Card className={cn(
@@ -264,9 +405,11 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
                   variant="outline"
                   className="text-[0.6rem] mt-1"
                   style={{ borderColor: `${archDef.color}50`, color: archDef.color }}
-                  title={`Grants ${archDef.name} lineage affinity`}
+                  title={lockedArchetype
+                    ? `Grants ${archDef.name} lineage affinity (+${sys.grantsAffinity!.amount})`
+                    : `Grants ??? lineage affinity (revealed when archetype locks at Creature→Tribal)`}
                 >
-                  {archDef.glyph} {archDef.name} drift +{sys.grantsAffinity!.amount}
+                  {lockedArchetype ? `${archDef.glyph} ${archDef.name} drift +${sys.grantsAffinity!.amount}` : "??? drift ???"}
                 </Badge>
               )}
             </div>
@@ -351,24 +494,29 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
           </div>
         )}
 
-        {/* Cost */}
+        {/* Cost — shows total for selected qty */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <div className="flex flex-wrap gap-2 text-xs">
-            {Object.entries(cost).map(([r, v]) => {
-              const have = (resources[r] || 0);
-              const enough = have >= (v as number);
-              return (
-                <span key={r} className={enough ? "" : "text-red-400"} style={enough ? { color: resourceColor(r) } : undefined}>
-                  {resourceIcon(r)}{formatNumber(v as number)}
-                </span>
-              );
-            })}
+            {Object.entries(totalCost).length > 0 ? (
+              Object.entries(totalCost).map(([r, v]) => {
+                const have = (resources[r] || 0);
+                const enough = have >= (v as number);
+                return (
+                  <span key={r} className={enough ? "" : "text-red-400"} style={enough ? { color: resourceColor(r) } : undefined}>
+                    {resourceIcon(r)}{formatNumber(v as number)}
+                  </span>
+                );
+              })
+            ) : (
+              <span className="text-muted-foreground text-[0.6rem]">
+                {qty === -1 ? (actualQty > 0 ? `Will build ×${actualQty}` : "Can't afford any") : "—"}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Buy buttons — qty presets + main build button */}
+        {/* Buy buttons — Max is separate from ×100 */}
         <div className="pt-1 space-y-1.5">
-          {/* Qty preset chips */}
           <div className="flex items-center gap-1">
             {[1, 10, 100].map((preset) => (
               <button
@@ -385,14 +533,14 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
               </button>
             ))}
             <button
-              onClick={() => setQty(100)}
+              onClick={() => setQty(-1)}
               className={cn(
                 "flex-1 text-xs py-1 rounded border transition-colors",
-                qty === 100
-                  ? "border-primary bg-primary/15 text-primary font-semibold"
+                qty === -1
+                  ? "border-amber-400 bg-amber-500/15 text-amber-300 font-semibold"
                   : "border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:border-foreground/40"
-                )}
-              title="Buy as many as affordable up to 100"
+              )}
+              title="Buy as many as you can afford"
             >
               Max
             </button>
@@ -400,10 +548,10 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
           <Button
             size="sm"
             className="h-8 w-full"
-            disabled={!canAfford || atMax || techLocked}
-            onClick={() => onBuy(qty)}
+            disabled={!canAfford || atMax || techLocked || (qty === -1 && actualQty === 0)}
+            onClick={() => onBuy(qty === -1 ? Math.max(actualQty, 1) : qty)}
           >
-            {atMax ? "Max owned" : techLocked ? "Locked" : `Build ${qty > 1 ? `×${qty}` : ""}`}
+            {atMax ? "Max owned" : techLocked ? "Locked" : qty === -1 ? (actualQty > 0 ? `Build ×${actualQty}` : "Can't afford") : `Build ${qty > 1 ? `×${qty}` : ""}`}
           </Button>
         </div>
       </CardContent>

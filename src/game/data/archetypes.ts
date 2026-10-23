@@ -115,7 +115,7 @@ export const ARCHETYPES: ArchetypeDef[] = [
     rarity: "basic",
     unlock: "default",
     color: "#d4956b",
-    glyph: "denti",
+    glyph: "☉",
     blurb: "Warm-blooded, nurturing, social-bonded. Population thrives.",
     bonus: {
       label: "Warm-blooded: +20% food, +10% pop, immune to cold",

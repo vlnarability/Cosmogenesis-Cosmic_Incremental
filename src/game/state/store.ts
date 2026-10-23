@@ -3401,6 +3401,16 @@ export const useGameStore = create<GameStore>()(
         if (!tech) return;
         if (s.technologies[techId]) return;
         if (tech.stage !== STAGES[s.stageIndex].id) return;
+        // EITHER-OR — check if an exclusive tech has been researched
+        if (tech.exclusiveWith) {
+          for (const exclId of tech.exclusiveWith) {
+            if (s.technologies[exclId]) {
+              const exclTech = TECH_MAP[exclId];
+              get().notifyPurchaseError(`Locked by ${exclTech?.name || exclId} (either/or choice)`);
+              return;
+            }
+          }
+        }
         // FIX-ARCHETYPE-LOCKED — archetype-locked techs are only researchable
         // by the matching locked archetype.
         if (tech.requiredArchetype && s.lockedArchetype !== tech.requiredArchetype) {
