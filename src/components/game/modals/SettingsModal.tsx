@@ -77,6 +77,7 @@ export function SettingsModal() {
   const debugGrantCurrency = useGameStore((s) => s.debugGrantCurrency);
   const debugCompleteLayer = useGameStore((s) => s.debugCompleteLayer);
   const debugGenerateBoon = useGameStore((s) => s.debugGenerateBoon);
+  const debugSpawnRelic = useGameStore((s) => s.debugSpawnRelic);
   const debugForcePrestige = useGameStore((s) => s.debugForcePrestige);
   const debugToggle100x = useGameStore((s) => s.debugToggle100x);
 
@@ -647,6 +648,16 @@ export function SettingsModal() {
                     >
                       <Bug className="w-3 h-3 mr-1" />
                       Generate Cosmic Boon
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={debugSpawnRelic}
+                      className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
+                      title="Spawn 1 fresh relic into the inventory (L10 Genesis Engine)"
+                    >
+                      <Bug className="w-3 h-3 mr-1" />
+                      Spawn Relic
                     </Button>
                     <Button
                       size="sm"

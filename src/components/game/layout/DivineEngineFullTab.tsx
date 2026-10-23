@@ -11,6 +11,7 @@ import { ARCHETYPES } from "@/game/data/archetypes";
 import {
   Sparkles, Flame, Globe, TrendingUp, Layers, Eye, Triangle, Egg, Users, Gauge,
   RotateCcw, Orbit, ZoomIn, ZoomOut,
+  Hammer, Merge, ChevronsRight,
 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 
@@ -403,6 +404,15 @@ export function DivineEngineFullTab() {
   const evolutionSliders = useGameStore((s) => s.evolutionSliders || { speed: 0, aggression: 0, curiosity: 0, faith: 0 });
   const setEvolutionSlider = useGameStore((s) => s.setEvolutionSlider);
 
+  // RESTORE-BULK-FORGE-FUSE — World Forge + World Fusion actions + state.
+  const worldsForged = useGameStore((s) => s.worldsForged || 0);
+  const upgrades = useGameStore((s) => s.upgrades || {});
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+  const forgeWorld = useGameStore((s) => s.forgeWorld);
+  const forgeWorldBulk = useGameStore((s) => s.forgeWorldBulk);
+  const fuseWorlds = useGameStore((s) => s.fuseWorlds);
+  const fuseWorldsBulk = useGameStore((s) => s.fuseWorldsBulk);
+
   const rawCount = rawWorldCount(worldTiers);
   const effectiveCount = effectiveWorldCount(worldTiers);
   const flameMult = eternalFlameMultiplier(eternalFlameInvested);
@@ -419,6 +429,47 @@ export function DivineEngineFullTab() {
   const divPerSec = effectiveCount > 0 && peakProductionRate > 0
     ? effectiveCount * peakProductionRate * 0.01 * flameMult * (activeWorldArchetype ? 1.30 : 1) * sliderSpeedMult
     : 0;
+
+  // Bulk upgrade ownership — bypassed in debug mode (debugFreeBuy).
+  const hasBulkForge10 = debugFreeBuy || (upgrades["bulk_forge_10x"] || 0) > 0;
+  const hasBulkForge100 = debugFreeBuy || (upgrades["bulk_forge_100x"] || 0) > 0;
+  const hasBulkForgeMax = debugFreeBuy || (upgrades["bulk_forge_max"] || 0) > 0;
+  const hasBulkFuse10 = debugFreeBuy || (upgrades["bulk_fuse_10x"] || 0) > 0;
+  const hasBulkFuse100 = debugFreeBuy || (upgrades["bulk_fuse_100x"] || 0) > 0;
+  const hasBulkFuseMax = debugFreeBuy || (upgrades["bulk_fuse_max"] || 0) > 0;
+
+  // Cost of the next single forge = ceil(50 × 1.5^worldsForged).
+  const nextForgeCost = Math.ceil(50 * Math.pow(1.5, worldsForged));
+  const canAffordNextForge = debugFreeBuy || divinity >= nextForgeCost;
+
+  // Compute how many worlds the player can afford to forge right now,
+  // starting from `worldsForged`. Capped at 10000 (safety cap). The cost
+  // grows exponentially so the loop terminates quickly even with very
+  // large divinity pools.
+  const maxForgeable = useMemo(() => {
+    if (divinity <= 0 && !debugFreeBuy) return 0;
+    let remaining = divinity;
+    let count = 0;
+    for (let i = 0; i < 10000; i++) {
+      const cost = Math.ceil(50 * Math.pow(1.5, worldsForged + i));
+      if (remaining < cost) break;
+      remaining -= cost;
+      count++;
+    }
+    return count;
+  }, [divinity, worldsForged, debugFreeBuy]);
+
+  // For each fusion tier with a source, compute the max fusable count =
+  // floor(sourceAvailable / sourceCount), capped at 10000.
+  const maxFusableByTier = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const tier of FUSION_TIERS) {
+      if (tier.sourceTier === null) continue;
+      const available = Math.max(0, Math.floor(worldTiers[tier.sourceTier] || 0));
+      out[tier.id] = Math.min(10000, Math.floor(available / tier.sourceCount));
+    }
+    return out;
+  }, [worldTiers]);
 
   return (
     <div className="space-y-4">
@@ -485,6 +536,175 @@ export function DivineEngineFullTab() {
           <WorldVisualization3D dots={dots} />
         </div>
       )}
+
+      {/* ===== RESTORE-BULK-FORGE-FUSE: WORLD FORGE ===== */}
+      <div className="stat-card">
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Hammer className="w-4 h-4 text-amber-300" />
+            <span className="text-sm font-semibold">World Forge</span>
+            <span className="text-[0.65rem] text-muted-foreground">
+              — spend Divinity to create new Tier 1 worlds
+            </span>
+          </div>
+          <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+            {formatNumber(worldsForged, 0)} forged lifetime
+          </Badge>
+        </div>
+        <p className="text-[0.7rem] text-muted-foreground mb-2">
+          Each forged world costs <span className="font-mono text-amber-200">ceil(50 × 1.5<sup>forged</sup>)</span> Divinity. Next: <span className="font-mono text-amber-200">{formatNumber(nextForgeCost, 0)}</span> Divinity → +1 Tier 1 world.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => forgeWorld()}
+            disabled={!canAffordNextForge}
+            className="h-8"
+            title={`Forge 1 Tier 1 world (costs ${formatNumber(nextForgeCost, 0)} Divinity)`}
+          >
+            <Hammer className="w-3 h-3 mr-1" /> Forge ×1
+          </Button>
+          {hasBulkForge10 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => forgeWorldBulk(10)}
+              disabled={!canAffordNextForge}
+              className="h-8 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+              title="Forge 10 worlds at once (capped by Divinity)"
+            >
+              <ChevronsRight className="w-3 h-3 mr-1" /> Forge ×10
+            </Button>
+          )}
+          {hasBulkForge100 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => forgeWorldBulk(100)}
+              disabled={!canAffordNextForge}
+              className="h-8 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+              title="Forge 100 worlds at once (capped by Divinity)"
+            >
+              <ChevronsRight className="w-3 h-3 mr-1" /> Forge ×100
+            </Button>
+          )}
+          {hasBulkForgeMax && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => forgeWorldBulk(-1)}
+              disabled={maxForgeable <= 0}
+              className="h-8 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
+              title={`Forge as many worlds as affordable (capped at 10000). You can afford ${formatNumber(maxForgeable, 0)} right now.`}
+            >
+              <ChevronsRight className="w-3 h-3 mr-1" /> Forge Max ({formatNumber(maxForgeable, 0)})
+            </Button>
+          )}
+        </div>
+        {!hasBulkForge10 && (
+          <p className="text-[0.6rem] text-muted-foreground italic mt-2 flex items-center gap-1">
+            <Sparkles className="w-2.5 h-2.5" />
+            Buy Bulk Forge ×10 in the shop to unlock bulk forging.
+          </p>
+        )}
+      </div>
+
+      {/* ===== RESTORE-BULK-FORGE-FUSE: WORLD FUSION ===== */}
+      <div className="stat-card">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <Merge className="w-4 h-4 text-violet-300" />
+          <span className="text-sm font-semibold">World Fusion</span>
+          <span className="text-[0.65rem] text-muted-foreground">
+            — merge N source worlds into 1 higher-tier world (×5 prod per tier)
+          </span>
+        </div>
+        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+          {FUSION_TIERS.filter((t) => t.sourceTier !== null).map((tier) => {
+            const sourceTier = FUSION_TIERS.find((t) => t.id === tier.sourceTier);
+            const owned = Math.max(0, Math.floor(worldTiers[tier.id] || 0));
+            const sourceAvail = Math.max(0, Math.floor(worldTiers[tier.sourceTier!] || 0));
+            const maxFuse = maxFusableByTier[tier.id] || 0;
+            const canFuseOnce = sourceAvail >= tier.sourceCount;
+            return (
+              <div
+                key={tier.id}
+                className="flex items-center justify-between gap-2 flex-wrap p-2 rounded-md border border-slate-700/40 bg-slate-950/30"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg shrink-0">{tier.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold truncate">{tier.name}</div>
+                    <div className="text-[0.6rem] text-muted-foreground">
+                      {tier.sourceCount} × {sourceTier?.icon} {sourceTier?.name} → 1 (×{formatCompact(tier.productionMult)} prod)
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="text-[0.6rem] text-violet-200 border-violet-400/40">
+                    {formatNumber(owned, 0)} owned
+                  </Badge>
+                  <Badge variant="outline" className="text-[0.6rem] text-cyan-200 border-cyan-400/40">
+                    {formatNumber(sourceAvail, 0)} src
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => fuseWorlds(tier.id)}
+                    disabled={!canFuseOnce}
+                    className="h-7"
+                    title={`Fuse ${tier.sourceCount} ${sourceTier?.name} → 1 ${tier.name}`}
+                  >
+                    <Merge className="w-3 h-3 mr-0.5" /> ×1
+                  </Button>
+                  {hasBulkFuse10 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fuseWorldsBulk(tier.id, 10)}
+                      disabled={maxFuse < 1}
+                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                      title={`Fuse 10× → 10 ${tier.name} (needs ${tier.sourceCount * 10} ${sourceTier?.name})`}
+                    >
+                      ×10
+                    </Button>
+                  )}
+                  {hasBulkFuse100 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fuseWorldsBulk(tier.id, 100)}
+                      disabled={maxFuse < 1}
+                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                      title={`Fuse 100× → 100 ${tier.name} (needs ${tier.sourceCount * 100} ${sourceTier?.name})`}
+                    >
+                      ×100
+                    </Button>
+                  )}
+                  {hasBulkFuseMax && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fuseWorldsBulk(tier.id, -1)}
+                      disabled={maxFuse <= 0}
+                      className="h-7 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
+                      title={`Fuse as many as possible (capped at 10000). Available: ${maxFuse}`}
+                    >
+                      Max ({formatNumber(maxFuse, 0)})
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {!hasBulkFuse10 && (
+          <p className="text-[0.6rem] text-muted-foreground italic mt-2 flex items-center gap-1">
+            <Sparkles className="w-2.5 h-2.5" />
+            Buy Bulk Fuse ×10 in the shop to unlock bulk fusing.
+          </p>
+        )}
+      </div>
 
       {/* ===== IDEA-2: WORLD ARCHETYPE INJECTION ===== */}
       <div className="stat-card">

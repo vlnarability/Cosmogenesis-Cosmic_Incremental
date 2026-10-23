@@ -375,6 +375,83 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "auto_author_universes", value: 120 },
   },
 
+  // ===== BULK FORGE / FUSE (Divine Engine screen) =====
+  // RESTORE-BULK-FORGE-FUSE — these 6 upgrades unlock the bulk Forge/Fuse
+  // buttons on the Divine Engine full tab. All L3+/transcendence-gated,
+  // universal category, single-purchase (maxLevel 1). Effect value is 0 —
+  // the upgrade is a pure flag; the UI/store check ownership via
+  // `(s.upgrades[id] || 0) > 0`. debugFreeBuy bypasses the gate.
+  //
+  // Cost curve mirrors the existing auto-buyer upgrades (10× / 100× / max
+  // tiers). Forge is cheaper than Fuse per-tier because forging is the
+  // primary "make more worlds" action.
+  {
+    id: "bulk_forge_10x",
+    name: "Bulk Forge ×10",
+    desc: (_l) => "Unlocks the Forge ×10 button on the Divine Engine — forge 10 worlds in one click.",
+    baseCost: 100,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "bulk_forge_100x",
+    name: "Bulk Forge ×100",
+    desc: (_l) => "Unlocks the Forge ×100 button — forge 100 worlds in one click.",
+    baseCost: 1000,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "bulk_forge_max",
+    name: "Bulk Forge Max",
+    desc: (_l) => "Unlocks the Forge Max button — forge as many worlds as you can afford in one click (capped at 10000).",
+    baseCost: 10000,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "bulk_fuse_10x",
+    name: "Bulk Fuse ×10",
+    desc: (_l) => "Unlocks the Fuse ×10 button on each fusion tier — fuse 10 times in one click.",
+    baseCost: 150,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "bulk_fuse_100x",
+    name: "Bulk Fuse ×100",
+    desc: (_l) => "Unlocks the Fuse ×100 button on each fusion tier — fuse 100 times in one click.",
+    baseCost: 1500,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "bulk_fuse_max",
+    name: "Bulk Fuse Max",
+    desc: (_l) => "Unlocks the Fuse Max button on each fusion tier — fuse as many times as possible (capped at 10000).",
+    baseCost: 15000,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    requiresLayer: "transcendence",
+    category: "universal",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+
   // CURRENCY-UNIFICATION — the `ep_auto_converter` upgrade has been
   // REMOVED from the shop. The EP→PP conversion every tick was redundant
   // once the shop spends a single currency (Divinity) for everything.

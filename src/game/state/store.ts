@@ -4618,6 +4618,160 @@ export const useGameStore = create<GameStore>()(
         );
       },
 
+      // RESTORE-BULK-FORGE-FUSE — forge N worlds at once.
+      //
+      // CRITICAL FIX: capture `initialForged = s.worldsForged` BEFORE the
+      // loop, then use `initialForged + i` in the cost formula. The old
+      // (buggy) version used `forged + i` where `forged` was being
+      // incremented each iteration, making the effective exponent
+      // `forged_initial + 2i` instead of `forged_initial + i` — i.e. the
+      // cost curve doubled, making "Forge Max" wildly more expensive than
+      // it should have been.
+      //
+      // Gating:
+      //   • bulk_forge_10x owned → any bulk count (N > 1) allowed
+      //   • bulk_forge_100x owned → N ≥ 100 allowed
+      //   • bulk_forge_max owned → N === -1 ("forge max") allowed
+      //   • debugFreeBuy bypasses ALL upgrade gates (but NOT the layer gate)
+      //
+      // Safety cap: 10000 per click. Stops early if Divinity runs out
+      // (unless debugFreeBuy).
+      forgeWorldBulk: (count) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        // Determine effective count.
+        let requested: number;
+        if (count === -1) {
+          // "Forge Max" — gated by bulk_forge_max (or debugFreeBuy).
+          if (!s.debugFreeBuy && (s.upgrades["bulk_forge_max"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Forge Max in the shop to unlock Max forging.");
+            return;
+          }
+          requested = 10000; // safety cap
+        } else {
+          if (count <= 0) return;
+          if (count === 1) {
+            // Delegate to the single-forge path (no upgrade needed).
+            get().forgeWorld();
+            return;
+          }
+          // Any bulk > 1 requires at least bulk_forge_10x.
+          if (!s.debugFreeBuy && (s.upgrades["bulk_forge_10x"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Forge ×10 in the shop to unlock bulk forging.");
+            return;
+          }
+          // N ≥ 100 requires bulk_forge_100x.
+          if (count >= 100 && !s.debugFreeBuy && (s.upgrades["bulk_forge_100x"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Forge ×100 in the shop to forge 100+ at once.");
+            return;
+          }
+          requested = Math.min(count, 10000); // safety cap
+        }
+
+        // Capture the lifetime forged count BEFORE the loop. The cost of
+        // the i-th forge is ceil(50 × 1.5^(initialForged + i)). This is
+        // the fix for the cost-doubling bug.
+        const initialForged = s.worldsForged || 0;
+        let divinity = s.divinity || 0;
+        let forged = 0; // number successfully forged this click
+        let totalSpent = 0;
+        for (let i = 0; i < requested; i++) {
+          const cost = Math.ceil(50 * Math.pow(1.5, initialForged + i));
+          if (!s.debugFreeBuy && divinity < cost) break;
+          if (!s.debugFreeBuy) {
+            divinity -= cost;
+            totalSpent += cost;
+          }
+          forged += 1;
+        }
+        if (forged === 0) {
+          get().notifyPurchaseError(`Not enough Divinity to forge any worlds (need ${Math.ceil(50 * Math.pow(1.5, initialForged)).toLocaleString()} for the first).`);
+          return;
+        }
+        const worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
+        if (typeof worldTiers["1"] !== "number") worldTiers["1"] = 0;
+        worldTiers["1"] += forged;
+        set({
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : divinity,
+          worldsForged: initialForged + forged,
+          worldTiers,
+        });
+        get().addToLog(
+          `🌍 Forged ${forged} world${forged === 1 ? "" : "s"} at once (+${forged} Tier 1).${s.debugFreeBuy ? " (DEBUG: free)" : ` (-${totalSpent.toLocaleString()} Divinity, ${initialForged + forged} forged lifetime)`}`
+        );
+      },
+
+      // RESTORE-BULK-FORGE-FUSE — fuse N times into the target tier.
+      // Each fuse consumes tier.sourceCount of the source tier and adds
+      // 1 to the target tier. Stops early if source runs out (or N reached).
+      // Gating mirrors forgeWorldBulk:
+      //   • bulk_fuse_10x → any bulk > 1
+      //   • bulk_fuse_100x → N ≥ 100
+      //   • bulk_fuse_max → N === -1
+      // Safety cap: 10000 per click.
+      fuseWorldsBulk: (targetTierId, count) => {
+        const s = get();
+        if (!s.unlockedLayers?.transcendence) return;
+        const tier = FUSION_TIER_MAP[targetTierId];
+        if (!tier) return;
+        if (tier.sourceTier === null) {
+          get().addToLog(`Tier 1 cannot be fused into (it's the base tier).`);
+          return;
+        }
+        // Layer-locked tier check (Void World requires L7+).
+        if (tier.requiresLayer && !s.unlockedLayers?.[tier.requiresLayer as keyof typeof s.unlockedLayers]) {
+          get().addToLog(`Cannot fuse to ${tier.name}: requires ${tier.requiresLayer} layer.`);
+          return;
+        }
+        // Determine effective count.
+        const sourceCount = tier.sourceCount;
+        const sourceAvailable = Math.max(0, Math.floor((s.worldTiers || {})[tier.sourceTier!] || 0));
+        const maxBySource = Math.floor(sourceAvailable / sourceCount);
+        let requested: number;
+        if (count === -1) {
+          if (!s.debugFreeBuy && (s.upgrades["bulk_fuse_max"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Fuse Max in the shop to unlock Max fusing.");
+            return;
+          }
+          requested = Math.min(10000, maxBySource); // safety cap + source cap
+        } else {
+          if (count <= 0) return;
+          if (count === 1) {
+            // Delegate to single-fuse path (no upgrade needed).
+            get().fuseWorlds(targetTierId);
+            return;
+          }
+          if (!s.debugFreeBuy && (s.upgrades["bulk_fuse_10x"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Fuse ×10 in the shop to unlock bulk fusing.");
+            return;
+          }
+          if (count >= 100 && !s.debugFreeBuy && (s.upgrades["bulk_fuse_100x"] || 0) === 0) {
+            get().notifyPurchaseError("Buy Bulk Fuse ×100 in the shop to fuse 100+ at once.");
+            return;
+          }
+          requested = Math.min(count, 10000, maxBySource); // safety cap + source cap
+        }
+        if (requested <= 0) {
+          if (sourceAvailable < sourceCount) {
+            get().addToLog(`Cannot fuse to ${tier.name}: need ${sourceCount} ${FUSION_TIER_MAP[tier.sourceTier!].name}, have ${sourceAvailable}.`);
+          } else {
+            get().addToLog(`Cannot fuse to ${tier.name}: nothing to do.`);
+          }
+          return;
+        }
+        const worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
+        if (typeof worldTiers[tier.sourceTier!] !== "number") worldTiers[tier.sourceTier!] = 0;
+        if (typeof worldTiers[targetTierId] !== "number") worldTiers[targetTierId] = 0;
+        const consumed = requested * sourceCount;
+        worldTiers[tier.sourceTier!] -= consumed;
+        worldTiers[targetTierId] += requested;
+        set({ worldTiers });
+        const sourceTier = FUSION_TIER_MAP[tier.sourceTier!];
+        get().addToLog(
+          `🔮 Fused ${consumed} ${sourceTier.name} → ${requested} ${tier.name} (production ×${tier.productionMult.toLocaleString()} each).`
+        );
+      },
+
       // Purchase a one-time Convergence Catalyst (5 total). Each grants a
       // permanent Divine Engine upgrade.
       purchaseCatalyst: (catalystId) => {
@@ -6983,9 +7137,13 @@ export const useGameStore = create<GameStore>()(
 
             debugUnlockAll: () => {
         const s = get();
-        // Seed 3 starter relics if the player has none (so the Genesis Engine is usable).
+        // RESTORE-BULK-FORGE-FUSE — ALWAYS grant at least 1 fresh relic.
+        // Was: only seeded 3 relics when the player had none. Now: seed 3
+        // if the player has 0 relics, otherwise seed 1 more. This lets
+        // debug testers keep topping up relics for Genesis Engine testing.
         const currentRelics = s.divineRelics || [];
-        const starterRelics = currentRelics.length === 0 ? generateRelicReward(3) : [];
+        const relicCount = currentRelics.length === 0 ? 3 : 1;
+        const newRelics = generateRelicReward(relicCount);
         set({
           unlockedChallenges: true,
           galacticWins: Math.max(s.galacticWins, 1),
@@ -7004,11 +7162,11 @@ export const useGameStore = create<GameStore>()(
           evolutionPoints: s.evolutionPoints || 0,
           divinity: (s.divinity || 0) + 50000,
           faith: (s.faith || 0) + 5000,
-          divineRelics: [...currentRelics, ...starterRelics],
+          divineRelics: [...currentRelics, ...newRelics],
           // Seed enough for L10 testing: high peak + some constellation stars lit
           peakProductionRate: Math.max(s.peakProductionRate || 0, 5000),
         });
-        get().addToLog("DEBUG: All prestige layers unlocked. +50000 Divinity, +5000 Faith granted. 3 starter relics seeded. Peak production set to 5000/s for L10 testing.");
+        get().addToLog(`DEBUG: All prestige layers unlocked. +50000 Divinity, +5000 Faith granted. ${relicCount} relic${relicCount === 1 ? "" : "s"} seeded. Peak production set to 5000/s for L10 testing.`);
       },
 
       // DEBUG: Free Buy — when enabled, all purchases cost 0 resources.
@@ -7136,6 +7294,24 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         set({ cosmicBoonStacks: (s.cosmicBoonStacks || 0) + 1 });
         get().addToLog("DEBUG: +1 Cosmic Boon granted.");
+      },
+
+      // RESTORE-BULK-FORGE-FUSE — spawn 1 fresh relic into the inventory.
+      // Uses generateRelicReward(1)[0]. Appends to s.divineRelics. The log
+      // message reflects the rule name + amount of the FIRST rule on the
+      // relic (so debug testers can see at a glance what was spawned).
+      debugSpawnRelic: () => {
+        const s = get();
+        const newRelic = generateRelicReward(1)[0];
+        if (!newRelic) return;
+        const relics = [...(s.divineRelics || []), newRelic];
+        set({ divineRelics: relics });
+        // Build a short summary of the relic's first rule for the log.
+        const firstRule = newRelic.rules[0];
+        const ruleName = firstRule ? firstRule.ruleId : "unknown";
+        const ruleAmount = firstRule ? firstRule.amount : 0;
+        const amtStr = ruleAmount > 0 ? `+${ruleAmount}` : `${ruleAmount}`;
+        get().addToLog(`DEBUG: Spawned 1 relic (rule: ${ruleName}, ${amtStr}).`);
       },
 
       // Immediately call triggerPrestige (the canonical prestige path).
@@ -7784,6 +7960,20 @@ export const useGameStore = create<GameStore>()(
             }
           }
           persisted.evolutionSliders = migrated;
+        }
+
+        // RESTORE-BULK-FORGE-FUSE — backfill the 6 new bulk forge/fuse
+        // upgrade keys on existing saves. They default to level 0 (locked)
+        // so old saves see no behavior change until the player buys them
+        // in the shop. This runs on every load (idempotent — only sets
+        // keys that are missing).
+        if (persisted.upgrades) {
+          for (const id of [
+            "bulk_forge_10x", "bulk_forge_100x", "bulk_forge_max",
+            "bulk_fuse_10x", "bulk_fuse_100x", "bulk_fuse_max",
+          ]) {
+            if (persisted.upgrades[id] === undefined) persisted.upgrades[id] = 0;
+          }
         }
 
         return persisted;

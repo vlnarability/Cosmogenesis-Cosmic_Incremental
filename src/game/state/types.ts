@@ -809,6 +809,8 @@ export interface GameStore extends GameState {
   debugCompleteLayer: () => void;
   /** +1 cosmicBoonStacks (L10 ending currency). Logs "DEBUG: +1 Cosmic Boon granted." */
   debugGenerateBoon: () => void;
+  /** RESTORE-BULK-FORGE-FUSE — spawn 1 fresh relic into the inventory (L10 Genesis Engine). */
+  debugSpawnRelic: () => void;
   /** Immediately call triggerPrestige(). */
   debugForcePrestige: () => void;
   /** Toggle game speed between 100× and 1×. */
@@ -997,6 +999,18 @@ export interface GameStore extends GameState {
   // Spend Divinity to forge a new background world (Tier 1). Cost scales
   // 1.5× per world already forged. worldsForged persists across prestiges.
   forgeWorld: () => void;
+  // RESTORE-BULK-FORGE-FUSE — forge N worlds at once. Cost for each forge
+  // = ceil(50 × 1.5^(initialForged + i)) where initialForged is captured
+  // BEFORE the loop (the bug that doubled the cost curve is now fixed).
+  // N === -1 means "forge max" (as many as affordable). Safety cap: 10000
+  // per click. Upgrade-gated: bulk_forge_10x for any bulk, bulk_forge_100x
+  // for N≥100, bulk_forge_max for N<0. debugFreeBuy bypasses all gates.
+  forgeWorldBulk: (count: number) => void;
+  // Fuse N times into the target tier. Each fuse consumes
+  // tier.sourceCount of the source tier. Stops early if source runs out.
+  // N === -1 means "fuse max". Safety cap: 10000 per click. Upgrade-gated
+  // same as forge. debugFreeBuy bypasses all gates.
+  fuseWorldsBulk: (targetTierId: string, count: number) => void;
   // Purchase a one-time Convergence Catalyst (5 total). Each grants a
   // permanent Divine Engine upgrade (e.g. +10% Div/s, ×2 peak prod, etc.).
   purchaseCatalyst: (catalystId: string) => void;
