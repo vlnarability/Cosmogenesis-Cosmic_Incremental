@@ -774,6 +774,12 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         if (s.paused) return;
 
+        // LOG-QUEUE — batch all deferred log messages from this tick into
+        // a single array, flushed with ONE setTimeout at the end.
+        // Replaces ~35 individual pendingLogs.push(msg)
+        // calls with a single deferred flush.
+        const pendingLogs: string[] = [];
+
         // ACHIEVEMENT-EXPANSION — track consecutive idle duration (real
         // time since the last player-initiated action). When the gap
         // exceeds 1 second, increment `idleDurationSec` by the tick dt
@@ -1472,13 +1478,13 @@ export const useGameStore = create<GameStore>()(
                 activeEvent = followUp.eventId;
                 eventTimer = 60;
                 eventCooldown = 5;
-                setTimeout(() => get().addToLog(`🔗 Event chain: "${srcName}" triggered follow-up "${evDef.name}".`), 0);
+                pendingLogs.push(`🔗 Event chain: "${srcName}" triggered follow-up "${evDef.name}".`);
               } else {
                 // Target event was removed from EVENT_MAP — drop silently.
-                setTimeout(() => get().addToLog(`🔗 Event chain from "${srcName}" — follow-up "${followUp.eventId}" no longer exists; dropped.`), 0);
+                pendingLogs.push(`🔗 Event chain from "${srcName}" — follow-up "${followUp.eventId}" no longer exists; dropped.`);
               }
             } else {
-              setTimeout(() => get().addToLog(`🔗 Event chain from "${srcName}" — follow-up did not fire (chance roll failed).`), 0);
+              pendingLogs.push(`🔗 Event chain from "${srcName}" — follow-up did not fire (chance roll failed).`);
             }
           }
         }
@@ -1568,10 +1574,10 @@ export const useGameStore = create<GameStore>()(
               if (!unlockedLayers.enlightenment &&
                   (totalChallengesCompleted >= 3 || totalRepeats >= TRIAL_REALMS_REQUIRED_FOR_LAYER_2)) {
                 unlockedLayers = { ...unlockedLayers, enlightenment: true };
-                setTimeout(() => get().addToLog(`Trial progress threshold reached (${totalChallengesCompleted}/3 distinct trials, or ${totalRepeats}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} total repeats). Enlightenment layer unlocked.`), 0);
+                pendingLogs.push(`Trial progress threshold reached (${totalChallengesCompleted}/3 distinct trials, or ${totalRepeats}/${TRIAL_REALMS_REQUIRED_FOR_LAYER_2} total repeats). Enlightenment layer unlocked.`);
               }
               // Defer log so we don't race with set()
-              setTimeout(() => get().addToLog(`Trial complete: ${chName} (repeat ${completedCount}). Mastery bonus made permanent. (+1 Prestige Point)`), 0);
+              pendingLogs.push(`Trial complete: ${chName} (repeat ${completedCount}). Mastery bonus made permanent. (+1 Prestige Point)`);
             }
           }
         }
@@ -1684,7 +1690,7 @@ export const useGameStore = create<GameStore>()(
               const cap = capacities[r] || 50;
               resources[r] = Math.min(cap, (resources[r] || 0) + cap * 0.20);
             }
-            setTimeout(() => get().addToLog(`🎲 Trial of Fortune! +20% capacity to ${picks.join(", ")}.`), 0);
+            pendingLogs.push(`🎲 Trial of Fortune! +20% capacity to ${picks.join(", ")}.`);
           } else if ((layerEventTimers.trial_of_fortune || 0) === 0) {
             // First-time initialization — wait 120s before first fire
             layerEventTimers.trial_of_fortune = newTime;
@@ -1697,7 +1703,7 @@ export const useGameStore = create<GameStore>()(
           } else if (newTime - layerEventTimers.vision >= 90) {
             layerEventTimers.vision = newTime;
             divinity += 5;
-            setTimeout(() => get().addToLog("👁️ Vision! +5 Divinity granted."), 0);
+            pendingLogs.push("👁️ Vision! +5 Divinity granted.");
           }
         }
         // Layer 3 — Divine Whim: every 120s (after transcendence unlocked), +30 Divinity (≈ half a ritual's cost)
@@ -1707,7 +1713,7 @@ export const useGameStore = create<GameStore>()(
           } else if (newTime - layerEventTimers.divine_whim >= 120) {
             layerEventTimers.divine_whim = newTime;
             divinity += 30;
-            setTimeout(() => get().addToLog("🌀 Divine Whim! Ritual energies surge (+30 Divinity)."), 0);
+            pendingLogs.push("🌀 Divine Whim! Ritual energies surge (+30 Divinity).");
           }
         }
         // Layer 5 — Heresy Surge: every 90s (after apotheosis unlocked), seed a
@@ -1731,7 +1737,7 @@ export const useGameStore = create<GameStore>()(
               surgeGrid[pick] = { ...surgeGrid[pick], state: "heretical" };
               pendingSurgeGrid = surgeGrid;
             }
-            setTimeout(() => get().addToLog("🔥 Heresy Surge! A heretic appears in the Aurora Galaxy flock."), 0);
+            pendingLogs.push("🔥 Heresy Surge! A heretic appears in the Aurora Galaxy flock.");
           }
         }
 
@@ -1772,7 +1778,7 @@ export const useGameStore = create<GameStore>()(
               }
               const repeats = (s.transcendenceOfferingsUsed?.[pick.id] || 0);
               divinity += offeringDivinityAtRepeat(pick, repeats);
-              setTimeout(() => get().addToLog(`Auto-Libation performed ${pick.name}.`), 0);
+              pendingLogs.push(`Auto-Libation performed ${pick.name}.`);
             }
           }
 
@@ -1783,7 +1789,7 @@ export const useGameStore = create<GameStore>()(
             if (r && !(s.purchasedRituals?.["ritual_silent_hour"]) && !(activeTemporaryRituals["ritual_silent_hour"] > 0) && divinity >= r.cost) {
               divinity -= r.cost;
               activeTemporaryRituals = { ...activeTemporaryRituals, ritual_silent_hour: r.durationSec || 0 };
-              setTimeout(() => get().addToLog(`Ritualist performed ${r.name}.`), 0);
+              pendingLogs.push(`Ritualist performed ${r.name}.`);
             }
           }
 
@@ -1796,7 +1802,7 @@ export const useGameStore = create<GameStore>()(
               population -= pick.popCost;
               divinity += pick.divinityGain;
               bloodPactsUsed = { ...bloodPactsUsed, [pick.id]: true };
-              setTimeout(() => get().addToLog(`Crimson Ledger performed ${pick.name} (-${pick.popCost} pop, +${pick.divinityGain} Divinity).`), 0);
+              pendingLogs.push(`Crimson Ledger performed ${pick.name} (-${pick.popCost} pop, +${pick.divinityGain} Divinity).`);
             }
           }
 
@@ -1859,7 +1865,7 @@ export const useGameStore = create<GameStore>()(
                 log: [`${def.icon} ${def.name} raids your galaxies! HP ${def.hp}, ATK ${def.attack}, DEF ${def.defense}.`],
                 deployedLegionIds: [],
               });
-              setTimeout(() => get().addToLog(`⚔️ ${def.name} (${def.icon}) raids your galaxies! Deploy legions to repel it.`), 0);
+              pendingLogs.push(`⚔️ ${def.name} (${def.icon}) raids your galaxies! Deploy legions to repel it.`);
             }
           }
           // Instability ≥ 100 — creatures go ROGUE: lose 1 random claimed system, reset instability to 50.
@@ -1875,7 +1881,7 @@ export const useGameStore = create<GameStore>()(
               const sys = claimedL4[idx];
               sys.claimed = false;
               const lostName = sys.id;
-              setTimeout(() => get().addToLog(`🧬 Creatures go rogue! They raid your galaxies and destroy system ${lostName}. Instability reset to ${INSTABILITY_AFTER_ROGUE}.`), 0);
+              pendingLogs.push(`🧬 Creatures go rogue! They raid your galaxies and destroy system ${lostName}. Instability reset to ${INSTABILITY_AFTER_ROGUE}.`);
             } else {
               // Defer to post-tick set() — decrement `systemsClaimed` on a random L6
               // universal galaxy that the player has claimed systems in.
@@ -1907,9 +1913,9 @@ export const useGameStore = create<GameStore>()(
         if (unlockedLayers.enlightenment && !unlockedLayers.transcendence) {
           if (canAdvanceToTranscendence(constellationState)) {
             unlockedLayers = { ...unlockedLayers, transcendence: true };
-            setTimeout(() => get().addToLog(
+            pendingLogs.push(
               `${CONSTELLATIONS_REQUIRED_FOR_LAYER_3} constellations fully illuminated. Transcendence layer unlocked.`
-            ), 0);
+            );
           }
         }
         // Layer 4 (Genesis): L3-REDESIGN — all 4 genesis seeds planted
@@ -1921,7 +1927,7 @@ export const useGameStore = create<GameStore>()(
         if (unlockedLayers.transcendence && !unlockedLayers.genesis) {
           if (allGenesisSeedsPlanted(s.plantedSeeds)) {
             unlockedLayers = { ...unlockedLayers, genesis: true };
-            setTimeout(() => get().addToLog("All 4 Genesis Seeds planted. Genesis layer unlocked."), 0);
+            pendingLogs.push("All 4 Genesis Seeds planted. Genesis layer unlocked.");
           }
         }
         // Layer 5 (Apotheosis): L4 redesign — completing the galaxy (all 50 systems
@@ -1952,7 +1958,7 @@ export const useGameStore = create<GameStore>()(
           const threeLawsEnacted = hasEnactedThreeLaws(s.enactedDivineLaws || {});
           if (conqueredCount >= GALAXIES_REQUIRED_FOR_L6 || threeLawsEnacted) {
             unlockedLayers = { ...unlockedLayers, singularity: true };
-            setTimeout(() => get().addToLog(`3 galaxies conquered (or 3 divine laws enacted). Singularity layer unlocked.`), 0);
+            pendingLogs.push(`3 galaxies conquered (or 3 divine laws enacted). Singularity layer unlocked.`);
           }
         }
         // Layer 7 (Omnipotence): L6 Universal Map complete (20 rifts closed + 10 anchors placed)
@@ -1961,23 +1967,23 @@ export const useGameStore = create<GameStore>()(
         if (unlockedLayers.singularity && !unlockedLayers.omnipotence) {
           if (isUniversalMapComplete(l6RiftsClosed, l6AnchorsPlaced)) {
             unlockedLayers = { ...unlockedLayers, omnipotence: true };
-            setTimeout(() => get().addToLog(
+            pendingLogs.push(
               `Universal Map stabilized — ${l6RiftsClosed}/${RIFTS_REQUIRED_FOR_L7} rifts closed, ${l6AnchorsPlaced}/${ANCHORS_REQUIRED_FOR_L7} anchors placed. Omnipotence layer unlocked.`
-            ), 0);
+            );
           }
         }
         // Layer 8 (Divinity): repel OUTPOST_RAID_COUNT_FOR_L8 outpost raids
         if (unlockedLayers.omnipotence && !unlockedLayers.divinity) {
           if (isOmnipotenceComplete(raidsRepelled)) {
             unlockedLayers = { ...unlockedLayers, divinity: true };
-            setTimeout(() => get().addToLog(`⚔️ ${OUTPOST_RAID_COUNT_FOR_L8} outpost raids repelled! Divine Alliance layer unlocked.`), 0);
+            pendingLogs.push(`⚔️ ${OUTPOST_RAID_COUNT_FOR_L8} outpost raids repelled! Divine Alliance layer unlocked.`);
           }
         }
         // Layer 9 (Infinity): 2+ alliances formed (Divine Alliance complete)
         if (unlockedLayers.divinity && !unlockedLayers.infinity) {
           if (isDivinityComplete(s.alliances || {})) {
             unlockedLayers = { ...unlockedLayers, infinity: true };
-            setTimeout(() => get().addToLog("Two alliances forged. Divine War layer unlocked."), 0);
+            pendingLogs.push("Two alliances forged. Divine War layer unlocked.");
           }
         }
         // Layer 10 (Eternity — Genesis Engine): all 3 Old Gods defeated.
@@ -2139,7 +2145,7 @@ export const useGameStore = create<GameStore>()(
             for (const r of Object.keys(MARKET_BASE_PRICES)) {
               marketPrices[r] = MARKET_BASE_PRICES[r];
             }
-            setTimeout(() => get().addToLog("📈 Market crash resolved — prices recover."), 0);
+            pendingLogs.push("📈 Market crash resolved — prices recover.");
           }
         } else {
           if (marketCrashTimer <= 0) {
@@ -2150,7 +2156,7 @@ export const useGameStore = create<GameStore>()(
               for (const r of Object.keys(MARKET_BASE_PRICES)) {
                 marketPrices[r] = MARKET_BASE_PRICES[r] * 0.3;
               }
-              setTimeout(() => get().addToLog("⚠ MARKET CRASH! All prices dropped to 30% — buy now!"), 0);
+              pendingLogs.push("⚠ MARKET CRASH! All prices dropped to 30% — buy now!");
             } else {
               marketCrashTimer = 120;
             }
@@ -2395,7 +2401,7 @@ export const useGameStore = create<GameStore>()(
 
         // Flush L5 per-galaxy heresy log messages (deferred to avoid setState-in-loop).
         for (const msg of heresyLog) {
-          setTimeout(() => get().addToLog(msg), 0);
+          pendingLogs.push(msg);
         }
 
         // ===== LAYER 6 — UNIVERSAL MAP (Rift Defense + Reality Anchors) =====
@@ -2652,9 +2658,9 @@ export const useGameStore = create<GameStore>()(
           const lastBgLog = (s as any)._lastBgSimLog || 0;
           if (newTime - lastBgLog >= 60) {
             (s as any)._lastBgSimLog = newTime;
-            setTimeout(() => get().addToLog(
+            pendingLogs.push(
               `🌌 Worlds: ${backgroundSimulations.toLocaleString()} running (raw ${rawWorlds.toLocaleString()} × effective ${effectiveWorlds.toLocaleString()}). +${bgDivPerSec.toFixed(2)} Div/s (Flame ×${flameMult.toFixed(2)}${activeTemplate ? `, ${activeTemplate.name} ×${activeTemplate.divinityMult.toFixed(2)}` : ""}).`
-            ), 0);
+            );
           }
         }
 
@@ -2814,7 +2820,7 @@ export const useGameStore = create<GameStore>()(
           // Dead-code fix: `void availableWorlds` was a no-op — the value
           // was computed but never used. Removed to save per-tick computation.
           for (const msg of portfolioLogs) {
-            setTimeout(() => get().addToLog(msg), 0);
+            pendingLogs.push(msg);
           }
         }
 
@@ -2957,7 +2963,7 @@ export const useGameStore = create<GameStore>()(
           }
           if (convertedGalaxy) {
             const gname = RIVAL_GALAXY_MAP[convertedGalaxy]?.name || convertedGalaxy;
-            setTimeout(() => get().addToLog(`⚖️ Auto-Manage Heresy: converted cell ${convertedIdx + 1} in ${gname} back to the faithful.`), 0);
+            pendingLogs.push(`⚖️ Auto-Manage Heresy: converted cell ${convertedIdx + 1} in ${gname} back to the faithful.`);
           }
         }
 
@@ -3174,9 +3180,24 @@ export const useGameStore = create<GameStore>()(
           // any mid-tick flag updates (e.g. heresySurvivor).
           achievementMeta: s.achievementMeta,
         });
-        // L6 Universal Map — log rift spawn / corruption events (deferred to avoid setState-in-loop).
+        // L6 Universal Map — log rift spawn / corruption events.
         for (const msg of riftLog) {
-          setTimeout(() => get().addToLog(msg), 0);
+          pendingLogs.push(msg);
+        }
+
+        // LOG-QUEUE FLUSH — batch all deferred log messages from this tick
+        // into a single setTimeout. Replaces ~36 individual microtasks with
+        // 1 per tick. The messages are formatted with timestamps + prepended
+        // to the log array (same as addToLog does, but in one call).
+        if (pendingLogs.length > 0) {
+          const msgs = [...pendingLogs];
+          setTimeout(() => {
+            const ts = new Date().toLocaleTimeString();
+            const cur = get();
+            const entries = msgs.map((msg) => `[${ts}] ${msg}`);
+            const log = [...entries, ...(cur.log || [])].slice(0, 100);
+            set({ log });
+          }, 0);
         }
       },
 
@@ -3650,7 +3671,7 @@ export const useGameStore = create<GameStore>()(
             const govLine = preferredGov === govId
               ? `Government established: ${g.name} (player-preferred). Advantages: ${advMsg}. Disadvantages: ${disMsg}.`
               : `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
-            setTimeout(() => get().addToLog(govLine), 0);
+            pendingLogs.push(govLine);
           }
         }
 
@@ -3831,7 +3852,7 @@ export const useGameStore = create<GameStore>()(
               delete newChallengeRepeatCounts[activeChId];
               challengeJustCompleted = true;
               // +1 Prestige Point for completing a challenge
-              setTimeout(() => get().addToLog(`🏆 Challenge complete: ${ch.name} (repeat ${completedCount}). Mastery bonus made permanent.`), 0);
+              pendingLogs.push(`🏆 Challenge complete: ${ch.name} (repeat ${completedCount}). Mastery bonus made permanent.`);
             } else {
               // Challenge NOT completed by this prestige — fail it.
               delete newChallengeRepeatCounts[activeChId];
@@ -4460,9 +4481,9 @@ export const useGameStore = create<GameStore>()(
         if (comboCount >= 3) {
           comboTimer = 30; // +50% all production for 30s
           comboCount = 0;
-          setTimeout(() => get().addToLog("🌟 Divine Combo! +50% all production for 30s."), 0);
+          pendingLogs.push("🌟 Divine Combo! +50% all production for 30s.");
         } else {
-          setTimeout(() => get().addToLog(`Ritual combo: ${comboCount}/3 — perform ${3 - comboCount} more different ritual(s) within ${Math.max(0, 60 - sinceLast).toFixed(0)}s for a Divine Combo.`), 0);
+          pendingLogs.push(`Ritual combo: ${comboCount}/3 — perform ${3 - comboCount} more different ritual(s) within ${Math.max(0, 60 - sinceLast).toFixed(0)}s for a Divine Combo.`);
         }
 
         if (r.kind === "permanent") {
@@ -5684,10 +5705,10 @@ export const useGameStore = create<GameStore>()(
           `⚔️ ${galaxy.name}: system ${claimedCount + 1}/${galaxy.systemCount} claimed (-${cost} Faith, +18 worlds).${nowConquered ? " Galaxy conquered!" : ""}`
         );
         if (justConquered) {
-          setTimeout(() => get().addToLog(`🏆 ${galaxy.name} conquered! All ${galaxy.systemCount} systems claimed.`), 0);
+          pendingLogs.push(`🏆 ${galaxy.name} conquered! All ${galaxy.systemCount} systems claimed.`);
         }
         if (l6Unlock) {
-          setTimeout(() => get().addToLog(`3 rival galaxies conquered. Singularity layer unlocked.`), 0);
+          pendingLogs.push(`3 rival galaxies conquered. Singularity layer unlocked.`);
         }
       },
 
@@ -6409,7 +6430,7 @@ export const useGameStore = create<GameStore>()(
         const temporalStorms = { ...(s.temporalStorms || {}) };
         if (!temporalStorms[oldGodId] && Math.random() < 0.20) {
           temporalStorms[oldGodId] = true;
-          setTimeout(() => get().addToLog(`🌀 Temporal Storm engulfs the battlefield — the timeline shudders. (Stabilize Time for 1 Divine Fragment to end it.)`), 0);
+          pendingLogs.push(`🌀 Temporal Storm engulfs the battlefield — the timeline shudders. (Stabilize Time for 1 Divine Fragment to end it.)`);
         }
         const stormActive = !!temporalStorms[oldGodId];
         // Compute player attack from deployed legions
@@ -7001,7 +7022,7 @@ export const useGameStore = create<GameStore>()(
             },
           ];
           const targetName = EVENT_MAP[fu.eventId]?.name || fu.eventId;
-          setTimeout(() => get().addToLog(`🔗 ${ev.name} scheduled follow-up "${targetName}" in ${fu.delaySec}s (chance ${Math.round(chance * 100)}%).`), 0);
+          pendingLogs.push(`🔗 ${ev.name} scheduled follow-up "${targetName}" in ${fu.delaySec}s (chance ${Math.round(chance * 100)}%).`);
         }
 
         set({
