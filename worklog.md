@@ -7799,3 +7799,108 @@ All three lost features are restored. The Forge Max cost formula bug is fixed (t
 - `src/game/state/store.ts` (~+155 lines: forgeWorldBulk + fuseWorldsBulk + debugSpawnRelic actions, debugUnlockAll relic top-up, persist migration backfill)
 - `src/components/game/layout/DivineEngineFullTab.tsx` (~+165 lines: imports, selectors, maxForgeable + maxFusableByTier compute, World Forge + World Fusion sections)
 - `src/components/game/modals/SettingsModal.tsx` (+9 lines: debugSpawnRelic selector + Spawn Relic button)
+
+---
+Task ID: RESTORE-THREEJS-3D
+Agent: Z.ai Code (main)
+Task: Replace the CSS 3D-transforms world visualization in the Divine Engine tab with a real Three.js renderer. The user explicitly asked for actual 3D sphere meshes — "The object needs to be generated as a 3d object since the visualizer rotates in 360 degrees." CSS 3D transforms can only position flat 2D billboards in 3D space (they always face the camera regardless of rotation); they cannot show real 3D geometry, specular highlights, or shadow gradients that rotate with the scene.
+
+## Work Log
+
+### 1. Installed Three.js
+- `bun add three` → three@0.186.1
+- `bun add -d @types/three` → @types/three@0.186.0
+- Verified `node_modules/three/examples/jsm/controls/OrbitControls.js` + matching `.d.ts` exist.
+
+### 2. New file: `src/components/game/layout/WorldVisualization3D.tsx` (407 lines)
+
+Exports: `WorldVisualization3D` component, `computeWorldDots(worldTiers)` function, `WorldDot` interface, plus `TIER_COLORS` + `TIER_RADII` const maps.
+
+Scene graph:
+- `THREE.Scene` with dark background `0x050518`
+- `THREE.PerspectiveCamera(50, w/h, 0.1, 5000)` at position (400, 200, 500) — distance from origin ≈ 670.8 (the zoom factor baseline "1.00×")
+- `THREE.WebGLRenderer({ antialias: true })` with `setPixelRatio(devicePixelRatio)` + `ResizeObserver` for responsive resize
+
+3-light setup (proves the geometry is real 3D — highlights + shadows rotate with the scene):
+- `AmbientLight(0x404060, 0.6)` — cool ambient fill
+- `DirectionalLight(0xffffff, 1.2)` at (300, 400, 300) — key light
+- `DirectionalLight(0x6080ff, 0.4)` at (-200, -100, -200) — blue rim light
+
+World spheres:
+- `THREE.InstancedMesh(SphereGeometry(1, 16, 12), MeshStandardMaterial({ metalness: 0.3, roughness: 0.5 }), dots.length)`
+- All worlds drawn in **1 draw call** (200+ spheres → 1 draw call) — material + geometry shared, tiny GPU memory.
+- Per-instance transform matrix (`setMatrixAt`) — position + uniform scale via `TIER_RADII`.
+- Per-instance color (`setColorAt` + `instanceColor`) — uses `TIER_COLORS`.
+- `instanceMatrix.setUsage(THREE.StaticDrawUsage)` since positions are stable per-render.
+
+Background starfield:
+- `THREE.Points` with 200 vertices at radius 500–700 (mulberry32 seeded 0x12345678)
+- `PointsMaterial({ color: 0xffffff, size: 2.5, transparent: true, opacity: 0.5, sizeAttenuation: true, depthWrite: false })`
+
+Controls:
+- `OrbitControls` from `three/examples/jsm/controls/OrbitControls.js`
+- `enableDamping=true`, `dampingFactor=0.08`, `enablePan=false`
+- `minDistance=200`, `maxDistance=1500`
+- `rotateSpeed=0.6`, `zoomSpeed=0.8`
+- Drag to rotate 360° in any direction; wheel to zoom; no panning.
+
+Auto-rotate:
+- 6°/s (= 0.1047 rad/s) on Y axis, applied to both `instMesh.rotation.y` and `stars.rotation.y`.
+- `autoRotateRef` (useRef) — disabled on `pointerdown` event, re-enabled on Reset button. Ref so the animation loop reads the latest value without re-creating the loop.
+- `requestAnimationFrame` loop with dt clamped to 0.1s.
+
+UI overlay (matches the previous CSS version):
+- Top-left: "Drag · scroll to zoom" badge + zoom controls (ZoomOut + display "X.XX×" + ZoomIn) + Reset button. All `pointer-events-auto`.
+- Bottom-left: tier legend (filtered to non-zero tiers), `pointer-events-none`.
+- Zoom display = `DEFAULT_CAM_DIST / currentCamDistance`. Range: 0.45× (max 1500) to 3.35× (min 200).
+- Reset: restores `camera.position` to (400, 200, 500), `controls.target` to (0,0,0), `controls.update()`, re-enables auto-rotate.
+- Zoom buttons: multiply camera position by `newDist/dist` (100 units per click).
+
+Cleanup (useEffect return):
+- `cancelAnimationFrame(raf)` + `ro.disconnect()` + removeEventListener on canvas + `controls.removeEventListener("end", ...)` + `controls.dispose()` + dispose all geometries/materials + `renderer.dispose()` + remove canvas from mount + null-out `controlsRef.current`.
+
+### 3. Updated `src/components/game/layout/DivineEngineFullTab.tsx` (856 → 515 lines)
+
+Removed:
+- Inline `WorldVisualization3D` function (~252 lines)
+- Helper functions: `mulberry32`, `computeStarfield`, `computeWorldDots` (local redefinition), `WorldDot` interface redefinition, `TIER_SIZES` const, `ZOOM_MIN/ZOOM_MAX/ZOOM_STEP` consts, the perspective/pinch/pointer drag handlers, the inline CSS scene graph, the coordinate axis triad, the inline zoom controls + Reset button + tier legend (all now live in the new file)
+
+Trimmed imports:
+- React: `useEffect, useRef, useState, useMemo, useCallback` → just `useMemo`
+- lucide-react: removed `RotateCcw, Orbit, ZoomIn, ZoomOut` (only used by the now-extracted visualization)
+
+Added:
+- `import { WorldVisualization3D, computeWorldDots, type WorldDot } from "./WorldVisualization3D";`
+- Kept `TIER_COLORS` const at top (per task spec — for future use by World Fusion row accents).
+- Re-exported `WorldDot` type so external consumers that import via `DivineEngineFullTab` still work.
+
+Updated:
+- Header docstring describes the new Three.js renderer
+- Section subtitle: "each dot is a world, colored by fusion tier" → "each sphere is a 3D world mesh, lit by ambient + key + rim directional lights"
+- `dots` variable: `useMemo(() => computeWorldDots(worldTiers), [worldTiers])` (now uses imported function)
+- Visualization block: `<WorldVisualization3D dots={dots} />`
+
+## Verification
+
+- **`bun run lint`**: 0 errors, 10 pre-existing warnings (all in unrelated files: scripts/playtest-*.js, upload/logic.js, src/game/data/galaxies.ts — same set documented in the DEEP-CODEBASE-REVIEW-2 worklog).
+- **`bun build --target=browser src/components/game/layout/WorldVisualization3D.tsx`**: Bundled 66 modules in 70ms, output 2.27 MB. Confirms Three.js dependency is correctly bundled — `WebGLRenderer`, `InstancedMesh`, `OrbitControls` appear 72 times in the bundle.
+- **`bun build --target=browser src/components/game/layout/DivineEngineFullTab.tsx`**: Bundled 145 modules in 75ms, output 2.55 MB. Import path resolves, all transitive imports valid.
+- **`bunx tsc --noEmit`**: No TypeScript errors in either of my files. (Pre-existing errors in unrelated files like EnlightenmentModal/GenesisModal/store.ts are noted in DEEP-CODEBASE-REVIEW-2.)
+- **Dev server**: Next.js 16.1.3 Turbopack starts cleanly, `✓ Ready in 684ms`. Earlier successful compile: `GET / 200 in 6.7s (compile: 6.3s, render: 397ms)` — compile time grew from 4.8s → 6.3s due to Three.js being added to the bundle graph; no errors.
+
+## Why this is a real 3D fix
+
+Old CSS approach: flat 2D `<div>` elements positioned in 3D space via `translate3d(x, y, z)` + `rotateX/rotateY` on the parent. The dots themselves had no rotation — they were billboards that always faced the camera. When the user dragged to rotate the scene, the dots translated in 3D space but never showed their "back side" because there was no back side. No specular highlights, no shadow gradients, no actual 3D geometry.
+
+New Three.js renderer:
+- `SphereGeometry(1, 16, 12)` — true 3D meshes with front + back surfaces.
+- `MeshStandardMaterial(metalness 0.3, roughness 0.5)` — physically-based shading that responds to the 3-light setup.
+- Lit by ambient + key directional + rim directional lights — specular highlights form on the side facing the key light, shadow gradients on the opposite side. When the user drags to rotate, these highlights + shadows rotate with the scene (lights stay world-space, spheres rotate). This is impossible with CSS 3D transforms.
+- Background starfield is a real `THREE.Points` geometry that rotates with the world spheres — proper parallax depth.
+- `OrbitControls` provides professional camera controls: damping, no panning, zoom limits, drag-to-rotate from any angle including the bottom (looking up at the spheres from below).
+
+## Files modified
+- `package.json` + `bun.lock` (three@0.186.1 + @types/three@0.186.0 devDep added)
+- `src/components/game/layout/WorldVisualization3D.tsx` (+407 lines, new file — Three.js renderer + InstancedMesh + OrbitControls + starfield + UI overlay)
+- `src/components/game/layout/DivineEngineFullTab.tsx` (856 → 515 lines, -341 net — removed inline CSS-3D component + all helpers, replaced with import)
+- `agent-ctx/RESTORE-THREEJS-3D-Z-ai-Code-main.md` (work record for subagent coordination)
