@@ -406,13 +406,12 @@ export interface GameState {
   cosmicBoonStacks: number; // +1 per "Explore another Dimension" reset (ending screen)
   showEternity: boolean;
   // Dimension system — the active dimension (visual/naming reskin). Persists across prestiges.
-  activeDimension: string; // "mundane" | "fantasy" | "cyberpunk" | ...
-  visitedDimensions: string[]; // list of dimension ids the player has explored
   // L10-ENDING-L5-UI-UNLOCKTECH — dimensions the player has visited (always
   // starts with ["mundane"]). Future: unlocks additional dimensions by
   // finishing L10 in each one. Currently only "mundane" is selectable on the
   // ending-screen dimension picker.
-  visitedDimensions: string[];
+  activeDimension: string; // "mundane" | "fantasy" | "cyberpunk" | ...
+  visitedDimensions: string[]; // list of dimension ids the player has explored
   // NEW: Genesis Engine state
   //   divineRelics        — inventory of relics (each with rules + revealed state)
   //   crucibleRelicIds    — relic ids currently loaded into the crucible (max 5)

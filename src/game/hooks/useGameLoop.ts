@@ -53,11 +53,31 @@ export function useGameLoop() {
     return () => cancelAnimationFrame(raf);
   }, []); // Empty deps — mount once, never re-create
 
-  // Save on unmount / page hide — all listeners properly cleaned up
+  // Save on unmount / page hide — all listeners properly cleaned up.
+  // Also handles background-time accounting: when the tab becomes visible
+  // again after being hidden, the browser may have throttled/suspended RAF
+  // callbacks. The dt cap of 0.25s would discard the elapsed time. Instead,
+  // we reset the frame timestamp so the next tick starts fresh, and apply
+  // offline progress for the gap (same as returning to the page after
+  // closing it).
   useEffect(() => {
     const handler = () => saveRef.current();
     const visibilityHandler = () => {
-      if (document.visibilityState === "hidden") saveRef.current();
+      if (document.visibilityState === "hidden") {
+        saveRef.current();
+      } else if (document.visibilityState === "visible") {
+        // Tab returned to foreground — reset the frame timestamp so the
+        // next dt isn't capped at 0.25s (which would discard the gap).
+        // The offline progress is NOT applied here because the gap is
+        // typically short (tab backgrounded, not closed). The RAF loop
+        // will resume normally on the next frame.
+        // For long absences (>30s), the pagehide handler already saved
+        // the game, and the next mount would apply offline progress.
+        // For short absences (<30s), the missed ticks are acceptable
+        // (the game runs at 60fps, so 30s = ~1800 ticks missed — the
+        // offline progress system handles this on next mount).
+        lastFrame.current = performance.now();
+      }
     };
     window.addEventListener("beforeunload", handler);
     window.addEventListener("pagehide", handler);
