@@ -264,9 +264,21 @@ export function GameShell() {
               {currentTab === "log" && <LogTab />}
 
               {/* DIVINE-ENGINE-TAB — the god's full control panel.
-                  Shows the DivineEnginePanel + world tier visualization
-                  as a full-tab experience (not just a sidebar). */}
-              {currentTab === "divine_engine" && <DivineEngineFullTab />}
+                  RESTORE-UI-CHANGES: now also renders L10 Eternity content
+                  (merged — L10 "Genesis Engine" tab was removed from the
+                  tab bar; players access it via the sidebar "Enter Divine
+                  Engine" button + this merged tab). EternityContent is
+                  lazy-loaded so it gets its own nested Suspense. */}
+              {currentTab === "divine_engine" && (
+                <>
+                  <DivineEngineFullTab />
+                  {unlockedLayers?.eternity && (
+                    <Suspense fallback={<InlineLayerLoading />}>
+                      <EternityContent />
+                    </Suspense>
+                  )}
+                </>
+              )}
 
               {/* LAYER-AS-TAB — the 10 prestige-layer content components
                   render INLINE here, in the same panel as the other tabs,
@@ -287,12 +299,38 @@ export function GameShell() {
                   {currentTab === "trials" && <ChallengeContent />}
                   {currentTab === "constellations" && <EnlightenmentContent />}
                   {currentTab === "market" && <TranscendenceContent />}
+                  {/* Back-compat: old saves may have currentTab === "galaxy".
+                      The galaxy tab is HIDDEN from the tab bar at L5+, but
+                      GameShell still renders it standalone for old saves. */}
                   {currentTab === "galaxy" && <GenesisContent />}
+                  {/* Back-compat: old saves may have currentTab === "conquest". */}
                   {currentTab === "conquest" && <ApotheosisContent />}
-                  {currentTab === "universe" && <SingularityContent />}
-                  {currentTab === "lab" && <OmnipotenceContent />}
+                  {/* RESTORE-UI-CHANGES — merged tab: render L4 (Genesis, if
+                      unlocked) + L5 (Apotheosis, if unlocked) + L6 (Singularity,
+                      always — the tab is only visible at L6+). */}
+                  {currentTab === "universe" && (
+                    <>
+                      {unlockedLayers?.genesis && <GenesisContent />}
+                      {unlockedLayers?.apotheosis && <ApotheosisContent />}
+                      <SingularityContent />
+                    </>
+                  )}
+                  {/* RESTORE-UI-CHANGES — merged tab "War" (was "Lab"): render
+                      L9 (Infinity) FIRST if unlocked, then L7 (Omnipotence,
+                      always — the tab is only visible at L7+). */}
+                  {currentTab === "lab" && (
+                    <>
+                      {unlockedLayers?.infinity && <InfinityContent />}
+                      <OmnipotenceContent />
+                    </>
+                  )}
                   {currentTab === "diplomacy" && <DivinityLayerContent />}
+                  {/* Back-compat: old saves may have currentTab === "war" (old
+                      standalone L9 tab, now merged into the "lab"/War tab). */}
                   {currentTab === "war" && <InfinityContent />}
+                  {/* Back-compat: old saves may have currentTab ===
+                      "genesis_engine" (old standalone L10 tab, now merged into
+                      the divine_engine tab). */}
                   {currentTab === "genesis_engine" && <EternityContent />}
                 </Suspense>
               )}

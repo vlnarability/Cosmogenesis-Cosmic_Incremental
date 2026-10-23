@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { formatNumber, formatCompact } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+import { cn } from "@/lib/utils";
 
 // ===========================================================================
 // LAYER 3 — TRANSCENDENCE (REDESIGNED)
@@ -161,6 +162,11 @@ export function TranscendenceContent() {
   })();
   const canBuyCheapestStar = !!cheapestStar && divinity >= cheapestStar.cost;
 
+  // L3 subtabs — split the 8 stacked sections into 3 nav targets:
+  //   worlds (Overview + Fusion + Forge), boosts (Flame + Catalysts +
+  //   Templates + Seeds), investments (Portfolios).
+  const [subtab, setSubtab] = useState<"worlds" | "boosts" | "investments">("worlds");
+
   // Eternal Flame invest input — default 10% of current Divinity.
   const [flameInvestAmount, setFlameInvestAmount] = useState<string>("");
   const flameDefaultAmount = Math.floor(divinity * 0.10);
@@ -235,7 +241,30 @@ export function TranscendenceContent() {
         </div>
       ) : (
         <div className="space-y-4">
+          {/* L3 subtab nav bar — 3 targets (Worlds / Boosts / Investments). */}
+          <div className="flex items-center gap-1 mb-1 flex-wrap">
+            {([
+              { id: "worlds" as const, label: "🌍 Worlds" },
+              { id: "boosts" as const, label: "✨ Boosts" },
+              { id: "investments" as const, label: "📊 Investments" },
+            ]).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSubtab(t.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[0.7rem] font-medium transition-colors border",
+                  subtab === t.id
+                    ? "bg-amber-500/20 text-amber-200 border-amber-400/40"
+                    : "bg-muted/10 text-muted-foreground border-border hover:bg-muted/20"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
           {/* ===== 1. DIVINE ENGINE OVERVIEW ===== */}
+          {subtab === "worlds" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -269,8 +298,10 @@ export function TranscendenceContent() {
               (Ascendant tier and above are pure boosts).
             </div>
           </section>
+          )}
 
           {/* ===== 2. WORLD FUSION ===== */}
+          {subtab === "worlds" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -363,8 +394,10 @@ export function TranscendenceContent() {
               })}
             </div>
           </section>
+          )}
 
           {/* ===== 3. ETERNAL FLAME ===== */}
+          {subtab === "boosts" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -429,8 +462,10 @@ export function TranscendenceContent() {
               </Button>
             </div>
           </section>
+          )}
 
           {/* ===== 4. WORLD FORGE ===== */}
+          {subtab === "worlds" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -461,8 +496,10 @@ export function TranscendenceContent() {
               </Button>
             </div>
           </section>
+          )}
 
           {/* ===== 5. CONVERGENCE CATALYSTS ===== */}
+          {subtab === "boosts" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -515,8 +552,10 @@ export function TranscendenceContent() {
               })}
             </div>
           </section>
+          )}
 
           {/* ===== 6. WORLD TEMPLATES ===== */}
+          {subtab === "boosts" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -556,8 +595,10 @@ export function TranscendenceContent() {
               })}
             </div>
           </section>
+          )}
 
           {/* ===== 7. GENESIS SEEDS ===== */}
+          {subtab === "boosts" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -634,10 +675,12 @@ export function TranscendenceContent() {
               })}
             </div>
           </section>
+          )}
 
           {/* ===== ASTRAL RESONANCE REMOVED — system was not clear enough per user feedback ===== */}
 
           {/* ===== 9. INVESTMENT PORTFOLIOS (kept as-is) ===== */}
+          {subtab === "investments" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
@@ -796,6 +839,7 @@ export function TranscendenceContent() {
               </Button>
             </div>
           </section>
+          )}
         </div>
       )}
 

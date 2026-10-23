@@ -6,6 +6,7 @@ import { useActiveLayer, layerName } from "@/game/state/layerHelpers";
 import { useActiveDimension } from "@/game/state/useDimension";
 import { formatNumber, formatCompact, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,6 +43,7 @@ import {
   Archive as ArchiveIcon,
   ScrollText,
   Trophy,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, type ReactNode } from "react";
@@ -77,6 +79,8 @@ export function Header() {
   const speed = useGameStore((s) => s.speed);
   const paused = useGameStore((s) => s.paused);
   const upgrades = useGameStore((s) => s.upgrades);
+  // Top-bar Shop badge — amber Divinity count. (Mirrors the tab-bar Shop button's Divinity readout.)
+  const divinity = useGameStore((s) => s.divinity || 0);
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const activeChallenge = useGameStore((s) => s.activeChallenge);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
@@ -288,6 +292,38 @@ export function Header() {
             <span className="ml-1">{speedLabel}</span>
           </Button>
 
+          {/* Trials — top-bar button (visible when L1 unlocked). Desktop only;
+              mobile falls back to the gear dropdown's mobile-only section. */}
+          {!!unlockedChallenges && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 hidden sm:flex text-xs"
+              onClick={() => openLayerModal("challenges")}
+              title="Layer 1 — Trials"
+            >
+              <Skull className="w-3.5 h-3.5" />
+              <span className="ml-1">Trials</span>
+            </Button>
+          )}
+
+          {/* Shop — top-bar button (always visible). Desktop only; mobile
+              falls back to the gear dropdown's mobile-only section. The amber
+              Divinity badge mirrors the old tab-bar Shop button's readout. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 hidden sm:flex text-xs"
+            onClick={() => setShowShop(true)}
+            title="Open Evolution Shop"
+          >
+            <Store className="w-3.5 h-3.5" />
+            <span className="ml-1">Shop</span>
+            <Badge variant="outline" className="ml-1 text-[0.6rem] text-amber-300 border-amber-400/40">
+              {formatCompact(divinity)}
+            </Badge>
+          </Button>
+
           {/* Layers dropdown — desktop only. On mobile it moves into the gear menu. */}
           {!collapseAllIntoDropdown && standaloneLayerButtons.length > 0 ? (
             // L1–L3: show standalone next-layer buttons + the dropdown for the rest
@@ -364,14 +400,31 @@ export function Header() {
                   (user asked multiple times). The prestige flow is now
                   driven by the Auto-Ascend autobuyer + the Big Bang
                   button at L10. */}
-              {/* Shop */}
-              <DropdownMenuItem
-                onClick={() => setShowShop(true)}
-                className="cursor-pointer text-xs"
-              >
-                <Store className="w-3.5 h-3.5" />
-                <span>Shop</span>
-              </DropdownMenuItem>
+              {/* Mobile-only: Trials + Shop top-bar buttons (mobile has no
+                  top bar — these mirror the desktop top-bar buttons above). */}
+              <span className="sm:hidden">
+                {!!unlockedChallenges && (
+                  <DropdownMenuItem
+                    onClick={() => openLayerModal("challenges")}
+                    className="cursor-pointer text-xs"
+                  >
+                    <Skull className="w-3.5 h-3.5" />
+                    <span>Trials</span>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => setShowShop(true)}
+                  className="cursor-pointer text-xs"
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  <span>Shop</span>
+                  <Badge variant="outline" className="ml-auto text-[0.6rem] text-amber-300 border-amber-400/40">
+                    {formatCompact(divinity)}
+                  </Badge>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </span>
+
               {/* Save */}
               <DropdownMenuItem
                 onClick={() => saveGame()}
@@ -384,6 +437,14 @@ export function Header() {
                 )}
                 <span>Save</span>
               </DropdownMenuItem>
+              {/* Story — moved off the tab bar into the gear dropdown. */}
+              <DropdownMenuItem
+                onClick={() => setTab("story")}
+                className="cursor-pointer text-xs"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Story</span>
+              </DropdownMenuItem>
               {/* FIX-UI-TABS — Log/Archive/Codex/Awards moved off the
                   main tab bar into the gear dropdown. They open as a
                   shared InfoModal (see GameShell) instead of switching
@@ -394,11 +455,11 @@ export function Header() {
                 Reference
               </DropdownMenuLabel>
               <DropdownMenuItem
-                onClick={() => openInfoModal("log")}
+                onClick={() => openInfoModal("codex")}
                 className="cursor-pointer text-xs"
               >
-                <ListTree className="w-3.5 h-3.5" />
-                <span>Log</span>
+                <ScrollText className="w-3.5 h-3.5" />
+                <span>Codex</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => openInfoModal("archive")}
@@ -408,18 +469,18 @@ export function Header() {
                 <span>Archive</span>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => openInfoModal("codex")}
-                className="cursor-pointer text-xs"
-              >
-                <ScrollText className="w-3.5 h-3.5" />
-                <span>Codex</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
                 onClick={() => openInfoModal("achievements")}
                 className="cursor-pointer text-xs"
               >
                 <Trophy className="w-3.5 h-3.5" />
                 <span>Awards</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => openInfoModal("log")}
+                className="cursor-pointer text-xs"
+              >
+                <ListTree className="w-3.5 h-3.5" />
+                <span>Log</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {/* Settings */}
