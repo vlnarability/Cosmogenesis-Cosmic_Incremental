@@ -4,6 +4,8 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
 import { GOVERNMENT_MAP } from "@/game/data/governments";
+import { SYSTEM_MAP } from "@/game/data/systems";
+import { TECH_MAP } from "@/game/data/techs";
 import { formatNumber } from "../shared/format";
 import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
@@ -37,8 +39,19 @@ export function StagePanel() {
   const [showArchInfo, setShowArchInfo] = useState(false);
 
   const stage = STAGES[stageIndex];
-  const totalSystems = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
-  const totalTech = Object.keys(technologies).length;
+  // PER-STAGE-EVOLUTION-COUNT — count only systems/techs whose stage
+  // matches the CURRENT stage toward this stage's evolve requirement.
+  // This prevents stockpiling earlier-stage content to bypass evolve.
+  const currentStageId = stage.id;
+  const totalSystems = Object.entries(ownedSystems)
+    .filter(([id, cnt]) => {
+      const sys = SYSTEM_MAP[id];
+      return sys && sys.stage === currentStageId && (cnt || 0) > 0;
+    })
+    .reduce((a, [, c]) => a + (c as number), 0);
+  const totalTech = Object.keys(technologies)
+    .filter((tid) => TECH_MAP[tid]?.stage === currentStageId)
+    .length;
   const score = computeScore(resources, ownedSystems, technologies, population, time);
 
   const reqs = stage.evolveRequires;
@@ -46,7 +59,12 @@ export function StagePanel() {
   const popPct = Math.min(100, (population / (reqs.minPopulation * evolveBoost)) * 100);
   const sysPct = Math.min(100, (totalSystems / (reqs.minSystems * evolveBoost)) * 100);
   const techPct = Math.min(100, (totalTech / (reqs.minTech * evolveBoost)) * 100);
-  const canEvolve = popPct >= 100 && sysPct >= 100 && techPct >= 100;
+  // STAGE-PREREQ-SYSTEMS — additional hard requirement (e.g. Nucleus
+  // required to evolve Cell→Creature). All listed systems must be owned.
+  const prereqMet = !reqs.requiresSystems || reqs.requiresSystems.every(
+    (rid) => (ownedSystems[rid] || 0) > 0
+  );
+  const canEvolve = prereqMet && popPct >= 100 && sysPct >= 100 && techPct >= 100;
 
   // Archetype drift
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);
@@ -219,7 +237,9 @@ export function StagePanel() {
             )}
             {stageIndex >= 1 && domArch && (
               <p className="text-[0.65rem] text-amber-400 italic text-center">
-                Will lock as {ARCHETYPE_MAP[domArch]?.name} on evolution
+                {(revealedLineageArchetypes?.[domArch])
+                  ? `Will lock as ${ARCHETYPE_MAP[domArch]?.name} on evolution`
+                  : "Will lock as ??? on evolution — reveal the lineage by evolving"}
               </p>
             )}
           </div>

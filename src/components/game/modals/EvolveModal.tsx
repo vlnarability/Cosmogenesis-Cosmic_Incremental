@@ -2,8 +2,8 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
-import { SYSTEMS } from "@/game/data/systems";
-import { TECHS } from "@/game/data/techs";
+import { SYSTEMS, SYSTEM_MAP } from "@/game/data/systems";
+import { TECHS, TECH_MAP } from "@/game/data/techs";
 import { ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ export function EvolveModal() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // ARCHETYPES-REWORK — which archetypes have ever been locked. Drives
+  // the ??? reveal state on the "Lineage Will Lock" warning panel.
+  const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
   const evolveStage = useGameStore((s) => s.evolveStage);
 
   const stage = STAGES[stageIndex];
@@ -33,8 +36,18 @@ export function EvolveModal() {
 
   const reqs = stage.evolveRequires;
   const evolveBoost = 1 - Math.min(0.30, (upgrades["evolutionary_momentum"] || 0) * 0.05);
-  const totalSystems = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
-  const totalTech = Object.keys(technologies).length;
+  // PER-STAGE-EVOLUTION-COUNT — match evolveStage's logic: count only
+  // systems/techs of the CURRENT stage toward the requirement.
+  const currentStageId = stage.id;
+  const totalSystems = Object.entries(ownedSystems)
+    .filter(([id, cnt]) => {
+      const sys = SYSTEM_MAP[id];
+      return sys && sys.stage === currentStageId && (cnt || 0) > 0;
+    })
+    .reduce((a, [, c]) => a + (c as number), 0);
+  const totalTech = Object.keys(technologies)
+    .filter((tid) => TECH_MAP[tid]?.stage === currentStageId)
+    .length;
   const score = computeScore(resources, ownedSystems, technologies, population, time);
 
   const checks = [
@@ -42,6 +55,16 @@ export function EvolveModal() {
     { label: "Systems built", current: totalSystems, need: reqs.minSystems * evolveBoost },
     { label: "Technologies", current: totalTech, need: reqs.minTech * evolveBoost },
   ];
+  // STAGE-PREREQ-SYSTEMS — additional hard requirement (e.g. Nucleus
+  // required to evolve Cell→Creature). Surfaced as an extra check row.
+  if (reqs.requiresSystems && reqs.requiresSystems.length > 0) {
+    const owned = reqs.requiresSystems.filter((rid) => (ownedSystems[rid] || 0) > 0).length;
+    checks.push({
+      label: "Key systems",
+      current: owned,
+      need: reqs.requiresSystems.length,
+    });
+  }
 
   const canEvolve = checks.every((c) => c.current >= c.need);
 
@@ -112,34 +135,52 @@ export function EvolveModal() {
 
           {/* Archetype lock-in warning (Creature → Tribal) */}
           {stage.id === "creature" && !isLocked && domArch && (
-            <div
-              className="rounded-lg border p-3 flex items-start gap-3"
-              style={{
-                background: `${ARCHETYPE_MAP[domArch]?.color}15`,
-                borderColor: `${ARCHETYPE_MAP[domArch]?.color}50`,
-              }}
-            >
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 font-mono"
-                style={{ background: `${ARCHETYPE_MAP[domArch]?.color}25`, color: ARCHETYPE_MAP[domArch]?.color }}
-              >
-                {ARCHETYPE_MAP[domArch]?.glyph}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: ARCHETYPE_MAP[domArch]?.color }}>
-                  Lineage Will Lock
+            (() => {
+              // HIDE-UNKNOWN-LINEAGE — if the player has never locked this
+              // archetype in any prior run, mask the name + bonus as ???
+              // to preserve the discovery beat. They learn the lineage
+              // only by evolving and locking it for the first time.
+              const revealed = !!revealedLineageArchetypes?.[domArch];
+              const archName = revealed ? ARCHETYPE_MAP[domArch]?.name : "???";
+              const archBonus = revealed ? ARCHETYPE_MAP[domArch]?.bonus.label : "an unrevealed permanent bonus";
+              const archColor = revealed ? ARCHETYPE_MAP[domArch]?.color : "#94a3b8";
+              const archGlyph = revealed ? ARCHETYPE_MAP[domArch]?.glyph : "?";
+              return (
+                <div
+                  className="rounded-lg border p-3 flex items-start gap-3"
+                  style={{
+                    background: `${archColor}15`,
+                    borderColor: `${archColor}50`,
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 font-mono"
+                    style={{ background: `${archColor}25`, color: archColor }}
+                  >
+                    {archGlyph}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: archColor }}>
+                      Lineage Will Lock
+                    </div>
+                    <p className="text-xs text-foreground/90 leading-snug">
+                      Evolving to Tribal will lock your lineage as{" "}
+                      <span className="font-bold" style={{ color: archColor }}>
+                        {archName}
+                      </span>
+                      . This grants{" "}
+                      <span className="font-semibold">{archBonus}</span>{" "}
+                      for the rest of the run. This cannot be changed.
+                      {!revealed && (
+                        <span className="block mt-1 text-[0.65rem] text-muted-foreground italic">
+                          You have not yet discovered this lineage — evolve to reveal it.
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-foreground/90 leading-snug">
-                  Evolving to Tribal will lock your lineage as{" "}
-                  <span className="font-bold" style={{ color: ARCHETYPE_MAP[domArch]?.color }}>
-                    {ARCHETYPE_MAP[domArch]?.name}
-                  </span>
-                  . This grants{" "}
-                  <span className="font-semibold">{ARCHETYPE_MAP[domArch]?.bonus.label}</span>{" "}
-                  for the rest of the run. This cannot be changed.
-                </p>
-              </div>
-            </div>
+              );
+            })()
           )}
 
           {/* Actions */}

@@ -72,6 +72,14 @@ export interface SystemDef {
   // Population-growth systems: flat per-second contribution to
   // `populationProgress` (independent of resource production).
   popGrowth?: number;
+  // SYSTEM-PREREQ — if set, this system requires another system to be
+  // owned (count > 0) before it can be built. Used for chains like
+  // Mammary Gland requires Mammary Precursor.
+  requiredSystem?: string;
+  // SYSTEM-EXCLUSIVITY — if set, buying this system is blocked while
+  // any of the listed system ids are owned. Used for mutually-exclusive
+  // biological strategies (e.g. cold-blood vs warm-blood).
+  exclusiveWith?: string[];
 }
 
 export interface TechDef {
@@ -106,6 +114,10 @@ export interface StageDef {
     minPopulation: number;
     minSystems: number;
     minTech: number;
+    // STAGE-PREREQ-SYSTEMS — systems that MUST be owned (count > 0)
+    // to evolve past this stage. Used to gate evolution behind key
+    // biological milestones (e.g. Nucleus required to evolve Cell→Creature).
+    requiresSystems?: string[];
   };
   storyIntro: string;
   storyOutro: string;

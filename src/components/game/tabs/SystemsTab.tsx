@@ -1,7 +1,7 @@
 "use client";
 
 import { useGameStore, isSystemCapped } from "@/game/state/store";
-import { systemsForStage, systemCost, SYSTEMS } from "@/game/data/systems";
+import { systemsForStage, systemCost, SYSTEMS, SYSTEM_MAP } from "@/game/data/systems";
 import { STAGES } from "@/game/data/stages";
 import { TECH_MAP } from "@/game/data/techs";
 import { useActiveLayer } from "@/game/state/layerHelpers";
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ARCHETYPE_MAP } from "@/game/data/archetypes";
 import { useState, useMemo } from "react";
-import { Lock, Power, PowerOff, AlertCircle, History, Layers, Filter } from "lucide-react";
+import { Lock, Power, PowerOff, AlertCircle, History, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SystemDef } from "@/game/state/types";
 import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
@@ -348,7 +348,13 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
   const [qty, setQty] = useState<number>(1);
   const resources = useGameStore((s) => s.resources);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  // HIDE-UNKNOWN-LINEAGE — per-archetype reveal state, persists across
+  // prestiges. Drives ??? masking of the affinity-grant badge.
+  const revealedAffinity = useGameStore((s) => s.revealedLineageArchetypes || {});
+  // SYSTEM-PREREQ + EXCLUSIVITY — needed to render the gating banners.
+  const ownedSystemsState = useGameStore((s) => s.ownedSystems);
   const archDef = sys.grantsAffinity ? ARCHETYPE_MAP[sys.grantsAffinity.archetype] : null;
+  const archRevealed = !!(sys.grantsAffinity && revealedAffinity[sys.grantsAffinity.archetype]);
 
   // Compute actual affordable qty for Max + total cost for display
   const costReduction = useGameStore((s) => (s.upgrades["frugality"] || 0) * 0.04);
@@ -405,11 +411,13 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
                   variant="outline"
                   className="text-[0.6rem] mt-1"
                   style={{ borderColor: `${archDef.color}50`, color: archDef.color }}
-                  title={lockedArchetype
+                  title={archRevealed
                     ? `Grants ${archDef.name} lineage affinity (+${sys.grantsAffinity!.amount})`
-                    : `Grants ??? lineage affinity (revealed when archetype locks at Creature→Tribal)`}
+                    : `Grants ??? lineage affinity — reveal this lineage by locking it once`}
                 >
-                  {lockedArchetype ? `${archDef.glyph} ${archDef.name} drift +${sys.grantsAffinity!.amount}` : "??? drift ???"}
+                  {archRevealed
+                    ? `${archDef.glyph} ${archDef.name} drift +${sys.grantsAffinity!.amount}`
+                    : `??? drift +${sys.grantsAffinity!.amount}`}
                 </Badge>
               )}
             </div>
@@ -452,33 +460,80 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
             <span>Requires tech: <span className="font-semibold">{requiredTechName}</span></span>
           </div>
         )}
+        {/* SYSTEM-PREREQ — requires another system to be owned first */}
+        {sys.requiredSystem && (ownedSystemsState?.[sys.requiredSystem] || 0) <= 0 && (() => {
+          const reqSys = SYSTEM_MAP?.[sys.requiredSystem];
+          return (
+            <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
+              <Lock className="w-3 h-3 shrink-0" />
+              <span>Requires system: <span className="font-semibold">{reqSys?.name || sys.requiredSystem}</span></span>
+            </div>
+          );
+        })()}
+        {/* SYSTEM-EXCLUSIVITY — conflicts with an owned system */}
+        {sys.exclusiveWith && sys.exclusiveWith.length > 0 && (() => {
+          const conflictIds = sys.exclusiveWith.filter((id) => (ownedSystemsState?.[id] || 0) > 0);
+          if (conflictIds.length === 0) return null;
+          const conflictNames = conflictIds.map((id) => SYSTEM_MAP?.[id]?.name || id).join(", ");
+          return (
+            <div className="flex items-center gap-1.5 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
+              <Lock className="w-3 h-3 shrink-0" />
+              <span>Mutually exclusive with: <span className="font-semibold">{conflictNames}</span></span>
+            </div>
+          );
+        })()}
 
-        {/* Production / effects */}
+        {/* Production / effects — show PER-SYSTEM rate so the player can
+            read each system's base output without mentally dividing by owned.
+            The aggregate total is rendered as a small muted "(×N = total/s)"
+            suffix when owned > 1. */}
         {Object.keys(sys.produces).length > 0 && (
           <div className="flex flex-wrap gap-1 text-xs">
             <span className="text-muted-foreground">Produces:</span>
             {Object.entries(sys.produces).map(([r, v]) => (
               <span key={r} className="font-semibold" style={{ color: resourceColor(r) }}>
-                +{formatNumber((v as number) * owned, 2)}/s {resourceIcon(r)}
+                +{formatNumber(v as number, 2)}/s {resourceIcon(r)}
+                {owned > 1 && (
+                  <span className="text-muted-foreground font-normal ml-0.5">
+                    (×{owned} = +{formatNumber((v as number) * owned, 2)}/s)
+                  </span>
+                )}
               </span>
             ))}
           </div>
         )}
-        {/* Population growth (pop-growth systems) */}
+        {/* Population growth (pop-growth systems) — per-system rate */}
         {sys.popGrowth && (
           <div className="flex flex-wrap gap-1 text-xs">
             <span className="text-muted-foreground">Pop growth:</span>
             <span className="font-semibold" style={{ color: "#10b981" }}>
-              +{formatNumber(sys.popGrowth * owned, 2)}/s 👥
+              +{formatNumber(sys.popGrowth, 2)}/s 👥
+              {owned > 1 && (
+                <span className="text-muted-foreground font-normal ml-0.5">
+                  (×{owned} = +{formatNumber(sys.popGrowth * owned, 2)}/s)
+                </span>
+              )}
             </span>
           </div>
         )}
-        {sys.capacityBoost && Object.keys(sys.capacityBoost).length > 0 && owned > 0 && (
+        {/* Capacity boost — always shown (even when owned=0) so the player
+            can see what buying this system would gain. Label switches
+            between "Capacity gain:" (preview, owned=0) and "Capacity:"
+            (already contributing, owned>0). Per-buy rate is the base
+            value; current contribution shown in parentheses. */}
+        {sys.capacityBoost && Object.keys(sys.capacityBoost).length > 0 && (
           <div className="flex flex-wrap gap-1 text-xs">
-            <span className="text-muted-foreground">Capacity:</span>
+            <span className="text-muted-foreground">
+              {owned > 0 ? "Capacity:" : "Capacity gain:"}
+            </span>
             {Object.entries(sys.capacityBoost).map(([r, v]) => (
               <span key={r} style={{ color: resourceColor(r) }}>
-                +{(v as number) * owned} {resourceName(r)}
+                +{(v as number)} {resourceName(r)}
+                {owned > 1 && (
+                  <span className="text-muted-foreground font-normal ml-0.5">
+                    (×{owned} = +{(v as number) * owned})
+                  </span>
+                )}
               </span>
             ))}
           </div>

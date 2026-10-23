@@ -6690,7 +6690,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: "scavenger_swarm",
     name: "Scavenger Swarm",
-    desc: "A swarm of opportunistic cells drifts in, drawn by the recent turmoil. They want a share of your resources — or to take yours by force.",
+    desc: "A swarm of opportunistic scavengers drifts in, drawn by the recent turmoil. They want a share of your resources — or to take yours by force.",
     icon: "🌀",
     stages: ["cell"],
     minTime: 0,

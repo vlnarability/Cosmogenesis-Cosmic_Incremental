@@ -10,7 +10,7 @@ export const STAGES: StageDef[] = [
     accent: "#22d3ee",
     bgGradient: "radial-gradient(ellipse at top, #0c4a6e 0%, #082f49 40%, #020617 100%)",
     duration: "5-60 min",
-    evolveRequires: { minPopulation: 8, minSystems: 4, minTech: 2 },
+    evolveRequires: { minPopulation: 8, minSystems: 4, minTech: 2, requiresSystems: ["nucleus"] },
     storyIntro:
       "In the warm dark of a young sea, something stirs. A membrane holds. A spark of ATP ignites. " +
       "You are not yet awake — but you are becoming. The first law of this universe is survival.",

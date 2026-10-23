@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Lock, GitBranch, History, Layers, Filter } from "lucide-react";
+import { CheckCircle2, Lock, GitBranch, History, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import type { TechDef } from "@/game/state/types";
@@ -56,7 +56,6 @@ export function TechTab() {
   }, [legacyRange.end, stageIndex]);
   const legacyStages = useMemo(() => STAGES.slice(legacyRange.start, legacyRange.end), [legacyRange]);
 
-  const [onlyCurrent, setOnlyCurrent] = useState(false);
   const [legacyOpen, setLegacyOpen] = useState(false);
 
   // Counts for legacy summary
@@ -92,18 +91,6 @@ export function TechTab() {
                 Research permanent bonuses. Prerequisites must be met before higher tiers unlock.
               </CardDescription>
             </div>
-            {(hasLegacy || hasMiddle) && (
-              <Button
-                size="sm"
-                variant={onlyCurrent ? "default" : "outline"}
-                className="h-7 text-xs"
-                onClick={() => setOnlyCurrent((v) => !v)}
-                title="Hide all legacy/past-stage techs"
-              >
-                <Filter className="w-3 h-3 mr-1" />
-                Current only
-              </Button>
-            )}
           </div>
         </CardHeader>
       </Card>
@@ -195,6 +182,8 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
   const technologies = useGameStore((s) => s.technologies);
   const buyTech = useGameStore((s) => s.buyTech);
   const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+  // HIDE-UNKNOWN-LINEAGE — drives ??? masking of the affinity-grant badge.
+  const revealedAffinity = useGameStore((s) => s.revealedLineageArchetypes || {});
 
   const owned = !!technologies[tech.id];
   const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
@@ -261,7 +250,9 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           })}
         </div>
       )}
-      {/* Affinity grant */}
+      {/* Affinity grant — HIDE-UNKNOWN-LINEAGE: mask the archetype name + glyph
+          as ??? until the player has locked this lineage in at least once.
+          They can still see the drift amount to plan their affinity strategy. */}
       {tech.grantsAffinity && (
         <Badge
           variant="outline"
@@ -272,7 +263,9 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           }}
           title={`Shifts lineage toward ${ARCHETYPE_MAP[tech.grantsAffinity.archetype].name}`}
         >
-          {ARCHETYPE_MAP[tech.grantsAffinity.archetype].glyph} {ARCHETYPE_MAP[tech.grantsAffinity.archetype].name} drift +{tech.grantsAffinity.amount}
+          {revealedAffinity[tech.grantsAffinity.archetype]
+            ? `${ARCHETYPE_MAP[tech.grantsAffinity.archetype].glyph} ${ARCHETYPE_MAP[tech.grantsAffinity.archetype].name} drift +${tech.grantsAffinity.amount}`
+            : `??? drift +${tech.grantsAffinity.amount}`}
         </Badge>
       )}
       <div className="flex flex-wrap items-center gap-2">

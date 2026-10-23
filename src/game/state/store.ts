@@ -1375,12 +1375,27 @@ export const useGameStore = create<GameStore>()(
             const threshold = 1 + autoEvolveLvl * 0.2;
             const reqs = stage.evolveRequires;
             const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
-            const totalSystemsNow = Object.values(ownedSystems).reduce((a, b) => a + b, 0);
-            const totalTechNow = Object.keys(technologies).length;
+            // PER-STAGE-EVOLUTION-COUNT — match evolveStage's logic: count
+            // only systems/techs of the CURRENT stage toward the threshold.
+            const currentStageId = stage.id;
+            const stageSystemsNow = Object.entries(ownedSystems)
+              .filter(([id, cnt]) => {
+                const sys = SYSTEM_MAP[id];
+                return sys && sys.stage === currentStageId && (cnt || 0) > 0;
+              })
+              .reduce((a, [, c]) => a + (c as number), 0);
+            const stageTechNow = Object.keys(technologies)
+              .filter((tid) => TECH_MAP[tid]?.stage === currentStageId)
+              .length;
+            // STAGE-PREREQ-SYSTEMS — also need the required systems owned.
+            const prereqMet = !reqs.requiresSystems || reqs.requiresSystems.every(
+              (rid) => (ownedSystems[rid] || 0) > 0
+            );
             if (
+              prereqMet &&
               population >= reqs.minPopulation * evolveBoost * threshold &&
-              totalSystemsNow >= reqs.minSystems * evolveBoost * threshold &&
-              totalTechNow >= reqs.minTech * evolveBoost * threshold
+              stageSystemsNow >= reqs.minSystems * evolveBoost * threshold &&
+              stageTechNow >= reqs.minTech * evolveBoost * threshold
             ) {
               // Defer evolve to next tick to avoid mutating state mid-set.
               setTimeout(() => get().evolveStage(), 0);
@@ -3283,6 +3298,24 @@ export const useGameStore = create<GameStore>()(
           get().notifyPurchaseError(`Requires tech: ${techName}`);
           return;
         }
+        // SYSTEM-PREREQ — required system must be owned (count > 0)
+        if (sys.requiredSystem && (s.ownedSystems[sys.requiredSystem] || 0) <= 0) {
+          const reqSys = SYSTEM_MAP[sys.requiredSystem];
+          const reqName = reqSys?.name || sys.requiredSystem;
+          get().notifyPurchaseError(`Requires system: ${reqName}`);
+          return;
+        }
+        // SYSTEM-EXCLUSIVITY — refuse if any conflicting system is owned
+        if (sys.exclusiveWith && sys.exclusiveWith.length > 0) {
+          for (const otherId of sys.exclusiveWith) {
+            if ((s.ownedSystems[otherId] || 0) > 0) {
+              const otherSys = SYSTEM_MAP[otherId];
+              const otherName = otherSys?.name || otherId;
+              get().notifyPurchaseError(`Mutually exclusive with: ${otherName}`);
+              return;
+            }
+          }
+        }
         // FIX-ARCHETYPE-LOCKED — archetype-locked systems are only buildable
         // by the matching locked archetype (Tribal→Galactic archetype-drift
         // systems). Refuse purchase with an inline error.
@@ -3557,8 +3590,34 @@ export const useGameStore = create<GameStore>()(
         }
         const reqs = stage.evolveRequires;
         const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
-        const totalSystems = Object.values(s.ownedSystems).reduce((a, b) => a + b, 0);
-        const totalTech = Object.keys(s.technologies).length;
+        // STAGE-PREREQ-SYSTEMS — certain stages require specific systems
+        // (e.g. Nucleus to evolve Cell→Creature). Refuse if missing.
+        if (reqs.requiresSystems && reqs.requiresSystems.length > 0) {
+          for (const reqId of reqs.requiresSystems) {
+            if ((s.ownedSystems[reqId] || 0) <= 0) {
+              const sysName = SYSTEM_MAP[reqId]?.name || reqId;
+              get().addToLog(`Cannot evolve: requires ${sysName} built first.`);
+              return;
+            }
+          }
+        }
+        // PER-STAGE-EVOLUTION-COUNT — count only systems/techs of the
+        // CURRENT stage toward this stage's evolve requirements. This
+        // prevents the player from stockpiling cell systems/techs and
+        // repeatedly evolving through creature+ stages without ever
+        // building new stage content.
+        const currentStageId = stage.id;
+        const stageSystemCount = Object.entries(s.ownedSystems)
+          .filter(([id, cnt]) => {
+            const sys = SYSTEM_MAP[id];
+            return sys && sys.stage === currentStageId && (cnt || 0) > 0;
+          })
+          .reduce((a, [, c]) => a + (c as number), 0);
+        const stageTechCount = Object.keys(s.technologies)
+          .filter((tid) => TECH_MAP[tid]?.stage === currentStageId)
+          .length;
+        const totalSystems = stageSystemCount;
+        const totalTech = stageTechCount;
         const score = computeScore(s);
 
         if (s.population < reqs.minPopulation * evolveBoost) return;

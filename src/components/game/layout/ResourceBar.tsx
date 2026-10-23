@@ -4,8 +4,14 @@ import { useGameStore } from "@/game/state/store";
 import { STAGE_RESOURCES, RESOURCE_MAP } from "@/game/data/resources";
 import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { useActiveLayer, isLayerAtLeast } from "@/game/state/layerHelpers";
+import { computeResourceBreakdown, formatRate, type ResourceSource } from "@/game/state/resourceBreakdown";
 import { formatNumber, formatCompact, resourceColor, resourceIcon, resourceName } from "../shared/format";
 import { cn } from "@/lib/utils";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { useMemo } from "react";
 
 // ============================================================
@@ -67,6 +73,25 @@ export function ResourceBar() {
   const { isAtLeast } = useActiveLayer();
   const isL2Plus = isAtLeast("enlightenment");
 
+  // RESOURCE-BREAKDOWN — subscribe to the underlying state slices that
+  // affect the breakdown so useMemo re-runs only when those change.
+  const ownedSystems = useGameStore((s) => s.ownedSystems);
+  const systemEnabled = useGameStore((s) => s.systemEnabled);
+  const technologies = useGameStore((s) => s.technologies);
+  const capacitiesState = useGameStore((s) => s.capacities);
+  const resourcesState = useGameStore((s) => s.resources);
+  const breakdown = useMemo(
+    () => computeResourceBreakdown({
+      ownedSystems,
+      systemEnabled,
+      technologies,
+      resources: resourcesState,
+      capacities: capacitiesState,
+      stageIndex,
+    } as never),
+    [ownedSystems, systemEnabled, technologies, resourcesState, capacitiesState, stageIndex]
+  );
+
   // === L1: stage-resource chip rendering (kept intact for first playthrough) ===
   const visibleStageResources = useMemo(() => {
     const all = STAGE_RESOURCES[stage.id] || [];
@@ -107,6 +132,7 @@ export function ResourceBar() {
                   id={id}
                   value={resources[id] || 0}
                   capacity={capacities[id] || 0}
+                  breakdown={breakdown[id]}
                 />
               ))}
             </div>
@@ -145,38 +171,139 @@ export function ResourceBar() {
 
 // === Sub-components ===
 
-function ResourceChip({ id, value, capacity }: { id: string; value: number; capacity: number }) {
+function ResourceChip({ id, value, capacity, breakdown }: {
+  id: string;
+  value: number;
+  capacity: number;
+  breakdown?: { net: number; sources: ResourceSource[] };
+}) {
   const pct = capacity > 0 ? (value / capacity) * 100 : 0;
   const nearCap = pct > 90;
   const low = id === "happiness" ? value < 25 : false;
+  const net = breakdown?.net ?? 0;
+  const hasSources = !!(breakdown && breakdown.sources.length > 0);
+  const netPositive = net > 0.005;
+  const netNegative = net < -0.005;
   return (
-    <div
-      title={`${resourceName(id)}: ${formatNumber(value)} / ${formatNumber(capacity)}`}
-      className={cn(
-        "res-chip group relative shrink-0",
-        nearCap && "chip-near-cap",
-        low && "ring-1 ring-red-500/60"
-      )}
-    >
-      <span className="text-sm leading-none">{resourceIcon(id)}</span>
-      <span
-        className="font-semibold tabular-nums text-xs"
-        style={{ color: resourceColor(id) }}
-      >
-        {formatNumber(value)}
-      </span>
-      <span className="text-[0.65rem] text-muted-foreground tabular-nums">
-        /{formatNumber(capacity)}
-      </span>
-      {/* Mini progress bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b overflow-hidden bg-muted/40">
+    <HoverCard openDelay={200} closeDelay={150}>
+      <HoverCardTrigger asChild>
         <div
           className={cn(
-            "h-full transition-all",
-            nearCap ? "bg-amber-400" : low ? "bg-red-400" : "bg-primary/70"
+            "res-chip group relative shrink-0 cursor-help",
+            nearCap && "chip-near-cap",
+            low && "ring-1 ring-red-500/60"
           )}
-          style={{ width: `${Math.min(100, pct)}%` }}
-        />
+        >
+          <span className="text-sm leading-none">{resourceIcon(id)}</span>
+          <span
+            className="font-semibold tabular-nums text-xs"
+            style={{ color: resourceColor(id) }}
+          >
+            {formatNumber(value)}
+          </span>
+          <span className="text-[0.65rem] text-muted-foreground tabular-nums">
+            /{formatNumber(capacity)}
+          </span>
+          {/* Net rate/sec — colored green/red/neutral. Always rendered
+              (even at 0) so the chip height stays stable across resources. */}
+          <span
+            className={cn(
+              "ml-1 text-[0.6rem] tabular-nums font-medium",
+              netPositive && "text-emerald-400",
+              netNegative && "text-red-400",
+              !netPositive && !netNegative && "text-muted-foreground/70"
+            )}
+            title={hasSources ? "Hover for per-system breakdown" : "No systems affect this resource yet"}
+          >
+            {formatRate(net)}
+          </span>
+          {/* Mini progress bar */}
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b overflow-hidden bg-muted/40">
+            <div
+              className={cn(
+                "h-full transition-all",
+                nearCap ? "bg-amber-400" : low ? "bg-red-400" : "bg-primary/70"
+              )}
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+          </div>
+        </div>
+      </HoverCardTrigger>
+      {hasSources && (
+        <HoverCardContent
+          className="w-64 p-0 glass-strong"
+          side="bottom"
+          align="center"
+        >
+          <ResourceBreakdownTooltip id={id} value={value} capacity={capacity} breakdown={breakdown!} />
+        </HoverCardContent>
+      )}
+    </HoverCard>
+  );
+}
+
+function ResourceBreakdownTooltip({
+  id,
+  value,
+  capacity,
+  breakdown,
+}: {
+  id: string;
+  value: number;
+  capacity: number;
+  breakdown: { net: number; sources: ResourceSource[] };
+}) {
+  const pct = capacity > 0 ? (value / capacity) * 100 : 0;
+  const net = breakdown.net;
+  return (
+    <div className="text-xs">
+      {/* Header: resource name + current/cap + net */}
+      <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-base">{resourceIcon(id)}</span>
+          <span className="font-semibold" style={{ color: resourceColor(id) }}>
+            {resourceName(id)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-[0.65rem] text-muted-foreground">
+          <span>{formatNumber(value)} / {formatNumber(capacity)} ({pct.toFixed(0)}%)</span>
+          <span className={cn(
+            "font-semibold tabular-nums",
+            net > 0.005 && "text-emerald-400",
+            net < -0.005 && "text-red-400",
+            Math.abs(net) < 0.005 && "text-muted-foreground"
+          )}>
+            net {formatRate(net)}
+          </span>
+        </div>
+      </div>
+      {/* Per-system source list — scrollable if many systems contribute */}
+      <div className="max-h-64 overflow-y-auto custom-scroll px-2 py-1.5 space-y-0.5">
+        {breakdown.sources.map((src) => (
+          <div
+            key={`${src.systemId}-${src.kind}`}
+            className="flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-muted/40"
+          >
+            <span className="text-sm leading-none">{src.systemIcon}</span>
+            <span className="flex-1 truncate text-[0.7rem]">{src.systemName}</span>
+            {src.disabled && (
+              <span className="text-[0.55rem] text-muted-foreground italic">disabled</span>
+            )}
+            {src.idleByCap && (
+              <span className="text-[0.55rem] text-amber-400 italic">idle (cap)</span>
+            )}
+            <span
+              className={cn(
+                "tabular-nums text-[0.7rem] font-semibold",
+                src.amount > 0 && "text-emerald-400",
+                src.amount < 0 && "text-red-400",
+                src.amount === 0 && "text-muted-foreground"
+              )}
+            >
+              {formatRate(src.amount)}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

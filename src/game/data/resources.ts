@@ -19,7 +19,7 @@ export const RESOURCES: ResourceDef[] = [
   { id: "stone", name: "Stone", category: "primary", firstStage: "tribal", color: "#78716c", icon: "🪨" },
   { id: "clay", name: "Clay", category: "primary", firstStage: "tribal", color: "#d97706", icon: "🏺" },
   { id: "science", name: "Science", category: "primary", firstStage: "tribal", color: "#60a5fa", icon: "🔬" },
-  { id: "happiness", name: "Happiness", category: "primary", firstStage: "tribal", color: "#fde047", icon: "😊" },
+  { id: "happiness", name: "Happiness", category: "primary", firstStage: "creature", color: "#fde047", icon: "😊" },
   { id: "military_power", name: "Military", category: "primary", firstStage: "tribal", color: "#ef4444", icon: "⚔️" },
   { id: "culture", name: "Culture", category: "primary", firstStage: "creature", color: "#f9a8d4", icon: "🎭" },
   // Civilization stage
@@ -46,7 +46,7 @@ export const RESOURCE_MAP: Record<string, ResourceDef> = Object.fromEntries(
 // Resources visible at each stage (cumulative forward)
 export const STAGE_RESOURCES: Record<StageId, string[]> = {
   cell: ["atp", "glucose", "proteins", "lipids", "elements"],
-  creature: ["food", "water", "materials", "organic_matter", "knowledge", "culture"],
+  creature: ["food", "water", "materials", "organic_matter", "knowledge", "culture", "happiness"],
   tribal: ["food", "water", "wood", "lumber", "stone", "clay", "science", "happiness", "military_power", "culture"],
   civilization: ["food", "water", "production", "gold", "science", "culture", "happiness", "military_power"],
   empire: ["food", "production", "gold", "science", "culture", "influence", "happiness", "military_power"],
