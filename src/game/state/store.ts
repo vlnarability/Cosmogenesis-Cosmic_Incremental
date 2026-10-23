@@ -2673,18 +2673,18 @@ export const useGameStore = create<GameStore>()(
             faith += activeTemplate.faithPerSec * realDt;
           }
           // Void template: each world generates +0.01 Cosmic Fragments/s.
-          if (activeTemplate.voidShardsPerWorldPerSec > 0 && rawWorlds > 0) {
-            voidShards += rawWorlds * activeTemplate.voidShardsPerWorldPerSec * realDt;
+          if (activeTemplate.voidShardPerSec > 0 && rawWorlds > 0) {
+            voidShards += rawWorlds * activeTemplate.voidShardPerSec * realDt;
           }
           // Crucible: 5% chance per tick a world collapses (lose 1 tier-1).
           // Only roll if the player actually has tier-1 worlds.
           // IDEA-8 — Pantheon Sentinel reduces collapse chance (cap 80%).
-          if (activeTemplate.collapseChance > 0 && (worldTiers["1"] || 0) > 0) {
-            // Per-tick chance = collapseChance × realDt (so a 5% chance at 1s
+          if (activeTemplate.crashChance > 0 && (worldTiers["1"] || 0) > 0) {
+            // Per-tick chance = crashChance × realDt (so a 5% chance at 1s
             // tick becomes ~0.5% at 0.1s tick — keeps the rate consistent
             // regardless of tick rate). Sentinel Avatars subtract their
             // reduction from the base chance (clamped at 0).
-            const baseChance = activeTemplate.collapseChance * realDt;
+            const baseChance = activeTemplate.crashChance * realDt;
             const effectiveChance = Math.max(0, baseChance * (1 - pantheonCrashReduction));
             if (Math.random() < effectiveChance) {
               worldTiers["1"] = Math.max(0, (worldTiers["1"] || 0) - 1);
@@ -2692,8 +2692,8 @@ export const useGameStore = create<GameStore>()(
           }
           // Ascendant: peak production rate grows +0.5%/min. Applied as a
           // multiplier on the existing peakProductionRate (compounds over time).
-          if (activeTemplate.peakProductionGrowthPerMin > 0 && peakProductionRate > 0) {
-            const growthPerSec = activeTemplate.peakProductionGrowthPerMin / 60;
+          if (activeTemplate.peakGrowthPerMin > 0 && peakProductionRate > 0) {
+            const growthPerSec = activeTemplate.peakGrowthPerMin / 60;
             peakProductionRate *= 1 + growthPerSec * realDt;
           }
         }
@@ -3671,7 +3671,7 @@ export const useGameStore = create<GameStore>()(
             const govLine = preferredGov === govId
               ? `Government established: ${g.name} (player-preferred). Advantages: ${advMsg}. Disadvantages: ${disMsg}.`
               : `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
-            pendingLogs.push(govLine);
+            get().addToLog(govLine);
           }
         }
 
@@ -3852,7 +3852,7 @@ export const useGameStore = create<GameStore>()(
               delete newChallengeRepeatCounts[activeChId];
               challengeJustCompleted = true;
               // +1 Prestige Point for completing a challenge
-              pendingLogs.push(`🏆 Challenge complete: ${ch.name} (repeat ${completedCount}). Mastery bonus made permanent.`);
+              get().addToLog(`🏆 Challenge complete: ${ch.name} (repeat ${completedCount}). Mastery bonus made permanent.`);
             } else {
               // Challenge NOT completed by this prestige — fail it.
               delete newChallengeRepeatCounts[activeChId];
@@ -4481,9 +4481,9 @@ export const useGameStore = create<GameStore>()(
         if (comboCount >= 3) {
           comboTimer = 30; // +50% all production for 30s
           comboCount = 0;
-          pendingLogs.push("🌟 Divine Combo! +50% all production for 30s.");
+          get().addToLog("🌟 Divine Combo! +50% all production for 30s.");
         } else {
-          pendingLogs.push(`Ritual combo: ${comboCount}/3 — perform ${3 - comboCount} more different ritual(s) within ${Math.max(0, 60 - sinceLast).toFixed(0)}s for a Divine Combo.`);
+          get().addToLog(`Ritual combo: ${comboCount}/3 — perform ${3 - comboCount} more different ritual(s) within ${Math.max(0, 60 - sinceLast).toFixed(0)}s for a Divine Combo.`);
         }
 
         if (r.kind === "permanent") {
@@ -5540,7 +5540,7 @@ export const useGameStore = create<GameStore>()(
           divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - GALAXY_SCAN_COST,  // MERGED: was genesisSeeds
           galaxySystems,
         });
-        const rareLabel = sys.rareResource || "none";
+        const rareLabel = sys.hasVoidShards ? "Void Shards" : "none";
         get().addToLog(
           `📡 Scanned ${sys.name}. Bonus: ${sys.bonus.type} +${Math.round(sys.bonus.value * 100)}%. Rare: ${rareLabel}.`
         );
@@ -5705,10 +5705,10 @@ export const useGameStore = create<GameStore>()(
           `⚔️ ${galaxy.name}: system ${claimedCount + 1}/${galaxy.systemCount} claimed (-${cost} Faith, +18 worlds).${nowConquered ? " Galaxy conquered!" : ""}`
         );
         if (justConquered) {
-          pendingLogs.push(`🏆 ${galaxy.name} conquered! All ${galaxy.systemCount} systems claimed.`);
+          get().addToLog(`🏆 ${galaxy.name} conquered! All ${galaxy.systemCount} systems claimed.`);
         }
         if (l6Unlock) {
-          pendingLogs.push(`3 rival galaxies conquered. Singularity layer unlocked.`);
+          get().addToLog(`3 rival galaxies conquered. Singularity layer unlocked.`);
         }
       },
 
@@ -6430,7 +6430,7 @@ export const useGameStore = create<GameStore>()(
         const temporalStorms = { ...(s.temporalStorms || {}) };
         if (!temporalStorms[oldGodId] && Math.random() < 0.20) {
           temporalStorms[oldGodId] = true;
-          pendingLogs.push(`🌀 Temporal Storm engulfs the battlefield — the timeline shudders. (Stabilize Time for 1 Divine Fragment to end it.)`);
+          get().addToLog(`🌀 Temporal Storm engulfs the battlefield — the timeline shudders. (Stabilize Time for 1 Divine Fragment to end it.)`);
         }
         const stormActive = !!temporalStorms[oldGodId];
         // Compute player attack from deployed legions
@@ -7022,7 +7022,7 @@ export const useGameStore = create<GameStore>()(
             },
           ];
           const targetName = EVENT_MAP[fu.eventId]?.name || fu.eventId;
-          pendingLogs.push(`🔗 ${ev.name} scheduled follow-up "${targetName}" in ${fu.delaySec}s (chance ${Math.round(chance * 100)}%).`);
+          get().addToLog(`🔗 ${ev.name} scheduled follow-up "${targetName}" in ${fu.delaySec}s (chance ${Math.round(chance * 100)}%).`);
         }
 
         set({

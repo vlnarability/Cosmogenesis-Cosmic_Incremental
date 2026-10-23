@@ -171,7 +171,8 @@ export function TutorialHints() {
         {activeHint.action && (
           <button
             onClick={() => {
-              activeHint.action?.(gameStore.setTab);
+              const setTab = useGameStore.getState().setTab;
+              activeHint.action?.(setTab);
               dismiss();
             }}
             className="flex-1 text-xs py-1.5 rounded border border-primary bg-primary/15 text-primary font-semibold hover:bg-primary/25 transition-colors flex items-center justify-center gap-1"
