@@ -21,8 +21,10 @@ export function useGameLoop() {
   // Use refs to avoid re-creating the RAF loop when store functions change reference
   const tickRef = useRef(tick);
   const saveRef = useRef(saveGame);
+  const applyOfflineProgressRef = useRef(applyOfflineProgress);
   tickRef.current = tick;
   saveRef.current = saveGame;
+  applyOfflineProgressRef.current = applyOfflineProgress;
 
   // On mount: apply offline progress
   useEffect(() => {
@@ -53,30 +55,36 @@ export function useGameLoop() {
     return () => cancelAnimationFrame(raf);
   }, []); // Empty deps — mount once, never re-create
 
-  // Save on unmount / page hide — all listeners properly cleaned up.
-  // Also handles background-time accounting: when the tab becomes visible
-  // again after being hidden, the browser may have throttled/suspended RAF
-  // callbacks. The dt cap of 0.25s would discard the elapsed time. Instead,
-  // we reset the frame timestamp so the next tick starts fresh, and apply
-  // offline progress for the gap (same as returning to the page after
-  // closing it).
+  // Save on unmount / page hide + apply background progression on return.
+  // When the tab becomes hidden, we save the game. When it becomes visible
+  // again, we apply offline progress for the elapsed gap (same as returning
+  // to the page after closing it). This prevents lost progression when the
+  // browser throttles/suspends RAF callbacks in background tabs.
   useEffect(() => {
     const handler = () => saveRef.current();
+    const hiddenAtRef = { value: 0 };
     const visibilityHandler = () => {
       if (document.visibilityState === "hidden") {
         saveRef.current();
-      } else if (document.visibilityState === "visible") {
-        // Tab returned to foreground — reset the frame timestamp so the
-        // next dt isn't capped at 0.25s (which would discard the gap).
-        // The offline progress is NOT applied here because the gap is
-        // typically short (tab backgrounded, not closed). The RAF loop
-        // will resume normally on the next frame.
-        // For long absences (>30s), the pagehide handler already saved
-        // the game, and the next mount would apply offline progress.
-        // For short absences (<30s), the missed ticks are acceptable
-        // (the game runs at 60fps, so 30s = ~1800 ticks missed — the
-        // offline progress system handles this on next mount).
+        hiddenAtRef.value = Date.now();
+      } else if (document.visibilityState === "visible" && hiddenAtRef.value > 0) {
+        // Tab returned to foreground — apply offline progress for the gap.
+        // The save was done when the tab was hidden, so applyOfflineProgress
+        // will compute elapsed time from lastSaved (which was just set).
+        const gapSec = Math.floor((Date.now() - hiddenAtRef.value) / 1000);
+        hiddenAtRef.value = 0;
+        // Reset frame timestamp so the next tick starts fresh (not a huge dt)
         lastFrame.current = performance.now();
+        // Only apply if the gap was >30s (shorter gaps are negligible)
+        if (gapSec >= 30) {
+          const result = applyOfflineProgressRef.current();
+          if (result?.applied) {
+            setOfflineSummary({
+              elapsed: result.elapsed,
+              resourcesGained: result.resourcesGained,
+            });
+          }
+        }
       }
     };
     window.addEventListener("beforeunload", handler);

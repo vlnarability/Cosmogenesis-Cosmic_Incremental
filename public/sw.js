@@ -1,8 +1,8 @@
-// Evolution Idle — Service Worker
-// Caches the app shell for offline play (design doc §12.1)
+// Cosmogenesis — Service Worker
+// Caches the app shell for offline play
 // Uses a cache-first strategy for static assets and network-first for the main page
 
-const CACHE_VERSION = "evolution-idle-v1";
+const CACHE_VERSION = "cosmogenesis-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -10,6 +10,8 @@ const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",
+  "/favicon.ico",
+  "/icon.svg",
   "/robots.txt",
 ];
 
@@ -24,7 +26,10 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((cacheNames) =>
       Promise.all(
         cacheNames
-          .filter((name) => name.startsWith("evolution-idle-") && name !== STATIC_CACHE && name !== RUNTIME_CACHE)
+          .filter((name) =>
+            (name.startsWith("cosmogenesis-") || name.startsWith("evolution-idle-")) &&
+            name !== STATIC_CACHE && name !== RUNTIME_CACHE
+          )
           .map((name) => caches.delete(name))
       )
     ).then(() => self.clients.claim())

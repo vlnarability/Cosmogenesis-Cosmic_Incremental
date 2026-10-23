@@ -87,18 +87,26 @@ const HINTS: Hint[] = [
 ];
 
 export function TutorialHints() {
-  // PERFORMANCE FIX — was `const gameStore = useGameStore();` which
-  // subscribed to the ENTIRE store, causing per-tick re-renders. Now uses
-  // targeted selectors + getState() for the show predicates.
+  // Subscribe to ALL fields that the hint predicates check. This ensures
+  // the component re-renders when any hint condition might change. The
+  // previous optimization (getState() for predicates) caused stale hints
+  // because getState() doesn't subscribe to changes.
   const tutorialDismissed = useGameStore((s) => s.tutorialDismissed);
   const showEvolve = useGameStore((s) => s.showEvolve);
   const showShop = useGameStore((s) => s.showShop);
   const showSettings = useGameStore((s) => s.showSettings);
   const activeStoryPopup = useGameStore((s) => s.activeStoryPopup);
+  // Fields checked by hint predicates:
+  const time = useGameStore((s) => s.time);
+  const ownedSystems = useGameStore((s) => s.ownedSystems);
+  const technologies = useGameStore((s) => s.technologies);
+  const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
+  const population = useGameStore((s) => s.population);
   const stageIndex = useGameStore((s) => s.stageIndex);
-  const galacticWins = useGameStore((s) => s.galacticWins || 0);
   const upgrades = useGameStore((s) => s.upgrades);
   const divinity = useGameStore((s) => s.divinity || 0);
+  const galacticWins = useGameStore((s) => s.galacticWins || 0);
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
 
   const [dismissedHints, setDismissedHints] = useState<Set<string>>(new Set());
   const [minimized, setMinimized] = useState(false);
@@ -108,8 +116,12 @@ export function TutorialHints() {
   if (showEvolve || showShop || showSettings) return null;
   if (activeStoryPopup) return null;
 
-  // Read the full state once for hint predicates via getState()
-  const s = useGameStore.getState();
+  // Build a state object from subscribed fields for hint predicates.
+  // All fields are subscribed above so this re-renders when any change.
+  const s = {
+    time, ownedSystems, technologies, archetypeAffinity, population,
+    stageIndex, upgrades, divinity, galacticWins, lockedArchetype,
+  };
 
   // Find the first hint that should show and hasn't been dismissed
   const activeHint = HINTS.find((h) =>
