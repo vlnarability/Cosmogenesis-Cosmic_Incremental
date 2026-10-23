@@ -20,6 +20,16 @@ export const metadata: Metadata = {
   keywords: ["idle game", "incremental game", "cosmogenesis", "cosmic", "prestige", "cell", "civilization"],
   authors: [{ name: "Cosmogenesis" }],
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-icon.png" },
+    ],
+  },
   openGraph: {
     title: "Cosmogenesis",
     description: "A narrative-driven incremental game about a god awakening.",
