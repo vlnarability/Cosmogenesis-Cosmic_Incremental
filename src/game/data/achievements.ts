@@ -1880,7 +1880,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "fun_title_clicker",
     name: "Title Clicker",
-    desc: "Click the \"Evolution Idle\" title 10 times to unlock debug mode.",
+    desc: "Click the \"Cosmogenesis\" title 10 times to unlock debug mode.",
     category: "fun",
     icon: "🖱️",
     check: (c) => (c.titleClickCount || 0) >= 10,

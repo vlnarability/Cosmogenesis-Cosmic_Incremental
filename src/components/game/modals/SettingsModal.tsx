@@ -561,7 +561,7 @@ export function SettingsModal() {
                 className="text-[0.6rem] text-muted-foreground/60 hover:text-muted-foreground transition-colors select-none"
                 title={debugUnlocked ? "Debug mode enabled" : "Click 5× to enable debug"}
               >
-                Evolution Idle · v1.0
+                Cosmogenesis · v1.0
               </button>
             </div>
 

@@ -1,4 +1,4 @@
-// Core game type definitions for Evolution Idle
+// Core game type definitions for Cosmogenesis
 
 import type { WorldConfig } from "../data/genesis";
 import type { GalaxySystemState } from "../data/galaxyMap";

@@ -107,7 +107,7 @@ export function Header() {
   // single action that takes a target id.
   const openInfoModal = useGameStore((s) => s.openInfoModal);
   // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — "Title Clicker" achievement
-  // checks `titleClicks >= 10`. The "Evolution Idle" title in the header
+  // checks `titleClicks >= 10`. The "Cosmogenesis" title in the header
   // is the canonical click target; each click bumps the counter via the
   // generic `bumpAchievementMeta` store action.
   const bumpAchievementMeta = useGameStore((s) => s.bumpAchievementMeta);
@@ -203,7 +203,7 @@ export function Header() {
               className="text-sm font-semibold leading-tight truncate cursor-pointer select-none hover:text-primary transition-colors"
               role="button"
               tabIndex={0}
-              title="Evolution Idle — click 10× to unlock a secret achievement"
+              title="Cosmogenesis — click 10× to unlock a secret achievement"
               onClick={() => bumpAchievementMeta("titleClicks")}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -212,7 +212,7 @@ export function Header() {
                 }
               }}
             >
-              Evolution Idle
+              Cosmogenesis
             </h1>
             <p className="text-[0.7rem] leading-tight truncate text-muted-foreground">
               {layerLabelText}

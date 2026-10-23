@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Evolution Idle — A Cosmic Incremental",
+  title: "Cosmogenesis — A Cosmic Incremental",
   description: "A narrative-driven incremental game about a god awakening. Guide civilization from single-cell organisms to galactic transcendence across 7 stages and 10 divine layers.",
   keywords: ["idle game", "incremental game", "evolution", "cosmic", "prestige", "cell", "civilization"],
-  authors: [{ name: "Evolution Idle" }],
+  authors: [{ name: "Cosmogenesis" }],
   manifest: "/manifest.json",
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
@@ -27,13 +27,13 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Evolution Idle",
+    title: "Cosmogenesis",
   },
   openGraph: {
-    title: "Evolution Idle",
+    title: "Cosmogenesis",
     description: "A narrative-driven incremental game about a god awakening.",
     url: "https://chat.z.ai",
-    siteName: "Evolution Idle",
+    siteName: "Cosmogenesis",
     type: "website",
   },
 };
