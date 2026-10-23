@@ -1612,18 +1612,14 @@ export const useGameStore = create<GameStore>()(
         // Decay temporary ritual timers
         if (Object.keys(activeTemporaryRituals).length > 0) {
           activeTemporaryRituals = { ...activeTemporaryRituals };
-          let changed = false;
           for (const id of Object.keys(activeTemporaryRituals)) {
             const remaining = activeTemporaryRituals[id] - realDt;
             if (remaining <= 0) {
               delete activeTemporaryRituals[id];
-              changed = true;
             } else {
               activeTemporaryRituals[id] = remaining;
-              changed = true;
             }
           }
-          void changed;
         }
 
         // Decay miracle timers
@@ -2000,68 +1996,68 @@ export const useGameStore = create<GameStore>()(
 
         // ---- Theme auto-unlock (Part 1f) ----
         let unlockedThemes = { ...(s.unlockedThemes || { "stage-cell": true }) };
-        let themesChanged = false;
+
         // Stage themes — unlock the theme for the current stage index
         const stageThemeId = STAGE_INDEX_TO_THEME[s.stageIndex];
         if (stageThemeId && !unlockedThemes[stageThemeId]) {
           unlockedThemes[stageThemeId] = true;
-          themesChanged = true;
+
         }
         // Layer themes — unlock the matching overlay when a layer unlocks
         for (const [layerId, themeId] of Object.entries(LAYER_ID_TO_THEME)) {
           if (unlockedLayers[layerId] && !unlockedThemes[themeId]) {
             unlockedThemes[themeId] = true;
-            themesChanged = true;
+  
           }
         }
         // Special themes
         if ((s.galacticWins || 0) >= 1 && !unlockedThemes["special-void"]) {
           unlockedThemes["special-void"] = true;
-          themesChanged = true;
+
         }
         const achCount = Object.values(achievements || {}).filter(Boolean).length;
         if (achCount >= 10 && !unlockedThemes["special-retro"]) {
           unlockedThemes["special-retro"] = true;
-          themesChanged = true;
+
         }
         const allLayersUnlocked = !!(unlockedLayers.evolution && unlockedLayers.enlightenment && unlockedLayers.transcendence && unlockedLayers.genesis && unlockedLayers.apotheosis && unlockedLayers.singularity && unlockedLayers.omnipotence && unlockedLayers.divinity && unlockedLayers.infinity && unlockedLayers.eternity);
         if (allLayersUnlocked && !unlockedThemes["special-cosmic"]) {
           unlockedThemes["special-cosmic"] = true;
-          themesChanged = true;
+
         }
 
         // ---- Mini themes (ORGANELLES-THEMES) ----
         // 7 base mini-themes — unlock by milestones.
         if (achCount >= 10 && !unlockedThemes["mini-terminal"]) {
           unlockedThemes["mini-terminal"] = true;
-          themesChanged = true;
+
         }
         if ((s.galacticWins || 0) >= 1 && !unlockedThemes["mini-void"]) {
           unlockedThemes["mini-void"] = true;
-          themesChanged = true;
+
         }
         if ((s.galacticWins || 0) >= 3 && !unlockedThemes["mini-solar-flare"]) {
           unlockedThemes["mini-solar-flare"] = true;
-          themesChanged = true;
+
         }
         if ((s.galacticWins || 0) >= 5 && !unlockedThemes["mini-forest"]) {
           unlockedThemes["mini-forest"] = true;
-          themesChanged = true;
+
         }
         if ((s.galacticWins || 0) >= 10 && !unlockedThemes["mini-ice"]) {
           unlockedThemes["mini-ice"] = true;
-          themesChanged = true;
+
         }
         if (allLayersUnlocked && !unlockedThemes["mini-volcanic"]) {
           unlockedThemes["mini-volcanic"] = true;
-          themesChanged = true;
+
         }
         // mini-ai — easter egg: unlock when BOTH 10 galactic wins AND all 10
         // layers are unlocked. The joke is that you've done everything, so
         // the only thing left to "elevate" is the UI itself.
         if ((s.galacticWins || 0) >= 10 && allLayersUnlocked && !unlockedThemes["mini-ai"]) {
           unlockedThemes["mini-ai"] = true;
-          themesChanged = true;
+
         }
         // 13 archetype mini-themes — unlock when that archetype is first
         // locked in (revealedLineageArchetypes[archId] === true).
@@ -2101,10 +2097,12 @@ export const useGameStore = create<GameStore>()(
           const archKey = ARCHETYPE_KEYS[i];
           if (revealedLineage[archKey] && !unlockedThemes[themeId]) {
             unlockedThemes[themeId] = true;
-            themesChanged = true;
+  
           }
         }
-        void themesChanged;
+        // Dead-code fix: `void themesChanged` was a no-op — the flag tracked
+        // whether themes were unlocked but was never read. State mutations
+        // are persisted directly in the final set() call.
 
         // ---- Theme AUTO mode: re-derive the active stage/layer theme every tick ----
         // (when themeMode === "auto", the player's manual picks are overridden)
@@ -2742,7 +2740,6 @@ export const useGameStore = create<GameStore>()(
           // We use `backgroundSimulations` (the value computed THIS tick) so the
           // cap stays in sync with the world count shown everywhere else.
           const allocatedNow = totalAllocatedWorlds(portfolioAllocations);
-          const availableWorlds = Math.max(0, backgroundSimulations - allocatedNow);
           // If the world pool shrank (e.g. player lost galaxies) and
           // allocations now exceed the total, proportionally trim each
           // portfolio's allocation down so the totals stay valid.
@@ -2814,7 +2811,8 @@ export const useGameStore = create<GameStore>()(
           }
           // Surface the available-worlds pool as a one-line runtime marker so
           // the modal can show a "free worlds" hint without recomputing.
-          void availableWorlds;
+          // Dead-code fix: `void availableWorlds` was a no-op — the value
+          // was computed but never used. Removed to save per-tick computation.
           for (const msg of portfolioLogs) {
             setTimeout(() => get().addToLog(msg), 0);
           }
@@ -2926,7 +2924,9 @@ export const useGameStore = create<GameStore>()(
                 // GameStore but not yet implemented (deferred to a future L5
                 // wiring task). Defensively check before calling so the
                 // auto-buyer doesn't crash if it's still undefined.
-                const fn = (get() as any).attackGalaxy;
+                // REVIEW-FIX: removed unnecessary `as any` cast —
+                // attackGalaxy IS defined on the typed store.
+                const fn = get().attackGalaxy;
                 if (typeof fn === "function") fn(pick.id);
               } else {
                 get().attackUniversalGalaxy(pick.id);
@@ -6267,8 +6267,7 @@ export const useGameStore = create<GameStore>()(
         // L7 FIX Bug 3 — Wire creature specials into the damage calculation.
         // Iterate deployed creatures and count specials. Apply: berserk → +20% player damage
         // per berserk creature; shield → -20% boss damage per shield creature.
-        // TODO(regen): heal playerHp by 1 per regen creature per turn — requires BattleState.playerHp,
-        // which Subagent F is adding in parallel. When present, wire regen here.
+        // regen → heal playerHp by regenCount per turn (applied at line ~6336).
         const deployedCreatureIds = new Set<string>();
         for (const lid of battle.deployedLegionIds) {
           const legion = (s.legions || []).find((l) => l.id === lid);
@@ -6286,7 +6285,8 @@ export const useGameStore = create<GameStore>()(
         }
         const berserkBonusMult = 1 + 0.20 * berserkCount; // +20% player dmg per berserk creature
         const shieldReductionMult = Math.max(0, 1 - 0.20 * shieldCount); // -20% boss dmg per shield creature
-        void regenCount; // reserved for regen-on-playerHp wiring (Subagent F)
+        // regenCount is applied at line ~6336 (playerHp += regenCount per turn).
+        // REVIEW-FIX: removed stale `void regenCount` — the regen effect IS wired up.
         const calledAllies = battle.calledAllyIds.map((aid) => {
           const ally = MINOR_GOD_MAP[aid];
           if (!ally) return { powerLevel: 0 };

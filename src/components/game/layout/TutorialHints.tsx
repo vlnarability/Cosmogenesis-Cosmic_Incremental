@@ -87,18 +87,33 @@ const HINTS: Hint[] = [
 ];
 
 export function TutorialHints() {
-  const gameStore = useGameStore();
+  // PERFORMANCE FIX — was `const gameStore = useGameStore();` which
+  // subscribed to the ENTIRE store, causing per-tick re-renders. Now uses
+  // targeted selectors + getState() for the show predicates.
+  const tutorialDismissed = useGameStore((s) => s.tutorialDismissed);
+  const showEvolve = useGameStore((s) => s.showEvolve);
+  const showShop = useGameStore((s) => s.showShop);
+  const showSettings = useGameStore((s) => s.showSettings);
+  const activeStoryPopup = useGameStore((s) => s.activeStoryPopup);
+  const stageIndex = useGameStore((s) => s.stageIndex);
+  const galacticWins = useGameStore((s) => s.galacticWins || 0);
+  const upgrades = useGameStore((s) => s.upgrades);
+  const divinity = useGameStore((s) => s.divinity || 0);
+
   const [dismissedHints, setDismissedHints] = useState<Set<string>>(new Set());
   const [minimized, setMinimized] = useState(false);
 
   // Don't show hints when a modal is open (avoids overlap with Evolve button etc.)
-  if (gameStore.tutorialDismissed) return null;
-  if (gameStore.showEvolve || gameStore.showShop || gameStore.showSettings) return null;
-  if (gameStore.activeStoryPopup) return null;
+  if (tutorialDismissed) return null;
+  if (showEvolve || showShop || showSettings) return null;
+  if (activeStoryPopup) return null;
+
+  // Read the full state once for hint predicates via getState()
+  const s = useGameStore.getState();
 
   // Find the first hint that should show and hasn't been dismissed
   const activeHint = HINTS.find((h) =>
-    h.show(gameStore) && !dismissedHints.has(h.id)
+    h.show(s) && !dismissedHints.has(h.id)
   );
 
   if (!activeHint) return null;

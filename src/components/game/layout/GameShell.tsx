@@ -142,7 +142,12 @@ function InfoModal() {
         if (!o) closeInfoModal();
       }}
     >
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto glass-strong flex flex-col">
+      {/* h-[80vh] (FIXED height, not max-h) — keeps the modal a stable size
+          regardless of content. Internal scroll area handles overflow.
+          This fixes the bug where the close button (top-right) kept moving
+          as new log entries grew the modal. The height is viewport-relative
+          so it scales with the browser window (responsive). */}
+      <DialogContent className="max-w-4xl h-[80vh] overflow-hidden glass-strong flex flex-col">
         {meta && (
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">

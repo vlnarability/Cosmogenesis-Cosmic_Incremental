@@ -52,8 +52,8 @@ export function CodexTab() {
             <CodexStat label="Total Runs" value={totalRuns} icon="🔄" />
             <CodexStat label="Archive Entries" value={archive.length} icon="📚" />
             <CodexStat label="Story Unlocked" value={storyCount} icon="📖" />
-            <CodexStat label="Systems Discovered" value={`${totalSystemsOwned}/${SYSTEMS.length}`} icon="🏗️" />
-            <CodexStat label="Tech Researched" value={`${totalTechOwned}/${TECHS.length}`} icon="🔬" />
+            <CodexStat label="Systems Built (lifetime)" value={totalSystemsBuilt} icon="🏗️" />
+            <CodexStat label="Tech Researched (lifetime)" value={totalTechResearched} icon="🔬" />
             <CodexStat label="Shop Upgrades" value={`${totalUpgradesOwned}/${UPGRADES.length}`} icon="🛒" />
             <CodexStat label="Stages Cleared" value={Object.values(stageClearCounts).reduce((a, b) => a + b, 0)} icon="⏫" />
           </div>

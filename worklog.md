@@ -7600,3 +7600,85 @@ After reviewing all 10 layer tabs + Divine Engine full tab, these are the larger
 - src/components/game/modals/OmnipotenceModal.tsx (1 line: removed "FEATURE 7 — " prefix from mutation blurb)
 - src/components/game/modals/DivinityLayerModal.tsx (1 line: removed "FEATURE 8 — " prefix from Amplifier blurb)
 - src/components/game/pantheon/DivinePantheonPanel.tsx (1 line: removed "Idea 8 — " prefix from header)
+
+---
+Task ID: DEEP-CODEBASE-REVIEW-2
+Agent: Z.ai Code (main)
+Task: Very in-depth review of the remote repo (origin/main at commit 94c2b86).
+
+## Review Methodology
+
+1. Synced local to origin/main
+2. Ran `bun run lint` — 0 errors, 10 pre-existing warnings (scripts/, upload/, galaxies.ts)
+3. Started dev server — compiles cleanly, HTTP 200
+4. Deep searched for:
+   - `as any` casts (type safety) — 15 in store.ts, 3 in OmnipotenceModal
+   - `void` expressions (dead code) — 4 found, all fixed
+   - Missing null guards on state access — most use `|| 0` or `|| {}` defaults ✅
+   - Division by zero — 4 sites, all properly guarded ✅
+   - Stale references to removed features — none found ✅
+   - EP/PP in user-facing text — none found ✅
+   - Whole-store subscriptions (performance) — 1 found (TutorialHints), fixed
+   - setTimeout calls in tick — 55 found (batchable but lightweight)
+   - Missing React keys — none in game components ✅
+   - Event listener cleanup — all properly cleaned up ✅
+   - RAF cleanup — all properly cancelled ✅
+   - Persist migration — version 18, handles v2→v18 progressively ✅
+   - Missing features from lost commits — documented below
+
+## BUGS FIXED (10)
+
+1. **CodexTab per-run counters** — "Systems Discovered" and "Tech Researched" used per-run counters (`ownedSystems`, `technologies`) that reset on prestige. Changed to lifetime META counters (`totalSystemsBuilt`, `totalTechResearched`).
+
+2. **TutorialHints whole-store subscription** — `useGameStore()` caused per-tick re-renders. Replaced with 9 targeted selectors + `useGameStore.getState()` for show predicates.
+
+3. **Dead code: `void changed`** — flag tracked ritual changes but was never read. Removed declaration + 2 assignments.
+
+4. **Dead code: `void themesChanged`** — flag tracked theme unlocks but was never read. Removed declaration + 14 assignments.
+
+5. **Dead code: `void availableWorlds`** — computed `Math.max(0, bg - allocated)` every tick but never used. Removed computation.
+
+6. **Dead code: `void regenCount`** — no-op since regenCount IS used at line ~6336. Removed void.
+
+7. **Stale TODO about regen** — "requires BattleState.playerHp, which Subagent F is adding" was stale — field exists, regen IS wired up. Updated comment.
+
+8. **`(get() as any).attackGalaxy`** — unnecessary cast. Method IS defined on typed store. Changed to `get().attackGalaxy`.
+
+9. **Log window grows with content** — `max-h-[85vh] overflow-y-auto` → `h-[80vh] overflow-hidden`. Close button no longer moves.
+
+10. **LogTab inner div grows** — `max-h-[60vh]` → `h-full` with `min-h-0` on parent CardContent.
+
+## NO BUGS FOUND (clean)
+
+- Division by zero (4 sites, all guarded)
+- Stale references (none)
+- EP/PP text (none)
+- Missing React keys (all have keys)
+- Event listener cleanup (all proper)
+- RAF cleanup (all proper)
+- Persist migration (v18, complete)
+
+## KNOWN ISSUES (documented)
+
+1. 55 setTimeout calls in tick (batchable, lightweight)
+2. Store tick is 8,121 lines (maintainability concern)
+3. 15 `as any` casts in store.ts (mostly legitimate)
+4. 3 `as any` casts in OmnipotenceModal (draft types use string instead of union types)
+
+## MISSING FEATURES (lost between sessions)
+
+1. Three.js 3D sphere visualization (still CSS 3D transforms)
+2. Bulk forge/fuse on Divine Engine
+3. L3 Market subtabs (Worlds/Boosts/Investments)
+4. Top bar layout (Trials + Shop next to gear)
+5. Tab consolidation (single row, merged layers)
+6. Debug spawn relic option
+7. Forge Max cost formula fix (initialForged capture)
+
+## Files modified
+
+- `src/components/game/tabs/CodexTab.tsx` (2 lines: lifetime counters)
+- `src/components/game/layout/TutorialHints.tsx` (+15 lines: targeted selectors)
+- `src/components/game/tabs/LogTab.tsx` (+5 lines: h-full + min-h-0)
+- `src/components/game/layout/GameShell.tsx` (1 line: h-[80vh] overflow-hidden)
+- `src/game/state/store.ts` (-20 lines: removed 4 void expressions + unused variable declarations + stale TODO + as any cast)
