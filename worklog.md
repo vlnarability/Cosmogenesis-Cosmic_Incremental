@@ -8051,3 +8051,93 @@ The original tsc reported ~30 errors, but `store.ts:768` had only `debugFreeBuy`
 - `src/game/data/divinePantheon.ts`
 - `src/game/state/store.ts`
 - `agent-ctx/FIX-ALL-TYPESCRIPT-ERRORS-Z-ai-Code-main.md` (work record)
+
+---
+Task ID: UX-CONTENT-FIXES-14-ISSUES
+Agent: Z.ai Code (main)
+Task: Address 14 user-reported UX/content/balance issues in Cosmogenesis — per-system production display, net rate + hover breakdown tooltip, lineage masking, per-stage evolve count, Nucleus-required evolution, broken cell-stage systems producing non-existent resources, mutual exclusivity, etc.
+
+## Work Log
+
+### Data-layer fixes (systems.ts / techs.ts / events.ts / resources.ts / stages.ts / types.ts)
+
+1. **Vacuole description** — "Stores lipids and water" → "Stores lipids; expands cell capacity" (water isn't a cell resource).
+2. **Centrosome cap** — maxOwned 25 → 1 (real-life: typically one centrosome per cell). Description updated to surface "Each one sharply expands cell capacity".
+3. **Cell Wall capacityBoost** — removed `water: 30` (creature-stage resource), replaced with `atp: 15` (cell-valid).
+4. **Cell-stage lineage organelles resource redirect** — All 13 problem systems now produce cell-valid resources (atp/glucose/proteins/lipids/elements) instead of creature+ resources (food/water/materials/organic_matter/knowledge/happiness/culture/influence):
+   - Contractile Vacuole: water → atp
+   - Mammary Precursor: food → lipids
+   - Mammary Gland: capacityBoost food:40 → capacityBoost lipids:40, proteins:15; added requiredSystem: mammary_precursor
+   - Hair Follicle: happiness → atp:0.3
+   - Ganglion: knowledge → atp
+   - Jointed Appendage: materials → elements
+   - Compound Eye: knowledge → atp:0.3
+   - Root Hair: water → glucose:0.6
+   - Hyphal Network: organic_matter → lipids
+   - Mycorrhizal Bond: food → glucose+elements
+   - Mantle Formation: materials → elements
+   - Radula: food → glucose
+   - Ink Sac: happiness → proteins
+   - Chromatophore: culture → atp:0.3
+   - Tectonic Core: materials → elements
+   - Phylactery: influence → atp
+   - Egg Shell Gland: organic_matter → no production + capacityBoost {elements:25, lipids:15}
+   - Jacobson's Organ: knowledge → proteins
+5. **Mutual exclusivity** (real-life mutually-exclusive biological strategies):
+   - Warm Blood Valve ↔ Cold Blood Valve (`exclusiveWith`)
+   - Egg Nest (reptilian egg-laying) ↔ Swarm Nest (arthropoid bug-production)
+6. **Broken cell-stage techs** — science cost replaced with elements:
+   - chromatin_remodeling, epigenetic_memory, genetic_engineering, genome_optimization all cost elements now
+   - Misleading descriptions fixed: chemiosmosis (energy→ATP), osmoregulation (water→osmosis), membrane_fluidity (happiness→lipids), exocytosis (materials→proteins), dna_repair (science→production)
+7. **Scavenger Swarm event** — "opportunistic cells" → "opportunistic scavengers" (stage-neutral).
+8. **Flight Perch** (creature) — removed `science: 0.05` (tribal-stage resource); produces knowledge: 0.7 only.
+9. **Lookout Tower** (creature) — removed `science: 0.05`; produces knowledge: 0.8 only.
+10. **happiness resource** — `firstStage: "tribal"` → `"creature"`. Added happiness to creature's STAGE_RESOURCES. Resolves the broader "creature systems producing happiness" issue (territorial_marker, grooming_station, fire_pit, scent_marker, social_gathering, basking_rock, bone_pit, death_shrine, ink_cache, feather_cache — all now produce a visible creature-stage resource).
+11. **Nucleus-required Cell→Creature evolution** — Added `requiresSystems?: string[]` to StageDef; Cell stage evolveRequires now includes `requiresSystems: ["nucleus"]`.
+12. **SystemDef type extensions** — Added `requiredSystem?: string` (chain-gating like Mammary Gland → Mammary Precursor) and `exclusiveWith?: string[]` (mutually-exclusive systems).
+
+### State-layer fixes (store.ts)
+
+13. **buySystem gating** — Added enforcement for `requiredSystem` (refuse if not owned) and `exclusiveWith` (refuse if any conflicting system is owned). Surfaces via `notifyPurchaseError`.
+14. **PER-STAGE-EVOLUTION-COUNT** — `evolveStage` and the auto-evolver now count only systems/techs whose `stage` matches the CURRENT stage toward the `minSystems`/`minTech` requirements. Prevents the player stockpiling cell-stage content to bypass creature+ evolution thresholds. Cell systems are still preserved (they keep producing), but the player must build NEW stage content to evolve again.
+15. **STAGE-PREREQ-SYSTEMS enforcement** — `evolveStage` now refuses with a log message if any `requiresSystems` listed system isn't owned (e.g. Nucleus to evolve Cell→Creature).
+
+### UI-layer fixes (ResourceBar / StagePanel / EvolveModal / SystemsTab / TechTab)
+
+16. **ResourceBar net-rate + hover breakdown tooltip** — New `src/game/state/resourceBreakdown.ts` pure helper computes per-resource net rate + per-system source list (with cap-idle + disabled annotations). ResourceBar wires it via 5 subscribed selectors + useMemo, then renders each chip with:
+   - A net rate/sec line below each chip (green/red/neutral, format like "+1.0/s")
+   - A HoverCard popover (Radix HoverCard, replaces Popover for hover-trigger UX) showing per-system contributions with disabled/idle annotations
+17. **SystemCard per-system production display** — "Produces:" line now shows base rate per system (e.g. "+1.20/s ⚡") with muted "(×N = +X.X/s)" suffix when owned > 1. Same treatment for popGrowth and capacityBoost.
+18. **Centrosome capacity preview** — capacityBoost now always shown (even when owned=0); label switches "Capacity gain:" (preview) → "Capacity:" (already contributing).
+19. **SystemCard gating banners** — Added "Requires system:" amber banner for `requiredSystem` violations and "Mutually exclusive with:" red banner for `exclusiveWith` conflicts.
+20. **Lineage masking (???)** — TechTab's TechCard and SystemsTab's SystemCard affinity badges now mask the archetype name + glyph as "???" until `revealedLineageArchetypes[archId]` is true. The drift amount stays visible so the player can plan.
+21. **StagePanel "Will lock as X" preview** — Now shows "Will lock as ??? on evolution — reveal the lineage by evolving" when the dominant archetype isn't yet revealed.
+22. **EvolveModal "Lineage Will Lock" panel** — Hidden behind `revealedLineageArchetypes` check; masks name/bonus/glyph/color and adds "You have not yet discovered this lineage — evolve to reveal it." footer.
+23. **StagePanel canEvolve + EvolveModal checks** — Both now use per-stage counts + require `requiresSystems` for the button-disabled + extra-check-row.
+24. **Removed "Current only" filter** — TechTab's `onlyCurrent` state + Filter button + import removed entirely.
+
+## Verification
+
+- `npx tsc --noEmit` → 0 errors, 0 warnings
+- `bun run lint` → 0 errors (10 pre-existing warnings in unrelated scripts/upload files)
+- Dev server (Next.js 16.1.3 Turbopack) compiles cleanly; `GET / 200 in ~150ms` after warm-up
+- **Agent Browser verification**:
+  - Resource chip `🍬17.2/150+1.0/s` after buying Membrane Pump (net rate line works, green for positive)
+  - Hover glucose chip → HoverCard popover opens, shows "🍬 Glucose 150/150 (100%) net 0/s — 🟢 Membrane Pump idle (cap) 0/s" (cap-aware breakdown with idle annotation)
+  - SystemsTab "Produces:+1.20/s ⚡" for Mitochondria (per-system rate, not aggregate)
+  - SystemsTab Centrosome card shows "Capacity gain:+25 Glucose+15 Proteins+10 Lipids+10 ATP" even at owned=0 (preview works)
+  - TechTab "??? drift +3" badge (lineage name masked)
+  - SystemsTab "??? drift +2" badge (lineage name masked)
+  - TechTab: "Current only" filter removed (verified via `document.body.textContent` check)
+  - StagePanel shows "Systems 25%" (1 of 4 cell-stage systems owned — per-stage count working)
+
+## Stage Summary
+
+All 14 user-reported issues addressed. The Cell stage now produces only cell-valid resources. Systems/techs/events/stages types are extended with `requiredSystem`, `exclusiveWith` (SystemDef) and `requiresSystems` (StageDef) for richer gating. The ResourceBar now shows net rate/sec inline + a hover breakdown tooltip explaining per-system contributions (with cap-idle + disabled annotations). Lineage names are masked as "???" across all three surfaces (TechTab, SystemsTab, StagePanel/EvolveModal) until the player has locked that lineage at least once via evolution. Cell→Creature evolution now hard-requires the Nucleus system, and per-stage evolve counting prevents stockpiling earlier-stage content to bypass later-stage evolution thresholds.
+
+## Unresolved / Next-phase recommendations
+
+- Tech descriptions (the `desc:` text on lineage techs like "Photosynthesis — Tap the light. Glucose flows from the sun itself. ✿ Plantoid drift +3") still mention the archetype name in prose. Future round could scan desc text and mask unrevealed names. Currently only the badge is masked — prose remains.
+- Other creature-stage systems producing happiness (territorial_marker, grooming_station, etc.) are now valid (happiness moved to creature's firstStage). Future round could surface happiness in more UI places.
+- Auto-buyer may need updating to respect `requiredSystem` + `exclusiveWith` (currently uses buySystem which DOES enforce these, but the auto-buyer's purchase target selection should skip systems it can't currently buy).
+- Deeper cross-lineage exclusivity (e.g., all reptilian drift systems mutually exclusive with all arthropoid drift systems) is not yet implemented — only specific pairs.
