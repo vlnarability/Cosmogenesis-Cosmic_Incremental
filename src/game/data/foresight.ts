@@ -11,7 +11,7 @@ import { constellationBonus, type ConstellationState, type ConstellationAggregat
 
 // Legacy types (kept for imports)
 export type ForesightRouteId = string;
-export interface ForesightRoute { id: string; name: string; bonus: Record<string, number>; }
+export interface ForesightRoute { id: string; name: string; icon?: string; blurb?: string; bonus: Record<string, number>; }
 export type ForesightCategory = "growth" | "knowledge" | "power";
 export interface ForesightNodeBonus { productionMult: number; capMult: number; epMult: number; }
 export interface ForesightNode { id: string; name: string; }
