@@ -1,0 +1,856 @@
+     1→"use client";
+     2→
+     3→import { useGameStore } from "@/game/state/store";
+     4→import { formatNumber, formatCompact } from "../shared/format";
+     5→import { Button } from "@/components/ui/button";
+     6→import { Badge } from "@/components/ui/badge";
+     7→import { Slider } from "@/components/ui/slider";
+     8→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+     9→import { FUSION_TIERS, rawWorldCount, effectiveWorldCount, eternalFlameMultiplier } from "@/game/data/worldFusion";
+    10→import { ARCHETYPES } from "@/game/data/archetypes";
+    11→import {
+    12→  Sparkles, Flame, Globe, TrendingUp, Layers, Eye, Triangle, Egg, Users, Gauge,
+    13→  RotateCcw, Orbit, ZoomIn, ZoomOut,
+    14→  Hammer, Merge, ChevronsRight,
+    15→} from "lucide-react";
+    16→import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+    17→
+    18→// ===========================================================================
+    19→// DivineEngineFullTab — the god's full control panel for reality.
+    20→//
+    21→// Sections:
+    22→//   • Summary stats (worlds, Div/s, peak prod, Eternal Flame multiplier)
+    23→//   • World Tier Visualization — 3D starfield, drag to rotate 360° in any
+    24→//     direction (up / down / left / right / angled). Auto-rotates when not
+    25→//     being dragged.
+    26→//   • World Archetype Injection — choose archetype, changes Divinity/s mult
+    27→//   • Evolution Sliders — 4 sliders that share a 10-point pool, default 0,
+    28→//     reallocate freely at any time
+    29→//   • Quick access buttons to L2/L3/L4 tabs
+    30→// ===========================================================================
+    31→
+    32→const TIER_COLORS: Record<string, string> = {
+    33→  "1": "#e2e8f0", "2": "#93c5fd", "3": "#60a5fa", "4": "#3b82f6", "5": "#818cf8",
+    34→  "6": "#a78bfa", "7": "#c084fc", "8": "#e879f9", "9": "#f472b6", "10": "#fbbf24",
+    35→  "ascendant": "#fde047", "greater_ascendant": "#fef08a", "celestial_core": "#e0f2fe", "void": "#1e1b4b",
+    36→};
+    37→
+    38→const TIER_SIZES: Record<string, number> = {
+    39→  "1": 5, "2": 7, "3": 9, "4": 11, "5": 13,
+    40→  "6": 16, "7": 19, "8": 22, "9": 26, "10": 30,
+    41→  "ascendant": 38, "greater_ascendant": 44, "celestial_core": 50, "void": 60,
+    42→};
+    43→
+    44→function mulberry32(seed: number): () => number {
+    45→  let t = seed >>> 0;
+    46→  return () => {
+    47→    t = (t + 0x6d2b79f5) >>> 0;
+    48→    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    49→    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    50→    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    51→  };
+    52→}
+    53→
+    54→interface WorldDot {
+    55→  x: number;
+    56→  y: number;
+    57→  z: number;
+    58→  tier: string;
+    59→  color: string;
+    60→  size: number;
+    61→}
+    62→
+    63→// Generate stable 3D positions for worlds. Each world gets a deterministic
+    64→// random position in a sphere. We use a sqrt-radius distribution so worlds
+    65→// are spread more on the outer shell (less clumping at the center) and a
+    66→// wide radius range (60..380) so dots are visibly separate in 3D space.
+    67→function computeWorldDots(worldTiers: Record<string, number>): WorldDot[] {
+    68→  const rng = mulberry32(0xfeedface);
+    69→  const dots: WorldDot[] = [];
+    70→  for (const tier of FUSION_TIERS) {
+    71→    const count = Math.max(0, Math.floor(worldTiers[tier.id] || 0));
+    72→    if (count === 0) continue;
+    73→    // Cap the visualized count per tier so the 3D scene stays performant.
+    74→    const maxDots = Math.min(count, tier.id === "1" ? 220 : 40);
+    75→    for (let i = 0; i < maxDots; i++) {
+    76→      // Uniform direction (theta + phi via acos trick).
+    77→      const theta = rng() * Math.PI * 2;
+    78→      const phi = Math.acos(2 * rng() - 1);
+    79→      // sqrt distribution → more dots near the outer shell (galaxy look).
+    80→      // Radius range 60..380 gives ~6× spread between nearest + farthest,
+    81→      // so dots are clearly separated at any rotation angle.
+    82→      const r = 60 + Math.sqrt(rng()) * 320;
+    83→      dots.push({
+    84→        x: r * Math.sin(phi) * Math.cos(theta),
+    85→        y: r * Math.sin(phi) * Math.sin(theta),
+    86→        z: r * Math.cos(phi),
+    87→        tier: tier.id,
+    88→        color: TIER_COLORS[tier.id] || "#fff",
+    89→        size: TIER_SIZES[tier.id] || 5,
+    90→      });
+    91→    }
+    92→  }
+    93→  return dots;
+    94→}
+    95→
+    96→// Background starfield — distant points positioned in 3D, rendered with
+    97→// reduced opacity for parallax depth. Pushed far back so they don't
+    98→// overlap with the world sphere.
+    99→function computeStarfield(): WorldDot[] {
+   100→  const rng = mulberry32(0x12345678);
+   101→  const stars: WorldDot[] = [];
+   102→  for (let i = 0; i < 100; i++) {
+   103→    const theta = rng() * Math.PI * 2;
+   104→    const phi = Math.acos(2 * rng() - 1);
+   105→    const r = 500 + rng() * 200; // far outside the world sphere
+   106→    stars.push({
+   107→      x: r * Math.sin(phi) * Math.cos(theta),
+   108→      y: r * Math.sin(phi) * Math.sin(theta),
+   109→      z: r * Math.cos(phi),
+   110→      tier: "1",
+   111→      color: "#ffffff",
+   112→      size: 1.5 + rng() * 1.5,
+   113→    });
+   114→  }
+   115→  return stars;
+   116→}
+   117→
+   118→// ===========================================================================
+   119→// WorldVisualization3D — pure CSS 3D transforms. No external deps.
+   120→// Features:
+   121→//   • Drag to rotate 360° (rotateX clamped ±89°, rotateY unbounded).
+   122→//   • Auto-rotate 6°/s on Y axis when not dragging.
+   123→//   • Zoom in/out via buttons (+/-), mouse wheel, or pinch (touch).
+   124→//   • Sharper dot rendering: solid dot + thin border + small glow (no
+   125→//     soft blur). `will-change: transform` to hint the compositor.
+   126→//   • Reset button restores default angle + zoom.
+   127→// ===========================================================================
+   128→
+   129→const ZOOM_MIN = 0.4;
+   130→const ZOOM_MAX = 3.0;
+   131→const ZOOM_STEP = 0.15;
+   132→
+   133→export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
+   134→  // Rotation state — degrees. Drag to update; auto-rotate when idle.
+   135→  const [rotX, setRotX] = useState(-18);
+   136→  const [rotY, setRotY] = useState(25);
+   137→  const [zoom, setZoom] = useState(1.0);
+   138→  const [isDragging, setIsDragging] = useState(false);
+   139→  const dragStart = useRef<{ x: number; y: number; rotX: number; rotY: number } | null>(null);
+   140→  // Pinch-tracking refs (touch). Stores the initial distance + zoom.
+   141→  const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
+   142→  const containerRef = useRef<HTMLDivElement>(null);
+   143→  const stars = useMemo(() => computeStarfield(), []);
+   144→
+   145→  // Auto-rotate when not dragging. Subtle continuous Y rotation.
+   146→  useEffect(() => {
+   147→    if (isDragging) return;
+   148→    let raf: number;
+   149→    let last = performance.now();
+   150→    const tick = (now: number) => {
+   151→      const dt = (now - last) / 1000;
+   152→      last = now;
+   153→      // 6°/s slow rotation around Y axis.
+   154→      setRotY((prev) => (prev + 6 * dt) % 360);
+   155→      raf = requestAnimationFrame(tick);
+   156→    };
+   157→    raf = requestAnimationFrame(tick);
+   158→    return () => cancelAnimationFrame(raf);
+   159→  }, [isDragging]);
+   160→
+   161→  const onPointerDown = useCallback((e: React.PointerEvent) => {
+   162→    e.preventDefault();
+   163→    try { (e.target as Element).setPointerCapture(e.pointerId); } catch {}
+   164→    dragStart.current = { x: e.clientX, y: e.clientY, rotX, rotY };
+   165→    setIsDragging(true);
+   166→  }, [rotX, rotY]);
+   167→
+   168→  const onPointerMove = useCallback((e: React.PointerEvent) => {
+   169→    if (!dragStart.current) return;
+   170→    const dx = e.clientX - dragStart.current.x;
+   171→    const dy = e.clientY - dragStart.current.y;
+   172→    // 0.4° per pixel of drag — feels responsive without being twitchy.
+   173→    const newRotY = (dragStart.current.rotY + dx * 0.4) % 360;
+   174→    let newRotX = dragStart.current.rotX - dy * 0.4;
+   175→    // Clamp X rotation to [-89°, 89°] so the scene never fully flips.
+   176→    newRotX = Math.max(-89, Math.min(89, newRotX));
+   177→    setRotY(newRotY);
+   178→    setRotX(newRotX);
+   179→  }, []);
+   180→
+   181→  const onPointerUp = useCallback((e: React.PointerEvent) => {
+   182→    if (dragStart.current) {
+   183→      try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {}
+   184→    }
+   185→    dragStart.current = null;
+   186→    pinchStart.current = null;
+   187→    setIsDragging(false);
+   188→  }, []);
+   189→
+   190→  // Zoom helpers — clamp to [ZOOM_MIN, ZOOM_MAX].
+   191→  const clampZoom = useCallback((v: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)), []);
+   192→  const zoomIn = useCallback(() => setZoom((z) => clampZoom(z + ZOOM_STEP * 2)), [clampZoom]);
+   193→  const zoomOut = useCallback(() => setZoom((z) => clampZoom(z - ZOOM_STEP * 2)), [clampZoom]);
+   194→
+   195→  // Mouse-wheel zoom — intercepts wheel so the page doesn't scroll.
+   196→  const onWheel = useCallback((e: React.WheelEvent) => {
+   197→    e.preventDefault();
+   198→    // deltaY > 0 = scroll down = zoom out. Step scaled by scroll amount.
+   199→    const step = ZOOM_STEP * Math.min(3, Math.abs(e.deltaY) / 50);
+   200→    const delta = e.deltaY > 0 ? -step : step;
+   201→    setZoom((z) => clampZoom(z + delta));
+   202→  }, [clampZoom]);
+   203→
+   204→  // Touch pinch — when 2 fingers are down, the distance between them
+   205→  // drives zoom. We track the initial distance + zoom and apply the ratio.
+   206→  const onTouchMove = useCallback((e: React.TouchEvent) => {
+   207→    if (e.touches.length !== 2) return;
+   208→    e.preventDefault();
+   209→    const t1 = e.touches[0];
+   210→    const t2 = e.touches[1];
+   211→    const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+   212→    if (!pinchStart.current) {
+   213→      pinchStart.current = { dist, zoom };
+   214→      return;
+   215→    }
+   216→    const ratio = dist / pinchStart.current.dist;
+   217→    setZoom(clampZoom(pinchStart.current.zoom * ratio));
+   218→  }, [zoom, clampZoom]);
+   219→
+   220→  const resetView = useCallback(() => {
+   221→    setRotX(-18);
+   222→    setRotY(25);
+   223→    setZoom(1.0);
+   224→  }, []);
+   225→
+   226→  return (
+   227→    <div className="relative w-full" style={{ height: "clamp(360px, 60vh, 600px)" }}>
+   228→      <div
+   229→        ref={containerRef}
+   230→        className="relative w-full h-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
+   231→        // Perspective scales inversely with zoom: higher zoom = smaller
+   232→        // perspective = closer view. Base 1100px gives comfortable depth.
+   233→        style={{ perspective: `${1100 / zoom}px`, perspectiveOrigin: "50% 50%" }}
+   234→        onPointerDown={onPointerDown}
+   235→        onPointerMove={onPointerMove}
+   236→        onPointerUp={onPointerUp}
+   237→        onPointerCancel={onPointerUp}
+   238→        onWheel={onWheel}
+   239→        onTouchMove={onTouchMove}
+   240→        role="application"
+   241→        aria-label="Drag to rotate · scroll to zoom · 3D world visualization"
+   242→      >
+   243→        {/* Inner 3D scene — preserve-3d so children are positioned in 3D space.
+   244→            Scale by zoom so the whole sphere grows/shrinks together. */}
+   245→        <div
+   246→          className="absolute left-1/2 top-1/2"
+   247→          style={{
+   248→            transformStyle: "preserve-3d",
+   249→            transform: `translate(-50%, -50%) scale3d(${zoom}, ${zoom}, ${zoom}) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+   250→            willChange: "transform",
+   251→          }}
+   252→        >
+   253→          {/* Starfield — far back, low opacity. */}
+   254→          {stars.map((s, i) => (
+   255→            <div
+   256→              key={`star-${i}`}
+   257→              className="absolute rounded-full"
+   258→              style={{
+   259→                width: `${s.size}px`,
+   260→                height: `${s.size}px`,
+   261→                background: s.color,
+   262→                opacity: 0.4,
+   263→                transform: `translate3d(${s.x}px, ${s.y}px, ${s.z}px)`,
+   264→                transformStyle: "preserve-3d",
+   265→                willChange: "transform",
+   266→              }}
+   267→            />
+   268→          ))}
+   269→
+   270→          {/* World dots — solid dot + thin border + small glow. */}
+   271→          {dots.map((dot, i) => (
+   272→            <div
+   273→              key={`world-${i}`}
+   274→              className="absolute rounded-full"
+   275→              style={{
+   276→                width: `${dot.size}px`,
+   277→                height: `${dot.size}px`,
+   278→                marginLeft: `-${dot.size / 2}px`,
+   279→                marginTop: `-${dot.size / 2}px`,
+   280→                background: dot.color,
+   281→                // Sharp 1px border for definition + small glow for visibility.
+   282→                // Old boxShadow was 2-layer with 1.6× radius → too soft.
+   283→                border: `1px solid ${dot.color}`,
+   284→                boxShadow: `0 0 ${Math.max(4, dot.size * 0.6)}px ${dot.size * 0.25}px ${dot.color}66`,
+   285→                opacity: 0.95,
+   286→                transform: `translate3d(${dot.x}px, ${dot.y}px, ${dot.z}px)`,
+   287→                transformStyle: "preserve-3d",
+   288→                willChange: "transform",
+   289→              }}
+   290→              title={`${FUSION_TIERS.find(t => t.id === dot.tier)?.name || dot.tier} world`}
+   291→            >
+   292→              {dot.tier === "void" && (
+   293→                <div
+   294→                  className="absolute inset-0 rounded-full border-2"
+   295→                  style={{
+   296→                    borderColor: "#a855f7",
+   297→                    transform: "scale(1.8)",
+   298→                    opacity: 0.6,
+   299→                  }}
+   300→                />
+   301→              )}
+   302→            </div>
+   303→          ))}
+   304→        </div>
+   305→
+   306→        {/* Top-left: hint badge + zoom controls + Reset */}
+   307→        <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-none flex-wrap">
+   308→          <Badge variant="outline" className="text-[0.55rem] text-violet-200 border-violet-400/40 bg-slate-950/70 backdrop-blur pointer-events-auto">
+   309→            <Orbit className="w-2.5 h-2.5 mr-0.5" /> Drag · scroll to zoom
+   310→          </Badge>
+   311→          <div className="flex items-center gap-0.5 pointer-events-auto bg-slate-950/70 backdrop-blur rounded-md border border-violet-400/40">
+   312→            <Button
+   313→              size="sm"
+   314→              variant="ghost"
+   315→              className="h-6 w-6 p-0 text-violet-200 hover:bg-violet-500/20"
+   316→              onClick={zoomOut}
+   317→              disabled={zoom <= ZOOM_MIN + 0.001}
+   318→              title="Zoom out"
+   319→              aria-label="Zoom out"
+   320→            >
+   321→              <ZoomOut className="w-3 h-3" />
+   322→            </Button>
+   323→            <span className="text-[0.55rem] text-violet-200 font-mono px-1 min-w-[2.4rem] text-center">
+   324→              {zoom.toFixed(2)}×
+   325→            </span>
+   326→            <Button
+   327→              size="sm"
+   328→              variant="ghost"
+   329→              className="h-6 w-6 p-0 text-violet-200 hover:bg-violet-500/20"
+   330→              onClick={zoomIn}
+   331→              disabled={zoom >= ZOOM_MAX - 0.001}
+   332→              title="Zoom in"
+   333→              aria-label="Zoom in"
+   334→            >
+   335→              <ZoomIn className="w-3 h-3" />
+   336→            </Button>
+   337→          </div>
+   338→          <Button
+   339→            size="sm"
+   340→            variant="outline"
+   341→            className="h-6 text-[0.55rem] text-violet-200 border-violet-400/40 bg-slate-950/70 backdrop-blur pointer-events-auto"
+   342→            onClick={resetView}
+   343→            title="Reset view to default angle + zoom"
+   344→          >
+   345→            <RotateCcw className="w-2.5 h-2.5 mr-0.5" /> Reset
+   346→          </Button>
+   347→        </div>
+   348→
+   349→        {/* Coordinate axis hint — small 3D triad in the corner */}
+   350→        <div
+   351→          className="absolute bottom-2 right-2 pointer-events-none"
+   352→          style={{ perspective: "200px" }}
+   353→          aria-hidden
+   354→        >
+   355→          <div
+   356→            style={{
+   357→              transformStyle: "preserve-3d",
+   358→              transform: `rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+   359→              width: "44px",
+   360→              height: "44px",
+   361→              position: "relative",
+   362→            }}
+   363→          >
+   364→            {/* X axis - red */}
+   365→            <div style={{ position: "absolute", left: "22px", top: "22px", width: "18px", height: "2px", background: "#ef4444", transform: "rotateY(0deg)", transformOrigin: "left center", borderRadius: "1px" }} />
+   366→            {/* Y axis - green */}
+   367→            <div style={{ position: "absolute", left: "22px", top: "22px", width: "2px", height: "18px", background: "#10b981", transform: "rotateX(0deg)", transformOrigin: "center top", borderRadius: "1px" }} />
+   368→            {/* Z axis - blue (toward viewer) */}
+   369→            <div style={{ position: "absolute", left: "22px", top: "22px", width: "18px", height: "2px", background: "#3b82f6", transform: "rotateY(90deg)", transformOrigin: "left center", borderRadius: "1px" }} />
+   370→          </div>
+   371→        </div>
+   372→
+   373→        {/* Tier legend — bottom-left */}
+   374→        <div className="absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md border border-slate-700/50 bg-slate-950/70 px-2.5 py-1 text-[0.6rem] text-slate-300 backdrop-blur pointer-events-none max-w-[60%]">
+   375→          {FUSION_TIERS.filter(t => (useGameStore.getState().worldTiers || {})[t.id] > 0).map(tier => (
+   376→            <span key={tier.id} className="flex items-center gap-1">
+   377→              <span className="inline-block w-2 h-2 rounded-full" style={{ background: TIER_COLORS[tier.id] || "#fff" }} />
+   378→              {tier.name}
+   379→            </span>
+   380→          ))}
+   381→        </div>
+   382→      </div>
+   383→    </div>
+   384→  );
+   385→}
+   386→
+   387→// ===========================================================================
+   388→// Main DivineEngineFullTab component
+   389→// ===========================================================================
+   390→
+   391→export function DivineEngineFullTab() {
+   392→  const divinity = useGameStore((s) => s.divinity);
+   393→  const peakProductionRate = useGameStore((s) => s.peakProductionRate || 0);
+   394→  const worldTiers = useGameStore((s) => s.worldTiers || {});
+   395→  const eternalFlameInvested = useGameStore((s) => s.eternalFlameInvested || 0);
+   396→  const voidShards = useGameStore((s) => s.voidShards || 0);
+   397→  const setTab = useGameStore((s) => s.setTab);
+   398→
+   399→  // IDEA-2: World Archetype Injection
+   400→  const activeWorldArchetype = useGameStore((s) => s.activeWorldArchetype);
+   401→  const setWorldArchetype = useGameStore((s) => s.setWorldArchetype);
+   402→
+   403→  // IDEA-5: Evolution Sliders — 4 sliders share a 10-point pool.
+   404→  const evolutionSliders = useGameStore((s) => s.evolutionSliders || { speed: 0, aggression: 0, curiosity: 0, faith: 0 });
+   405→  const setEvolutionSlider = useGameStore((s) => s.setEvolutionSlider);
+   406→
+   407→  // RESTORE-BULK-FORGE-FUSE — World Forge + World Fusion actions + state.
+   408→  const worldsForged = useGameStore((s) => s.worldsForged || 0);
+   409→  const upgrades = useGameStore((s) => s.upgrades || {});
+   410→  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+   411→  const forgeWorld = useGameStore((s) => s.forgeWorld);
+   412→  const forgeWorldBulk = useGameStore((s) => s.forgeWorldBulk);
+   413→  const fuseWorlds = useGameStore((s) => s.fuseWorlds);
+   414→  const fuseWorldsBulk = useGameStore((s) => s.fuseWorldsBulk);
+   415→
+   416→  const rawCount = rawWorldCount(worldTiers);
+   417→  const effectiveCount = effectiveWorldCount(worldTiers);
+   418→  const flameMult = eternalFlameMultiplier(eternalFlameInvested);
+   419→  const dots = useMemo(() => computeWorldDots(worldTiers), [worldTiers]);
+   420→
+   421→  // Speed slider → Divinity/s multiplier: 1 + speed × 0.10 (0 → ×1.0, 10 → ×2.0).
+   422→  const sliderSpeedMult = 1 + (evolutionSliders.speed || 0) * 0.10;
+   423→  const sliderSum =
+   424→    (evolutionSliders.speed || 0) +
+   425→    (evolutionSliders.aggression || 0) +
+   426→    (evolutionSliders.curiosity || 0) +
+   427→    (evolutionSliders.faith || 0);
+   428→
+   429→  const divPerSec = effectiveCount > 0 && peakProductionRate > 0
+   430→    ? effectiveCount * peakProductionRate * 0.01 * flameMult * (activeWorldArchetype ? 1.30 : 1) * sliderSpeedMult
+   431→    : 0;
+   432→
+   433→  // Bulk upgrade ownership — bypassed in debug mode (debugFreeBuy).
+   434→  const hasBulkForge10 = debugFreeBuy || (upgrades["bulk_forge_10x"] || 0) > 0;
+   435→  const hasBulkForge100 = debugFreeBuy || (upgrades["bulk_forge_100x"] || 0) > 0;
+   436→  const hasBulkForgeMax = debugFreeBuy || (upgrades["bulk_forge_max"] || 0) > 0;
+   437→  const hasBulkFuse10 = debugFreeBuy || (upgrades["bulk_fuse_10x"] || 0) > 0;
+   438→  const hasBulkFuse100 = debugFreeBuy || (upgrades["bulk_fuse_100x"] || 0) > 0;
+   439→  const hasBulkFuseMax = debugFreeBuy || (upgrades["bulk_fuse_max"] || 0) > 0;
+   440→
+   441→  // Cost of the next single forge = ceil(50 × 1.5^worldsForged).
+   442→  const nextForgeCost = Math.ceil(50 * Math.pow(1.5, worldsForged));
+   443→  const canAffordNextForge = debugFreeBuy || divinity >= nextForgeCost;
+   444→
+   445→  // Compute how many worlds the player can afford to forge right now,
+   446→  // starting from `worldsForged`. Capped at 10000 (safety cap). The cost
+   447→  // grows exponentially so the loop terminates quickly even with very
+   448→  // large divinity pools.
+   449→  const maxForgeable = useMemo(() => {
+   450→    if (divinity <= 0 && !debugFreeBuy) return 0;
+   451→    let remaining = divinity;
+   452→    let count = 0;
+   453→    for (let i = 0; i < 10000; i++) {
+   454→      const cost = Math.ceil(50 * Math.pow(1.5, worldsForged + i));
+   455→      if (remaining < cost) break;
+   456→      remaining -= cost;
+   457→      count++;
+   458→    }
+   459→    return count;
+   460→  }, [divinity, worldsForged, debugFreeBuy]);
+   461→
+   462→  // For each fusion tier with a source, compute the max fusable count =
+   463→  // floor(sourceAvailable / sourceCount), capped at 10000.
+   464→  const maxFusableByTier = useMemo(() => {
+   465→    const out: Record<string, number> = {};
+   466→    for (const tier of FUSION_TIERS) {
+   467→      if (tier.sourceTier === null) continue;
+   468→      const available = Math.max(0, Math.floor(worldTiers[tier.sourceTier] || 0));
+   469→      out[tier.id] = Math.min(10000, Math.floor(available / tier.sourceCount));
+   470→    }
+   471→    return out;
+   472→  }, [worldTiers]);
+   473→
+   474→  return (
+   475→    <div className="space-y-4">
+   476→      {/* ===== HEADER ===== */}
+   477→      <div className="stat-card flex items-center justify-between gap-3 flex-wrap">
+   478→        <div className="flex items-center gap-2">
+   479→          <Globe className="w-6 h-6 text-violet-300" />
+   480→          <div>
+   481→            <h2 className="text-lg font-bold">Divine Engine</h2>
+   482→            <p className="text-xs text-muted-foreground">The machinery of reality — worlds producing Divinity</p>
+   483→          </div>
+   484→        </div>
+   485→        <div className="flex gap-2 flex-wrap">
+   486→          <Badge variant="outline" className="text-violet-300 border-violet-400/40">
+   487→            <Sparkles className="w-3 h-3 mr-1" />
+   488→            {formatCompact(divinity)} Divinity
+   489→          </Badge>
+   490→          <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+   491→            <TrendingUp className="w-3 h-3 mr-1" />
+   492→            {divPerSec > 0 ? `${formatCompact(divPerSec)} Div/s` : "0 Div/s"}
+   493→          </Badge>
+   494→          {voidShards > 0 && (
+   495→            <Badge variant="outline" className="text-purple-300 border-purple-400/40">
+   496→              🔮 {formatCompact(voidShards)} Void Shards
+   497→            </Badge>
+   498→          )}
+   499→        </div>
+   500→      </div>
+   501→
+   502→      {/* ===== STATS GRID ===== */}
+   503→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+   504→        <div className="stat-card text-center">
+   505→          <div className="text-[0.6rem] text-muted-foreground uppercase">Raw Worlds</div>
+   506→          <div className="text-xl font-bold text-violet-300">{formatNumber(rawCount, 0)}</div>
+   507→          <div className="text-[0.55rem] text-muted-foreground">toward cap</div>
+   508→        </div>
+   509→        <div className="stat-card text-center">
+   510→          <div className="text-[0.6rem] text-muted-foreground uppercase">Effective</div>
+   511→          <div className="text-xl font-bold text-cyan-300">{formatCompact(effectiveCount)}</div>
+   512→          <div className="text-[0.55rem] text-muted-foreground">production-weighted</div>
+   513→        </div>
+   514→        <div className="stat-card text-center">
+   515→          <div className="text-[0.6rem] text-muted-foreground uppercase">Peak Prod</div>
+   516→          <div className="text-xl font-bold text-amber-300">{formatCompact(peakProductionRate)}</div>
+   517→          <div className="text-[0.55rem] text-muted-foreground">resources/s</div>
+   518→        </div>
+   519→        <div className="stat-card text-center">
+   520→          <div className="text-[0.6rem] text-muted-foreground uppercase">Flame</div>
+   521→          <div className="text-xl font-bold text-orange-300">×{flameMult.toFixed(2)}</div>
+   522→          <div className="text-[0.55rem] text-muted-foreground">{formatCompact(eternalFlameInvested)} invested</div>
+   523→        </div>
+   524→      </div>
+   525→
+   526→      {/* ===== WORLD TIER VISUALIZATION (3D) ===== */}
+   527→      {rawCount > 0 && (
+   528→        <div className="stat-card">
+   529→          <div className="flex items-center gap-2 mb-2 flex-wrap">
+   530→            <Layers className="w-4 h-4 text-violet-300" />
+   531→            <span className="text-sm font-semibold">3D World Visualization</span>
+   532→            <span className="text-[0.65rem] text-muted-foreground">
+   533→              — each dot is a world, colored by fusion tier · drag to rotate (360°)
+   534→            </span>
+   535→          </div>
+   536→          <WorldVisualization3D dots={dots} />
+   537→        </div>
+   538→      )}
+   539→
+   540→      {/* ===== RESTORE-BULK-FORGE-FUSE: WORLD FORGE ===== */}
+   541→      <div className="stat-card">
+   542→        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+   543→          <div className="flex items-center gap-2">
+   544→            <Hammer className="w-4 h-4 text-amber-300" />
+   545→            <span className="text-sm font-semibold">World Forge</span>
+   546→            <span className="text-[0.65rem] text-muted-foreground">
+   547→              — spend Divinity to create new Tier 1 worlds
+   548→            </span>
+   549→          </div>
+   550→          <Badge variant="outline" className="text-amber-300 border-amber-400/40">
+   551→            {formatNumber(worldsForged, 0)} forged lifetime
+   552→          </Badge>
+   553→        </div>
+   554→        <p className="text-[0.7rem] text-muted-foreground mb-2">
+   555→          Each forged world costs <span className="font-mono text-amber-200">ceil(50 × 1.5<sup>forged</sup>)</span> Divinity. Next: <span className="font-mono text-amber-200">{formatNumber(nextForgeCost, 0)}</span> Divinity → +1 Tier 1 world.
+   556→        </p>
+   557→        <div className="flex flex-wrap gap-2">
+   558→          <Button
+   559→            size="sm"
+   560→            variant="default"
+   561→            onClick={() => forgeWorld()}
+   562→            disabled={!canAffordNextForge}
+   563→            className="h-8"
+   564→            title={`Forge 1 Tier 1 world (costs ${formatNumber(nextForgeCost, 0)} Divinity)`}
+   565→          >
+   566→            <Hammer className="w-3 h-3 mr-1" /> Forge ×1
+   567→          </Button>
+   568→          {hasBulkForge10 && (
+   569→            <Button
+   570→              size="sm"
+   571→              variant="outline"
+   572→              onClick={() => forgeWorldBulk(10)}
+   573→              disabled={!canAffordNextForge}
+   574→              className="h-8 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+   575→              title="Forge 10 worlds at once (capped by Divinity)"
+   576→            >
+   577→              <ChevronsRight className="w-3 h-3 mr-1" /> Forge ×10
+   578→            </Button>
+   579→          )}
+   580→          {hasBulkForge100 && (
+   581→            <Button
+   582→              size="sm"
+   583→              variant="outline"
+   584→              onClick={() => forgeWorldBulk(100)}
+   585→              disabled={!canAffordNextForge}
+   586→              className="h-8 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+   587→              title="Forge 100 worlds at once (capped by Divinity)"
+   588→            >
+   589→              <ChevronsRight className="w-3 h-3 mr-1" /> Forge ×100
+   590→            </Button>
+   591→          )}
+   592→          {hasBulkForgeMax && (
+   593→            <Button
+   594→              size="sm"
+   595→              variant="outline"
+   596→              onClick={() => forgeWorldBulk(-1)}
+   597→              disabled={maxForgeable <= 0}
+   598→              className="h-8 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
+   599→              title={`Forge as many worlds as affordable (capped at 10000). You can afford ${formatNumber(maxForgeable, 0)} right now.`}
+   600→            >
+   601→              <ChevronsRight className="w-3 h-3 mr-1" /> Forge Max ({formatNumber(maxForgeable, 0)})
+   602→            </Button>
+   603→          )}
+   604→        </div>
+   605→        {!hasBulkForge10 && (
+   606→          <p className="text-[0.6rem] text-muted-foreground italic mt-2 flex items-center gap-1">
+   607→            <Sparkles className="w-2.5 h-2.5" />
+   608→            Buy Bulk Forge ×10 in the shop to unlock bulk forging.
+   609→          </p>
+   610→        )}
+   611→      </div>
+   612→
+   613→      {/* ===== RESTORE-BULK-FORGE-FUSE: WORLD FUSION ===== */}
+   614→      <div className="stat-card">
+   615→        <div className="flex items-center gap-2 mb-2 flex-wrap">
+   616→          <Merge className="w-4 h-4 text-violet-300" />
+   617→          <span className="text-sm font-semibold">World Fusion</span>
+   618→          <span className="text-[0.65rem] text-muted-foreground">
+   619→            — merge N source worlds into 1 higher-tier world (×5 prod per tier)
+   620→          </span>
+   621→        </div>
+   622→        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+   623→          {FUSION_TIERS.filter((t) => t.sourceTier !== null).map((tier) => {
+   624→            const sourceTier = FUSION_TIERS.find((t) => t.id === tier.sourceTier);
+   625→            const owned = Math.max(0, Math.floor(worldTiers[tier.id] || 0));
+   626→            const sourceAvail = Math.max(0, Math.floor(worldTiers[tier.sourceTier!] || 0));
+   627→            const maxFuse = maxFusableByTier[tier.id] || 0;
+   628→            const canFuseOnce = sourceAvail >= tier.sourceCount;
+   629→            return (
+   630→              <div
+   631→                key={tier.id}
+   632→                className="flex items-center justify-between gap-2 flex-wrap p-2 rounded-md border border-slate-700/40 bg-slate-950/30"
+   633→              >
+   634→                <div className="flex items-center gap-2 min-w-0">
+   635→                  <span className="text-lg shrink-0">{tier.icon}</span>
+   636→                  <div className="min-w-0">
+   637→                    <div className="text-xs font-semibold truncate">{tier.name}</div>
+   638→                    <div className="text-[0.6rem] text-muted-foreground">
+   639→                      {tier.sourceCount} × {sourceTier?.icon} {sourceTier?.name} → 1 (×{formatCompact(tier.productionMult)} prod)
+   640→                    </div>
+   641→                  </div>
+   642→                </div>
+   643→                <div className="flex items-center gap-2 flex-wrap">
+   644→                  <Badge variant="outline" className="text-[0.6rem] text-violet-200 border-violet-400/40">
+   645→                    {formatNumber(owned, 0)} owned
+   646→                  </Badge>
+   647→                  <Badge variant="outline" className="text-[0.6rem] text-cyan-200 border-cyan-400/40">
+   648→                    {formatNumber(sourceAvail, 0)} src
+   649→                  </Badge>
+   650→                  <Button
+   651→                    size="sm"
+   652→                    variant="default"
+   653→                    onClick={() => fuseWorlds(tier.id)}
+   654→                    disabled={!canFuseOnce}
+   655→                    className="h-7"
+   656→                    title={`Fuse ${tier.sourceCount} ${sourceTier?.name} → 1 ${tier.name}`}
+   657→                  >
+   658→                    <Merge className="w-3 h-3 mr-0.5" /> ×1
+   659→                  </Button>
+   660→                  {hasBulkFuse10 && (
+   661→                    <Button
+   662→                      size="sm"
+   663→                      variant="outline"
+   664→                      onClick={() => fuseWorldsBulk(tier.id, 10)}
+   665→                      disabled={maxFuse < 1}
+   666→                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+   667→                      title={`Fuse 10× → 10 ${tier.name} (needs ${tier.sourceCount * 10} ${sourceTier?.name})`}
+   668→                    >
+   669→                      ×10
+   670→                    </Button>
+   671→                  )}
+   672→                  {hasBulkFuse100 && (
+   673→                    <Button
+   674→                      size="sm"
+   675→                      variant="outline"
+   676→                      onClick={() => fuseWorldsBulk(tier.id, 100)}
+   677→                      disabled={maxFuse < 1}
+   678→                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+   679→                      title={`Fuse 100× → 100 ${tier.name} (needs ${tier.sourceCount * 100} ${sourceTier?.name})`}
+   680→                    >
+   681→                      ×100
+   682→                    </Button>
+   683→                  )}
+   684→                  {hasBulkFuseMax && (
+   685→                    <Button
+   686→                      size="sm"
+   687→                      variant="outline"
+   688→                      onClick={() => fuseWorldsBulk(tier.id, -1)}
+   689→                      disabled={maxFuse <= 0}
+   690→                      className="h-7 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
+   691→                      title={`Fuse as many as possible (capped at 10000). Available: ${maxFuse}`}
+   692→                    >
+   693→                      Max ({formatNumber(maxFuse, 0)})
+   694→                    </Button>
+   695→                  )}
+   696→                </div>
+   697→              </div>
+   698→            );
+   699→          })}
+   700→        </div>
+   701→        {!hasBulkFuse10 && (
+   702→          <p className="text-[0.6rem] text-muted-foreground italic mt-2 flex items-center gap-1">
+   703→            <Sparkles className="w-2.5 h-2.5" />
+   704→            Buy Bulk Fuse ×10 in the shop to unlock bulk fusing.
+   705→          </p>
+   706→        )}
+   707→      </div>
+   708→
+   709→      {/* ===== IDEA-2: WORLD ARCHETYPE INJECTION ===== */}
+   710→      <div className="stat-card">
+   711→        <div className="flex items-center gap-2 mb-2">
+   712→          <Users className="w-4 h-4 text-cyan-300" />
+   713→          <span className="text-sm font-semibold">World Archetype</span>
+   714→          <span className="text-[0.65rem] text-muted-foreground">— choose what evolves inside your worlds (+30% Divinity/s when active)</span>
+   715→        </div>
+   716→        <Select
+   717→          value={activeWorldArchetype ?? "__none__"}
+   718→          onValueChange={(v) => setWorldArchetype(v === "__none__" ? null : v)}
+   719→        >
+   720→          <SelectTrigger className="h-9 text-sm">
+   721→            <SelectValue placeholder="No archetype (no bonus)" />
+   722→          </SelectTrigger>
+   723→          <SelectContent>
+   724→            <SelectItem value="__none__">No archetype (no bonus)</SelectItem>
+   725→            {ARCHETYPES.map((a) => (
+   726→              <SelectItem key={a.id} value={a.id}>
+   727→                {a.glyph} {a.name}
+   728→              </SelectItem>
+   729→            ))}
+   730→          </SelectContent>
+   731→        </Select>
+   732→        {activeWorldArchetype && (
+   733→          <p className="text-[0.6rem] text-cyan-300/80 mt-1">
+   734→            Active: {ARCHETYPES.find(a => a.id === activeWorldArchetype)?.name} — +30% Divinity/s from all worlds.
+   735→          </p>
+   736→        )}
+   737→      </div>
+   738→
+   739→      {/* ===== IDEA-5: EVOLUTION SLIDERS (10-point shared pool) ===== */}
+   740→      <div className="stat-card">
+   741→        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+   742→          <div className="flex items-center gap-2">
+   743→            <Gauge className="w-4 h-4 text-amber-300" />
+   744→            <span className="text-sm font-semibold">Evolution Sliders</span>
+   745→            <span className="text-[0.65rem] text-muted-foreground">— tune how your worlds behave</span>
+   746→          </div>
+   747→          <Badge variant="outline" className={`border-amber-400/40 ${sliderSum === 10 ? "text-amber-300" : sliderSum === 0 ? "text-muted-foreground" : "text-cyan-300"}`}>
+   748→            Pool: {sliderSum.toFixed(1)} / 10
+   749→          </Badge>
+   750→        </div>
+   751→        <div className="space-y-3">
+   752→          {/* Speed */}
+   753→          <SliderRow
+   754→            label="Evolution Speed"
+   755→            icon="⚡"
+   756→            value={evolutionSliders.speed}
+   757→            max={10}
+   758→            color="text-amber-300"
+   759→            display={`×${(1 + (evolutionSliders.speed || 0) * 0.10).toFixed(2)} Div/s`}
+   760→            onValueChange={(v) => setEvolutionSlider("speed", v)}
+   761→            help="+10% Divinity/s per point (×1.0 → ×2.0)."
+   762→          />
+   763→          {/* Aggression */}
+   764→          <SliderRow
+   765→            label="Aggression"
+   766→            icon="⚔️"
+   767→            value={evolutionSliders.aggression}
+   768→            max={10}
+   769→            color="text-rose-300"
+   770→            display={`+${((evolutionSliders.aggression || 0) * 10).toFixed(0)}% Void Shards`}
+   771→            onValueChange={(v) => setEvolutionSlider("aggression", v)}
+   772→            help="Each point = +10% Void Shards from worlds."
+   773→          />
+   774→          {/* Curiosity */}
+   775→          <SliderRow
+   776→            label="Curiosity"
+   777→            icon="🔭"
+   778→            value={evolutionSliders.curiosity}
+   779→            max={10}
+   780→            color="text-cyan-300"
+   781→            display={`+${((evolutionSliders.curiosity || 0) * 0.01).toFixed(3)}% peak/s`}
+   782→            onValueChange={(v) => setEvolutionSlider("curiosity", v)}
+   783→            help="Peak production rate grows slowly over time."
+   784→          />
+   785→          {/* Faith */}
+   786→          <SliderRow
+   787→            label="Faith"
+   788→            icon="✨"
+   789→            value={evolutionSliders.faith}
+   790→            max={10}
+   791→            color="text-violet-300"
+   792→            display={`+${((evolutionSliders.faith || 0) * 10).toFixed(0)}% Faith/s`}
+   793→            onValueChange={(v) => setEvolutionSlider("faith", v)}
+   794→            help="Each point = +10% passive Faith from worlds."
+   795→          />
+   796→        </div>
+   797→        <div className="text-[0.6rem] text-muted-foreground italic mt-2 flex items-center gap-1">
+   798→          <Flame className="w-2.5 h-2.5" />
+   799→          Distribute 10 points across the 4 sliders. Set one higher and the pool shrinks for the others. Reallocate freely at any time.
+   800→        </div>
+   801→      </div>
+   802→
+   803→      {/* ===== QUICK ACCESS BUTTONS ===== */}
+   804→      <div className="stat-card">
+   805→        <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-2">Quick Access</div>
+   806→        <div className="flex flex-wrap gap-2">
+   807→          <Button size="sm" variant="outline" onClick={() => setTab("constellations")} className="h-8 gap-1">
+   808→            <Eye className="w-3 h-3" /> Constellations
+   809→          </Button>
+   810→          <Button size="sm" variant="outline" onClick={() => setTab("market")} className="h-8 gap-1">
+   811→            <Triangle className="w-3 h-3" /> Transcendence (L3)
+   812→          </Button>
+   813→          <Button size="sm" variant="outline" onClick={() => setTab("galaxy")} className="h-8 gap-1">
+   814→            <Egg className="w-3 h-3" /> Galaxy Claim (L4)
+   815→          </Button>
+   816→        </div>
+   817→      </div>
+   818→    </div>
+   819→  );
+   820→}
+   821→
+   822→// ===== Sub-component: a single slider row with label + value + help text =====
+   823→function SliderRow({
+   824→  label, icon, value, max, color, display, onValueChange, help,
+   825→}: {
+   826→  label: string;
+   827→  icon: string;
+   828→  value: number;
+   829→  max: number;
+   830→  color: string;
+   831→  display: string;
+   832→  onValueChange: (v: number) => void;
+   833→  help: string;
+   834→}) {
+   835→  return (
+   836→    <div>
+   837→      <div className="flex justify-between text-[0.7rem] mb-1 items-center">
+   838→        <span className="text-muted-foreground flex items-center gap-1">
+   839→          <span>{icon}</span>
+   840→          <span>{label}</span>
+   841→        </span>
+   842→        <span className={`font-mono ${color}`}>{display}</span>
+   843→      </div>
+   844→      <Slider
+   845→        value={[value]}
+   846→        min={0}
+   847→        max={max}
+   848→        step={0.5}
+   849→        onValueChange={(v) => onValueChange(v[0])}
+   850→        className="w-full"
+   851→      />
+   852→      <p className="text-[0.55rem] text-muted-foreground mt-0.5">{help}</p>
+   853→    </div>
+   854→  );
+   855→}
+   856→
