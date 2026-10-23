@@ -1,0 +1,33 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "app": {
+      "root": ".",
+      "framework": "nextjs"
+    },
+    "aminer-daily-paper": {
+      "root": "skills/aminer-daily-paper",
+      "runtime": "python"
+    },
+    "figure_examples": {
+      "root": "skills/experiment-suite/figure_examples",
+      "runtime": "python"
+    },
+    "gaokao-fetch-volunteers": {
+      "root": "skills/gaokao-fetch-volunteers",
+      "runtime": "python"
+    },
+    "gaokao-generate-report": {
+      "root": "skills/gaokao-generate-report",
+      "runtime": "python"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "app"
+      }
+    }
+  ]
+}
