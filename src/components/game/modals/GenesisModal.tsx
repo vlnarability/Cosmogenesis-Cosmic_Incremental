@@ -9,7 +9,6 @@ import {
   galaxyClaimCost,
   getGalaxySystemNeighbors,
   summarizeGalaxyBonuses,
-  type GalaxyBonusType,
 } from "@/game/data/galaxyMap";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +19,6 @@ import {
   Egg,
   Telescope,
   Star,
-  Boxes,
-  Database,
   Sparkles,
   Gauge,
   Package,
@@ -36,14 +33,14 @@ import { EmptyState } from "../shared/EmptyState";
 // container scrolls horizontally when needed).
 const STAR_SIZE = 2;
 
-const BONUS_ICON: Record<GalaxyBonusType, string> = {
+const BONUS_ICON: Record<string, string> = {
   production: "⚙️",
   capacity: "📦",
   ep: "✨",
   pop: "👥",
 };
 
-const BONUS_LABEL: Record<GalaxyBonusType, string> = {
+const BONUS_LABEL: Record<string, string> = {
   production: "Production",
   capacity: "Capacity",
   ep: "Enlightenment",
@@ -321,9 +318,9 @@ export function GenesisContent() {
                               <div>
                                 {BONUS_LABEL[sys.bonus.type]}: {bonusPct(sys.bonus.value)}
                               </div>
-                              {sys.rareResource && (
+                              {sys.hasVoidShards && (
                                 <div className="text-amber-300">
-                                  Rare: {sys.rareResource === "alloys" ? "Alloys" : "Data"}
+                                  Rare: Void Shards
                                 </div>
                               )}
                               <div className={claimed ? "text-cyan-300" : "text-emerald-300"}>
@@ -396,10 +393,10 @@ export function GenesisContent() {
                   Active bonuses
                 </div>
                 <div className="grid grid-cols-2 gap-1">
-                  <BonusRow icon={Gauge}    label="Prod" pct={summary.productionMult} tone="cyan" />
-                  <BonusRow icon={Package}  label="Cap"   pct={summary.capMult}        tone="amber" />
-                  <BonusRow icon={Sparkles} label="Div"   pct={summary.epMult}         tone="emerald" />
-                  <BonusRow icon={Users}   label="Pop"   pct={summary.popGrowthMult}   tone="violet" />
+                  <BonusRow icon={Gauge}    label="Prod" pct={summary.divinityMult} tone="cyan" />
+                  <BonusRow icon={Package}  label="Cap"   pct={summary.costMult}        tone="amber" />
+                  <BonusRow icon={Sparkles} label="Div"   pct={summary.divinityMult}    tone="emerald" />
+                  <BonusRow icon={Users}   label="Pop"   pct={0}                        tone="violet" />
                 </div>
               </div>
 
@@ -409,11 +406,8 @@ export function GenesisContent() {
                   Rare resources collected
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  <Badge variant="outline" className="text-[0.6rem] text-sky-300 border-sky-400/40">
-                    <Boxes className="w-3 h-3 mr-1" /> Alloys × {summary.alloysCount}
-                  </Badge>
-                  <Badge variant="outline" className="text-[0.6rem] text-fuchsia-300 border-fuchsia-400/40">
-                    <Database className="w-3 h-3 mr-1" /> Data × {summary.dataCount}
+                  <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
+                    <Sparkles className="w-3 h-3 mr-1" /> Void Shards × {summary.voidShardsCount}
                   </Badge>
                 </div>
               </div>

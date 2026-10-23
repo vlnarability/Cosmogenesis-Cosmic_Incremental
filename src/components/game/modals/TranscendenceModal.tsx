@@ -83,7 +83,7 @@ export function TranscendenceContent() {
 
   // L3-REDESIGN — new state subscriptions.
   const worldTiers = useGameStore((s) => s.worldTiers || {});
-  const cosmicFragments = useGameStore((s) => s.cosmicFragments || 0);
+  const cosmicFragments = useGameStore((s) => s.voidShards || 0);
   const eternalFlameInvested = useGameStore((s) => s.eternalFlameInvested || 0);
   const worldsForged = useGameStore((s) => s.worldsForged || 0);
   const purchasedCatalysts = useGameStore((s) => s.purchasedCatalysts || {});

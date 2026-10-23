@@ -1323,7 +1323,7 @@ export function EnlightenmentContent() {
                     ))}
                   </div>
                   <div className="text-[0.6rem] text-amber-300/80 mt-1">
-                    Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.divinityMult * 100).toFixed(0)}% Divinity
+                    Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.epMult * 100).toFixed(0)}% Divinity
                   </div>
                 </details>
               </div>

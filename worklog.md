@@ -8008,3 +8008,46 @@ With the layer merging (L4 + L5 hidden at L6+, L9 hidden, L10 hidden), the total
 - `src/components/game/layout/TabNav.tsx` (full rewrite, ~225 lines: single-row layout, trimmed LAYER_TABS, renamed "Galactic Cluster" + "War" with Swords, layer-merging visibility filter, mobile bottom nav shows all visible layer tabs)
 - `src/components/game/layout/GameShell.tsx` (+45 lines, -7 lines net: divine_engine tab now renders DivineEngineFullTab + EternityContent, universe tab renders merged L4+L5+L6, lab tab renders merged L9+L7, back-compat comments for galaxy/conquest/war/genesis_engine)
 - `agent-ctx/RESTORE-UI-CHANGES-Z-ai-Code-main.md` (work record for subagent coordination)
+
+## FIX-ALL-TYPESCRIPT-ERRORS — Z.ai Code
+
+**Task ID:** FIX-ALL-TYPESCRIPT-ERRORS
+**Goal:** After removing `ignoreBuildErrors: true` from `next.config.ts`, ~30 `tsc --noEmit` errors broke the Vercel build. Fix ALL of them. No test code, no game-logic changes — type fixes only.
+
+### Root causes (3 patterns)
+1. Stale field refs after data-model refactors (`cosmicFragments` → `voidShards`, `ep` merged into Divinity, `rareResource` → `hasVoidShards`, `alloysCount`/`dataCount` → `voidShardsCount`).
+2. Missing/renamed interface fields (`GalaxyBonusType = "divinity" | "cost"`, `GalaxyBonusSummary` only has `divinityMult`/`costMult`/`claimedCount`/`synergyCount`/`voidShardsCount`, `PantheonSlot` lacked `id`).
+3. Optional-field accesses (`WorldTemplate.faithPerSec?` etc., `plantedSeeds` entries can be `undefined`).
+
+### Changes
+- **`EnlightenmentModal.tsx` L1326** — `rb.divinityMult` → `rb.epMult` (EP was merged into Divinity).
+- **`GenesisModal.tsx`** — `BONUS_ICON`/`BONUS_LABEL` `Record<GalaxyBonusType,string>` → `Record<string,string>` (old keys `production`/`capacity`/`ep`/`pop` no longer exist on `GalaxyBonusType`); `sys.rareResource` → `sys.hasVoidShards` (renders "Rare: Void Shards"); bonus rows now use `summary.divinityMult`/`costMult`/`0`; Alloys+Data badges replaced with single `Void Shards × {summary.voidShardsCount}` badge; removed unused `Boxes`/`Database`/`type GalaxyBonusType` imports.
+- **`TranscendenceModal.tsx` L86** — `s.cosmicFragments` → `s.voidShards` (renamed currency).
+- **`PrestigeTab.tsx` L409** — Added missing `currencyName="Divinity"` prop on Layer 4 LayerCard.
+- **`stages.ts` L125** — Cast `Object.fromEntries(...)` to `Record<StageId, StageDef>` (TS widens to `{ [k: string]: StageDef }`).
+- **`divinePantheon.ts`** — Added `id: number` field to `PantheonSlot` interface (the store already creates slots with `id: i`).
+- **`store.ts`** (multiple):
+  - Removed `debugFreeBuy: false` from `initialMetaState()` body (the function returns `Partial<GameState>` and `debugFreeBuy` wasn't on `GameState`).
+  - In `useGameStore` initial state: cast both `initialRunState()` and `initialMetaState()` to `GameState` (`...(initialRunState() as GameState)`) so the spreads provide required (non-optional) fields — fixes the whole family of "X | undefined not assignable to X" conflicts that surfaced once the first `debugFreeBuy` conflict was resolved. Set `debugFreeBuy: false` explicitly (it lives on `GameStore`, not `GameState`).
+  - L1444 — Captured `activeEvent` into `const evId` before the `setTimeout` closure so `resolveEvent(evId, …)` passes a `string` (not the later-reassigned `null`); fixes both the type error and a latent runtime bug.
+  - L1933, L2720 — Wrapped `s.plantedSeeds` as `(s.plantedSeeds || {}) as Record<string, { planted: boolean; plantedAtTime: number }>` for `allGenesisSeedsPlanted()` and `plantedSeedsDivinityPerSec()` calls (the GameState entries are `… | undefined`).
+  - L2672–2703 — All four optional `WorldTemplate` fields (`faithPerSec`, `voidShardPerSec`, `crashChance`, `peakGrowthPerMin`) accessed with `|| 0` (both in `if` guards and in the math).
+- **`types.ts`** — No permanent changes. Tried adding `debugFreeBuy: boolean` to `GameState`, but that cascaded new errors for *every* `GameState` field (since `Partial<GameState>` makes `debugFreeBuy?` optional). Reverted; the store-side cast + explicit `debugFreeBuy: false` is the cleaner fix.
+
+### Hidden conflicts surfaced
+The original tsc reported ~30 errors, but `store.ts:768` had only `debugFreeBuy` flagged. TypeScript reports the first property mismatch per assignment; resolving `debugFreeBuy` exposed a cascade of `stageIndex`/`time`/etc. `number | undefined` conflicts from the `Partial<GameState>` spread. The single cast `...(initialRunState() as GameState)` resolves the whole family at once.
+
+### Verification
+- `npx tsc --noEmit` → **0 errors, 0 warnings**.
+- `bun run lint` → **0 errors** (10 pre-existing warnings in `scripts/` and `upload/` only).
+- Dev server `GET /` → 200 in ~58 ms.
+
+### Files modified
+- `src/components/game/modals/EnlightenmentModal.tsx`
+- `src/components/game/modals/GenesisModal.tsx`
+- `src/components/game/modals/TranscendenceModal.tsx`
+- `src/components/game/tabs/PrestigeTab.tsx`
+- `src/game/data/stages.ts`
+- `src/game/data/divinePantheon.ts`
+- `src/game/state/store.ts`
+- `agent-ctx/FIX-ALL-TYPESCRIPT-ERRORS-Z-ai-Code-main.md` (work record)

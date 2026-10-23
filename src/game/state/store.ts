@@ -614,7 +614,6 @@ function initialMetaState(): Partial<GameState> {
     tutorialActive: true,
     tutorialDismissed: false,
     eventFrequency: "normal",
-    debugFreeBuy: false,
 
     // AUTOBUYER-SETTINGS — archetype / government targeting preferences.
     // All four slots default to null (no preference); the shop panel sets
@@ -766,8 +765,16 @@ function initialMetaState(): Partial<GameState> {
 export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
-      ...initialRunState(),
-      ...initialMetaState(),
+      // Cast the partial initial-state objects to full `GameState` so the
+      // spread provides required (non-optional) fields to the `GameStore`
+      // shape. Each helper returns `Partial<GameState>`, but their combined
+      // keys cover every `GameState` field; the cast is a type-only fix
+      // (no runtime change) that lets TypeScript verify completeness.
+      ...(initialRunState() as GameState),
+      ...(initialMetaState() as GameState),
+      // `debugFreeBuy` is declared on `GameStore` (not `GameState`), so it
+      // isn't covered by the spreads above — set it explicitly.
+      debugFreeBuy: false,
 
       // ============ TICK ============
       tick: (dt) => {
@@ -1440,8 +1447,13 @@ export const useGameStore = create<GameStore>()(
             const evDef = EVENT_MAP[activeEvent];
             if (evDef && evDef.choices.length > 0) {
               const defaultChoice = evDef.choices[0];
+              // Capture activeEvent in a const so the setTimeout closure
+              // passes a `string` (not the later-reassigned `null`) to
+              // resolveEvent — TypeScript narrowing doesn't survive the
+              // closure, so we pin the value here.
+              const evId = activeEvent;
               setTimeout(() => {
-                get().resolveEvent(activeEvent, defaultChoice.id);
+                get().resolveEvent(evId, defaultChoice.id);
                 get().addToLog(`Event "${evDef.name}" auto-resolved with default choice: ${defaultChoice.label}.`);
               }, 0);
             }
@@ -1925,7 +1937,7 @@ export const useGameStore = create<GameStore>()(
         // Old saves that already unlocked L4 via Blood Pacts keep their
         // `unlockedLayers.genesis = true` flag — no regression.)
         if (unlockedLayers.transcendence && !unlockedLayers.genesis) {
-          if (allGenesisSeedsPlanted(s.plantedSeeds)) {
+          if (allGenesisSeedsPlanted((s.plantedSeeds || {}) as Record<string, { planted: boolean; plantedAtTime: number }>)) {
             unlockedLayers = { ...unlockedLayers, genesis: true };
             pendingLogs.push("All 4 Genesis Seeds planted. Genesis layer unlocked.");
           }
@@ -2669,22 +2681,22 @@ export const useGameStore = create<GameStore>()(
         // collapse chance, peak production rate growth).
         if (activeTemplate) {
           // Monastery: +0.1 Faith/s.
-          if (activeTemplate.faithPerSec > 0) {
-            faith += activeTemplate.faithPerSec * realDt;
+          if ((activeTemplate.faithPerSec || 0) > 0) {
+            faith += (activeTemplate.faithPerSec || 0) * realDt;
           }
           // Void template: each world generates +0.01 Cosmic Fragments/s.
-          if (activeTemplate.voidShardPerSec > 0 && rawWorlds > 0) {
-            voidShards += rawWorlds * activeTemplate.voidShardPerSec * realDt;
+          if ((activeTemplate.voidShardPerSec || 0) > 0 && rawWorlds > 0) {
+            voidShards += rawWorlds * (activeTemplate.voidShardPerSec || 0) * realDt;
           }
           // Crucible: 5% chance per tick a world collapses (lose 1 tier-1).
           // Only roll if the player actually has tier-1 worlds.
           // IDEA-8 — Pantheon Sentinel reduces collapse chance (cap 80%).
-          if (activeTemplate.crashChance > 0 && (worldTiers["1"] || 0) > 0) {
+          if ((activeTemplate.crashChance || 0) > 0 && (worldTiers["1"] || 0) > 0) {
             // Per-tick chance = crashChance × realDt (so a 5% chance at 1s
             // tick becomes ~0.5% at 0.1s tick — keeps the rate consistent
             // regardless of tick rate). Sentinel Avatars subtract their
             // reduction from the base chance (clamped at 0).
-            const baseChance = activeTemplate.crashChance * realDt;
+            const baseChance = (activeTemplate.crashChance || 0) * realDt;
             const effectiveChance = Math.max(0, baseChance * (1 - pantheonCrashReduction));
             if (Math.random() < effectiveChance) {
               worldTiers["1"] = Math.max(0, (worldTiers["1"] || 0) - 1);
@@ -2692,8 +2704,8 @@ export const useGameStore = create<GameStore>()(
           }
           // Ascendant: peak production rate grows +0.5%/min. Applied as a
           // multiplier on the existing peakProductionRate (compounds over time).
-          if (activeTemplate.peakGrowthPerMin > 0 && peakProductionRate > 0) {
-            const growthPerSec = activeTemplate.peakGrowthPerMin / 60;
+          if ((activeTemplate.peakGrowthPerMin || 0) > 0 && peakProductionRate > 0) {
+            const growthPerSec = (activeTemplate.peakGrowthPerMin || 0) / 60;
             peakProductionRate *= 1 + growthPerSec * realDt;
           }
         }
@@ -2712,7 +2724,7 @@ export const useGameStore = create<GameStore>()(
         // ===== L3-REDESIGN — GENESIS SEEDS passive Divinity/s =====
         // Mature seeds produce permanent Divinity/s. Maturity is checked
         // against the current game time vs the plantedAtTime.
-        const seedsDivPerSec = plantedSeedsDivinityPerSec(s.plantedSeeds, s.time || 0);
+        const seedsDivPerSec = plantedSeedsDivinityPerSec((s.plantedSeeds || {}) as Record<string, { planted: boolean; plantedAtTime: number }>, s.time || 0);
         if (seedsDivPerSec > 0) {
           const seedsGain = seedsDivPerSec * realDt;
           divinity += seedsGain;

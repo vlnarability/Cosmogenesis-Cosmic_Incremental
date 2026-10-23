@@ -124,7 +124,7 @@ export const STAGES: StageDef[] = [
 
 export const STAGE_MAP: Record<StageId, StageDef> = Object.fromEntries(
   STAGES.map((s) => [s.id, s])
-);
+) as Record<StageId, StageDef>;
 
 export const STAGE_IDS: StageId[] = STAGES.map((s) => s.id);
 

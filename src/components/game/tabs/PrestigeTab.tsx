@@ -413,6 +413,7 @@ export function PrestigeTab() {
             icon="🥚"
             unlocked={!!unlockedLayers.genesis}
             unlockText="All 4 Blood Pacts performed"
+            currencyName="Divinity"
             onView={() => openLayerModal("genesis")}
             viewLabel="View Genesis"
             viewIcon={<Egg className="w-3 h-3 mr-1" />}

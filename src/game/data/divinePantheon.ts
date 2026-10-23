@@ -37,6 +37,8 @@ export interface Avatar {
 }
 
 export interface PantheonSlot {
+  /** Slot index (0-based). Used by the store for React keys and lookups. */
+  id: number;
   /** null = slot is empty (no Avatar assigned). Avatar = occupied. */
   avatar: Avatar | null;
   /** true once the slot has been unlocked. False = locked. */
