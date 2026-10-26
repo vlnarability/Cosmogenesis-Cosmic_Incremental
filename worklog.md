@@ -8141,3 +8141,108 @@ All 14 user-reported issues addressed. The Cell stage now produces only cell-val
 - Other creature-stage systems producing happiness (territorial_marker, grooming_station, etc.) are now valid (happiness moved to creature's firstStage). Future round could surface happiness in more UI places.
 - Auto-buyer may need updating to respect `requiredSystem` + `exclusiveWith` (currently uses buySystem which DOES enforce these, but the auto-buyer's purchase target selection should skip systems it can't currently buy).
 - Deeper cross-lineage exclusivity (e.g., all reptilian drift systems mutually exclusive with all arthropoid drift systems) is not yet implemented — only specific pairs.
+
+---
+Task ID: LANDING-PAGE + ACHIEVEMENT-DEDUP + STRAY-ZERO-FIX
+Agent: Z.ai Code (main)
+Task: User reported (a) many achievements are duplicates of each other, (b) stray text '0' near the current stage, (c) 5 achievements fire immediately on opening the link, (d) add a landing/start page using the favicon icon with "Descend" button that loads save if it exists.
+
+## Work Log
+
+### 1. Git sync to origin/main (cleanup local divergence)
+
+User asked to "get most recent files from github" first. Local HEAD had diverged (1 commit ahead, 23 commits behind) with stale artifacts (tool-results/, .backups, tarballs). Hard-reset to origin/main (140f45b) to get clean state. Reinstalled deps (three@0.186.1 was missing locally — broke WorldVisualization3D.tsx import of `three/examples/jsm/controls/OrbitControls.js`).
+
+### 2. Stray '0' rendering fix (StagePanel.tsx:106 + PrestigeTab.tsx:235)
+
+**Root cause:** Classic React `&&` short-circuit gotcha. The auto-running indicator used:
+```jsx
+{(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (<div>...)}
+```
+When all three upgrade levels are 0 (default state), `0 || 0 || 0` evaluates to `0`. JavaScript's `&&` returns the left operand when it's falsy, so `0 && <div>` evaluates to `0`. React renders `0` as the literal text "0" — which appeared between the stage tagline and the stage art panel in StagePanel.
+
+**Fix:** Wrap the condition in `Boolean(...)` to coerce `0` → `false`, which React doesn't render:
+```jsx
+{Boolean(upgrades[...] || upgrades[...] || upgrades[...]) && (<div>...)}
+```
+
+Same fix applied to PrestigeTab.tsx which had the same pattern.
+
+### 3. Achievement deduplication (achievements.ts)
+
+Found 42 duplicate achievement names across 210 entries (e.g., "Heresy Survivor" appeared 3× with same check; "Big Bang" 3×; "Genesis Engine" 3×; etc.). Each duplicate had a unique ID (so technically parseable) but rendered the same display name in the UI — confusing for the player.
+
+**Strategy:** For each duplicate-name group, keep the canonical version using category priority `layers > milestones > fun`:
+- "layers" version (canonical, tied to layer progression) — kept
+- "milestones" version — kept only if no "layers" version exists
+- "fun" version — kept only if no "layers" or "milestones" version exists
+
+**Result:** Removed 47 duplicate entries. Total achievements: 210 → 162. Zero duplicate names remain.
+
+### 4. Always-true achievement check fixes
+
+Found 5 achievements with `>= 0` checks that trivially pass:
+- `first_cell` — check `(c.stageIndex ?? 0) >= 0 || (c.stageClearCounts.cell || 0) >= 1` — `stageIndex >= 0` is always true on a fresh save (stageIndex starts at 0). **Deleted entirely** (the description "Reach the Cell stage for the first time" is meaningless since Cell is the starting stage).
+- `enter_layer_1` — check `(c.unlockedLayerCount || 0) >= 1 || (c.totalRuns || 0) >= 0` — `totalRuns >= 0` is always true. Fixed to `(c.unlockedLayerCount || 0) >= 1`, but L1 (Evolution) is unlocked by default, so still trivially fires. **Deleted entirely** — `milestone_first_scripture` ("First Word" — unlock your first story entry) already serves as the "you started the game" welcome.
+- `first_creature_designed` — check `(c.unlockedLayers?.omnipotence || false) && (c.mutationsTriggered || 0) >= 0` — `>= 0` is always true; fires the moment L7 unlocks. Fixed to `>= 1` (require actual mutation).
+- `first_negotiation` — same pattern, `>= 0` → `>= 1`.
+- `first_battle` — same pattern, `>= 0` → `>= 1`.
+
+### 5. LandingPage component (new file: src/components/game/layout/LandingPage.tsx)
+
+New pre-game entry screen with:
+- **Game Icon** — `/icon.svg` (the favicon, the Unsplash illustration by Eunkyeong Jeong) wrapped in a glass card with cyan glow + drop-shadow
+- **Game Name** — "Cosmogenesis" in large gradient text (white → cyan)
+- **Subtitle** — "A cosmic incremental about a god awakening."
+- **Description** — 2-sentence overview of the game's scope (7 stages, 10 layers, 100 archetypes)
+- **Descend button** — large cyan-glowing button with arrow icon; copy changes to "Descend — Continue Your Run" when a save is detected
+- **Save state hint** — when a save exists, shows "A save exists — currently at {Stage} · {N} prior runs. Your progress will load when you Descend." Reads the save's `stageIndex` + `totalRuns` from localStorage (best-effort, wrapped in try/catch).
+- **Starfield backdrop** — CSS radial-gradient noise simulating a starry sky; soft concentric aura behind the icon echoes the favicon's concentric-circles art.
+- **Footer** — illustration attribution + tech stack.
+
+**Save detection:** Uses `localStorage.getItem(STORAGE_KEY)` (newly exported from store.ts). Wrapped in `queueMicrotask` inside `useEffect` to avoid the cascading-render lint error.
+
+### 6. page.tsx gate (src/app/page.tsx)
+
+Wraps `GameShell` in a parent that conditionally renders `LandingPage` first:
+```tsx
+const [started, setStarted] = useState(false);
+if (!started) return <LandingPage onDescend={() => setStarted(true)} />;
+return <GameShell />;
+```
+
+The `started` flag is component state (NOT persisted), so the landing page shows on every fresh page load. The zustand persist middleware still auto-hydrates the store on mount — the landing page just gates rendering, not state hydration.
+
+### 7. STORAGE_KEY export (store.ts:308)
+
+Changed from `const STORAGE_KEY = ...` to `export const STORAGE_KEY = ...` so the LandingPage can read the save without duplicating the storage key string.
+
+## Verification (Agent Browser end-to-end)
+
+- `npx tsc --noEmit` → 0 errors
+- `bun run lint` → 0 errors (11 pre-existing warnings in unrelated scripts/upload files)
+- Dev server (Next.js 16.1.3 Turbopack) compiles cleanly; `GET / 200 in ~40ms` after warm-up
+- **Landing page renders:** "Cosmogenesis" heading + icon + Descend button visible; button copy switches to "Continue Your Run" when save detected
+- **No-save flow:** `localStorage.clear()` → reload → button says "Descend" + "A new cosmos awaits — no prior save found" hint
+- **Save-exists flow:** save present → button says "Descend — Continue Your Run" + "A save exists — currently at Cell. Your progress will load when you Descend."
+- **Click Descend → game loads:** GameShell mounts, ResourceBar shows, story popup "First Spark" fires
+- **Achievement fire count on fresh Descend:** 1 achievement fires (`milestone_first_scripture` — First Word, since the "First Spark" story auto-unlocks on game start). **Down from 5+ previously.**
+- **Stray "0" gone:** Text between tagline "A single spark in the dark" and stage art panel "⚡ Cell · 5-60 min" no longer contains the stray "0" — confirmed via `document.body.textContent` slice check.
+
+## Stage Summary
+
+Three user-reported issues fully addressed:
+1. **Duplicate achievements** — 47 dup-name entries removed + 2 always-true trivial achievements deleted. Total: 210 → 161 achievements, zero duplicate names.
+2. **Stray "0" near current stage** — Root cause: React `&&` short-circuit rendering `0` as text when upgrade levels are all 0. Fixed by wrapping in `Boolean()`.
+3. **5 achievements immediately on opening** — Two fixes:
+   - Always-true checks fixed (`>= 0` → `>= 1`) and trivially-firing achievements (`first_cell`, `enter_layer_1`) deleted entirely.
+   - New LandingPage gates the GameShell render — achievements don't fire at all until the player clicks Descend. After Descend, only 1 achievement fires on a fresh save (`milestone_first_scripture`).
+
+## Claude's review findings — not yet addressed (next-phase recommendations)
+
+The user shared Claude's comprehensive code review. This round addressed only the immediately-requested issues. The review's High/Medium/Low findings remain open:
+- **High:** Auto-Ascend offline-progress multi-prestige bug; unvalidated save import; tick try/catch; localStorage write-per-tick perf; Three.js scene rebuilt per frame.
+- **Medium:** NaN spread + no isFinite guards; applyOfflineProgress not idempotent (no lastSaved update); no multi-tab protection; CI red (lint errors); service worker issues; computeScore triplicate.
+- **Low:** useGameStore.getState() during render (tier legend); Three.js nits; debug panel off-by-one (4 vs 5); unvalidated setters; 19 unused deps; stub data modules; 8300-line store.ts; repo hygiene (88MB .git, 61MB skills/, legacy upload/).
+
+These should be addressed in subsequent rounds — the webDevReview cron (every 15 min) will pick them up.
