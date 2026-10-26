@@ -2,52 +2,51 @@
 
 // LandingPage — pre-game entry screen.
 //
-// Renders the Game Name + Game Icon + "Descend" button before the player
-// enters the GameShell. If a save exists in localStorage, the button copy
-// changes to "Continue" and the player is told their prior progress will
-// be loaded.
+// Design rationale: title screens for cosmic / incremental games earn
+// their weight through RESTRAINT, not glow. The previous version hit
+// every AI-template tell (gradient text, drop-shadow glow on the icon,
+// glassmorphism card, CSS-gradient starfield, centered everything,
+// verbose marketing copy, tech-stack footer flex, glowing CTA button).
 //
-// The "started" flag lives in page.tsx (not in the persisted game store)
+// This version is intentionally sparse:
+//   - Solid dark background, no gradient soup
+//   - Solid cream title color (no background-clip:text gradient)
+//   - Small icon sitting on the page, no card / no glow
+//   - Asymmetric left-aligned layout — confident, not "centered for safety"
+//   - Short, declarative copy — one tagline, one context sentence
+//   - "Descend" as a quiet text link with underline, not a glowing CTA
+//   - Save hint appended inline, no separate paragraph
+//   - No tech-stack flex; just the illustration attribution
+//
+// The `started` flag lives in page.tsx (not in the persisted game store)
 // so this landing page shows on every fresh page load — the player must
 // click Descend to enter the game. This avoids the "5 achievements fire
 // immediately on opening the link" UX issue by giving the player a
-// deliberate entry moment, AND it serves as the title card the game
-// deserves.
+// deliberate entry moment.
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { STORAGE_KEY } from "@/game/state/store";
-import { ArrowDown, Globe, Sparkles } from "lucide-react";
 
 export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const [hasSave, setHasSave] = useState(false);
   const [saveStage, setSaveStage] = useState<string | null>(null);
-  const [saveRuns, setSaveRuns] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Defer the localStorage read off the effect's synchronous body so
     // we don't trigger a cascading-render lint error. The microtask
-    // still runs before paint, so the user sees the correct "Continue"
+    // still runs before paint, so the user sees the correct "continue"
     // copy on first paint.
     queueMicrotask(() => {
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         setHasSave(true);
-        // Best-effort peek at the save's stage + run count — for the
-        // "Continue" button subtitle. Wrapped in try/catch in case the
-        // save is malformed.
         const parsed = JSON.parse(raw);
         const state = parsed?.state;
-        if (state) {
-          if (typeof state.stageIndex === "number") {
-            const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
-            setSaveStage(stages[state.stageIndex] || `Stage ${state.stageIndex + 1}`);
-          }
-          if (typeof state.totalRuns === "number") {
-            setSaveRuns(state.totalRuns);
-          }
+        if (state && typeof state.stageIndex === "number") {
+          const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
+          setSaveStage(stages[state.stageIndex] || `Stage ${state.stageIndex + 1}`);
         }
       } catch {
         // Malformed save — treat as no save; the player starts fresh.
@@ -56,146 +55,81 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   }, []);
 
   return (
-    <main
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden text-foreground"
-      style={{
-        background:
-          "radial-gradient(ellipse at top, #0c1a3a 0%, #060914 50%, #020617 100%)",
-      }}
-    >
-      {/* Starfield backdrop — CSS dots rendered via radial-gradient noise */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-60"
-        style={{
-          backgroundImage: `
-            radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.8), transparent),
-            radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.6), transparent),
-            radial-gradient(1.5px 1.5px at 80% 20%, rgba(255,255,255,0.7), transparent),
-            radial-gradient(1px 1px at 30% 80%, rgba(255,255,255,0.5), transparent),
-            radial-gradient(2px 2px at 90% 50%, rgba(255,255,255,0.4), transparent),
-            radial-gradient(1px 1px at 45% 45%, rgba(255,255,255,0.6), transparent),
-            radial-gradient(1.5px 1.5px at 10% 60%, rgba(255,255,255,0.5), transparent),
-            radial-gradient(1px 1px at 75% 85%, rgba(255,255,255,0.4), transparent)
-          `,
-          backgroundSize: "1000px 1000px, 800px 800px, 1200px 1200px, 600px 600px, 1000px 1000px, 700px 700px, 900px 900px, 500px 500px",
-          backgroundRepeat: "repeat",
-        }}
-      />
-      {/* Soft concentric aura behind the icon — echoes the favicon art */}
-      <div
-        className="pointer-events-none absolute"
-        style={{
-          top: "50%",
-          left: "50%",
-          width: "640px",
-          height: "640px",
-          transform: "translate(-50%, -55%)",
-          background:
-            "radial-gradient(circle, rgba(56,189,248,0.18) 0%, rgba(56,189,248,0.06) 30%, transparent 60%)",
-          borderRadius: "50%",
-          filter: "blur(20px)",
-        }}
-      />
+    <main className="min-h-screen bg-[#060814] text-[#e8e2d4] flex flex-col selection:bg-[#7dd3fc]/30 selection:text-white">
+      {/* Manuscript-style header — tiny, monospace, upper-cased tracking.
+          Gives the page a "title page" feel without competing with the title. */}
+      <header className="px-6 sm:px-10 py-6 flex justify-between items-baseline">
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-[#e8e2d4]/40">
+          Cosmogenesis · v0.2
+        </span>
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-[#e8e2d4]/40 hidden sm:inline">
+          An incremental game
+        </span>
+      </header>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-2xl mx-auto">
-        {/* Game Icon — the favicon, same illustration used in the browser tab */}
-        <div
-          className="relative mb-6"
-          style={{
-            filter: "drop-shadow(0 0 24px rgba(56,189,248,0.5))",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icon.svg"
-            alt="Cosmogenesis — abstract star with concentric circles and dots"
-            width={140}
-            height={140}
-            className="rounded-2xl"
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(56,189,248,0.3)",
-            }}
-          />
-        </div>
+      {/* Main composition — left-aligned, vertically centered, bounded width.
+          Empty space to the right is intentional — confident, not "centered for safety". */}
+      <div className="flex-1 flex flex-col justify-center max-w-2xl w-full px-6 sm:px-10 mx-auto">
+        {/* Icon — extracted from the favicon's dark-icon variant, with the
+            dark blue background <rect> stripped out so it sits cleanly on
+            the page (no "container card" effect). The original icon.svg has
+            the blue background baked in (good for browser tab favicons, bad
+            for a landing page). The transparent version lives at
+            /icon-transparent.svg. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icon-transparent.svg"
+          alt="Cosmogenesis — abstract star with concentric circles"
+          width={96}
+          height={96}
+          className="mb-10 opacity-95"
+        />
 
-        {/* Game Name
-            FIX-DESCENDER-CLIP: WebkitBackgroundClip:text clips the
-            gradient to the content box. With line-height:1 and no
-            padding-bottom, the "g" descender extends below the box
-            and gets cut off. Adding pb-2 + leading-tight gives the
-            descender room within the clip area. inline-block ensures
-            the padding is part of the gradient's paint box. */}
-        <h1
-          className="text-5xl sm:text-6xl font-bold tracking-tight mb-3 pb-2 leading-tight inline-block"
-          style={{
-            background: "linear-gradient(180deg, #ffffff 0%, #7dd3fc 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-          }}
-        >
+        {/* Title — large solid color, no gradient. tracking-tight for weight.
+            leading-[0.95] keeps the cap-line tight; pb-2 + leading avoid the
+            "g" descender clipping issue we hit with background-clip:text. */}
+        <h1 className="text-6xl sm:text-7xl font-bold tracking-tight leading-[0.95] pb-2 mb-4 text-[#e8e2d4]">
           Cosmogenesis
         </h1>
 
-        {/* Subtitle / tagline */}
-        <p className="text-base sm:text-lg text-muted-foreground italic mb-1">
-          A cosmic incremental about a god awakening.
-        </p>
-        <p className="text-sm text-muted-foreground/80 mb-8 max-w-md">
-          Guide a single cell through seven stages of life, ten divine layers, and a hundred
-          procedurally-discovered archetypes — from the first spark of ATP to the rim of a galaxy
-          that bears your name.
+        {/* Tagline — one short declarative sentence. Italic, slightly muted. */}
+        <p className="text-base sm:text-lg italic text-[#e8e2d4]/60 mb-2">
+          Awaken as a single cell.
         </p>
 
-        {/* Descend button */}
-        <Button
-          size="lg"
+        {/* Context — one sentence, evocative. No marketing adjectives. */}
+        <p className="text-sm text-[#e8e2d4]/45 max-w-md leading-relaxed mb-12">
+          Seven stages of life separate the first spark of ATP from the rim
+          of a galaxy that bears your name.
+        </p>
+
+        {/* Descend — quiet text link with underline, not a glowing CTA.
+            Save state appended inline (no separate paragraph). */}
+        <button
           onClick={onDescend}
-          className="group relative gap-2 px-8 py-6 text-base font-semibold rounded-xl border border-cyan-400/50 bg-cyan-500/10 hover:bg-cyan-500/20 hover:border-cyan-400/80 transition-all"
-          style={{
-            boxShadow: "0 0 30px rgba(56,189,248,0.25), inset 0 0 12px rgba(56,189,248,0.08)",
-          }}
+          className="group inline-flex items-baseline gap-3 text-left w-fit cursor-pointer"
         >
-          <ArrowDown className="w-5 h-5 transition-transform group-hover:translate-y-0.5" />
-          {hasSave ? "Descend — Continue Your Run" : "Descend"}
-        </Button>
-
-        {/* Save state hint */}
-        {hasSave ? (
-          <p className="text-xs text-cyan-300/70 mt-4 flex items-center gap-1.5 flex-wrap justify-center">
-            <Sparkles className="w-3 h-3 shrink-0" />
-            <span>
-              A save exists
-              {saveStage && (
-                <>
-                  {" — currently at "}
-                  <span className="font-semibold text-cyan-300">{saveStage}</span>
-                  {saveRuns !== null && saveRuns > 0 && (
-                    <>
-                      {" · "}
-                      {saveRuns} prior {saveRuns === 1 ? "run" : "runs"}
-                    </>
-                  )}
-                </>
-              )}
-              . Your progress will load when you Descend.
+          <span className="font-mono text-xs uppercase tracking-[0.3em] text-[#7dd3fc] border-b border-[#7dd3fc]/40 pb-1 group-hover:border-[#7dd3fc] group-hover:pb-1.5 transition-all">
+            Descend
+          </span>
+          {hasSave ? (
+            <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/45">
+              {saveStage ? `· continue at ${saveStage}` : "· continue your run"}
             </span>
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground/60 mt-4 flex items-center gap-1.5">
-            <Globe className="w-3 h-3" />
-            A new cosmos awaits — no prior save found. Estimated length: 5–60 min for a first
-            ascension.
-          </p>
-        )}
-
-        {/* Footer */}
-        <p className="text-[0.65rem] text-muted-foreground/50 mt-12 max-w-sm">
-          Illustration by Eunkyeong Jeong on Unsplash. Built with Next.js · Zustand · Three.js.
-        </p>
+          ) : (
+            <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/30">
+              · begin anew
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Footer — just the illustration attribution. No tech-stack flex. */}
+      <footer className="px-6 sm:px-10 py-6">
+        <span className="font-mono text-[0.6rem] text-[#e8e2d4]/25 tracking-wide">
+          Illustration · Eunkyeong Jeong / Unsplash
+        </span>
+      </footer>
     </main>
   );
 }
