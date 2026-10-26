@@ -99,8 +99,11 @@ export function StagePanel() {
             <p className="text-xs text-muted-foreground italic mt-0.5">{stage.tagline}</p>
           </div>
         </div>
-        {/* Auto-running indicator — shown when the player owns any auto-buyer upgrade */}
-        {(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
+        {/* Auto-running indicator — shown when the player owns any auto-buyer upgrade.
+            FIX-STRAY-ZERO: wrap the condition in Boolean() — without this,
+            `0 || 0 || 0 && <div>` returns 0 (the falsy short-circuit value),
+            and React renders the literal text "0" inside the header. */}
+        {Boolean(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
           <div className="mt-2 flex items-center gap-1.5 text-[0.65rem] px-2 py-1 rounded-md border border-emerald-400/30 bg-emerald-500/10 text-emerald-300">
             <span className="inline-block">🔄</span>
             <span>Auto-running — base game progresses on its own.</span>

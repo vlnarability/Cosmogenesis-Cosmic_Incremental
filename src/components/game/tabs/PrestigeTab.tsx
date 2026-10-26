@@ -229,8 +229,10 @@ export function PrestigeTab() {
 
   return (
     <div className="space-y-4">
-      {/* Auto-running banner — shown when the player owns any auto-buyer upgrade */}
-      {(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
+      {/* Auto-running banner — shown when the player owns any auto-buyer upgrade.
+          FIX-STRAY-ZERO: Boolean() wrap avoids rendering literal "0" text
+          when all three upgrade levels are 0. */}
+      {Boolean(upgrades["auto_system_buyer"] || upgrades["auto_tech_buyer"] || upgrades["auto_evolver"]) && (
         <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-3 flex items-start gap-3 stat-card-accent-emerald">
           <RefreshCw className="w-4 h-4 text-emerald-300 mt-0.5 shrink-0 animate-spin" style={{ animationDuration: "4s" }} aria-hidden />
           <div className="flex-1 min-w-0">

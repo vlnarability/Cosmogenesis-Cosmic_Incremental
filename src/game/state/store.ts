@@ -305,7 +305,7 @@ import {
 // Legacy trialRealms module — REMOVED in CLEANUP-LEGACY. The canonical L1
 // system lives in `challenges.ts`.
 
-const STORAGE_KEY = "evolution_idle_v2";
+export const STORAGE_KEY = "evolution_idle_v2";
 
 // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
 // Default mapping of action id → KeyboardEvent.key value. The
