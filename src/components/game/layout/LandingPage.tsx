@@ -120,9 +120,15 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           />
         </div>
 
-        {/* Game Name */}
+        {/* Game Name
+            FIX-DESCENDER-CLIP: WebkitBackgroundClip:text clips the
+            gradient to the content box. With line-height:1 and no
+            padding-bottom, the "g" descender extends below the box
+            and gets cut off. Adding pb-2 + leading-tight gives the
+            descender room within the clip area. inline-block ensures
+            the padding is part of the gradient's paint box. */}
         <h1
-          className="text-5xl sm:text-6xl font-bold tracking-tight mb-3"
+          className="text-5xl sm:text-6xl font-bold tracking-tight mb-3 pb-2 leading-tight inline-block"
           style={{
             background: "linear-gradient(180deg, #ffffff 0%, #7dd3fc 100%)",
             WebkitBackgroundClip: "text",
