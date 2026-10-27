@@ -1522,6 +1522,32 @@ export const TECHS: TechDef[] = [
     effects: "+40% knowledge & science",
     multiplier: { target: "production", value: 0.40 },
   },
+  // PART-2-LAYER-B — Rare-resource-unlocked techs (tribal stage).
+  // These only appear when the player has discovered the corresponding rare resource.
+  {
+    id: "bone_crafting",
+    name: "Bone Crafting",
+    desc: "+15% materials production. The first tools beyond stone.",
+    stage: "tribal",
+    cost: { wood: 50, stone: 30, science: 20 },
+    branch: "Crafts",
+    tier: 3,
+    effects: "+15% materials production",
+    multiplier: { target: "production", value: 0.15 },
+    requiresRareResource: "bone_tools",
+  },
+  {
+    id: "venom_warfare",
+    name: "Venom Warfare",
+    desc: "+25% military_power. Toxin-coated weapons strike fear.",
+    stage: "tribal",
+    cost: { science: 80, gold: 40, military_power: 30 },
+    branch: "Warcraft",
+    tier: 4,
+    effects: "+25% military_power",
+    multiplier: { target: "production", value: 0.25 },
+    requiresRareResource: "venom_sac",
+  },
 
   // ===== CIVILIZATION =====
   {
@@ -2421,6 +2447,20 @@ export const TECHS: TechDef[] = [
     requires: ["civ_tax_collection", "civ_citizenship"],
     effects: "+55% influence & science",
     multiplier: { target: "production", value: 0.55 },
+  },
+
+  // PART-2-LAYER-A — Rare-resource-unlocked tech (civ stage).
+  {
+    id: "iron_metallurgy",
+    name: "Iron Metallurgy",
+    desc: "+20% military_power + +10% production. Iron changes everything.",
+    stage: "civilization",
+    cost: { production: 300, gold: 200, science: 150 },
+    branch: "Industry",
+    tier: 4,
+    effects: "+20% military + +10% production",
+    multiplier: { target: "production", value: 0.20 },
+    requiresRareResource: "iron_ore",
   },
 
   // ===== EMPIRE =====

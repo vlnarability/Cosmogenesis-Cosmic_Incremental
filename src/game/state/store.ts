@@ -3554,6 +3554,11 @@ export const useGameStore = create<GameStore>()(
             }
           }
         }
+        // RARE-RESOURCE-UNLOCK — refuse if the required rare resource hasn't been discovered.
+        if (sys.requiresRareResource && (s.rareResources?.[sys.requiresRareResource] || 0) <= 0) {
+          get().notifyPurchaseError(`Requires rare resource: ${sys.requiresRareResource}`);
+          return;
+        }
         // FIX-ARCHETYPE-LOCKED — archetype-locked systems are only buildable
         // by the matching locked archetype (Tribal→Galactic archetype-drift
         // systems). Refuse purchase with an inline error.
@@ -3720,6 +3725,11 @@ export const useGameStore = create<GameStore>()(
         if (tech.requiredArchetype && s.lockedArchetype !== tech.requiredArchetype) {
           const archName = ARCHETYPE_MAP[tech.requiredArchetype]?.name || tech.requiredArchetype;
           get().notifyPurchaseError(`Requires ${archName} archetype`);
+          return;
+        }
+        // RARE-RESOURCE-UNLOCK — refuse if the required rare resource hasn't been discovered.
+        if (tech.requiresRareResource && (s.rareResources?.[tech.requiresRareResource] || 0) <= 0) {
+          get().notifyPurchaseError(`Requires rare resource: ${tech.requiresRareResource}`);
           return;
         }
         if (tech.requires) {

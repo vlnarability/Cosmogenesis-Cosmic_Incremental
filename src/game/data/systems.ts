@@ -2675,6 +2675,34 @@ export const SYSTEMS: SystemDef[] = [
     maxOwned: 25,
   },
 
+  // PART-2-LAYER-A — Rare-resource-unlocked systems (tribal stage).
+  // These only appear when the player has discovered the corresponding
+  // rare resource via trade/hunt/rival drops.
+  {
+    id: "fur_trading_post",
+    name: "Fur Trading Post",
+    desc: "A specialized post that converts rare furs into steady gold income.",
+    stage: "tribal",
+    icon: "🦊",
+    category: "Economy",
+    baseCost: { wood: 50, gold: 30 },
+    costGrowth: 1.25,
+    produces: { gold: 0.8 },
+    requiresRareResource: "rare_furs",
+  },
+  {
+    id: "pearl_market",
+    name: "Pearl Market",
+    desc: "A market that converts river pearls into steady gold + culture income.",
+    stage: "tribal",
+    icon: "🫧",
+    category: "Economy",
+    baseCost: { wood: 40, gold: 25 },
+    costGrowth: 1.25,
+    produces: { gold: 0.5, culture: 0.3 },
+    requiresRareResource: "river_pearls",
+  },
+
   // ===== CIVILIZATION =====
   // CAP-BOOSTER — cheap, repeatable, +cap to all civ-stage resources.
   {
@@ -3623,6 +3651,45 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.30,
     produces: { food: 1.0 },
     capacityBoost: { food: 500 },
+  },
+
+  // PART-2-LAYER-A — Rare-resource-unlocked systems (civ stage).
+  {
+    id: "ancient_archive",
+    name: "Ancient Archive",
+    desc: "A repository of lost knowledge. +20% science permanently.",
+    stage: "civilization",
+    icon: "🏺",
+    category: "Science",
+    baseCost: { production: 300, gold: 200, science: 100 },
+    costGrowth: 1.0,
+    produces: { science: 2.0 },
+    maxOwned: 1,
+    requiresRareResource: "ancient_relic",
+  },
+  {
+    id: "marble_quarry",
+    name: "Marble Quarry",
+    desc: "+15% production + +10% culture. The finest stone money can buy.",
+    stage: "civilization",
+    icon: "🧱",
+    category: "Industry",
+    baseCost: { production: 200, gold: 150 },
+    costGrowth: 1.25,
+    produces: { production: 1.5, culture: 0.5 },
+    requiresRareResource: "marble_blocs",
+  },
+  {
+    id: "silk_workshop",
+    name: "Silk Workshop",
+    desc: "+20% culture + +10% happiness. Silk softens every edge.",
+    stage: "civilization",
+    icon: "🧵",
+    category: "Culture",
+    baseCost: { production: 250, gold: 100, culture: 50 },
+    costGrowth: 1.25,
+    produces: { culture: 1.0, happiness: 0.3 },
+    requiresRareResource: "silk_bolt",
   },
 
   // ===== EMPIRE =====
@@ -4593,6 +4660,20 @@ export const SYSTEMS: SystemDef[] = [
     requiredTech: "emp_chemistry",
     costGrowth: 1.34,
     produces: { science: 30.0, data: 10.0, energy: 5.0 },
+  },
+
+  // PART-2-LAYER-A — Rare-resource-unlocked system (empire stage).
+  {
+    id: "crystal_resonator",
+    name: "Crystal Resonator",
+    desc: "+25% data + +15% science. The crystal amplifies thought.",
+    stage: "empire",
+    icon: "💎",
+    category: "Science",
+    baseCost: { energy: 400, data: 200, science: 150 },
+    costGrowth: 1.25,
+    produces: { data: 1.5, science: 1.0 },
+    requiresRareResource: "crystal_shard",
   },
 
   // ===== SOLAR =====

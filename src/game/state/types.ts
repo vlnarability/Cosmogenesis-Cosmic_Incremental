@@ -80,6 +80,11 @@ export interface SystemDef {
   // any of the listed system ids are owned. Used for mutually-exclusive
   // biological strategies (e.g. cold-blood vs warm-blood).
   exclusiveWith?: string[];
+  // RARE-RESOURCE-UNLOCK — if set, this system is only visible/buildable
+  // when the player has discovered the named rare resource (count >= 1 in
+  // rareResources state). Used for systems unlocked by trade/hunt/rival
+  // rare drops (see rareResources.ts for the mapping).
+  requiresRareResource?: string;
 }
 
 export interface TechDef {
@@ -105,6 +110,11 @@ export interface TechDef {
   // that fires when the prerequisite tech (ftl_theory / ascension_theory) is
   // researched. The chosen one gets auto-researched; the others stay hidden.
   hiddenFromTechTab?: boolean;
+  // RARE-RESOURCE-UNLOCK — if set, this tech is only visible/researchable
+  // when the player has discovered the named rare resource (count >= 1 in
+  // rareResources state). Used for techs unlocked by trade/hunt/rival
+  // rare drops (see rareResources.ts for the mapping).
+  requiresRareResource?: string;
 }
 
 export interface StageDef {

@@ -47,17 +47,22 @@ export function TechTab() {
   // (ftl_theory / ascension_theory) is researched. Never show them in
   // the Tech tab itself (player would be confused — they can't research
   // them directly).
+  // RARE-RESOURCE-UNLOCK — techs with requiresRareResource are only visible
+  // when the player has discovered that rare resource.
+  const rareResources = useGameStore((s) => s.rareResources || {});
   const currentTechs = useMemo(
     () =>
       techsForStage(stage.id).filter((t) => {
         if (t.hiddenFromTechTab) return false;
         if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
+        // Rare-resource-unlocked techs: show only when discovered.
+        if (t.requiresRareResource && (rareResources[t.requiresRareResource] || 0) <= 0) return false;
         // Hide techs whose prereqs aren't met AND aren't already researched.
         const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);
         if (!prereqMet && !technologies[t.id]) return false;
         return true;
       }),
-    [stage.id, lockedArchetype, technologies]
+    [stage.id, lockedArchetype, technologies, rareResources]
   );
 
   const legacyRange = useMemo(
