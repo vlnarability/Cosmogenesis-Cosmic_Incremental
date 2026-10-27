@@ -204,7 +204,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A research-focused star nation. They trade science for data.",
     givesResource: "science",
     bonusPerTick: 2.2,
-    rareDrop: { resource: "ancient_artifact", chance: 0.02 },
+    rareDrop: { resource: "ancient_relic", chance: 0.02 },
     establishCost: { data: 1200, energy: 1000 },
   },
 ];
