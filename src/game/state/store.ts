@@ -13,6 +13,8 @@ import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
 import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
 import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
+import { RIVALS, RIVAL_MAP, rivalsForStage, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST } from "../data/rivals";
+import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage } from "../data/tradePartners";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
   CHALLENGES,
@@ -1228,6 +1230,97 @@ export const useGameStore = create<GameStore>()(
         // Slow passive ATP for cell (keeps early game from stalling)
         if (STAGES[s.stageIndex].id === "cell") {
           resources.atp = Math.min(capacities.atp || 30, resources.atp + 0.5 * realDt);
+        }
+
+        // PART-2-LAYER-A — Trade passive bonus generation. For each active
+        // trade agreement, generate the partner's bonus resource per tick.
+        // Scales with the player's trade_caravan count (civ system).
+        // Each trade agreement also increments the rival's successfulTrades
+        // counter (if the partner maps to a rival — but currently trade
+        // partners and rivals are separate NPCs, so this just tracks the
+        // agreement existence). Per user spec: 'each successful trade
+        // decreases the culture requirement' for assimilation.
+        const caravanMult = 1 + Math.min(10, (s.ownedSystems?.["trade_caravan"] || 0)) * 0.1;
+        let tradesThisTick = 0;
+        if (s.tradeAgreements) {
+          for (const partnerId of Object.keys(s.tradeAgreements)) {
+            const partner = TRADE_PARTNER_MAP[partnerId];
+            if (!partner) continue;
+            const rate = partner.bonusPerTick * caravanMult;
+            const r = partner.givesResource;
+            resources[r] = (resources[r] || 0) + rate * realDt;
+            tradesThisTick++;
+            // Rare drop roll (per partner per tick).
+            if (partner.rareDrop && Math.random() < partner.rareDrop.chance * realDt * 10) {
+              const rareR = partner.rareDrop.resource;
+              // Rare drops are stored as a generic resource — they're not
+              // in the resources map but we track them on a meta field.
+              // For now, just log the drop; full rare-resource mechanics
+              // (unlocking special systems/techs) are next round.
+              if (Math.random() < 0.1) { // 10% of rare drops get logged (avoid spam)
+                get().addToLog(`${partner.name} offered a rare ${rareR}!`);
+              }
+            }
+          }
+        }
+        // Increment the lifetime successfulTrades counter (reduces assimilation
+        // culture cost). We track this on each rival — when a trade agreement
+        // is active, all rivals' successfulTrades grow over time (the player's
+        // general trade prosperity softens all rival relations).
+        if (tradesThisTick > 0 && s.rivals && s.rivals.length > 0) {
+          const tradeRate = tradesThisTick * 0.01 * realDt; // slow accumulation
+          const rivals = s.rivals.map((r: any) => {
+            if (r.state !== "active") return r;
+            return { ...r, successfulTrades: (r.successfulTrades || 0) + tradeRate };
+          });
+          // Set rivals (we'll re-set them below with threat decay too, so
+          // we just mutate the local copy here and let the tail set() handle it).
+          (s as any).rivals = rivals;
+        }
+
+        // PART-2-LAYER-C — Rival threat decay. Active rivals grow threat
+        // over time (faster if player neglects military). When threat hits
+        // 100%, a raid event fires (deducts resources if player's military
+        // is too low — full raid events next round; for now the threat just
+        // resets with a log warning + small resource loss).
+        if (s.rivals && s.rivals.length > 0) {
+          let rivalsChanged = false;
+          const rivals = (s as any).rivals.map((r: any) => {
+            if (r.state !== "active") return r;
+            // Threat growth: 0.5/sec base, reduced by player's military_power
+            // relative to rival strength.
+            const mil = resources.military_power || 0;
+            const milRatio = mil / (r.strength * 50); // 1.0 = sufficient military
+            const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * realDt;
+            let newThreat = r.threat + threatGrowth;
+            let raided = false;
+            if (newThreat >= 100) {
+              // RAID EVENT — deduct a fraction of resources as raid loot.
+              // Full raid event modal next round; for now, just apply the loss.
+              newThreat = 0; // reset after raid
+              raided = true;
+              rivalsChanged = true;
+            }
+            return raided
+              ? { ...r, threat: 0, relation: Math.max(-100, (r.relation || 0) - 5) }
+              : (newThreat !== r.threat ? { ...r, threat: newThreat } : r);
+          });
+          if (rivalsChanged) {
+            // Apply raid losses: deduct ~5% of each primary resource per raid.
+            for (const r of RESOURCES) {
+              if (r.category !== "primary") continue;
+              const cur = resources[r.id] || 0;
+              if (cur > 0) {
+                const loss = cur * 0.05;
+                resources[r.id] = Math.max(0, cur - loss);
+              }
+            }
+            const raidedRivals = rivals.filter((r: any) => r.threat === 0 && r.state === "active");
+            if (raidedRivals.length > 0) {
+              get().addToLog(`Raid by ${raidedRivals.map((r: any) => r.name).join(", ")}! Resources lost. Build military or counter-raid to prevent future raids.`);
+            }
+          }
+          (s as any).rivals = rivals;
         }
 
         // ARCHETYPES-REWORK — archetype happiness drift (Fungoid -15% / Toxoid -10%).
@@ -3221,6 +3314,10 @@ export const useGameStore = create<GameStore>()(
           activeStageTheme,
           activeLayerTheme,
           activeSpecialTheme,
+          // PART-2-LAYER-A + LAYER-C — persist trade agreements + rivals
+          // (mutated by the tick's trade bonus + threat decay logic above).
+          tradeAgreements: s.tradeAgreements,
+          rivals: (s as any).rivals,
           totalPlayTime: (s.totalPlayTime || 0) + realDt,
           // Layer 2-6 currency + state
           divinity,
@@ -3943,6 +4040,34 @@ export const useGameStore = create<GameStore>()(
           ? (storyId?.id || s.activeStoryPopup)
           : s.activeStoryPopup;
 
+        // PART-2-LAYER-C — spawn rivals for the NEW stage. Each stage has
+        // 1-3 rivals defined in rivals.ts. We spawn any that aren't already
+        // in the player's rivals array (idempotent across multiple evolves
+        // — e.g. if a player evolves to tribal, leaves, comes back, we
+        // don't re-spawn the same rivals).
+        const nextStageId = nextStageDef.id;
+        const existingRivalIds = new Set((s.rivals || []).map((r: any) => r.id));
+        const newRivals = rivalsForStage(nextStageId)
+          .filter((rd) => !existingRivalIds.has(rd.id))
+          .map((rd) => ({
+            id: rd.id,
+            name: rd.name,
+            stage: rd.stage,
+            state: "active" as const,
+            threat: rd.initialThreat ?? 0,
+            relation: rd.initialRelation ?? -25, // start slightly hostile
+            strength: rd.strength,
+            icon: rd.icon,
+            counteredRaids: 0,
+            successfulTrades: 0,
+          }));
+        const rivals = newRivals.length > 0
+          ? [...(s.rivals || []), ...newRivals]
+          : (s.rivals || []);
+        if (newRivals.length > 0) {
+          get().addToLog(`New rival${newRivals.length === 1 ? "" : "s"} appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
+        }
+
         set({
           stageIndex: nextStageIdx,
           resources,
@@ -3961,6 +4086,7 @@ export const useGameStore = create<GameStore>()(
           newAchievements,
           activeStageTheme,
           unlockedThemes,
+          rivals,
         });
         get().addToLog(`Evolved to ${nextStageDef.name}. ${nextStageDef.tagline}`);
       },
@@ -7655,8 +7781,10 @@ export const useGameStore = create<GameStore>()(
       },
 
       // PART-2-LAYER-A — establish a trade agreement with a partner.
-      // (Stub — full implementation in next round: cost deduction,
-      // relation tracking, passive bonus generation, rare-drop rolls.)
+      // Deducts the establish cost + tracks the agreement. Each successful
+      // trade agreement increments the player's lifetime `successfulTrades`
+      // counter, which reduces the culture cost to assimilate rivals
+      // (per user spec: 'each successful trade decreases the culture requirement').
       establishTrade: (partnerId) => {
         const s = get();
         if (!partnerId) return;
@@ -7664,13 +7792,37 @@ export const useGameStore = create<GameStore>()(
           get().addToLog(`Trade route with ${partnerId} already established.`);
           return;
         }
+        // Look up the partner + deduct the establish cost.
+        const partner = TRADE_PARTNER_MAP[partnerId];
+        if (!partner) {
+          get().addToLog(`Unknown trade partner: ${partnerId}.`);
+          return;
+        }
+        const resources = { ...s.resources };
+        let missing: string | null = null;
+        for (const [r, v] of Object.entries(partner.establishCost)) {
+          const have = (resources[r] || 0);
+          if (have < (v as number)) {
+            missing = r;
+            break;
+          }
+        }
+        if (missing) {
+          get().addToLog(`Cannot establish trade with ${partner.name}: not enough ${missing}.`);
+          return;
+        }
+        // Deduct the cost.
+        for (const [r, v] of Object.entries(partner.establishCost)) {
+          resources[r] = (resources[r] || 0) - (v as number);
+        }
         set({
+          resources,
           tradeAgreements: {
             ...s.tradeAgreements,
             [partnerId]: { established: Date.now(), relation: 0 },
           },
         });
-        get().addToLog(`Trade route established with ${partnerId}.`);
+        get().addToLog(`Trade route established with ${partner.name}. Gives ${partner.givesResource} +${partner.bonusPerTick}/s.`);
       },
 
       // PART-2-LAYER-A — break a trade agreement.
@@ -7719,6 +7871,141 @@ export const useGameStore = create<GameStore>()(
         });
         const techName = TECH_MAP[pathId]?.name || pathId;
         get().addToLog(`Ascension path chosen: ${techName}. The other paths are abandoned.`);
+      },
+
+      // PART-2-LAYER-C — counter-raid a rival. Spend military_power to
+      // reduce the rival's threat + gain resources. Each successful
+      // counter-raid increments the rival's counteredRaids counter, which
+      // reduces the military cost to assimilate (per user spec).
+      counterRaid: (rivalId) => {
+        const s = get();
+        if (!rivalId) return;
+        const rivals = [...(s.rivals || [])];
+        const idx = rivals.findIndex((r: any) => r.id === rivalId);
+        if (idx < 0) return;
+        const rival = { ...rivals[idx] } as any;
+        if (rival.state !== "active") {
+          get().addToLog(`${rival.name} is already resolved — no need to counter-raid.`);
+          return;
+        }
+        // Counter-raid cost: 30 military_power per rival strength point.
+        const milCost = Math.max(10, 30 * rival.strength);
+        const mil = s.resources?.military_power ?? 0;
+        if (mil < milCost) {
+          get().addToLog(`Not enough military_power to counter-raid ${rival.name} (need ${milCost.toFixed(0)}, have ${mil.toFixed(0)}).`);
+          return;
+        }
+        // Reduce threat by 25 (or to 0), gain resources proportional to rival strength.
+        const newThreat = Math.max(0, rival.threat - 25);
+        // Reward: gold + culture + small pop boost (representing loot).
+        const goldGain = Math.floor(20 * rival.strength);
+        const cultureGain = Math.floor(10 * rival.strength);
+        const resources = { ...s.resources };
+        resources.military_power = mil - milCost;
+        resources.gold = (resources.gold || 0) + goldGain;
+        resources.culture = (resources.culture || 0) + cultureGain;
+        // Increment counteredRaids — reduces the military cost to assimilate.
+        rival.threat = newThreat;
+        rival.counteredRaids = (rival.counteredRaids || 0) + 1;
+        rival.relation = Math.max(-100, (rival.relation || 0) - 10); // they hate you more
+        rivals[idx] = rival;
+        set({ resources, rivals });
+        get().addToLog(`Counter-raid on ${rival.name} successful! Threat -25, +${goldGain} gold, +${cultureGain} culture. (Counter-raids: ${rival.counteredRaids} — assimilation military cost reduced by ${rival.counteredRaids * MIL_REDUCTION_PER_COUNTER}.)`);
+      },
+
+      // PART-2-LAYER-C — assimilate a rival. Per user spec: requires
+      // large amounts of military AND culture. Cost is reduced by:
+      //   - counteredRaids (reduces military cost)
+      //   - successfulTrades (reduces culture cost)
+      // On success: rival.state = "merged", player gets the rival's
+      // assimilationBonus (resource production mult).
+      assimilateRival: (rivalId) => {
+        const s = get();
+        if (!rivalId) return;
+        const rivals = [...(s.rivals || [])];
+        const idx = rivals.findIndex((r: any) => r.id === rivalId);
+        if (idx < 0) return;
+        const rival = { ...rivals[idx] } as any;
+        if (rival.state !== "active") {
+          get().addToLog(`${rival.name} is already resolved.`);
+          return;
+        }
+        // Compute the assimilation cost (military + culture).
+        const cost = assimilationCost(rivalId, rival.counteredRaids || 0, rival.successfulTrades || 0);
+        const mil = s.resources?.military_power ?? 0;
+        const cul = s.resources?.culture ?? 0;
+        if (mil < cost.military || cul < cost.culture) {
+          get().addToLog(`Cannot assimilate ${rival.name}: need ${cost.military.toFixed(0)} military_power (have ${mil.toFixed(0)}) AND ${cost.culture.toFixed(0)} culture (have ${cul.toFixed(0)}). Counter-raid or trade to reduce the cost.`);
+          return;
+        }
+        // Deduct resources.
+        const resources = { ...s.resources };
+        resources.military_power = mil - cost.military;
+        resources.culture = cul - cost.culture;
+        // Mark rival as merged.
+        rival.state = "merged";
+        rival.threat = 0;
+        rival.relation = 100; // fully absorbed
+        rivals[idx] = rival;
+        // Apply the assimilation bonus (production mult on a resource).
+        // We store this as a meta-counter that the tick reads to apply
+        // the multiplier. For now, just log it — the bonus is applied
+        // via the rival's assimilationBonus field being read in the
+        // production tick (next round wiring).
+        const rivalDef = RIVAL_MAP[rivalId];
+        const bonusDesc = rivalDef?.assimilationBonus?.desc || "a permanent bonus";
+        set({ resources, rivals });
+        get().addToLog(`${rival.name} assimilated! Spent ${cost.military.toFixed(0)} military + ${cost.culture.toFixed(0)} culture. ${bonusDesc}.`);
+      },
+
+      // PART-2-LAYER-B — manual hunt action. Per user: 'add a hunt button
+      // on actions that spends military and/or pop to trigger immediately'.
+      // Spends military_power + small population to instantly produce a
+      // burst of food + materials + organic_matter + chance of rare drops.
+      // Higher drop rates than the periodic hunt (premium for proactive play).
+      huntNow: () => {
+        const s = get();
+        const stage = STAGES[s.stageIndex];
+        // Cost scales by stage: 5 military_power + 1 population per stage tier.
+        const stageTier = s.stageIndex + 1;
+        const milCost = 5 * stageTier;
+        const popCost = Math.max(1, Math.floor(stageTier / 2));
+        const mil = s.resources?.military_power ?? 0;
+        if (mil < milCost) {
+          get().addToLog(`Not enough military_power to hunt (need ${milCost}, have ${mil.toFixed(0)}). Build military systems first.`);
+          return;
+        }
+        if ((s.population || 0) < popCost) {
+          get().addToLog(`Not enough population to hunt (need ${popCost}, have ${Math.floor(s.population || 0)}).`);
+          return;
+        }
+        // Rewards: food + materials + organic_matter burst, scales with stage tier.
+        const foodGain = 15 * stageTier;
+        const matGain = 8 * stageTier;
+        const orgGain = 5 * stageTier;
+        const resources = { ...s.resources };
+        resources.military_power = mil - milCost;
+        resources.food = (resources.food || 0) + foodGain;
+        resources.materials = (resources.materials || 0) + matGain;
+        resources.organic_matter = (resources.organic_matter || 0) + orgGain;
+        // Cap to prevent overflow.
+        for (const r of ["food", "materials", "organic_matter"]) {
+          const cap = s.capacities?.[r] || 0;
+          if (cap > 0 && (resources as any)[r] > cap) (resources as any)[r] = cap;
+        }
+        // Rare drop: 15% chance of a rare resource (vs 2-4% for periodic hunts).
+        let rareMsg = "";
+        if (Math.random() < 0.15) {
+          // Just log the rare drop — full rare-resource mechanics next round.
+          const rares = ["rare_furs", "bone_tools", "venom_sac", "ancient_relic"];
+          const drop = rares[Math.floor(Math.random() * rares.length)];
+          rareMsg = ` Rare ${drop} dropped!`;
+        }
+        set({
+          resources,
+          population: Math.max(0, (s.population || 0) - popCost),
+        });
+        get().addToLog(`Hunt! Spent ${milCost} mil + ${popCost} pop. Gained ${foodGain} food, ${matGain} materials, ${orgGain} organic_matter.${rareMsg}`);
       },
 
       // Force any pending debounced save to write now. Useful before

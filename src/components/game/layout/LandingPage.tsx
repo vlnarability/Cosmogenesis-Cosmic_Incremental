@@ -51,18 +51,14 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
             setSaveStage(stages[state.stageIndex] || `Stage ${state.stageIndex + 1}`);
           }
           // Determine the highest unlocked prestige layer (L2-L10).
-          // L1 = base game (cell-galactic), no layer name.
-          // L2+ = prestige layer — show the LAYER NAME (e.g. "Enlightenment",
-          // "Transcendence", "Genesis", "Apotheosis", "Singularity",
-          // "Omnipotence", "Divinity", "Infinity", "Eternity") not the
-          // internal L-number — per user request: 'use the name of the
-          // Layer rather than the number. The number is just for internal use.'
+          // L1 (Evolution) is the base game — always unlocked, doesn't count
+          // as a prestige layer for the button-verb logic. Only L2+
+          // (Enlightenment and above) counts as "prestige layer active".
+          // Per user: 'use the name of the Layer rather than the number.'
           const ul = state.unlockedLayers || {};
-          // Layer order + display names. The keys are the GameState
-          // unlockedLayers field names; the values are the player-facing
-          // layer names (matches prestigeLayers.ts).
+          // Layer order + display names. L1 (evolution) is excluded — it's
+          // the base game, not a prestige layer.
           const layerOrder: [string, string][] = [
-            ["evolution", "Evolution"],
             ["enlightenment", "Enlightenment"],
             ["transcendence", "Transcendence"],
             ["genesis", "Genesis"],

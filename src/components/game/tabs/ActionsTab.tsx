@@ -5,6 +5,7 @@ import { actionsForStage } from "@/game/data/actions";
 import { STAGES } from "@/game/data/stages";
 import { formatNumber, resourceColor, resourceIcon } from "../shared/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useCallback } from "react";
 
@@ -42,7 +43,80 @@ export function ActionsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* PART-2-LAYER-B — manual Hunt action. Per user: 'add a hunt button on
+          actions that spends military and/or pop to trigger immediately'.
+          Spends military_power + population for an immediate burst of
+          food/materials/organic_matter + 15% rare-drop chance. Available
+          from creature stage onwards (hunting requires a body, not a cell). */}
+      {stageIndex >= 1 && <HuntCard />}
     </div>
+  );
+}
+
+function HuntCard() {
+  const stageIndex = useGameStore((s) => s.stageIndex);
+  const resources = useGameStore((s) => s.resources);
+  const population = useGameStore((s) => s.population);
+  const huntNow = useGameStore((s) => s.huntNow);
+
+  const stageTier = stageIndex + 1;
+  const milCost = 5 * stageTier;
+  const popCost = Math.max(1, Math.floor(stageTier / 2));
+  const mil = resources?.military_power ?? 0;
+  const pop = population ?? 0;
+  const canHunt = mil >= milCost && pop >= popCost;
+
+  // Estimated rewards (shown on the card so the player knows what they'll get).
+  const foodGain = 15 * stageTier;
+  const matGain = 8 * stageTier;
+  const orgGain = 5 * stageTier;
+
+  return (
+    <Card className="glass-panel">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          🏹 Hunt
+        </CardTitle>
+        <CardDescription>
+          Spend military + population for an immediate burst of food, materials, and organic matter. 15% chance of a rare drop.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span style={{ color: resourceColor("military_power") }}>
+              {resourceIcon("military_power")}{formatNumber(milCost, 0)}
+            </span>
+            <span className="text-muted-foreground">+ {popCost} 👥 pop</span>
+            <span className="text-muted-foreground/60">→</span>
+            <span style={{ color: resourceColor("food") }}>
+              +{formatNumber(foodGain, 0)}{resourceIcon("food")}
+            </span>
+            <span style={{ color: resourceColor("materials") }}>
+              +{formatNumber(matGain, 0)}{resourceIcon("materials")}
+            </span>
+            <span style={{ color: resourceColor("organic_matter") }}>
+              +{formatNumber(orgGain, 0)}{resourceIcon("organic_matter")}
+            </span>
+            <span className="text-amber-400">+ 15% rare drop</span>
+          </div>
+          <Button
+            size="sm"
+            disabled={!canHunt}
+            onClick={() => huntNow()}
+            className="ml-auto"
+          >
+            Hunt Now
+          </Button>
+        </div>
+        {!canHunt && (
+          <p className="text-[0.65rem] text-muted-foreground/70 mt-2 italic">
+            Need {milCost} military_power (have {Math.floor(mil)}) + {popCost} population (have {Math.floor(pop)}).
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

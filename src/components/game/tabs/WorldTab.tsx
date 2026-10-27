@@ -29,11 +29,12 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { tradePartnersForStage, TRADE_PARTNER_MAP } from "@/game/data/tradePartners";
+import { RIVAL_MAP, assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Globe, TrendingUp, Swords, Handshake, AlertTriangle } from "lucide-react";
-import { formatNumber, resourceIcon, resourceName } from "../shared/format";
+import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check } from "lucide-react";
+import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
 
 export function WorldTab() {
@@ -44,6 +45,9 @@ export function WorldTab() {
   const ownedSystems = useGameStore((s) => s.ownedSystems || {});
   const establishTrade = useGameStore((s) => s.establishTrade);
   const breakTrade = useGameStore((s) => s.breakTrade);
+  const counterRaid = useGameStore((s) => s.counterRaid);
+  const assimilateRival = useGameStore((s) => s.assimilateRival);
+  const resources = useGameStore((s) => s.resources || {});
 
   // Collect all trade partners for the current stage + earlier stages
   // (the player may have established trade routes in past stages that
@@ -179,6 +183,13 @@ export function WorldTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {stageRivals.map((r) => {
               const isActive = r.state === "active";
+              const rivalDef = RIVAL_MAP[r.id];
+              const cost = isActive
+                ? assimilationCost(r.id, r.counteredRaids || 0, r.successfulTrades || 0)
+                : { military: 0, culture: 0 };
+              const milHave = resources.military_power || 0;
+              const culHave = resources.culture || 0;
+              const canAssimilate = isActive && milHave >= cost.military && culHave >= cost.culture;
               return (
                 <div
                   key={r.id}
@@ -188,7 +199,10 @@ export function WorldTab() {
                   )}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <span className="font-semibold text-sm">{r.name}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg shrink-0">{r.icon}</span>
+                      <span className="font-semibold text-sm truncate">{r.name}</span>
+                    </div>
                     <Badge
                       variant="outline"
                       className={cn(
@@ -206,7 +220,7 @@ export function WorldTab() {
                       <div className="text-[0.65rem] text-muted-foreground mb-1">
                         Threat: <span className={cn("font-semibold", r.threat > 70 ? "text-rose-400" : r.threat > 40 ? "text-amber-400" : "text-emerald-400")}>{r.threat.toFixed(0)}/100</span>
                       </div>
-                      <div className="text-[0.65rem] text-muted-foreground mb-2">
+                      <div className="text-[0.65rem] text-muted-foreground mb-1">
                         Relation: <span className={cn("font-semibold", r.relation > 0 ? "text-emerald-400" : r.relation < -50 ? "text-rose-400" : "text-amber-400")}>{r.relation > 0 ? "+" : ""}{r.relation.toFixed(0)}</span>
                       </div>
                       {r.threat > 70 && (
@@ -215,11 +229,30 @@ export function WorldTab() {
                           Raid imminent — build military!
                         </div>
                       )}
+                      {/* ASSIMILATION-COST-DISPLAY per user spec */}
+                      <div className="text-[0.6rem] text-muted-foreground mb-2 p-1.5 rounded bg-muted/30 border border-border/40">
+                        <div className="font-semibold mb-0.5">Assimilation cost:</div>
+                        <div className="flex flex-wrap gap-2">
+                          <span style={{ color: resourceColor("military_power") }}>
+                            ⚔️ {formatNumber(cost.military, 0)} mil
+                            <span className="text-muted-foreground/70 ml-1">(have {formatNumber(milHave, 0)})</span>
+                          </span>
+                          <span style={{ color: resourceColor("culture") }}>
+                            🎭 {formatNumber(cost.culture, 0)} cul
+                            <span className="text-muted-foreground/70 ml-1">(have {formatNumber(culHave, 0)})</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[0.55rem] text-muted-foreground/70">
+                          Counter-raids: {r.counteredRaids || 0} (−{(r.counteredRaids || 0) * MIL_REDUCTION_PER_COUNTER} mil) ·
+                          Successful trades: {Math.floor(r.successfulTrades || 0)} (−{Math.floor(r.successfulTrades || 0) * CUL_REDUCTION_PER_TRADE} cul)
+                        </div>
+                      </div>
                     </>
                   )}
                   {!isActive && (
-                    <div className="text-[0.65rem] text-emerald-400 mb-2">
-                      Resolved — no longer a threat.
+                    <div className="text-[0.65rem] text-emerald-400 mb-2 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Resolved — {rivalDef?.assimilationBonus?.desc || "no longer a threat."}
                     </div>
                   )}
                   <div className="flex gap-1.5">
@@ -228,24 +261,18 @@ export function WorldTab() {
                       variant="outline"
                       className="h-7 text-xs flex-1"
                       disabled={!isActive}
-                    >
-                      Raid
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs flex-1"
-                      disabled={!isActive}
+                      onClick={() => counterRaid(r.id)}
                     >
                       Counter-Raid
                     </Button>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="h-7 text-xs flex-1"
-                      disabled={!isActive}
+                      variant={canAssimilate ? "default" : "outline"}
+                      className={cn("h-7 text-xs flex-1", canAssimilate && "bg-amber-500/20 border-amber-500/40")}
+                      disabled={!canAssimilate}
+                      onClick={() => assimilateRival(r.id)}
                     >
-                      Treaty
+                      Assimilate
                     </Button>
                   </div>
                 </div>

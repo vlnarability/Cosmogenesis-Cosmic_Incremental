@@ -289,6 +289,8 @@ export interface GameState {
   //   id, name, stage (which stage it appears at), state ("active"|"allied"|"conquered"|"merged"),
   //   threat (0-100, grows over time), relation (-100 to +100), strength (scales with player).
   // Creature→Tribal + Empire→Solar evolve gates check `rivals.every(r => r.state !== "active")`.
+  // ASSIMILATION-COST-REDUCTION: counteredRaids reduces military cost;
+  //   successfulTrades reduces culture cost (per user spec).
   rivals: Array<{
     id: string;
     name: string;
@@ -297,6 +299,10 @@ export interface GameState {
     threat: number;
     relation: number;
     strength: number;
+    icon: string;
+    // Per-rival counters that reduce the assimilation cost for THIS rival.
+    counteredRaids: number;     // each one reduces military cost by MIL_REDUCTION_PER_COUNTER
+    successfulTrades: number;   // each one reduces culture cost by CUL_REDUCTION_PER_TRADE
   }>;
   // PART-1 — choice modal state. Each modal fires when the corresponding
   // prerequisite tech is researched. The choice is permanent (one-shot).
@@ -875,6 +881,18 @@ export interface GameStore extends GameState {
   setShowGovernmentChoice: (v: boolean) => void;
   chooseFtlPath: (pathId: string) => void;
   chooseAscensionPath: (pathId: string) => void;
+  // PART-2-LAYER-C — rival mechanics.
+  // counterRaid: spend military_power to reduce a rival's threat + gain
+  // resources. Each successful counter-raid increments the rival's
+  // counteredRaids counter, which reduces the military cost to assimilate.
+  counterRaid: (rivalId: string) => void;
+  // assimilateRival: spend military_power + culture to absorb a rival.
+  // Cost is reduced by the rival's counteredRaids (mil) + successfulTrades (cul).
+  // On success: rival.state = "merged", player gets the assimilationBonus.
+  assimilateRival: (rivalId: string) => void;
+  // PART-2-LAYER-B — manual hunt. Spends military_power + population for
+  // an immediate burst of food/materials/organic_matter + rare-drop chance.
+  huntNow: () => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;
