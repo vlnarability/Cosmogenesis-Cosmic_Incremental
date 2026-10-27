@@ -741,6 +741,20 @@ export const TECHS: TechDef[] = [
   },
 
   // ===== TRIBAL =====
+  // PART-1 — prerequisite for the Government choice. Researching this fires
+  // the Government choice modal (player picks a government framework, gets a
+  // happiness hit, must recover to ≥50 to evolve to Civ). Per user: 'an
+  // expensive prerequisite tech that unlocks the government tab'.
+  {
+    id: "political_theory",
+    name: "Political Theory",
+    desc: "Frameworks of governance — who rules, who obeys, who decides. Unlocks the Government choice.",
+    stage: "tribal",
+    cost: { science: 500, gold: 300, culture: 200, happiness: 50 },
+    branch: "Civics",
+    tier: 7,
+    effects: "Unlocks the Government choice modal (replaces auto-assignment at Tribal→Civ)",
+  },
   {
     id: "agriculture",
     name: "Agriculture",
@@ -3529,10 +3543,22 @@ export const TECHS: TechDef[] = [
   },
 
   // ===== SOLAR =====
-  // PART-1 — Solar→Galactic FTL choice. 3 mutually-exclusive FTL methods.
-  // Player must research exactly one + build the matching infrastructure
-  // system to evolve to Galactic. Each path gives different bonuses that
-  // carry forward.
+  // PART-1 — prerequisite for the FTL choice modal. Researching this fires
+  // the modal that lets the player pick 1 of 3 FTL methods (warp_theory /
+  // hyperlanes / jump_theory). Those 3 are hiddenFromTechTab — only
+  // obtainable via the modal. Per user: 'Should not appear as soon as
+  // starting Solar. Should only appear after researching an expensive
+  // prerequisite tech "FTL Technologies".'
+  {
+    id: "ftl_theory",
+    name: "FTL Technologies",
+    desc: "Investigate potential ways to breach the lightspeed barrier. Your team needs a direction.",
+    stage: "solar",
+    cost: { energy: 1500, alloys: 1000, science: 1200, data: 500 },
+    branch: "Propulsion",
+    tier: 4,
+    effects: "Unlocks the FTL choice modal (Warp / Hyperdrive / Jump Gates)",
+  },
   {
     id: "warp_theory",
     name: "Warp Theory",
@@ -3544,6 +3570,7 @@ export const TECHS: TechDef[] = [
     effects: "+50% production (Warp Drive path)",
     multiplier: { target: "production", value: 0.50 },
     exclusiveWith: ["hyperlanes", "jump_theory"],
+    hiddenFromTechTab: true,
   },
   {
     id: "hyperlanes",
@@ -3556,6 +3583,7 @@ export const TECHS: TechDef[] = [
     effects: "+25% production (Hyperdrive path)",
     multiplier: { target: "production", value: 0.25 },
     exclusiveWith: ["warp_theory", "jump_theory"],
+    hiddenFromTechTab: true,
   },
   {
     id: "jump_theory",
@@ -3568,6 +3596,7 @@ export const TECHS: TechDef[] = [
     effects: "+100% population growth (Jump Gates path)",
     multiplier: { target: "population", value: 1.0 },
     exclusiveWith: ["warp_theory", "hyperlanes"],
+    hiddenFromTechTab: true,
   },
   {
     id: "fusion_power",
@@ -3605,6 +3634,20 @@ export const TECHS: TechDef[] = [
   },
 
   // ===== GALACTIC =====
+  // PART-1 — prerequisite for the Ascension choice modal. Researching this
+  // fires the modal that lets the player pick 1 of 3 ascension paths
+  // (tech_ascension / bio_ascension / psionic_ascension). Those 3 are
+  // hiddenFromTechTab — only obtainable via the modal.
+  {
+    id: "ascension_theory",
+    name: "Ascension Theory",
+    desc: "Theoretical frameworks for transcendence. Your civilization must choose its final form.",
+    stage: "galactic",
+    cost: { data: 8000, energy: 6000, science: 5000, alloys: 3000 },
+    branch: "Ascension",
+    tier: 9,
+    effects: "Unlocks the Ascension choice modal (Tech Singularity / Bio Transcendence / Psionic Awakening)",
+  },
   // PART-1 — Galactic→Prestige ascension choice. 3 mutually-exclusive paths.
   // Player must research exactly one + build the Ascension Project megastructure
   // to prestige. Each path defines the player's galactic-stage flavor.
@@ -3619,6 +3662,7 @@ export const TECHS: TechDef[] = [
     effects: "+100% science (Tech Singularity path)",
     multiplier: { target: "production", value: 1.0 },
     exclusiveWith: ["bio_ascension", "psionic_ascension"],
+    hiddenFromTechTab: true,
   },
   {
     id: "bio_ascension",
@@ -3631,6 +3675,7 @@ export const TECHS: TechDef[] = [
     effects: "+100% population growth (Bio Transcendence path)",
     multiplier: { target: "population", value: 1.0 },
     exclusiveWith: ["tech_ascension", "psionic_ascension"],
+    hiddenFromTechTab: true,
   },
   {
     id: "psionic_ascension",
@@ -3643,6 +3688,7 @@ export const TECHS: TechDef[] = [
     effects: "+100% happiness (Psionic Awakening path)",
     multiplier: { target: "production", value: 0.5 },
     exclusiveWith: ["tech_ascension", "bio_ascension"],
+    hiddenFromTechTab: true,
   },
   {
     id: "quantum_computing",

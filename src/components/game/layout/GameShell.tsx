@@ -16,6 +16,7 @@ import { ActionsTab } from "../tabs/ActionsTab";
 import { SystemsTab } from "../tabs/SystemsTab";
 import { ProductionTab } from "../tabs/ProductionTab";
 import { TechTab } from "../tabs/TechTab";
+import { WorldTab } from "../tabs/WorldTab";
 import { StoryTab } from "../tabs/StoryTab";
 import { CodexTab } from "../tabs/CodexTab";
 import { AchievementsTab } from "../tabs/AchievementsTab";
@@ -38,6 +39,9 @@ import { ListTree, Archive as ArchiveIcon, ScrollText, Trophy } from "lucide-rea
 // lazy-loaded individually, preserving the memory optimization.
 const ShopModal = lazy(() => import("../modals/ShopModal").then(m => ({ default: m.ShopModal })));
 const EvolveModal = lazy(() => import("../modals/EvolveModal").then(m => ({ default: m.EvolveModal })));
+const FTLChoiceModal = lazy(() => import("../modals/FTLChoiceModal").then(m => ({ default: m.FTLChoiceModal })));
+const AscensionChoiceModal = lazy(() => import("../modals/AscensionChoiceModal").then(m => ({ default: m.AscensionChoiceModal })));
+const GovernmentChoiceModal = lazy(() => import("../modals/GovernmentChoiceModal").then(m => ({ default: m.GovernmentChoiceModal })));
 const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
 const AchievementToast = lazy(() => import("../modals/AchievementToast").then(m => ({ default: m.AchievementToast })));
 const SettingsModal = lazy(() => import("../modals/SettingsModal").then(m => ({ default: m.SettingsModal })));
@@ -256,6 +260,7 @@ export function GameShell() {
               {currentTab === "systems" && <SystemsTab />}
               {currentTab === "production" && <ProductionTab />}
               {currentTab === "tech" && <TechTab />}
+              {currentTab === "world" && <WorldTab />}
               {currentTab === "story" && <StoryTab />}
               {currentTab === "codex" && <CodexTab />}
               {currentTab === "achievements" && <AchievementsTab />}
@@ -345,6 +350,9 @@ export function GameShell() {
       <Suspense fallback={<ModalLoadingFallback />}>
         <ShopModal />
         <EvolveModal />
+        <FTLChoiceModal />
+        <AscensionChoiceModal />
+        <GovernmentChoiceModal />
         <StoryPopup />
         <AchievementToast />
         <SettingsModal />

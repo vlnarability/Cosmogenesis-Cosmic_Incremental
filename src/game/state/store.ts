@@ -685,6 +685,14 @@ function initialMetaState(): Partial<GameState> {
     showShop: false,
     showEvolve: false,
     showSettings: false,
+    // PART-1 — choice modals. Fired when the corresponding prerequisite
+    // tech is researched. Each modal shows 3 mutually-exclusive options;
+    // player picks one, the chosen tech is auto-researched, others hidden.
+    showFtlChoice: false,         // triggered by researching `ftl_theory` (Solar)
+    showAscensionChoice: false,   // triggered by researching `ascension_theory` (Galactic)
+    showGovernmentChoice: false,  // triggered by researching `political_theory` (Tribal)
+    ftlChoice: null as string | null,          // set when FTL path chosen (warp_theory|hyperlanes|jump_theory)
+    ascensionChoice: null as string | null,    // set when ascension path chosen
     // FIX-UI-TABS — Log/Archive/Codex/Awards moved into a shared info
     // modal accessible from the gear dropdown (no longer on the main tab bar).
     activeInfoModal: null,
@@ -3646,6 +3654,22 @@ export const useGameStore = create<GameStore>()(
           totalTechResearched: (s.totalTechResearched || 0) + 1,
         });
         get().addToLog(`Researched ${tech.name}.`);
+        // PART-1 — choice modal triggers. When the player researches one of
+        // the prerequisite techs, fire the corresponding choice modal. The
+        // modal shows 3 mutually-exclusive options; the player picks one
+        // and the chosen tech is auto-researched (see chooseFtlPath /
+        // chooseAscensionPath actions below). Modal only fires if the
+        // choice hasn't been made yet (ftlChoice / ascensionChoice is null).
+        if (techId === "ftl_theory" && !s.ftlChoice) {
+          set({ showFtlChoice: true });
+          get().addToLog("FTL research breakthrough! Your team needs you to choose a path.");
+        } else if (techId === "ascension_theory" && !s.ascensionChoice) {
+          set({ showAscensionChoice: true });
+          get().addToLog("Ascension theory proven! Your civilization must choose its final form.");
+        } else if (techId === "political_theory") {
+          set({ showGovernmentChoice: true });
+          get().addToLog("Political theory codified! Your people await a framework of governance.");
+        }
       },
 
       buyUpgrade: (upgradeId) => {
@@ -7657,6 +7681,44 @@ export const useGameStore = create<GameStore>()(
         delete next[partnerId];
         set({ tradeAgreements: next });
         get().addToLog(`Trade route with ${partnerId} broken.`);
+      },
+
+      // PART-1 — FTL / Ascension / Government choice modal setters + choosers.
+      // Each modal fires when the corresponding prerequisite tech is researched.
+      // Player picks one of 3 mutually-exclusive options; the chosen tech is
+      // auto-researched and the others are hidden (via hiddenFromTechTab field).
+      setShowFtlChoice: (v) => set({ showFtlChoice: v }),
+      setShowAscensionChoice: (v) => set({ showAscensionChoice: v }),
+      setShowGovernmentChoice: (v) => set({ showGovernmentChoice: v }),
+      chooseFtlPath: (pathId) => {
+        const s = get();
+        if (!pathId) return;
+        if (s.ftlChoice) return; // already chosen — can't re-pick
+        // Validate pathId is one of the 3 FTL options.
+        const valid = ["warp_theory", "hyperlanes", "jump_theory"];
+        if (!valid.includes(pathId)) return;
+        // Auto-research the chosen tech + record the choice.
+        set({
+          ftlChoice: pathId,
+          technologies: { ...s.technologies, [pathId]: true },
+          showFtlChoice: false,
+        });
+        const techName = TECH_MAP[pathId]?.name || pathId;
+        get().addToLog(`FTL path chosen: ${techName}. The other paths are abandoned.`);
+      },
+      chooseAscensionPath: (pathId) => {
+        const s = get();
+        if (!pathId) return;
+        if (s.ascensionChoice) return;
+        const valid = ["tech_ascension", "bio_ascension", "psionic_ascension"];
+        if (!valid.includes(pathId)) return;
+        set({
+          ascensionChoice: pathId,
+          technologies: { ...s.technologies, [pathId]: true },
+          showAscensionChoice: false,
+        });
+        const techName = TECH_MAP[pathId]?.name || pathId;
+        get().addToLog(`Ascension path chosen: ${techName}. The other paths are abandoned.`);
       },
 
       // Force any pending debounced save to write now. Useful before

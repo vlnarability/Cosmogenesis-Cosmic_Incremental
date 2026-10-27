@@ -41,9 +41,16 @@ export function TechTab() {
   // that the player hasn't already researched. Already-researched techs
   // stay visible (player owns them). Tier-1 techs (no requires) stay
   // visible (always available).
+  // HIDE-MODAL-CHOICE-TECHS — the 6 modal-choice techs (3 FTL methods +
+  // 3 ascension paths) are hiddenFromTechTab — they're only obtainable
+  // via the choice modal that fires when the prerequisite tech
+  // (ftl_theory / ascension_theory) is researched. Never show them in
+  // the Tech tab itself (player would be confused — they can't research
+  // them directly).
   const currentTechs = useMemo(
     () =>
       techsForStage(stage.id).filter((t) => {
+        if (t.hiddenFromTechTab) return false;
         if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
         // Hide techs whose prereqs aren't met AND aren't already researched.
         const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);

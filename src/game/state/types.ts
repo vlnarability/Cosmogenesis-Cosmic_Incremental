@@ -20,7 +20,7 @@ export type StageId =
   | "cell" | "creature" | "tribal" | "civilization" | "empire" | "solar" | "galactic";
 
 export type TabId =
-  | "actions" | "systems" | "production" | "tech" | "story"
+  | "actions" | "systems" | "production" | "tech" | "story" | "world"
   | "codex" | "achievements" | "archive" | "log" | "shop" | "prestige"
   // LAYER-AS-TAB — 10 prestige-layer inline tabs
   | "trials" | "constellations" | "market" | "galaxy" | "conquest"
@@ -99,6 +99,12 @@ export interface TechDef {
   requiredArchetype?: string;
   // EITHER-OR — researching this tech LOCKS OUT the listed tech ids.
   exclusiveWith?: string[];
+  // PART-1 — hide this tech from the Tech tab. Used for the 6 "modal-choice"
+  // techs (3 FTL methods + 3 ascension paths) — these are NEVER researchable
+  // directly from the Tech tab. They're only obtainable via the choice modal
+  // that fires when the prerequisite tech (ftl_theory / ascension_theory) is
+  // researched. The chosen one gets auto-researched; the others stay hidden.
+  hiddenFromTechTab?: boolean;
 }
 
 export interface StageDef {
@@ -292,6 +298,13 @@ export interface GameState {
     relation: number;
     strength: number;
   }>;
+  // PART-1 — choice modal state. Each modal fires when the corresponding
+  // prerequisite tech is researched. The choice is permanent (one-shot).
+  showFtlChoice: boolean;
+  showAscensionChoice: boolean;
+  showGovernmentChoice: boolean;
+  ftlChoice: string | null;          // warp_theory | hyperlanes | jump_theory
+  ascensionChoice: string | null;    // tech_ascension | bio_ascension | psionic_ascension
   log: string[];
 
   // Meta state
@@ -856,6 +869,12 @@ export interface GameStore extends GameState {
   // PART-2-LAYER-A — establish / break trade agreements with NPC partners.
   establishTrade: (partnerId: string) => void;
   breakTrade: (partnerId: string) => void;
+  // PART-1 — FTL/Ascension/Government choice modal state + choosers.
+  setShowFtlChoice: (v: boolean) => void;
+  setShowAscensionChoice: (v: boolean) => void;
+  setShowGovernmentChoice: (v: boolean) => void;
+  chooseFtlPath: (pathId: string) => void;
+  chooseAscensionPath: (pathId: string) => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;

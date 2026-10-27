@@ -8,6 +8,7 @@ import {
   Hand,
   Building2,
   FlaskConical,
+  Globe,
   Eye,
   Triangle,
   Egg,
@@ -71,6 +72,11 @@ const MAIN_TABS: TabDef[] = [
   { id: "actions", label: "Actions", icon: <Hand className="w-4 h-4" /> },
   { id: "systems", label: "Systems", icon: <Building2 className="w-4 h-4" /> },
   { id: "tech", label: "Tech", icon: <FlaskConical className="w-4 h-4" /> },
+  // PART-2 — World tab combines Trade + Rivals. Player chooses an NPC
+  // from the list and can trade with them or do rival actions. Per user:
+  // 'Merge with Rivals Tab. Call it something like World.' Unlocked at
+  // creature stage (when the first rival/trade partner appears).
+  { id: "world", label: "World", icon: <Globe className="w-4 h-4" /> },
 ];
 
 // RESTORE-UI-CHANGES — REFERENCE_TABS is now empty. Story moved into
