@@ -307,6 +307,94 @@ import {
 
 export const STORAGE_KEY = "evolution_idle_v2";
 
+// ===========================================================================
+// SAFE + DEBOUNCED localStorage ADAPTER
+//
+// BUG-QUOTA-EXCEEDED: the original persist config called
+// `window.localStorage.setItem` directly on every `set()`. With the tick
+// running at ~10Hz and the state at ~55KB+ serialized, that's 600 writes/min
+// (~33MB/min of JSON.stringify on the main thread). Once localStorage fills
+// up (~5-10MB browser quota), `setItem` throws `QuotaExceededError` which
+// propagated up through the persist middleware and crashed the tick
+// (visible as `Runtime QuotaExceededError at store.ts:3088 set({...})`).
+//
+// This adapter does two things:
+//   1. Catches QuotaExceededError and logs once — the tick keeps running
+//      even when the save is wedged. Player can use Settings → Hard Reset
+//      to clear the save and recover.
+//   2. Debounces writes to at most once per SAVE_DEBOUNCE_MS. The latest
+//      state is queued and flushed on a timer, dramatically reducing I/O.
+//      A `beforeunload`/`pagehide` hook flushes pending writes on tab close
+//      so we don't lose progress during the debounce window.
+// ===========================================================================
+const SAVE_DEBOUNCE_MS = 2000;
+
+let _pendingWrite: { name: string; value: string } | null = null;
+let _writeTimer: ReturnType<typeof setTimeout> | null = null;
+let _quotaWarned = false;
+
+function _flushPendingWrite() {
+  if (_writeTimer) {
+    clearTimeout(_writeTimer);
+    _writeTimer = null;
+  }
+  const p = _pendingWrite;
+  _pendingWrite = null;
+  if (!p || typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(p.name, p.value);
+  } catch (e: unknown) {
+    const err = e as { name?: string; code?: number };
+    const isQuota =
+      err?.name === "QuotaExceededError" ||
+      err?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      err?.code === 22 ||
+      err?.code === 1014;
+    if (isQuota) {
+      if (!_quotaWarned) {
+        console.warn(
+          "[Cosmogenesis] localStorage quota exceeded — autosaves will be skipped until storage is freed. Use Settings → Hard Reset to clear the save and start fresh."
+        );
+        _quotaWarned = true;
+      }
+      return;
+    }
+    // Re-throw unknown errors — those we want to surface, not swallow.
+    throw e;
+  }
+}
+
+if (typeof window !== "undefined") {
+  // Flush pending writes when the tab is being closed / navigated away
+  // so the debounce window doesn't lose progress. `pagehide` is more
+  // reliable than `beforeunload` on mobile Safari.
+  window.addEventListener("beforeunload", _flushPendingWrite);
+  window.addEventListener("pagehide", _flushPendingWrite);
+  // Also flush when the tab is hidden (mobile backgrounding, tab switch).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") _flushPendingWrite();
+  });
+}
+
+const safeLocalStorage = {
+  getItem: (name: string) =>
+    typeof window === "undefined" ? null : window.localStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    if (typeof window === "undefined") return;
+    // Queue the latest state; reset the debounce timer so we only write
+    // SAVE_DEBOUNCE_MS after the LAST set() call. High-frequency tick
+    // updates collapse into a single write.
+    _pendingWrite = { name, value };
+    if (_writeTimer) clearTimeout(_writeTimer);
+    _writeTimer = setTimeout(_flushPendingWrite, SAVE_DEBOUNCE_MS);
+  },
+  removeItem: (name: string) => {
+    if (typeof window === "undefined") return;
+    if (_pendingWrite?.name === name) _pendingWrite = null;
+    window.localStorage.removeItem(name);
+  },
+};
+
 // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
 // Default mapping of action id → KeyboardEvent.key value. The
 // useKeyboardShortcuts hook reads from `state.keyboardShortcuts` at fire
@@ -1436,7 +1524,10 @@ export const useGameStore = create<GameStore>()(
           const result = checkAchievements(curState);
           if (result.newOnes.length > 0) {
             achievements = result.earned;
-            newAchievements = [...(newAchievements || []), ...result.newOnes];
+            // CAP-NEW-ACHIEVEMENTS: cap at 50 to prevent unbounded growth
+            // (each tick re-checks achievements; if the player never
+            // acknowledges the toasts, this array could grow large).
+            newAchievements = [...(newAchievements || []), ...result.newOnes].slice(-50);
           } else if (Object.keys(result.earned).length !== Object.keys(achievements || {}).length) {
             achievements = result.earned;
           }
@@ -3749,8 +3840,9 @@ export const useGameStore = create<GameStore>()(
         // Check achievements after stage clear
         const postEvolveState = { ...s, stageClearCounts, lockedArchetype, revealedLineageArchetypes, fastestCellClear, activeGovernment, achievementMeta } as GameState;
         const achResult = checkAchievements(postEvolveState);
+        // CAP-NEW-ACHIEVEMENTS: cap at 50 (drop oldest).
         const newAchievements = achResult.newOnes.length > 0
-          ? [...(s.newAchievements || []), ...achResult.newOnes]
+          ? [...(s.newAchievements || []), ...achResult.newOnes].slice(-50)
           : s.newAchievements;
 
         // FIX-EVENTS-IMMUNITY-POPUPS — stage-evolution story popups fire
@@ -4203,7 +4295,9 @@ export const useGameStore = create<GameStore>()(
         const achResult = checkAchievements(postState);
         metaState.achievements = achResult.earned;
         if (achResult.newOnes.length > 0) {
-          metaState.newAchievements = [...(s.newAchievements || []), ...achResult.newOnes];
+          // CAP-NEW-ACHIEVEMENTS: cap at 50 (drop oldest) to prevent
+          // unbounded growth from repeated event resolutions.
+          metaState.newAchievements = [...(s.newAchievements || []), ...achResult.newOnes].slice(-50);
         }
 
         set({
@@ -7115,7 +7209,8 @@ export const useGameStore = create<GameStore>()(
         if (achResult.newOnes.length > 0) {
           set({
             achievements: achResult.earned,
-            newAchievements: [...(postEventState.newAchievements || []), ...achResult.newOnes],
+            // CAP-NEW-ACHIEVEMENTS: cap at 50 (drop oldest).
+            newAchievements: [...(postEventState.newAchievements || []), ...achResult.newOnes].slice(-50),
           });
         }
       },
@@ -7439,6 +7534,16 @@ export const useGameStore = create<GameStore>()(
 
       saveGame: () => {
         set({ lastSaved: Date.now() });
+        // BUG-QUOTA-EXCEEDED: the debounced storage adapter queues writes;
+        // a manual Save should write immediately, so flush the queue.
+        _flushPendingWrite();
+      },
+
+      // Force any pending debounced save to write now. Useful before
+      // risky mutations, beforeunload hooks outside the store, or for
+      // debugging. Safe to call when nothing is pending (no-op).
+      flushSave: () => {
+        _flushPendingWrite();
       },
 
       loadGame: () => {
@@ -7470,7 +7575,10 @@ export const useGameStore = create<GameStore>()(
             removeItem: () => {},
           };
         }
-        return window.localStorage;
+        // BUG-QUOTA-EXCEEDED: use the safe+debounced adapter so the
+        // tick doesn't crash when localStorage fills up. See the
+        // adapter definition near the top of this file.
+        return safeLocalStorage;
       }),
       version: 18,
       partialize: (s) => s,

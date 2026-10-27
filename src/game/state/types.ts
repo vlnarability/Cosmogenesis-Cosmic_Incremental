@@ -803,6 +803,8 @@ export interface GameStore extends GameState {
   applyOfflineProgress: () => { elapsed: number; resourcesGained: Record<string, number>; applied: boolean } | null;
   hardReset: () => void;
   saveGame: () => void;
+  // Force any pending debounced save to write now. No-op if nothing queued.
+  flushSave: () => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;
