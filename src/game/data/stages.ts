@@ -111,7 +111,7 @@ export const STAGES: StageDef[] = [
     // THIS is where the FTL choice happens — you develop FTL IN the Solar stage
     // to unlock the galaxy. (User correction: FTL is NOT learned before going
     // to space — it's learned IN space to reach the galaxy.)
-    evolveRequires: { minPopulation: 1000, minSystems: 12, minTech: 8, requiresOneOfTechs: ["warp_theory", "hyperlanes", "jump_theory"] },
+    evolveRequires: { minPopulation: 1000, minSystems: 12, minTech: 8, requiresOneOfTechs: ["warp_theory", "hyperlanes", "jump_theory"], requiresOneOfSystems: ["warp_gate", "hyperlane_network", "jump_array"] },
     storyIntro:
       "The sky stops being a wall. A ship breaks the sky and does not fall. " +
       "The first new world waits in the dark — and beyond it, a hundred more.",

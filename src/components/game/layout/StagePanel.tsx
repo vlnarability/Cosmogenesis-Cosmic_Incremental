@@ -64,7 +64,16 @@ export function StagePanel() {
   const prereqMet = !reqs.requiresSystems || reqs.requiresSystems.every(
     (rid) => (ownedSystems[rid] || 0) > 0
   );
-  const canEvolve = prereqMet && popPct >= 100 && sysPct >= 100 && techPct >= 100;
+  // PART-1 — also check requiresOneOfTechs + requiresOneOfSystems (either/or
+  // paths: FTL tech + matching infrastructure for Solar→Galactic, etc.).
+  // These check that at least ONE of the listed items is owned/researched.
+  const oneOfTechsMet = !reqs.requiresOneOfTechs || reqs.requiresOneOfTechs.some(
+    (tid) => technologies[tid]
+  );
+  const oneOfSystemsMet = !reqs.requiresOneOfSystems || reqs.requiresOneOfSystems.some(
+    (sid) => (ownedSystems[sid] || 0) > 0
+  );
+  const canEvolve = prereqMet && oneOfTechsMet && oneOfSystemsMet && popPct >= 100 && sysPct >= 100 && techPct >= 100;
 
   // Archetype drift
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);

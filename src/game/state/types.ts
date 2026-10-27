@@ -124,6 +124,9 @@ export interface StageDef {
     // to evolve past this stage. Used to gate evolution behind key
     // biological milestones (e.g. Nucleus required to evolve Cell→Creature).
     requiresSystems?: string[];
+    /** At least ONE of the listed systems must be owned (either/or paths,
+     * e.g. the 3 FTL infrastructure systems for Solar→Galactic). */
+    requiresOneOfSystems?: string[];
     // PART-1-STAGE-PROGRESSION — per-stage unique evolve requirements.
     // Each stage transition has its own thematic gate beyond the basic
     // pop/systems/tech stat-check. See DESIGN-PROPOSALS.md for the

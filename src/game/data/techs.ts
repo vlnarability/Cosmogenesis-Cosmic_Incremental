@@ -753,6 +753,7 @@ export const TECHS: TechDef[] = [
     cost: { science: 500, gold: 300, culture: 200, happiness: 50 },
     branch: "Civics",
     tier: 7,
+    requires: ["writing", "masonry"],
     effects: "Unlocks the Government choice modal (replaces auto-assignment at Tribal→Civ)",
   },
   {
@@ -3557,6 +3558,7 @@ export const TECHS: TechDef[] = [
     cost: { energy: 1500, alloys: 1000, science: 1200, data: 500 },
     branch: "Propulsion",
     tier: 4,
+    requires: ["fusion_power", "ion_drives"],
     effects: "Unlocks the FTL choice modal (Warp / Hyperdrive / Jump Gates)",
   },
   {
@@ -3639,13 +3641,14 @@ export const TECHS: TechDef[] = [
   // (tech_ascension / bio_ascension / psionic_ascension). Those 3 are
   // hiddenFromTechTab — only obtainable via the modal.
   {
-    id: "ascension_theory",
-    name: "Ascension Theory",
+    id: "transcendence_research",
+    name: "Transcendence Research",
     desc: "Theoretical frameworks for transcendence. Your civilization must choose its final form.",
     stage: "galactic",
     cost: { data: 8000, energy: 6000, science: 5000, alloys: 3000 },
     branch: "Ascension",
     tier: 9,
+    requires: ["quantum_computing"],
     effects: "Unlocks the Ascension choice modal (Tech Singularity / Bio Transcendence / Psionic Awakening)",
   },
   // PART-1 — Galactic→Prestige ascension choice. 3 mutually-exclusive paths.

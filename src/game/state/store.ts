@@ -1602,11 +1602,21 @@ export const useGameStore = create<GameStore>()(
               .filter((tid) => TECH_MAP[tid]?.stage === currentStageId)
               .length;
             // STAGE-PREREQ-SYSTEMS — also need the required systems owned.
-            const prereqMet = !reqs.requiresSystems || reqs.requiresSystems.every(
+            const prereqMet = (!reqs.requiresSystems || reqs.requiresSystems.every(
               (rid) => (ownedSystems[rid] || 0) > 0
+            ));
+            // PART-1 — also check requiresOneOfTechs + requiresOneOfSystems
+            // (FTL tech + matching infrastructure for Solar→Galactic, etc.)
+            const oneOfTechsMet = !reqs.requiresOneOfTechs || reqs.requiresOneOfTechs.some(
+              (tid) => technologies[tid]
+            );
+            const oneOfSystemsMet = !reqs.requiresOneOfSystems || reqs.requiresOneOfSystems.some(
+              (sid) => (ownedSystems[sid] || 0) > 0
             );
             if (
               prereqMet &&
+              oneOfTechsMet &&
+              oneOfSystemsMet &&
               population >= reqs.minPopulation * evolveBoost * threshold &&
               stageSystemsNow >= reqs.minSystems * evolveBoost * threshold &&
               stageTechNow >= reqs.minTech * evolveBoost * threshold
@@ -3782,7 +3792,7 @@ export const useGameStore = create<GameStore>()(
         if (techId === "ftl_theory" && !s.ftlChoice) {
           set({ showFtlChoice: true });
           get().addToLog("FTL research breakthrough! Your team needs you to choose a path.");
-        } else if (techId === "ascension_theory" && !s.ascensionChoice) {
+        } else if (techId === "transcendence_research" && !s.ascensionChoice) {
           set({ showAscensionChoice: true });
           get().addToLog("Ascension theory proven! Your civilization must choose its final form.");
         } else if (techId === "political_theory") {
@@ -3860,6 +3870,18 @@ export const useGameStore = create<GameStore>()(
           if (!hasOne) {
             const names = reqs.requiresOneOfTechs.map((tid) => TECH_MAP[tid]?.name || tid).join(" OR ");
             get().addToLog(`Cannot evolve: requires one of ${names}.`);
+            return;
+          }
+        }
+        // (2b) requiresOneOfSystems — at least ONE of the listed systems
+        // must be owned (either/or paths: 3 FTL infrastructure systems
+        // for Solar→Galactic — the player builds the one matching their
+        // chosen FTL tech).
+        if (reqs.requiresOneOfSystems && reqs.requiresOneOfSystems.length > 0) {
+          const hasOne = reqs.requiresOneOfSystems.some((sid) => (s.ownedSystems[sid] || 0) > 0);
+          if (!hasOne) {
+            const names = reqs.requiresOneOfSystems.map((sid) => SYSTEM_MAP[sid]?.name || sid).join(" OR ");
+            get().addToLog(`Cannot evolve: requires one of ${names} to be built.`);
             return;
           }
         }
