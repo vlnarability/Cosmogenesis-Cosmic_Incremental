@@ -147,11 +147,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           </span>
           {hasSave ? (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/45">
-              {saveLayer
-                ? `· resume at ${saveLayer}`
-                : saveStage
-                  ? `· continue at ${saveStage}`
-                  : "· continue your run"}
+              {saveLayer || saveStage || "· continue"}
             </span>
           ) : (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/30">
