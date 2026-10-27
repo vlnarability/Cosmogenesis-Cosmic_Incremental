@@ -42,8 +42,16 @@ export const RESOURCES: ResourceDef[] = [
   { id: "data", name: "Data", category: "primary", firstStage: "empire", color: "#34d399", icon: "💾" },
   // Solar stage
   { id: "alloys", name: "Alloys", category: "primary", firstStage: "solar", color: "#cbd5e1", icon: "🔩" },
-  // Galactic stage — divinity is the prestige currency, only earned at galactic
-  { id: "divinity", name: "Divinity", category: "divinity", firstStage: "galactic", color: "#a78bfa", icon: "✨" },
+  // Galactic stage — divinity is the prestige currency, earned via triggerPrestige.
+  // NAMING-NOTE: the L8 prestige LAYER is also called "Divinity" — that's a
+  // different concept (a layer ID, not a resource). The resource "divinity"
+  // here is the L2+ meta currency shown in the ResourceBar's MetaPill. To
+  // avoid the "two different resources called the same thing" collision,
+  // divinity is treated as a META currency (category: "meta", firstStage: "cell")
+  // — NOT a galactic-stage resource. It is not in any STAGE_RESOURCES list
+  // and never appears as a stage chip on the top bar; it only appears as the
+  // violet ✨ MetaPill when L2 (Enlightenment) is unlocked.
+  { id: "divinity", name: "Divinity", category: "meta", firstStage: "cell", color: "#a78bfa", icon: "✨" },
   { id: "evolution_points", name: "Evolution Points", category: "meta", firstStage: "cell", color: "#10b981", icon: "🌱" },
   { id: "enlightenment_points", name: "Enlightenment", category: "meta", firstStage: "cell", color: "#06b6d4", icon: "👁️" },
   { id: "transcendence_points", name: "Transcendence", category: "meta", firstStage: "cell", color: "#f43f5e", icon: "🔺" },

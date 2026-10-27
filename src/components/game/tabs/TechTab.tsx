@@ -35,12 +35,22 @@ export function TechTab() {
   const stage = STAGES[stageIndex];
   // FIX-ARCHETYPE-LOCKED — hide techs whose requiredArchetype doesn't
   // match the player's locked archetype. They aren't visible at all.
+  // HIDE-PREREQ-LOCKED — per user request: 'Hide all Systems that are not
+  // unlocked yet. That will heavily reduce early stage clutter.' Same
+  // principle for techs: hide techs whose prerequisites are NOT met AND
+  // that the player hasn't already researched. Already-researched techs
+  // stay visible (player owns them). Tier-1 techs (no requires) stay
+  // visible (always available).
   const currentTechs = useMemo(
     () =>
-      techsForStage(stage.id).filter(
-        (t) => !t.requiredArchetype || lockedArchetype === t.requiredArchetype
-      ),
-    [stage.id, lockedArchetype]
+      techsForStage(stage.id).filter((t) => {
+        if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
+        // Hide techs whose prereqs aren't met AND aren't already researched.
+        const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);
+        if (!prereqMet && !technologies[t.id]) return false;
+        return true;
+      }),
+    [stage.id, lockedArchetype, technologies]
   );
 
   const legacyRange = useMemo(

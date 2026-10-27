@@ -30,7 +30,7 @@ import { STORAGE_KEY } from "@/game/state/store";
 export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const [hasSave, setHasSave] = useState(false);
   const [saveStage, setSaveStage] = useState<string | null>(null);
-  const [saveLayer, setSaveLayer] = useState<number>(0); // 0 = L1, 1+ = prestige layers
+  const [saveLayer, setSaveLayer] = useState<string | null>(null); // layer NAME (e.g. "Enlightenment") or null for L1
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -50,22 +50,34 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
             const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
             setSaveStage(stages[state.stageIndex] || `Stage ${state.stageIndex + 1}`);
           }
-          // Determine the highest unlocked prestige layer (L1-L10).
-          // L1 = base game (cell-galactic). L2+ = prestige layers.
-          // Drives the "Descend" button copy:
-          //   L1: "Descend" (entering the cosmos from outside)
-          //   L2+: "Return" (resuming an existing Divine Engine run)
+          // Determine the highest unlocked prestige layer (L2-L10).
+          // L1 = base game (cell-galactic), no layer name.
+          // L2+ = prestige layer — show the LAYER NAME (e.g. "Enlightenment",
+          // "Transcendence", "Genesis", "Apotheosis", "Singularity",
+          // "Omnipotence", "Divinity", "Infinity", "Eternity") not the
+          // internal L-number — per user request: 'use the name of the
+          // Layer rather than the number. The number is just for internal use.'
           const ul = state.unlockedLayers || {};
-          const layerOrder = [
-            "evolution", "enlightenment", "transcendence", "genesis",
-            "apotheosis", "singularity", "omnipotence", "divinity",
-            "infinity", "eternity",
+          // Layer order + display names. The keys are the GameState
+          // unlockedLayers field names; the values are the player-facing
+          // layer names (matches prestigeLayers.ts).
+          const layerOrder: [string, string][] = [
+            ["evolution", "Evolution"],
+            ["enlightenment", "Enlightenment"],
+            ["transcendence", "Transcendence"],
+            ["genesis", "Genesis"],
+            ["apotheosis", "Apotheosis"],
+            ["singularity", "Singularity"],
+            ["omnipotence", "Omnipotence"],
+            ["divinity", "Divinity"],
+            ["infinity", "Infinity"],
+            ["eternity", "Eternity"],
           ];
-          let highest = 0;
-          for (let i = 0; i < layerOrder.length; i++) {
-            if (ul[layerOrder[i]]) highest = i + 1;
+          let highestName: string | null = null;
+          for (const [key, name] of layerOrder) {
+            if (ul[key]) highestName = name;
           }
-          setSaveLayer(highest);
+          setSaveLayer(highestName);
         }
       } catch {
         // Malformed save — treat as no save; the player starts fresh.
@@ -77,7 +89,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   // outside the cosmos. For L2+ prestige-layer saves, the player is
   // resuming a Divine Engine run — "Return" fits better. The button
   // glyph (↓) stays the same.
-  const buttonVerb = saveLayer >= 2 ? "Return" : "Descend";
+  const buttonVerb = saveLayer ? "Return" : "Descend";
 
   return (
     <main className="min-h-screen bg-[#060814] text-[#e8e2d4] flex flex-col selection:bg-[#7dd3fc]/30 selection:text-white">
@@ -139,8 +151,8 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           </span>
           {hasSave ? (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/45">
-              {saveLayer >= 2
-                ? `· resume at L${saveLayer}`
+              {saveLayer
+                ? `· resume at ${saveLayer}`
                 : saveStage
                   ? `· continue at ${saveStage}`
                   : "· continue your run"}

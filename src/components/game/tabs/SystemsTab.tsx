@@ -51,14 +51,22 @@ export function SystemsTab() {
   const RARE_ARCHETYPES = new Set(["necroid", "lithoid", "toxoid", "extremophile"]);
   // FIX-ARCHETYPE-LOCKED — hide systems whose requiredArchetype doesn't match.
   // Also hide rare-archetype affinity systems until archetype_insight.
+  // HIDE-TECH-LOCKED — per user request: 'Hide all Systems that are not
+  // unlocked yet. That will heavily reduce early stage clutter.' A system
+  // is hidden if its requiredTech is set AND not researched AND the player
+  // doesn't already own it. Already-owned systems stay visible (so the
+  // player can manage/sell them). Also: systems without requiredTech stay
+  // visible (basic production — those are unlocked from the start).
   const currentSystems = useMemo(
     () =>
       systemsForStage(stage.id).filter((sys) => {
         if (sys.requiredArchetype && lockedArchetype !== sys.requiredArchetype) return false;
         if (!hasArchetypeInsight && sys.grantsAffinity && RARE_ARCHETYPES.has(sys.grantsAffinity.archetype)) return false;
+        // Hide tech-locked + unowned systems to reduce clutter.
+        if (sys.requiredTech && !technologies[sys.requiredTech] && (ownedSystems[sys.id] || 0) <= 0) return false;
         return true;
       }),
-    [stage.id, lockedArchetype, hasArchetypeInsight]
+    [stage.id, lockedArchetype, hasArchetypeInsight, technologies, ownedSystems]
   );
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
   const hasAutoBalancer = (upgrades["auto_balancer"] || 0) > 0;
