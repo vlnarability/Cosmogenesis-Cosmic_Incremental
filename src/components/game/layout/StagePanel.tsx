@@ -278,6 +278,58 @@ export function StagePanel() {
         <ProgressRow label="Tech" pct={techPct} color="bg-amber-400" />
       </div>
 
+      {/* PART-1 — stage-specific evolve gates. Each gate is a check/x row
+          showing whether the requirement is met. Only shown for gates that
+          are defined for the current stage. */}
+      {(reqs.requiresSystems || reqs.requiresOneOfTechs || reqs.requiresOneOfSystems || reqs.requiresRivalsResolved || reqs.requiresGovernmentChosen || reqs.requiresHappinessThreshold !== undefined || reqs.requiresTradeRoutes !== undefined) && (
+        <div className="space-y-1 mb-3">
+          {/* requiresSystems (AND check — all must be owned) */}
+          {reqs.requiresSystems?.map((sid) => {
+            const met = (ownedSystems[sid] || 0) > 0;
+            const name = SYSTEM_MAP[sid]?.name || sid;
+            return <GateRow key={sid} label={`Build: ${name}`} met={met} />;
+          })}
+          {/* requiresOneOfTechs (either/or — at least one must be researched) */}
+          {reqs.requiresOneOfTechs && (
+            <GateRow
+              label={`Research one: ${reqs.requiresOneOfTechs.map((t) => TECH_MAP[t]?.name || t).join(" OR ")}`}
+              met={oneOfTechsMet}
+            />
+          )}
+          {/* requiresOneOfSystems (either/or — at least one must be owned) */}
+          {reqs.requiresOneOfSystems && (
+            <GateRow
+              label={`Build one: ${reqs.requiresOneOfSystems.map((s) => SYSTEM_MAP[s]?.name || s).join(" OR ")}`}
+              met={oneOfSystemsMet}
+            />
+          )}
+          {/* requiresRivalsResolved — all rivals must be non-active */}
+          {reqs.requiresRivalsResolved && (() => {
+            const rivals = useGameStore.getState().rivals || [];
+            const activeCount = rivals.filter((r: any) => r?.state === "active").length;
+            return <GateRow label={`Resolve all rivals (${activeCount} active)`} met={activeCount === 0} />;
+          })()}
+          {/* requiresGovernmentChosen — must have a pending or active government */}
+          {reqs.requiresGovernmentChosen && (() => {
+            const s = useGameStore.getState();
+            const met = !!s.pendingGovernment || !!s.activeGovernment;
+            return <GateRow label="Choose a government" met={met} />;
+          })()}
+          {/* requiresHappinessThreshold — happiness must be >= threshold */}
+          {reqs.requiresHappinessThreshold !== undefined && (() => {
+            const happiness = useGameStore.getState().resources?.happiness ?? 0;
+            const met = happiness >= reqs.requiresHappinessThreshold!;
+            return <GateRow label={`Happiness ≥ ${reqs.requiresHappinessThreshold} (have ${Math.floor(happiness)})`} met={met} />;
+          })()}
+          {/* requiresTradeRoutes — minimum count of trade agreements */}
+          {reqs.requiresTradeRoutes !== undefined && (() => {
+            const tradeCount = Object.keys(useGameStore.getState().tradeAgreements || {}).length;
+            const met = tradeCount >= reqs.requiresTradeRoutes!;
+            return <GateRow label={`Trade routes: ${tradeCount}/${reqs.requiresTradeRoutes}`} met={met} />;
+          })()}
+        </div>
+      )}
+
       <Button
         className={cn("w-full transition-all", canEvolve && "evolve-ready")}
         size="lg"
@@ -289,7 +341,7 @@ export function StagePanel() {
       </Button>
       {!canEvolve && (
         <p className="text-xs text-muted-foreground mt-1 text-center">
-          Complete all three requirements to evolve
+          Complete all requirements above to evolve
         </p>
       )}
       {canEvolve && (
@@ -355,6 +407,16 @@ function ActiveGovernmentDisplay({ govId }: { govId: string }) {
           {gov.disadvantages.join(", ")}
         </div>
       )}
+    </div>
+  );
+}
+
+// PART-1 — gate row showing ✓/✗ for each stage-specific evolve requirement.
+function GateRow({ label, met }: { label: string; met: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[0.65rem]">
+      <span className={met ? "text-emerald-400" : "text-muted-foreground/40"}>{met ? "✓" : "○"}</span>
+      <span className={met ? "text-emerald-300/90" : "text-muted-foreground"}>{label}</span>
     </div>
   );
 }
