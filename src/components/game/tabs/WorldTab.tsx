@@ -55,9 +55,15 @@ export function WorldTab() {
   const stageIds = STAGES.slice(0, stageIndex + 1).map((s) => s.id);
   const allPartners = stageIds.flatMap((sid) => tradePartnersForStage(sid));
 
-  // Trade Caravan count (civ stage system). Shows how many caravans the
-  // player owns — these generate the bonus resources for trade agreements.
-  const caravanCount = ownedSystems["trade_caravan"] || 0;
+  // Trade Caravan count — sum across ALL stage-specific caravan systems.
+  // Each stage has its own (tribal_trade_caravan, trade_caravan,
+  // empire_trade_caravan, solar_trade_caravan, galactic_trade_caravan).
+  const caravanCount =
+    (ownedSystems["tribal_trade_caravan"] || 0) +
+    (ownedSystems["trade_caravan"] || 0) +
+    (ownedSystems["empire_trade_caravan"] || 0) +
+    (ownedSystems["solar_trade_caravan"] || 0) +
+    (ownedSystems["galactic_trade_caravan"] || 0);
 
   // Rivals for the current + past stages.
   const stageRivals = rivals.filter((r) => {

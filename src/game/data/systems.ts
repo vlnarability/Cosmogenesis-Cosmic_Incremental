@@ -1616,6 +1616,20 @@ export const SYSTEMS: SystemDef[] = [
     produces: {},
     capacityBoost: { food: 15, water: 15, wood: 15, lumber: 15, stone: 15, clay: 15, science: 15, happiness: 5, military_power: 15, culture: 15, gold: 15 },
   },
+  // PART-2-LAYER-A — Trade Caravan for tribal stage. Each caravan boosts
+  // trade agreement bonus rates (×1.1 per caravan, up to ×2 at 10 caravans).
+  {
+    id: "tribal_trade_caravan",
+    name: "Trade Caravan",
+    desc: "A caravan that carries goods to neighboring tribes. Boosts trade route bonus rates.",
+    stage: "tribal",
+    icon: "🐫",
+    category: "Economy",
+    baseCost: { wood: 40, gold: 20 },
+    costGrowth: 1.20,
+    produces: {},
+    maxOwned: 10,
+  },
   {
     id: "farm",
     name: "Farm",
@@ -3625,6 +3639,19 @@ export const SYSTEMS: SystemDef[] = [
     produces: {},
     capacityBoost: { food: 25, production: 25, gold: 25, science: 25, culture: 25, influence: 25, happiness: 5, military_power: 25, energy: 25, data: 25 },
   },
+  // PART-2-LAYER-A — Trade Caravan for empire stage.
+  {
+    id: "empire_trade_caravan",
+    name: "Trade Convoy",
+    desc: "An armed convoy that carries goods across imperial roads. Boosts trade route bonus rates.",
+    stage: "empire",
+    icon: "🚛",
+    category: "Economy",
+    baseCost: { energy: 100, gold: 60, production: 40 },
+    costGrowth: 1.20,
+    produces: {},
+    maxOwned: 10,
+  },
   {
     id: "provincial_capital",
     name: "Provincial Capital",
@@ -4582,6 +4609,19 @@ export const SYSTEMS: SystemDef[] = [
     produces: {},
     capacityBoost: { food: 30, water: 30, production: 30, energy: 30, alloys: 30, science: 30, culture: 30, influence: 30, happiness: 5, data: 30 },
   },
+  // PART-2-LAYER-A — Trade Caravan for solar stage.
+  {
+    id: "solar_trade_caravan",
+    name: "Cargo Freighter",
+    desc: "A freighter that hauls cargo between worlds. Boosts trade route bonus rates.",
+    stage: "solar",
+    icon: "🚀",
+    category: "Economy",
+    baseCost: { energy: 200, alloys: 100, data: 50 },
+    costGrowth: 1.20,
+    produces: {},
+    maxOwned: 10,
+  },
   // PART-1 — Solar→Galactic FTL infrastructure. Build the one matching your
   // chosen FTL tech to evolve to Galactic.
   {
@@ -4688,6 +4728,19 @@ export const SYSTEMS: SystemDef[] = [
     costGrowth: 1.15,
     produces: {},
     capacityBoost: { food: 40, production: 40, energy: 40, alloys: 40, science: 40, data: 40, culture: 40, influence: 40, happiness: 5, military_power: 40 },
+  },
+  // PART-2-LAYER-A — Trade Caravan for galactic stage.
+  {
+    id: "galactic_trade_caravan",
+    name: "Trade Fleet",
+    desc: "A fleet of trade ships that ply the galaxy's trade lanes. Boosts trade route bonus rates.",
+    stage: "galactic",
+    icon: "🛸",
+    category: "Economy",
+    baseCost: { data: 500, energy: 300, alloys: 200 },
+    costGrowth: 1.20,
+    produces: {},
+    maxOwned: 10,
   },
   // PART-1 — Galactic→Prestige ascension gate. Long-construction megastructure
   // that requires the player to have chosen an ascension path. Building this

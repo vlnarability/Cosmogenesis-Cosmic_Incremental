@@ -311,6 +311,10 @@ export interface GameState {
   showGovernmentChoice: boolean;
   ftlChoice: string | null;          // warp_theory | hyperlanes | jump_theory
   ascensionChoice: string | null;    // tech_ascension | bio_ascension | psionic_ascension
+  // PART-2-LAYER-C — active raid event. Set when a rival's threat hits 100%.
+  // The RaidModal opens; player chooses Defend (auto-roll) or Counter-Attack
+  // (spend military for guaranteed win + loot). Null when no raid is active.
+  activeRaid: string | null;
   log: string[];
 
   // Meta state
@@ -893,6 +897,10 @@ export interface GameStore extends GameState {
   // PART-2-LAYER-B — manual hunt. Spends military_power + population for
   // an immediate burst of food/materials/organic_matter + rare-drop chance.
   huntNow: () => void;
+  // PART-2-LAYER-C — resolve a raid event. action: "defend" (auto-roll,
+  // may lose resources if military is too low) or "counter" (spend military
+  // for guaranteed win + loot). Clears activeRaid.
+  resolveRaid: (action: "defend" | "counter") => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;
