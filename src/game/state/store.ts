@@ -534,6 +534,7 @@ function initialRunState(): Partial<GameState> {
     tradeAgreements: {},
     rivals: [],
     rareResources: {},
+    treaties: {},
     log: ["New run started. The first spark stirs."],
   };
 }
@@ -1139,6 +1140,15 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // PART-2-LAYER-D — treaty effects. research_pact gives +10% science.
+        // Count the number of research_pact treaties for the science bonus.
+        let treatyScienceMult = 0;
+        if (s.treaties) {
+          for (const t of Object.values(s.treaties)) {
+            if ((t as any).type === "research_pact") treatyScienceMult += 0.10;
+          }
+        }
+
         const allAllMult = archAllMult + govAllMult;
         const allPopMult = archPopMult + govPopMult;
         const allCapMult = archCapMult + govCapMult;
@@ -1215,6 +1225,8 @@ export const useGameStore = create<GameStore>()(
           for (const [r, v] of Object.entries(produces)) {
             const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
             let resourceBonus = archResBonus + (govResourceBonus[r] || 0) + (rivalResourceBonus[r] || 0);
+            // LAYER-D — research_pact treaty gives +10% science per active pact.
+            if (r === "science") resourceBonus += treatyScienceMult;
             if (r === "military_power" && allMilitaryMult) {
               resourceBonus += allMilitaryMult;
             }
@@ -1277,7 +1289,10 @@ export const useGameStore = create<GameStore>()(
             if (!partner) continue;
             const rate = partner.bonusPerTick * caravanMult;
             const r = partner.givesResource;
-            resources[r] = (resources[r] || 0) + rate * realDt;
+            // LAYER-D — trade_agreement treaty gives +20% bonus for this partner.
+            const treaty = s.treaties?.[partnerId];
+            const treatyMult = (treaty?.type === "trade_agreement") ? 1.2 : 1.0;
+            resources[r] = (resources[r] || 0) + rate * treatyMult * realDt;
             tradesThisTick++;
             // Rare drop roll (per partner per tick). Track on rareResources state.
             if (partner.rareDrop && Math.random() < partner.rareDrop.chance * realDt * 10) {
@@ -1325,10 +1340,12 @@ export const useGameStore = create<GameStore>()(
             // threat accumulation while the player is resolving a raid).
             if (s.activeRaid) return r;
             // Threat growth: 0.5/sec base, reduced by player's military_power
-            // relative to rival strength.
+            // relative to rival strength. LAYER-D: non_aggression pact halves growth.
             const mil = resources.military_power || 0;
             const milRatio = mil / (r.strength * 50); // 1.0 = sufficient military
-            const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * realDt;
+            const treaty = s.treaties?.[r.id];
+            const nonAggressionMult = (treaty?.type === "non_aggression") ? 0.5 : 1.0;
+            const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
             const newThreat = r.threat + threatGrowth;
             if (newThreat >= 100) {
               // RAID EVENT — set activeRaid, reset this rival's threat to 0
@@ -3356,6 +3373,7 @@ export const useGameStore = create<GameStore>()(
           rivals: (s as any).rivals,
           activeRaid: (s as any).activeRaid,
           rareResources: (s as any).rareResources,
+          treaties: s.treaties,
           totalPlayTime: (s.totalPlayTime || 0) + realDt,
           // Layer 2-6 currency + state
           divinity,
@@ -8122,8 +8140,10 @@ export const useGameStore = create<GameStore>()(
 
         // Defend (auto-roll): player's military vs rival strength.
         // Win chance = mil / (rival.strength * 50), capped at 95%.
-        const winChance = Math.min(0.95, mil / (rival.strength * 50));
-        const won = Math.random() < winChance;
+        // LAYER-D: mutual_defense treaty = guaranteed win (ally joins defense).
+        const hasMutualDefense = s.treaties?.[rivalId]?.type === "mutual_defense";
+        const winChance = hasMutualDefense ? 1.0 : Math.min(0.95, mil / (rival.strength * 50));
+        const won = hasMutualDefense || Math.random() < winChance;
         if (won) {
           // Win: no loss, small relation bonus (respect).
           rival.relation = Math.min(100, (rival.relation || 0) + 5);
@@ -8147,9 +8167,100 @@ export const useGameStore = create<GameStore>()(
         }
       },
 
-      // Force any pending debounced save to write now. Useful before
-      // risky mutations, beforeunload hooks outside the store, or for
-      // debugging. Safe to call when nothing is pending (no-op).
+      // PART-2-LAYER-D — sign a treaty with an NPC (trade partner or rival).
+      // Requires a minimum relation with the partner. Each treaty type has
+      // a different relation threshold + different effect:
+      //   trade_agreement: relation >= 0, +20% trade bonus for this partner
+      //   non_aggression: relation >= 25, rival threat growth ×0.5
+      //   mutual_defense: relation >= 50, auto-win defense when raided
+      //   research_pact: relation >= 25, +10% science production
+      // Only one treaty per partner at a time (signing a new one replaces the old).
+      signTreaty: (partnerId, type) => {
+        const s = get();
+        if (!partnerId || !type) return;
+
+        // Find the partner/rival to check relation.
+        // Check trade partners first.
+        const tradeAgreement = s.tradeAgreements?.[partnerId];
+        const rival = s.rivals?.find((r: any) => r.id === partnerId);
+        if (!tradeAgreement && !rival) {
+          get().addToLog(`Cannot sign treaty: unknown partner ${partnerId}.`);
+          return;
+        }
+
+        // Get relation from the appropriate source.
+        let relation = 0;
+        let partnerName = partnerId;
+        if (tradeAgreement) {
+          relation = tradeAgreement.relation || 0;
+          const partner = TRADE_PARTNER_MAP[partnerId];
+          partnerName = partner?.name || partnerId;
+        }
+        if (rival) {
+          relation = rival.relation || -25;
+          partnerName = rival.name;
+        }
+
+        // Check relation threshold per treaty type.
+        const thresholds: Record<string, number> = {
+          trade_agreement: 0,
+          non_aggression: 25,
+          mutual_defense: 50,
+          research_pact: 25,
+        };
+        const threshold = thresholds[type] || 0;
+        if (relation < threshold) {
+          get().addToLog(`Cannot sign ${type} with ${partnerName}: relation ${relation.toFixed(0)} < ${threshold}. Improve relations first (trade or avoid counter-raids).`);
+          return;
+        }
+
+        // Sign the treaty (replaces any existing treaty with this partner).
+        const treaties = { ...s.treaties };
+        const wasExisting = !!treaties[partnerId];
+        treaties[partnerId] = { type, signedAt: Date.now() };
+        set({ treaties });
+        const typeLabel = type.replace(/_/g, " ");
+        get().addToLog(
+          wasExisting
+            ? `Treaty with ${partnerName} changed to ${typeLabel}.`
+            : `${typeLabel} signed with ${partnerName}!`
+        );
+      },
+
+      // PART-2-LAYER-D — break a treaty with an NPC. Drops relation by 20
+      // (betrayal). May cause hostility if the partner was a rival.
+      breakTreaty: (partnerId) => {
+        const s = get();
+        if (!partnerId) return;
+        const existing = s.treaties?.[partnerId];
+        if (!existing) return;
+
+        const treaties = { ...s.treaties };
+        delete treaties[partnerId];
+
+        // Drop relation on the appropriate partner.
+        const tradeAgreements = { ...s.tradeAgreements };
+        const rivals = [...(s.rivals || [])];
+
+        if (tradeAgreements[partnerId]) {
+          tradeAgreements[partnerId] = {
+            ...tradeAgreements[partnerId],
+            relation: Math.max(-100, (tradeAgreements[partnerId].relation || 0) - 20),
+          };
+        }
+        const rivalIdx = rivals.findIndex((r: any) => r.id === partnerId);
+        if (rivalIdx >= 0) {
+          const rival = { ...rivals[rivalIdx] } as any;
+          rival.relation = Math.max(-100, (rival.relation || 0) - 20);
+          rivals[rivalIdx] = rival;
+        }
+
+        const partnerName = TRADE_PARTNER_MAP[partnerId]?.name ||
+          rivals.find((r: any) => r.id === partnerId)?.name ||
+          partnerId;
+        set({ treaties, tradeAgreements, rivals });
+        get().addToLog(`Treaty with ${partnerName} broken! Relation -20.`);
+      },
       flushSave: () => {
         _flushPendingWrite();
       },

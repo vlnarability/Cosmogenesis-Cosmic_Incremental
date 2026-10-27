@@ -323,6 +323,18 @@ export interface GameState {
   // (see rareResources.ts for the unlock mapping). NOT consumed — it's a
   // persistent discovery flag.
   rareResources: Record<string, number>;
+  // PART-2-LAYER-D — Treaties. Map of partnerId → treaty info.
+  // Each treaty is signed with a trade partner OR a rival NPC. Treaty types:
+  //   trade_agreement: +20% trade bonus for this partner
+  //   non_aggression: rival threat growth ×0.5
+  //   mutual_defense: auto-win defense when raided by this rival
+  //   research_pact: +10% science production
+  // Treaties require a minimum relation with the partner. Breaking a treaty
+  // drops relation and may cause hostility.
+  treaties: Record<string, {
+    type: "trade_agreement" | "non_aggression" | "mutual_defense" | "research_pact";
+    signedAt: number;
+  }>;
   // PART-1 — choice modal state. Each modal fires when the corresponding
   // prerequisite tech is researched. The choice is permanent (one-shot).
   showFtlChoice: boolean;
@@ -920,6 +932,9 @@ export interface GameStore extends GameState {
   // may lose resources if military is too low) or "counter" (spend military
   // for guaranteed win + loot). Clears activeRaid.
   resolveRaid: (action: "defend" | "counter") => void;
+  // PART-2-LAYER-D — sign/break treaties with NPCs.
+  signTreaty: (partnerId: string, type: "trade_agreement" | "non_aggression" | "mutual_defense" | "research_pact") => void;
+  breakTreaty: (partnerId: string) => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;

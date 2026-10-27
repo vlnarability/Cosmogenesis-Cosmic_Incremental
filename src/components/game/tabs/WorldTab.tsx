@@ -34,9 +34,10 @@ import { RARE_RESOURCES, RARE_RESOURCE_MAP } from "@/game/data/rareResources";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem } from "lucide-react";
+import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem, FileText } from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 export function WorldTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
@@ -50,6 +51,10 @@ export function WorldTab() {
   const assimilateRival = useGameStore((s) => s.assimilateRival);
   const resources = useGameStore((s) => s.resources || {});
   const rareResources = useGameStore((s) => s.rareResources || {});
+  const treaties = useGameStore((s) => s.treaties || {});
+  const signTreaty = useGameStore((s) => s.signTreaty);
+  const breakTreaty = useGameStore((s) => s.breakTreaty);
+  const [treatyPartner, setTreatyPartner] = useState<string | null>(null);
 
   // Collect all trade partners for the current stage + earlier stages
   // (the player may have established trade routes in past stages that
@@ -174,6 +179,8 @@ export function WorldTab() {
                       </Button>
                     )}
                   </div>
+                  {/* LAYER-D — Treaty section for trade partners. */}
+                  {isEstablished && <TreatySection partnerId={p.id} relation={agreement?.relation || 0} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
                 </div>
               );
             })}
@@ -283,6 +290,8 @@ export function WorldTab() {
                       Assimilate
                     </Button>
                   </div>
+                  {/* LAYER-D — Treaty section for rivals. */}
+                  {isActive && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
                 </div>
               );
             })}
@@ -349,6 +358,73 @@ export function WorldTab() {
       {/* Hunting action placeholder — per user: 'add a hunt button on
           actions that spends military and/or pop to trigger immediately'.
           This belongs on the Actions tab, not here. Documented for next round. */}
+    </div>
+  );
+}
+
+// LAYER-D — Treaty section component. Shows the current treaty (if any)
+// + 4 treaty-type buttons (disabled if relation < threshold) + break button.
+// Used by both trade partner cards + rival cards.
+function TreatySection({
+  partnerId,
+  relation,
+  treaties,
+  signTreaty,
+  breakTreaty,
+}: {
+  partnerId: string;
+  relation: number;
+  treaties: Record<string, { type: string; signedAt: number }>;
+  signTreaty: (id: string, type: "trade_agreement" | "non_aggression" | "mutual_defense" | "research_pact") => void;
+  breakTreaty: (id: string) => void;
+}) {
+  const treaty = treaties[partnerId];
+  const treatyTypes = [
+    { type: "trade_agreement" as const, label: "Trade", threshold: 0, effect: "+20% bonus" },
+    { type: "non_aggression" as const, label: "NAP", threshold: 25, effect: "Threat ×0.5" },
+    { type: "mutual_defense" as const, label: "Defense", threshold: 50, effect: "Auto-win" },
+    { type: "research_pact" as const, label: "Research", threshold: 25, effect: "+10% sci" },
+  ];
+  return (
+    <div className="mt-1.5 pt-1.5 border-t border-border/40">
+      {treaty && (
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[0.6rem] text-cyan-400 flex items-center gap-1">
+            <FileText className="w-2.5 h-2.5" />
+            {treaty.type.replace(/_/g, " ")}
+          </span>
+          <button
+            onClick={() => breakTreaty(partnerId)}
+            className="text-[0.55rem] text-rose-400 hover:text-rose-300 transition-colors"
+          >
+            Break
+          </button>
+        </div>
+      )}
+      <div className="flex gap-1">
+        {treatyTypes.map((tt) => {
+          const canSign = relation >= tt.threshold;
+          const isActive = treaty?.type === tt.type;
+          return (
+            <button
+              key={tt.type}
+              onClick={() => canSign && !isActive && signTreaty(partnerId, tt.type)}
+              disabled={!canSign || isActive}
+              className={cn(
+                "text-[0.55rem] px-1.5 py-0.5 rounded border transition-colors flex-1",
+                isActive
+                  ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-400"
+                  : canSign
+                    ? "border-border/40 text-muted-foreground hover:bg-muted/40"
+                    : "border-transparent text-muted-foreground/30 cursor-not-allowed"
+              )}
+              title={`${tt.label}: ${tt.effect} (requires relation ≥ ${tt.threshold})`}
+            >
+              {tt.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
