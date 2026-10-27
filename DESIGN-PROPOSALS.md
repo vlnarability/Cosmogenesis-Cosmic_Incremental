@@ -41,17 +41,17 @@ The original proposed requirements + user's confirmed modifications:
 
 #### Empire → Solar — *"The First Skybreak"*
 - **Original proposal**: Choose 1 of 3 FTL methods + matching infrastructure.
-- **User verdict**: Modified — *"Requires alliances with or wiping out all other rivals."*
+- **User correction**: ❌ You don't learn FTL before you go to space. The FTL choice happens IN Solar to unlock the galaxy (Solar→Galactic). Empire→Solar should just be about resolving rivals on the homeworld.
 - **Confirmed requirement**: Either **ally with** OR **wipe out** all rival empires before breaking the sky.
 - **Implementation**: Track NPC rival empires. Each rival has a `state: "active" | "allied" | "conquered"` field. Evolve-to-Solar gated on `rivals.every(r => r.state !== "active")`. Player can:
   - **Ally**: relation >= +75, sign a treaty (gives permanent bonuses + frees the rivalry threat).
   - **Conquer**: military_power sufficient, launch a conquest campaign (gives territory + resources, removes the rival).
 - **Theme**: An empire can't reach for the stars while wars rage at home. Resolve all rivals before ascending.
 
-#### Solar → Galactic — *"The First Skybreak"*
-- **Requirement**: Choose 1 of 3 mutually-exclusive FTL methods (Warp Drive / Hyperdrive / Jump Gates) + build matching infrastructure system.
-- **User verdict**: "Good."
-- **Implementation**: 3 mutually-exclusive techs (`warp_theory`, `hyperlanes`, `jump_theory` — use `exclusiveWith` field) + 3 corresponding systems. New `requiresOneOfTechs` field on StageDef. UI shows a "Choose your FTL path" picker.
+#### Solar → Galactic — *"The First Light"*
+- **Requirement**: Choose 1 of 3 mutually-exclusive FTL methods (Warp Drive / Hyperdrive / Jump Gates) + build matching infrastructure system. **THIS is where the FTL choice happens** — you develop FTL IN the Solar stage to unlock the galaxy.
+- **User correction**: FTL choice moved here from Empire→Solar (you don't learn FTL before you go to space).
+- **Implementation**: 3 mutually-exclusive techs (`warp_theory`, `hyperlanes`, `jump_theory` — use `exclusiveWith` field) + 3 corresponding systems. New `requiresOneOfTechs` field on StageDef. UI shows a "Choose your FTL path" picker when the player first reaches Solar stage.
 
 #### Galactic → Prestige — *"The First Ascension"*
 - **Requirement**: Choose 1 of 3 mutually-exclusive ascension paths (Technological Singularity / Biological Transcendence / Psionic Awakening) + complete Ascension Project system.

@@ -526,6 +526,10 @@ function initialRunState(): Partial<GameState> {
     archetypeAffinity: {},
     lockedArchetype: null,
     activeGovernment: null,
+    // PART-1 + PART-2 — new state fields for stage progression + trade/rivals.
+    pendingGovernment: null,
+    tradeAgreements: {},
+    rivals: [],
     log: ["New run started. The first spark stirs."],
   };
 }
@@ -3690,6 +3694,66 @@ export const useGameStore = create<GameStore>()(
               get().addToLog(`Cannot evolve: requires ${sysName} built first.`);
               return;
             }
+          }
+        }
+        // PART-1-STAGE-PROGRESSION — enforce the per-stage unique requirements.
+        // Each gate logs a specific reason and returns early if not met, so
+        // the player can see WHY they can't evolve.
+        // (1) requiresTechs — all listed techs must be researched.
+        if (reqs.requiresTechs && reqs.requiresTechs.length > 0) {
+          for (const tid of reqs.requiresTechs) {
+            if (!s.technologies[tid]) {
+              const techName = TECH_MAP[tid]?.name || tid;
+              get().addToLog(`Cannot evolve: requires tech ${techName}.`);
+              return;
+            }
+          }
+        }
+        // (2) requiresOneOfTechs — at least ONE of the listed techs must be
+        // researched (either/or paths: 3 FTL methods for Solar→Galactic,
+        // 3 ascension paths for Galactic→Prestige).
+        if (reqs.requiresOneOfTechs && reqs.requiresOneOfTechs.length > 0) {
+          const hasOne = reqs.requiresOneOfTechs.some((tid) => s.technologies[tid]);
+          if (!hasOne) {
+            const names = reqs.requiresOneOfTechs.map((tid) => TECH_MAP[tid]?.name || tid).join(" OR ");
+            get().addToLog(`Cannot evolve: requires one of ${names}.`);
+            return;
+          }
+        }
+        // (3) requiresRivalsResolved — all NPC rivals must be in a non-active
+        // state (allied/conquered/merged). Used by Creature→Tribal + Empire→Solar.
+        if (reqs.requiresRivalsResolved) {
+          const rivals = s.rivals || [];
+          const activeCount = rivals.filter((r: any) => r?.state === "active").length;
+          if (activeCount > 0) {
+            get().addToLog(`Cannot evolve: ${activeCount} rival${activeCount === 1 ? "" : "s"} still active — conquer, merge, or ally with all of them.`);
+            return;
+          }
+        }
+        // (4) requiresGovernmentChosen — player must have chosen a government
+        // (not auto-assigned). Used by Tribal→Civilization.
+        if (reqs.requiresGovernmentChosen) {
+          if (!s.pendingGovernment && !s.activeGovernment) {
+            get().addToLog(`Cannot evolve: choose a government first.`);
+            return;
+          }
+        }
+        // (5) requiresHappinessThreshold — happiness must be >= this value.
+        // Used alongside requiresGovernmentChosen — the post-choice recovery.
+        if (reqs.requiresHappinessThreshold !== undefined) {
+          const happiness = s.resources?.happiness ?? 0;
+          if (happiness < reqs.requiresHappinessThreshold) {
+            get().addToLog(`Cannot evolve: happiness ${happiness.toFixed(0)} < ${reqs.requiresHappinessThreshold} — stabilize your society first.`);
+            return;
+          }
+        }
+        // (6) requiresTradeRoutes — minimum count of established trade routes.
+        // Used by Civilization→Empire.
+        if (reqs.requiresTradeRoutes !== undefined) {
+          const tradeCount = s.tradeAgreements ? Object.keys(s.tradeAgreements).length : 0;
+          if (tradeCount < reqs.requiresTradeRoutes) {
+            get().addToLog(`Cannot evolve: ${tradeCount}/${reqs.requiresTradeRoutes} trade routes established.`);
+            return;
           }
         }
         // PER-STAGE-EVOLUTION-COUNT — count only systems/techs of the
@@ -7537,6 +7601,62 @@ export const useGameStore = create<GameStore>()(
         // BUG-QUOTA-EXCEEDED: the debounced storage adapter queues writes;
         // a manual Save should write immediately, so flush the queue.
         _flushPendingWrite();
+      },
+
+      // PART-1 — Tribal→Civ government choice. Player explicitly picks a
+      // government (not auto-assigned). Choosing causes a happiness hit
+      // (representing the disruption of new governance). The pending
+      // government becomes active when the player evolves to Civ. Evolve-to-Civ
+      // is gated on `pendingGovernment !== null AND happiness >= 50`.
+      chooseGovernment: (govId) => {
+        const s = get();
+        if (!govId) return;
+        if (s.pendingGovernment === govId) return; // already chosen
+        const happiness = s.resources?.happiness ?? 50;
+        // Apply the happiness hit only on first choice (not re-choices).
+        const isFirstChoice = !s.pendingGovernment;
+        const newHappiness = isFirstChoice
+          ? Math.max(0, happiness - 25) // -25 happiness on first choice
+          : happiness;
+        set({
+          pendingGovernment: govId,
+          resources: { ...s.resources, happiness: newHappiness },
+        });
+        const govName = GOVERNMENT_MAP[govId]?.name || govId;
+        get().addToLog(
+          isFirstChoice
+            ? `Government chosen: ${govName}. The transition disrupts society — happiness -25. Recover to ≥50 to evolve.`
+            : `Government changed to: ${govName}.`
+        );
+      },
+
+      // PART-2-LAYER-A — establish a trade agreement with a partner.
+      // (Stub — full implementation in next round: cost deduction,
+      // relation tracking, passive bonus generation, rare-drop rolls.)
+      establishTrade: (partnerId) => {
+        const s = get();
+        if (!partnerId) return;
+        if (s.tradeAgreements?.[partnerId]) {
+          get().addToLog(`Trade route with ${partnerId} already established.`);
+          return;
+        }
+        set({
+          tradeAgreements: {
+            ...s.tradeAgreements,
+            [partnerId]: { established: Date.now(), relation: 0 },
+          },
+        });
+        get().addToLog(`Trade route established with ${partnerId}.`);
+      },
+
+      // PART-2-LAYER-A — break a trade agreement.
+      breakTrade: (partnerId) => {
+        const s = get();
+        if (!s.tradeAgreements?.[partnerId]) return;
+        const next = { ...s.tradeAgreements };
+        delete next[partnerId];
+        set({ tradeAgreements: next });
+        get().addToLog(`Trade route with ${partnerId} broken.`);
       },
 
       // Force any pending debounced save to write now. Useful before

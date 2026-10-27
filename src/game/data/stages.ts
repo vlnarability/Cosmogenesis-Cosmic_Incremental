@@ -27,7 +27,10 @@ export const STAGES: StageDef[] = [
     accent: "#84cc16",
     bgGradient: "radial-gradient(ellipse at top, #365314 0%, #1a2e05 40%, #0a0f02 100%)",
     duration: "30-90 min",
-    evolveRequires: { minPopulation: 30, minSystems: 8, minTech: 3 },
+    // PART-1 — Creature→Tribal requires conquering OR merging with a rival creature
+    // pack. The first political act — absorbing or defeating a neighbor — is what
+    // turns a pack into a tribe. (User rejected 'first event choice' as too easy/random.)
+    evolveRequires: { minPopulation: 30, minSystems: 8, minTech: 3, requiresRivalsResolved: true },
     storyIntro:
       "The first body uncurls. Eyes that were spots now see. Hunger that was instinct now becomes want. " +
       "The world is wide and full of teeth. You must move, eat, fear, and remember.",
@@ -44,7 +47,9 @@ export const STAGES: StageDef[] = [
     accent: "#f97316",
     bgGradient: "radial-gradient(ellipse at top, #7c2d12 0%, #431407 40%, #1c0701 100%)",
     duration: "60-120 min",
-    evolveRequires: { minPopulation: 80, minSystems: 10, minTech: 4 },
+    // PART-1 — Tribal→Civ requires choosing a government (no auto-assign) AND
+    // recovering happiness to >=50% after the disruption of new governance.
+    evolveRequires: { minPopulation: 80, minSystems: 10, minTech: 4, requiresGovernmentChosen: true, requiresHappinessThreshold: 50 },
     storyIntro:
       "The fire holds through the night. The circle of faces becomes a circle of names. " +
       "Story is born — and with story, the first memory that outlives a single life.",
@@ -61,7 +66,9 @@ export const STAGES: StageDef[] = [
     accent: "#eab308",
     bgGradient: "radial-gradient(ellipse at top, #713f12 0%, #422006 40%, #1a1003 100%)",
     duration: "120-180 min",
-    evolveRequires: { minPopulation: 200, minSystems: 12, minTech: 5 },
+    // PART-1 — Civ→Empire requires building Capitol + establishing multiple
+    // trade routes (≥3, representing connections to multiple city-states).
+    evolveRequires: { minPopulation: 200, minSystems: 12, minTech: 5, requiresTradeRoutes: 3 },
     storyIntro:
       "Stone rises in courses. Laws are carved beside grain counts. " +
       "The city learns to dream of more than tomorrow — it dreams of empire.",
@@ -78,7 +85,11 @@ export const STAGES: StageDef[] = [
     accent: "#a855f7",
     bgGradient: "radial-gradient(ellipse at top, #581c87 0%, #3b0764 40%, #1a0335 100%)",
     duration: "120-180 min",
-    evolveRequires: { minPopulation: 600, minSystems: 14, minTech: 7 },
+    // PART-1 — Empire→Solar requires allying with OR wiping out all rival
+    // empires before breaking the sky. An empire can't reach for the stars while
+    // wars rage at home. (User correction: FTL choice is NOT here — FTL is
+    // chosen in Solar to unlock Galactic.)
+    evolveRequires: { minPopulation: 600, minSystems: 14, minTech: 7, requiresRivalsResolved: true },
     storyIntro:
       "Distance begins to obey. The roads of an empire run long, and along them ride not just grain and gold — " +
       "but the slow weight of rivals who dream the same dreams.",
@@ -95,7 +106,12 @@ export const STAGES: StageDef[] = [
     accent: "#fb923c",
     bgGradient: "radial-gradient(ellipse at top, #9a3412 0%, #7c2d12 30%, #1c0701 100%)",
     duration: "3-5 hours",
-    evolveRequires: { minPopulation: 1000, minSystems: 12, minTech: 8 },
+    // PART-1 — Solar→Galactic requires choosing 1 of 3 mutually-exclusive FTL
+    // methods (Warp/Hyperdrive/Jump Gates) + building matching infrastructure.
+    // THIS is where the FTL choice happens — you develop FTL IN the Solar stage
+    // to unlock the galaxy. (User correction: FTL is NOT learned before going
+    // to space — it's learned IN space to reach the galaxy.)
+    evolveRequires: { minPopulation: 1000, minSystems: 12, minTech: 8, requiresOneOfTechs: ["warp_theory", "hyperlanes", "jump_theory"] },
     storyIntro:
       "The sky stops being a wall. A ship breaks the sky and does not fall. " +
       "The first new world waits in the dark — and beyond it, a hundred more.",
@@ -112,7 +128,10 @@ export const STAGES: StageDef[] = [
     accent: "#6366f1",
     bgGradient: "radial-gradient(ellipse at top, #312e81 0%, #1e1b4b 30%, #030712 100%)",
     duration: "6-24 hours",
-    evolveRequires: { minPopulation: 2000, minSystems: 12, minTech: 10 },
+    // PART-1 — Galactic→Prestige requires choosing 1 of 3 mutually-exclusive
+    // ascension paths (Tech Singularity / Bio Transcendence / Psionic Awakening)
+    // + completing the Ascension Project megastructure.
+    evolveRequires: { minPopulation: 2000, minSystems: 12, minTech: 10, requiresOneOfTechs: ["tech_ascension", "bio_ascension", "psionic_ascension"], requiresSystems: ["ascension_project"] },
     storyIntro:
       "The galaxy takes a shape. A thousand suns answer one banner. " +
       "The question is no longer whether to live — but what kind of life deserves to live forever.",

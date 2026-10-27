@@ -3,6 +3,30 @@ import type { SystemDef, StageId } from "../state/types";
 // Systems/buildings — bought once, provide ongoing production
 export const SYSTEMS: SystemDef[] = [
   // ===== CELL =====
+  // CAP-BOOSTER — cheap, always-available capacity-increasing system per
+  // stage. CAP-BOOSTER-DESIGN: each stage has one of these — baseCost low
+  // enough to afford from the start, costGrowth 1.15 (gradual scaling that
+  // stays affordable as caps rise), no maxOwned (buy infinitely), no
+  // requiredTech (always unlocked), capacityBoost for all stage's primary
+  // resources. The player keeps buying these to raise caps until they can
+  // afford the more expensive / tech-locked systems. Per user: 'Galactic
+  // is not achievable unless you buy resource cap increases in the earlier
+  // stages. Always have some systems to increase caps for resources in
+  // each stage that are cheap enough to buy with 0 cap increases. The
+  // player can just continuously buy them to raise the cap until they can
+  // buy other systems that are better.'
+  {
+    id: "cell_cap_expansion",
+    name: "Membrane Expansion",
+    desc: "Thicken the cell wall. +10 cap to every cell resource. Cheap, repeatable.",
+    stage: "cell",
+    icon: "🔷",
+    category: "Storage",
+    baseCost: { glucose: 8 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { atp: 10, glucose: 10, proteins: 10, lipids: 10, elements: 10 },
+  },
   {
     id: "membrane_pump",
     name: "Membrane Pump",
@@ -731,6 +755,19 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== CREATURE =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all creature-stage resources.
+  {
+    id: "creature_cap_expansion",
+    name: "Cache Pit",
+    desc: "A deeper cache pit. +15 cap to every creature resource. Cheap, repeatable.",
+    stage: "creature",
+    icon: "🕳️",
+    category: "Storage",
+    baseCost: { food: 10 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 15, water: 15, materials: 15, organic_matter: 15, knowledge: 15, culture: 15, happiness: 5 },
+  },
   {
     id: "grazing_grounds",
     name: "Grazing Grounds",
@@ -1566,6 +1603,19 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== TRIBAL =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all tribal-stage resources.
+  {
+    id: "tribal_cap_expansion",
+    name: "Storage Pit",
+    desc: "A deeper storage pit. +15 cap to every tribal resource. Cheap, repeatable.",
+    stage: "tribal",
+    icon: "📦",
+    category: "Storage",
+    baseCost: { wood: 12 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 15, water: 15, wood: 15, lumber: 15, stone: 15, clay: 15, science: 15, happiness: 5, military_power: 15, culture: 15, gold: 15 },
+  },
   {
     id: "farm",
     name: "Farm",
@@ -2612,6 +2662,49 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== CIVILIZATION =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all civ-stage resources.
+  {
+    id: "civ_cap_expansion",
+    name: "Warehouse",
+    desc: "A larger warehouse. +20 cap to every civ resource. Cheap, repeatable.",
+    stage: "civilization",
+    icon: "🏛️",
+    category: "Storage",
+    baseCost: { production: 15 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 20, water: 20, production: 20, gold: 20, science: 20, culture: 20, happiness: 5, military_power: 20, influence: 20 },
+  },
+  // PART-1 — Civ→Empire gate. Build a Capitol to evolve. Represents the
+  // codification of central power that turns a civilization into an empire.
+  {
+    id: "capitol",
+    name: "Capitol",
+    desc: "The seat of centralized governance. Required to evolve to Empire.",
+    stage: "civilization",
+    icon: "🏰",
+    category: "Government",
+    baseCost: { production: 500, gold: 300, influence: 100 },
+    costGrowth: 1.0,
+    produces: { influence: 2.0 },
+    capacityBoost: { influence: 50 },
+    maxOwned: 1,
+  },
+  // PART-2-LAYER-A — Trade Caravan. Cheap, repeatable. Each caravan
+  // establishes a trade agreement with a partner (player chooses which).
+  // Trade passively generates bonus resources + rare drops.
+  {
+    id: "trade_caravan",
+    name: "Trade Caravan",
+    desc: "A caravan that establishes a trade route with a neighboring partner. Each one picks a partner and generates bonus resources.",
+    stage: "civilization",
+    icon: "🐫",
+    category: "Economy",
+    baseCost: { production: 80, gold: 40 },
+    costGrowth: 1.20,
+    produces: {},
+    maxOwned: 10,
+  },
   {
     id: "workshop",
     name: "Workshop",
@@ -3519,6 +3612,19 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== EMPIRE =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all empire-stage resources.
+  {
+    id: "empire_cap_expansion",
+    name: "Strategic Reserve",
+    desc: "A national strategic reserve. +25 cap to every empire resource. Cheap, repeatable.",
+    stage: "empire",
+    icon: "🏦",
+    category: "Storage",
+    baseCost: { energy: 20 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 25, production: 25, gold: 25, science: 25, culture: 25, influence: 25, happiness: 5, military_power: 25, energy: 25, data: 25 },
+  },
   {
     id: "provincial_capital",
     name: "Provincial Capital",
@@ -4463,6 +4569,60 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== SOLAR =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all solar-stage resources.
+  {
+    id: "solar_cap_expansion",
+    name: "Containment Field",
+    desc: "A wider containment field. +30 cap to every solar resource. Cheap, repeatable.",
+    stage: "solar",
+    icon: "🛡️",
+    category: "Storage",
+    baseCost: { energy: 25 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 30, water: 30, production: 30, energy: 30, alloys: 30, science: 30, culture: 30, influence: 30, happiness: 5, data: 30 },
+  },
+  // PART-1 — Solar→Galactic FTL infrastructure. Build the one matching your
+  // chosen FTL tech to evolve to Galactic.
+  {
+    id: "warp_gate",
+    name: "Warp Gate",
+    desc: "A folded-space portal. Required to reach the galaxy via Warp Drive.",
+    stage: "solar",
+    icon: "🌀",
+    category: "Expansion",
+    baseCost: { energy: 1500, alloys: 1000, science: 800 },
+    costGrowth: 1.0,
+    produces: {},
+    maxOwned: 1,
+    requiredTech: "warp_theory",
+  },
+  {
+    id: "hyperlane_network",
+    name: "Hyperlane Network",
+    desc: "A web of cosmic currents your ships can ride. Required to reach the galaxy via Hyperdrive.",
+    stage: "solar",
+    icon: "🌠",
+    category: "Expansion",
+    baseCost: { energy: 1200, alloys: 800, science: 1000 },
+    costGrowth: 1.0,
+    produces: {},
+    maxOwned: 1,
+    requiredTech: "hyperlanes",
+  },
+  {
+    id: "jump_array",
+    name: "Jump Array",
+    desc: "A constellation of constructed gates enabling instant transit. Required to reach the galaxy via Jump Gates.",
+    stage: "solar",
+    icon: "🚪",
+    category: "Expansion",
+    baseCost: { energy: 2000, alloys: 1400, science: 1200 },
+    costGrowth: 1.0,
+    produces: {},
+    maxOwned: 1,
+    requiredTech: "jump_theory",
+  },
   {
     id: "solar_array",
     name: "Solar Array",
@@ -4516,6 +4676,34 @@ export const SYSTEMS: SystemDef[] = [
   },
 
   // ===== GALACTIC =====
+  // CAP-BOOSTER — cheap, repeatable, +cap to all galactic-stage resources.
+  {
+    id: "galactic_cap_expansion",
+    name: "Stellar Resonator",
+    desc: "A resonance network that stabilizes greater flows. +40 cap to every galactic resource. Cheap, repeatable.",
+    stage: "galactic",
+    icon: "🌌",
+    category: "Storage",
+    baseCost: { energy: 30 },
+    costGrowth: 1.15,
+    produces: {},
+    capacityBoost: { food: 40, production: 40, energy: 40, alloys: 40, science: 40, data: 40, culture: 40, influence: 40, happiness: 5, military_power: 40 },
+  },
+  // PART-1 — Galactic→Prestige ascension gate. Long-construction megastructure
+  // that requires the player to have chosen an ascension path. Building this
+  // is the final step before prestiging.
+  {
+    id: "ascension_project",
+    name: "Ascension Project",
+    desc: "A civilization-scale megastructure that actualizes your chosen ascension path. Required to prestige.",
+    stage: "galactic",
+    icon: "🌟",
+    category: "Transcendent",
+    baseCost: { data: 10000, energy: 8000, science: 6000, alloys: 4000 },
+    costGrowth: 1.0,
+    produces: {},
+    maxOwned: 1,
+  },
   {
     id: "stellar_heart",
     name: "Stellar Heart",

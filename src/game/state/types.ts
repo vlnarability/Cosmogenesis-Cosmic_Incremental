@@ -118,6 +118,30 @@ export interface StageDef {
     // to evolve past this stage. Used to gate evolution behind key
     // biological milestones (e.g. Nucleus required to evolve Cell→Creature).
     requiresSystems?: string[];
+    // PART-1-STAGE-PROGRESSION — per-stage unique evolve requirements.
+    // Each stage transition has its own thematic gate beyond the basic
+    // pop/systems/tech stat-check. See DESIGN-PROPOSALS.md for the
+    // confirmed per-stage requirement design.
+    /** All listed techs must be researched to evolve. */
+    requiresTechs?: string[];
+    /** At least ONE of the listed techs must be researched (either/or paths,
+     * e.g. the 3 FTL methods for Solar→Galactic, the 3 ascension paths for
+     * Galactic→Prestige). */
+    requiresOneOfTechs?: string[];
+    /** All NPC rivals must be resolved (state !== "active") to evolve.
+     * Used by Creature→Tribal (conquer/merge with rival creatures) and
+     * Empire→Solar (ally with or wipe out all rival empires). */
+    requiresRivalsResolved?: boolean;
+    /** Player must have chosen a government (not auto-assigned) to evolve.
+     * Used by Tribal→Civilization. Choosing causes a happiness hit that
+     * the player must recover from before evolving. */
+    requiresGovernmentChosen?: boolean;
+    /** Happiness must be >= this value to evolve. Used alongside
+     * requiresGovernmentChosen to gate on the post-choice recovery. */
+    requiresHappinessThreshold?: number;
+    /** Minimum count of established trade routes to evolve. Used by
+     * Civilization→Empire (requires multiple trade routes). */
+    requiresTradeRoutes?: number;
   };
   storyIntro: string;
   storyOutro: string;
@@ -247,6 +271,27 @@ export interface GameState {
   // archetype government applies, from the most-researched Civilization-stage
   // tech branch (Military / Science / Culture / Economics). Null until Empire.
   activeGovernment: string | null;
+  // PART-1 — Tribal→Civ government choice. When the player chooses a
+  // government via `chooseGovernment(govId)`, it's stored here as "pending"
+  // (not active until evolve). Choosing causes a happiness hit. Evolve-to-Civ
+  // is gated on `pendingGovernment !== null`.
+  pendingGovernment: string | null;
+  // PART-2-LAYER-A — Trade agreements. Map of partnerId → { established: number (timestamp), relation: number }.
+  // Drives the Layer A Trade system + the Civ→Empire evolve gate (requiresTradeRoutes).
+  tradeAgreements: Record<string, { established: number; relation: number }>;
+  // PART-2-LAYER-C — NPC rival civilizations. Each rival has:
+  //   id, name, stage (which stage it appears at), state ("active"|"allied"|"conquered"|"merged"),
+  //   threat (0-100, grows over time), relation (-100 to +100), strength (scales with player).
+  // Creature→Tribal + Empire→Solar evolve gates check `rivals.every(r => r.state !== "active")`.
+  rivals: Array<{
+    id: string;
+    name: string;
+    stage: StageId;
+    state: "active" | "allied" | "conquered" | "merged";
+    threat: number;
+    relation: number;
+    strength: number;
+  }>;
   log: string[];
 
   // Meta state
@@ -805,6 +850,12 @@ export interface GameStore extends GameState {
   saveGame: () => void;
   // Force any pending debounced save to write now. No-op if nothing queued.
   flushSave: () => void;
+  // PART-1 — Tribal→Civ government choice (player picks, not auto-assigned).
+  // Choosing causes happiness -25 (disruption). Evolve-to-Civ gated on this.
+  chooseGovernment: (govId: string) => void;
+  // PART-2-LAYER-A — establish / break trade agreements with NPC partners.
+  establishTrade: (partnerId: string) => void;
+  breakTrade: (partnerId: string) => void;
   loadGame: () => void;
   exportSave: () => string;
   importSave: (data: string) => boolean;

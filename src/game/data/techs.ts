@@ -3529,6 +3529,46 @@ export const TECHS: TechDef[] = [
   },
 
   // ===== SOLAR =====
+  // PART-1 — Solar→Galactic FTL choice. 3 mutually-exclusive FTL methods.
+  // Player must research exactly one + build the matching infrastructure
+  // system to evolve to Galactic. Each path gives different bonuses that
+  // carry forward.
+  {
+    id: "warp_theory",
+    name: "Warp Theory",
+    desc: "Bend space itself. Fast FTL, expensive, high-energy. +50% production, +25% energy upkeep.",
+    stage: "solar",
+    cost: { energy: 800, alloys: 500, science: 400 },
+    branch: "Propulsion",
+    tier: 5,
+    effects: "+50% production (Warp Drive path)",
+    multiplier: { target: "production", value: 0.50 },
+    exclusiveWith: ["hyperlanes", "jump_theory"],
+  },
+  {
+    id: "hyperlanes",
+    name: "Hyperlanes",
+    desc: "Ride the cosmic currents. Medium FTL, reliable, balanced. +25% production, +10% data.",
+    stage: "solar",
+    cost: { energy: 600, alloys: 400, science: 500 },
+    branch: "Propulsion",
+    tier: 5,
+    effects: "+25% production (Hyperdrive path)",
+    multiplier: { target: "production", value: 0.25 },
+    exclusiveWith: ["warp_theory", "jump_theory"],
+  },
+  {
+    id: "jump_theory",
+    name: "Jump Theory",
+    desc: "Instant transit via constructed gates. Slow to build, instant once built, low upkeep. +100% colonist throughput.",
+    stage: "solar",
+    cost: { energy: 1000, alloys: 700, science: 600 },
+    branch: "Propulsion",
+    tier: 5,
+    effects: "+100% population growth (Jump Gates path)",
+    multiplier: { target: "population", value: 1.0 },
+    exclusiveWith: ["warp_theory", "hyperlanes"],
+  },
   {
     id: "fusion_power",
     name: "Fusion Power",
@@ -3565,6 +3605,45 @@ export const TECHS: TechDef[] = [
   },
 
   // ===== GALACTIC =====
+  // PART-1 — Galactic→Prestige ascension choice. 3 mutually-exclusive paths.
+  // Player must research exactly one + build the Ascension Project megastructure
+  // to prestige. Each path defines the player's galactic-stage flavor.
+  {
+    id: "tech_ascension",
+    name: "Technological Singularity",
+    desc: "Mind becomes machine. +100% science, unlocks the digital-mind path to ascension.",
+    stage: "galactic",
+    cost: { data: 5000, energy: 4000, science: 3000 },
+    branch: "Ascension",
+    tier: 10,
+    effects: "+100% science (Tech Singularity path)",
+    multiplier: { target: "production", value: 1.0 },
+    exclusiveWith: ["bio_ascension", "psionic_ascension"],
+  },
+  {
+    id: "bio_ascension",
+    name: "Biological Transcendence",
+    desc: "Life becomes optional. +100% population growth, unlocks the genetic-mastery path to ascension.",
+    stage: "galactic",
+    cost: { data: 4000, energy: 3000, science: 5000 },
+    branch: "Ascension",
+    tier: 10,
+    effects: "+100% population growth (Bio Transcendence path)",
+    multiplier: { target: "population", value: 1.0 },
+    exclusiveWith: ["tech_ascension", "psionic_ascension"],
+  },
+  {
+    id: "psionic_ascension",
+    name: "Psionic Awakening",
+    desc: "Consciousness unbound. +100% happiness, unlocks the consciousness path to ascension.",
+    stage: "galactic",
+    cost: { data: 4500, energy: 4500, science: 4000 },
+    branch: "Ascension",
+    tier: 10,
+    effects: "+100% happiness (Psionic Awakening path)",
+    multiplier: { target: "production", value: 0.5 },
+    exclusiveWith: ["tech_ascension", "bio_ascension"],
+  },
   {
     id: "quantum_computing",
     name: "Quantum Computing",
