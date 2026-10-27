@@ -15,6 +15,7 @@ import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { RIVALS, RIVAL_MAP, rivalsForStage, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST } from "../data/rivals";
 import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage } from "../data/tradePartners";
+import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
   CHALLENGES,
@@ -532,6 +533,7 @@ function initialRunState(): Partial<GameState> {
     pendingGovernment: null,
     tradeAgreements: {},
     rivals: [],
+    rareResources: {},
     log: ["New run started. The first spark stirs."],
   };
 }
@@ -1277,15 +1279,18 @@ export const useGameStore = create<GameStore>()(
             const r = partner.givesResource;
             resources[r] = (resources[r] || 0) + rate * realDt;
             tradesThisTick++;
-            // Rare drop roll (per partner per tick).
+            // Rare drop roll (per partner per tick). Track on rareResources state.
             if (partner.rareDrop && Math.random() < partner.rareDrop.chance * realDt * 10) {
               const rareR = partner.rareDrop.resource;
-              // Rare drops are stored as a generic resource — they're not
-              // in the resources map but we track them on a meta field.
-              // For now, just log the drop; full rare-resource mechanics
-              // (unlocking special systems/techs) are next round.
-              if (Math.random() < 0.1) { // 10% of rare drops get logged (avoid spam)
-                get().addToLog(`${partner.name} offered a rare ${rareR}!`);
+              const rareResources = { ...(s as any).rareResources || {} };
+              const wasNew = !rareResources[rareR];
+              rareResources[rareR] = (rareResources[rareR] || 0) + 1;
+              (s as any).rareResources = rareResources;
+              if (wasNew) {
+                // First discovery — log it with the unlock description.
+                const rrDef = RARE_RESOURCE_MAP[rareR];
+                const unlockDesc = rrDef?.unlocks?.desc || "a special unlock";
+                get().addToLog(`${partner.name} offered ${rrDef?.name || rareR}! ${rrDef?.unlocks?.name || "Something"} unlocked: ${unlockDesc}`);
               }
             }
           }
@@ -3350,6 +3355,7 @@ export const useGameStore = create<GameStore>()(
           tradeAgreements: s.tradeAgreements,
           rivals: (s as any).rivals,
           activeRaid: (s as any).activeRaid,
+          rareResources: (s as any).rareResources,
           totalPlayTime: (s.totalPlayTime || 0) + realDt,
           // Layer 2-6 currency + state
           divinity,
@@ -8040,10 +8046,17 @@ export const useGameStore = create<GameStore>()(
         // Rare drop: 15% chance of a rare resource (vs 2-4% for periodic hunts).
         let rareMsg = "";
         if (Math.random() < 0.15) {
-          // Just log the rare drop — full rare-resource mechanics next round.
+          // Pick a random rare resource + track it on state.
           const rares = ["rare_furs", "bone_tools", "venom_sac", "ancient_relic"];
           const drop = rares[Math.floor(Math.random() * rares.length)];
-          rareMsg = ` Rare ${drop} dropped!`;
+          const rareResources = { ...s.rareResources };
+          const wasNew = !rareResources[drop];
+          rareResources[drop] = (rareResources[drop] || 0) + 1;
+          const rrDef = RARE_RESOURCE_MAP[drop];
+          rareMsg = wasNew
+            ? ` Rare ${rrDef?.name || drop} found! Unlocked: ${rrDef?.unlocks?.name || "something special"}.`
+            : ` Another ${rrDef?.name || drop} found.`;
+          set({ rareResources });
         }
         set({
           resources,

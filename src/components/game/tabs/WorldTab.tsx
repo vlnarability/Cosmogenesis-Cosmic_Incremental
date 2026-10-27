@@ -30,10 +30,11 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { tradePartnersForStage, TRADE_PARTNER_MAP } from "@/game/data/tradePartners";
 import { RIVAL_MAP, assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
+import { RARE_RESOURCES, RARE_RESOURCE_MAP } from "@/game/data/rareResources";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check } from "lucide-react";
+import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem } from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export function WorldTab() {
   const counterRaid = useGameStore((s) => s.counterRaid);
   const assimilateRival = useGameStore((s) => s.assimilateRival);
   const resources = useGameStore((s) => s.resources || {});
+  const rareResources = useGameStore((s) => s.rareResources || {});
 
   // Collect all trade partners for the current stage + earlier stages
   // (the player may have established trade routes in past stages that
@@ -280,6 +282,51 @@ export function WorldTab() {
                     >
                       Assimilate
                     </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Rare Discoveries — shows all rare resources the player has found,
+          what they unlock, and whether the unlock has been used. Per user
+          request: trade caravan progress + rare drops visible on World tab. */}
+      {Object.keys(rareResources).length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+            <Gem className="w-4 h-4 text-amber-400" />
+            Rare Discoveries
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {Object.entries(rareResources).map(([rid, count]) => {
+              const rrDef = RARE_RESOURCE_MAP[rid];
+              if (!rrDef) return null;
+              return (
+                <div
+                  key={rid}
+                  className="stat-card rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg shrink-0">{rrDef.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-sm text-amber-300 truncate">{rrDef.name}</span>
+                        {count > 1 && (
+                          <Badge variant="outline" className="text-[0.55rem] text-amber-400 border-amber-500/30 shrink-0">
+                            ×{count}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[0.65rem] text-muted-foreground italic leading-snug mb-1">
+                        {rrDef.desc}
+                      </p>
+                      <div className="text-[0.6rem] text-amber-400/80 flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5" />
+                        Unlocks: {rrDef.unlocks.name}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );

@@ -307,6 +307,12 @@ export interface GameState {
     counteredRaids: number;     // each one reduces military cost by MIL_REDUCTION_PER_COUNTER
     successfulTrades: number;   // each one reduces culture cost by CUL_REDUCTION_PER_TRADE
   }>;
+  // PART-2-LAYER-A/B/C — rare resource discoveries. Map of rareResourceId → count.
+  // Obtained from trade partners (rareDrop chance), hunting (huntNow 15% chance),
+  // and rival counter-raid loot. Each discovery unlocks a special system or tech
+  // (see rareResources.ts for the unlock mapping). NOT consumed — it's a
+  // persistent discovery flag.
+  rareResources: Record<string, number>;
   // PART-1 — choice modal state. Each modal fires when the corresponding
   // prerequisite tech is researched. The choice is permanent (one-shot).
   showFtlChoice: boolean;
