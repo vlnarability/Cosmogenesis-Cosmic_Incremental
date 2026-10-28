@@ -8424,7 +8424,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 18,
+      version: 19,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9032,6 +9032,37 @@ export const useGameStore = create<GameStore>()(
             "bulk_fuse_10x", "bulk_fuse_100x", "bulk_fuse_max",
           ]) {
             if (persisted.upgrades[id] === undefined) persisted.upgrades[id] = 0;
+          }
+        }
+
+        // V19-MIGRATION — add new Part-1 + Part-2 fields to old saves.
+        // Old saves (v18) don't have: rivals with population/hidden/popGrowthMult/
+        // militaryMult/assimilationBonus, treaties, rareResources, pendingGovernment,
+        // ftlChoice, ascensionChoice, activeRaid.
+        if (version < 19) {
+          if (!persisted.pendingGovernment) persisted.pendingGovernment = null;
+          if (!persisted.tradeAgreements) persisted.tradeAgreements = {};
+          if (!persisted.rareResources) persisted.rareResources = {};
+          if (!persisted.treaties) persisted.treaties = {};
+          if (persisted.ftlChoice === undefined) persisted.ftlChoice = null;
+          if (persisted.ascensionChoice === undefined) persisted.ascensionChoice = null;
+          if (persisted.activeRaid === undefined) persisted.activeRaid = null;
+          // Migrate rivals: add new fields to each rival if missing.
+          if (persisted.rivals && Array.isArray(persisted.rivals)) {
+            persisted.rivals = persisted.rivals.map((r: any) => ({
+              ...r,
+              population: r.population ?? Math.floor(1 + Math.random() * 10),
+              hidden: r.hidden ?? false,
+              popGrowthMult: r.popGrowthMult ?? 1.0,
+              militaryMult: r.militaryMult ?? 1.0,
+              assimilationBonus: r.assimilationBonus ?? { resource: "food", mult: 0.15 },
+              counteredRaids: r.counteredRaids ?? 0,
+              successfulTrades: r.successfulTrades ?? 0,
+            }));
+          } else {
+            // No rivals array at all — generate 10 procedural cell-stage rivals.
+            const usedNames = new Set<string>();
+            persisted.rivals = generateRivals(10, "cell", usedNames, 1);
           }
         }
 

@@ -109,7 +109,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
             the blue background baked in (good for browser tab favicons, bad
             for a landing page). The transparent version lives at
             /icon-transparent.svg. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        { }
         <img
           src="/icon-transparent.svg"
           alt="Cosmogenesis — abstract star with concentric circles"

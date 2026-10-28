@@ -383,7 +383,7 @@ export function hasClaimedRivalGalaxy(
 // Sanity check: ensure the distribution produced exactly 500 rival systems.
 // This runs at module load time (cheap — 9 galaxies).
 if (TOTAL_RIVAL_SYSTEMS !== 500) {
-  // eslint-disable-next-line no-console
+   
   console.warn(
     `[galaxies.ts] Total rival systems = ${TOTAL_RIVAL_SYSTEMS}, expected 500. ` +
       `Distribution: ${RIVAL_GALAXIES.filter((g) => g.ownerId !== "player").map((g) => `${g.name}=${g.systemCount}`).join(", ")}`,
