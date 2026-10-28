@@ -29,7 +29,7 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { tradePartnersForStage, TRADE_PARTNER_MAP } from "@/game/data/tradePartners";
-import { RIVAL_MAP, assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
+import { assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
 import { RARE_RESOURCES, RARE_RESOURCE_MAP } from "@/game/data/rareResources";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,10 +72,11 @@ export function WorldTab() {
     (ownedSystems["solar_trade_caravan"] || 0) +
     (ownedSystems["galactic_trade_caravan"] || 0);
 
-  // Rivals for the current + past stages.
+  // Rivals for the current + past stages. Exclude hidden rivals (those
+  // that didn't make the cut at Cell→Creature carry-forward).
   const stageRivals = rivals.filter((r) => {
     const rStageIdx = STAGES.findIndex((s) => s.id === r.stage);
-    return rStageIdx >= 0 && rStageIdx <= stageIndex;
+    return rStageIdx >= 0 && rStageIdx <= stageIndex && !r.hidden;
   });
 
   return (
@@ -198,13 +199,16 @@ export function WorldTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {stageRivals.map((r) => {
               const isActive = r.state === "active";
-              const rivalDef = RIVAL_MAP[r.id];
-              const cost = isActive
-                ? assimilationCost(r.id, r.counteredRaids || 0, r.successfulTrades || 0)
+              const isCellStage = r.stage === "cell";
+              const cost = isActive && !isCellStage
+                ? assimilationCost(r.strength || 1, r.counteredRaids || 0, r.successfulTrades || 0)
                 : { military: 0, culture: 0 };
               const milHave = resources.military_power || 0;
               const culHave = resources.culture || 0;
-              const canAssimilate = isActive && milHave >= cost.military && culHave >= cost.culture;
+              const canAssimilate = isActive && !isCellStage && milHave >= cost.military && culHave >= cost.culture;
+              const bonusDesc = r.assimilationBonus
+                ? `+${(r.assimilationBonus.mult * 100).toFixed(0)}% ${r.assimilationBonus.resource}`
+                : "no longer a threat.";
               return (
                 <div
                   key={r.id}
@@ -216,7 +220,12 @@ export function WorldTab() {
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-lg shrink-0">{r.icon}</span>
-                      <span className="font-semibold text-sm truncate">{r.name}</span>
+                      <div className="min-w-0">
+                        <span className="font-semibold text-sm truncate block">{r.name}</span>
+                        <span className="text-[0.55rem] text-muted-foreground uppercase tracking-wide">
+                          {r.stage}
+                        </span>
+                      </div>
                     </div>
                     <Badge
                       variant="outline"
@@ -230,7 +239,17 @@ export function WorldTab() {
                       {r.state}
                     </Badge>
                   </div>
-                  {isActive && (
+                  {/* Population — always shown (per user: 'always show you the population'). */}
+                  <div className="text-[0.65rem] text-muted-foreground mb-1">
+                    👥 Population: <span className="font-semibold text-foreground">{Math.floor(r.population || 0)}</span>
+                  </div>
+                  {/* Military strength — shown from creature+ (per user: 'eventually when stage appropriate'). */}
+                  {!isCellStage && (
+                    <div className="text-[0.65rem] text-muted-foreground mb-1">
+                      ⚔️ Strength: <span className="font-semibold text-rose-400">{(r.strength || 1).toFixed(1)}</span>
+                    </div>
+                  )}
+                  {isActive && !isCellStage && (
                     <>
                       <div className="text-[0.65rem] text-muted-foreground mb-1">
                         Threat: <span className={cn("font-semibold", r.threat > 70 ? "text-rose-400" : r.threat > 40 ? "text-amber-400" : "text-emerald-400")}>{r.threat.toFixed(0)}/100</span>
@@ -267,31 +286,40 @@ export function WorldTab() {
                   {!isActive && (
                     <div className="text-[0.65rem] text-emerald-400 mb-2 flex items-center gap-1">
                       <Check className="w-3 h-3" />
-                      Resolved — {rivalDef?.assimilationBonus?.desc || "no longer a threat."}
+                      Resolved — {bonusDesc}
                     </div>
                   )}
                   <div className="flex gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs flex-1"
-                      disabled={!isActive}
-                      onClick={() => counterRaid(r.id)}
-                    >
-                      Counter-Raid
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={canAssimilate ? "default" : "outline"}
-                      className={cn("h-7 text-xs flex-1", canAssimilate && "bg-amber-500/20 border-amber-500/40")}
-                      disabled={!canAssimilate}
-                      onClick={() => assimilateRival(r.id)}
-                    >
-                      Assimilate
-                    </Button>
+                    {!isCellStage && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs flex-1"
+                          disabled={!isActive}
+                          onClick={() => counterRaid(r.id)}
+                        >
+                          Counter-Raid
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={canAssimilate ? "default" : "outline"}
+                          className={cn("h-7 text-xs flex-1", canAssimilate && "bg-amber-500/20 border-amber-500/40")}
+                          disabled={!canAssimilate}
+                          onClick={() => assimilateRival(r.id)}
+                        >
+                          Assimilate
+                        </Button>
+                      </>
+                    )}
+                    {isCellStage && isActive && (
+                      <p className="text-[0.6rem] text-muted-foreground/60 italic text-center w-full py-1">
+                        Rival cells — no interaction available at this stage
+                      </p>
+                    )}
                   </div>
-                  {/* LAYER-D — Treaty section for rivals. */}
-                  {isActive && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
+                  {/* LAYER-D — Treaty section for rivals (creature+ only). */}
+                  {isActive && !isCellStage && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
                 </div>
               );
             })}

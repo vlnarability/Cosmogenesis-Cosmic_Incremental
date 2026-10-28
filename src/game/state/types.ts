@@ -312,10 +312,12 @@ export interface GameState {
     threat: number;
     relation: number;
     strength: number;
+    population: number;
+    hidden: boolean;
     icon: string;
-    // Per-rival counters that reduce the assimilation cost for THIS rival.
-    counteredRaids: number;     // each one reduces military cost by MIL_REDUCTION_PER_COUNTER
-    successfulTrades: number;   // each one reduces culture cost by CUL_REDUCTION_PER_TRADE
+    counteredRaids: number;
+    successfulTrades: number;
+    assimilationBonus: { resource: string; mult: number };
   }>;
   // PART-2-LAYER-A/B/C — rare resource discoveries. Map of rareResourceId → count.
   // Obtained from trade partners (rareDrop chance), hunting (huntNow 15% chance),

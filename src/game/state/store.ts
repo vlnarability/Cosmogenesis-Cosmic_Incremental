@@ -13,7 +13,7 @@ import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
 import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
 import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
-import { RIVALS, RIVAL_MAP, rivalsForStage, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST } from "../data/rivals";
+import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP } from "../data/rivals";
 import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage } from "../data/tradePartners";
 import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
@@ -532,7 +532,14 @@ function initialRunState(): Partial<GameState> {
     // PART-1 + PART-2 — new state fields for stage progression + trade/rivals.
     pendingGovernment: null,
     tradeAgreements: {},
-    rivals: [],
+    // PROCEDURAL-RIVALS — 10 rivals generated at cell stage start. Each has
+    // a procedural name ("The {Modifier} {Noun} of {Concept}"), random
+    // population (1-5), random strength. Cell-stage rivals are visible but
+    // NOT interactable (no counter-raid/assimilate — just population display).
+    rivals: (() => {
+      const usedNames = new Set<string>();
+      return generateRivals(10, "cell", usedNames, 1);
+    })(),
     rareResources: {},
     treaties: {},
     log: ["New run started. The first spark stirs."],
@@ -1133,9 +1140,10 @@ export const useGameStore = create<GameStore>()(
           for (const r of s.rivals) {
             const rAny = r as any;
             if (rAny.state !== "merged") continue;
-            const rivalDef = RIVAL_MAP[rAny.id];
-            if (!rivalDef?.assimilationBonus) continue;
-            const { resource, mult } = rivalDef.assimilationBonus;
+            // PROCEDURAL-RIVALS — use the rival's own assimilationBonus field
+            // (was RIVAL_MAP[rAny.id], which is now empty for procedural rivals).
+            if (!rAny.assimilationBonus) continue;
+            const { resource, mult } = rAny.assimilationBonus;
             rivalResourceBonus[resource] = (rivalResourceBonus[resource] || 0) + mult;
           }
         }
@@ -1325,19 +1333,17 @@ export const useGameStore = create<GameStore>()(
           (s as any).rivals = rivals;
         }
 
-        // PART-2-LAYER-C — Rival threat decay. Active rivals grow threat
-        // over time (faster if player neglects military). When threat hits
-        // 100%, a RAID EVENT fires — sets `activeRaid` to the rival's id,
-        // which opens the RaidModal. The player then chooses Defend
-        // (auto-roll) or Counter-Attack (spend military for guaranteed win
-        // + loot). See resolveRaid action.
+        // PART-2-LAYER-C — Rival threat decay + population growth. Active
+        // rivals grow threat over time (faster if player neglects military)
+        // AND their population grows (used for the Cell→Creature carry-forward
+        // selection + the World tab population display). When threat hits
+        // 100%, a RAID EVENT fires.
         if (s.rivals && s.rivals.length > 0) {
           let rivalsChanged = false;
           let raidTriggered: string | null = null;
           const rivals = (s as any).rivals.map((r: any) => {
-            if (r.state !== "active") return r;
-            // Don't grow threat if a raid modal is already open (pause
-            // threat accumulation while the player is resolving a raid).
+            if (r.state !== "active" || r.hidden) return r;
+            // Don't grow threat if a raid modal is already open.
             if (s.activeRaid) return r;
             // Threat growth: 0.5/sec base, reduced by player's military_power
             // relative to rival strength. LAYER-D: non_aggression pact halves growth.
@@ -1346,19 +1352,22 @@ export const useGameStore = create<GameStore>()(
             const treaty = s.treaties?.[r.id];
             const nonAggressionMult = (treaty?.type === "non_aggression") ? 0.5 : 1.0;
             const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
+            // Population growth: rivals grow their population at 0.03/sec base,
+            // scaled by stage tier (stronger rivals in later stages grow faster).
+            const stageTier = s.stageIndex + 1;
+            const popGrowth = 0.03 * r.strength * realDt;
             const newThreat = r.threat + threatGrowth;
+            const newPop = (r.population || 0) + popGrowth;
             if (newThreat >= 100) {
               // RAID EVENT — set activeRaid, reset this rival's threat to 0
-              // (the raid "fires" — the modal handles the outcome).
               raidTriggered = r.id;
               rivalsChanged = true;
-              return { ...r, threat: 0 };
+              return { ...r, threat: 0, population: newPop };
             }
-            return newThreat !== r.threat ? { ...r, threat: newThreat } : r;
+            return (newThreat !== r.threat || newPop !== r.population) ? { ...r, threat: newThreat, population: newPop } : r;
           });
           if (raidTriggered) {
-            const rivalDef = RIVAL_MAP[raidTriggered];
-            const rivalName = rivalDef?.name || raidTriggered;
+            const rivalName = (s as any).rivals.find((r: any) => r.id === raidTriggered)?.name || raidTriggered;
             get().addToLog(`${rivalName} is raiding! Choose your response.`);
             // Set activeRaid — the RaidModal will open on the next render.
             (s as any).activeRaid = raidTriggered;
@@ -4118,32 +4127,38 @@ export const useGameStore = create<GameStore>()(
           ? (storyId?.id || s.activeStoryPopup)
           : s.activeStoryPopup;
 
-        // PART-2-LAYER-C — spawn rivals for the NEW stage. Each stage has
-        // 1-3 rivals defined in rivals.ts. We spawn any that aren't already
-        // in the player's rivals array (idempotent across multiple evolves
-        // — e.g. if a player evolves to tribal, leaves, comes back, we
-        // don't re-spawn the same rivals).
-        const nextStageId = nextStageDef.id;
-        const existingRivalIds = new Set((s.rivals || []).map((r: any) => r.id));
-        const newRivals = rivalsForStage(nextStageId)
-          .filter((rd) => !existingRivalIds.has(rd.id))
-          .map((rd) => ({
-            id: rd.id,
-            name: rd.name,
-            stage: rd.stage,
-            state: "active" as const,
-            threat: rd.initialThreat ?? 0,
-            relation: rd.initialRelation ?? -25, // start slightly hostile
-            strength: rd.strength,
-            icon: rd.icon,
-            counteredRaids: 0,
-            successfulTrades: 0,
+        // PROCEDURAL-RIVALS — rival carry-forward + new generation at stage
+        // transition. Per user spec:
+        //   Cell→Creature: top 5 by population carried forward, remaining 5
+        //     hidden, 5 new creature rivals generated.
+        //   Creature→Tribal onward: 3-5 new rivals generated per stage,
+        //     all existing visible rivals stay (no hiding from creature+).
+        const existingRivals = [...(s.rivals || [])] as any[];
+        const usedNames = new Set(existingRivals.map((r: any) => r.name));
+        let rivals: any[];
+
+        if (stage.id === "cell") {
+          // CELL → CREATURE: sort by population desc, carry top 5, hide rest,
+          // generate 5 new creature rivals.
+          const sorted = [...existingRivals].sort((a, b) => (b.population || 0) - (a.population || 0));
+          const carried = sorted.slice(0, 5).map((r) => ({
+            ...r,
+            stage: "creature" as const,
+            hidden: false,
           }));
-        const rivals = newRivals.length > 0
-          ? [...(s.rivals || []), ...newRivals]
-          : (s.rivals || []);
-        if (newRivals.length > 0) {
-          get().addToLog(`New rival${newRivals.length === 1 ? "" : "s"} appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
+          const hidden = sorted.slice(5).map((r) => ({ ...r, hidden: true }));
+          const newRivals = generateRivals(5, "creature", usedNames, 2);
+          rivals = [...carried, ...hidden, ...newRivals];
+          get().addToLog(`Top 5 rivals carried forward to Creature stage. 5 new rivals appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
+        } else {
+          // CREATURE → TRIBAL onward: generate 3-5 new rivals for the new
+          // stage, keep all existing visible rivals (no hiding).
+          const newCount = 3 + Math.floor(Math.random() * 3); // 3-5
+          const newRivals = generateRivals(newCount, nextStageDef.id, usedNames, nextStageIdx + 1);
+          rivals = [...existingRivals, ...newRivals];
+          if (newRivals.length > 0) {
+            get().addToLog(`${newRivals.length} new rival${newRivals.length === 1 ? "" : "s"} appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
+          }
         }
 
         set({
@@ -8009,7 +8024,7 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         // Compute the assimilation cost (military + culture).
-        const cost = assimilationCost(rivalId, rival.counteredRaids || 0, rival.successfulTrades || 0);
+        const cost = assimilationCost(rival.strength, rival.counteredRaids || 0, rival.successfulTrades || 0);
         const mil = s.resources?.military_power ?? 0;
         const cul = s.resources?.culture ?? 0;
         if (mil < cost.military || cul < cost.culture) {
@@ -8028,10 +8043,10 @@ export const useGameStore = create<GameStore>()(
         // Apply the assimilation bonus (production mult on a resource).
         // We store this as a meta-counter that the tick reads to apply
         // the multiplier. For now, just log it — the bonus is applied
-        // via the rival's assimilationBonus field being read in the
-        // production tick (next round wiring).
-        const rivalDef = RIVAL_MAP[rivalId];
-        const bonusDesc = rivalDef?.assimilationBonus?.desc || "a permanent bonus";
+        // via the rival's assimilationBonus field being read in the production tick.
+        const bonusDesc = rival.assimilationBonus
+          ? `+${(rival.assimilationBonus.mult * 100).toFixed(0)}% ${rival.assimilationBonus.resource}`
+          : "a permanent bonus";
         set({ resources, rivals });
         get().addToLog(`${rival.name} assimilated! Spent ${cost.military.toFixed(0)} military + ${cost.culture.toFixed(0)} culture. ${bonusDesc}.`);
       },
@@ -8111,8 +8126,7 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         const rival = { ...rivals[idx] } as any;
-        const rivalDef = RIVAL_MAP[rivalId];
-        const rivalName = rivalDef?.name || rivalId;
+        const rivalName = rival.name || rivalId;
         const resources = { ...s.resources };
         const mil = resources.military_power || 0;
 
