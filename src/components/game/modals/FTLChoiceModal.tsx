@@ -21,12 +21,8 @@
 // (it has requiredTech = the chosen FTL tech).
 
 import { useGameStore } from "@/game/state/store";
-import { TECH_MAP } from "@/game/data/techs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Rocket, Sparkles, Zap, ArrowRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface FtlPath {
   id: string;

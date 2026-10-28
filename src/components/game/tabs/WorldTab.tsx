@@ -28,9 +28,9 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
-import { tradePartnersForStage, TRADE_PARTNER_MAP } from "@/game/data/tradePartners";
+import { tradePartnersForStage } from "@/game/data/tradePartners";
 import { assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
-import { RARE_RESOURCES, RARE_RESOURCE_MAP } from "@/game/data/rareResources";
+import { RARE_RESOURCE_MAP } from "@/game/data/rareResources";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

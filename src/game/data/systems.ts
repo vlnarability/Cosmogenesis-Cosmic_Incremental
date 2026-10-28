@@ -3504,7 +3504,7 @@ export const SYSTEMS: SystemDef[] = [
     category: "Energy",
     baseCost: { production: 220, gold: 150, water: 80 },
     costGrowth: 1.28,
-    produces: { energy: 2.0, happiness: 0.5 },
+    produces: { production: 2.0, happiness: 0.5 },
   },
   // Toxoid (3)
   {
@@ -3637,7 +3637,7 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 300, stone: 250, materials: 150 },
     requiredTech: "currency_system",
     costGrowth: 1.32,
-    produces: { materials: 3.0, energy: 1.0, military_power: 0.5 },
+    produces: { materials: 3.0, production: 1.0, military_power: 0.5 },
   },
   {
     id: "civ_arch_frostvault",
@@ -4110,7 +4110,7 @@ export const SYSTEMS: SystemDef[] = [
     category: "Industry",
     baseCost: { production: 600, gold: 500, materials: 400 },
     costGrowth: 1.28,
-    produces: { materials: 15.0, alloys: 0.5 },
+    produces: { materials: 15.0, production: 0.5 },
     requiredTech: "civ_steel_working",
   },
   {
