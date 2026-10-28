@@ -3415,12 +3415,18 @@ export const useGameStore = create<GameStore>()(
           // array. The block above pops + rolls due entries; entries whose
           // fireAt is still in the future stay queued.
           pendingFollowUps,
-          ownedSystems,
-          systemEnabled,
-          archetypeAffinity,
-          technologies,
-          totalSystemsBuilt,
-          totalTechResearched,
+          // TICK-SET-FIX — these fields are read from `s` at the START of
+          // the tick and written back here. If buySystem/buyTech ran
+          // between get() and set() (e.g., via a React event handler),
+          // the tick's set() would OVERWRITE their changes with stale refs.
+          // FIX: re-read the CURRENT state for these fields instead of
+          // using the stale snapshot from the start of the tick.
+          ownedSystems: get().ownedSystems,
+          systemEnabled: get().systemEnabled,
+          archetypeAffinity: get().archetypeAffinity,
+          technologies: get().technologies,
+          totalSystemsBuilt: get().totalSystemsBuilt,
+          totalTechResearched: get().totalTechResearched,
           autoTimers,
           completedChallenges,
           challengeRepeatCounts,
