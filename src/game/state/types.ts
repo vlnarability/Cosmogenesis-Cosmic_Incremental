@@ -318,6 +318,9 @@ export interface GameState {
     counteredRaids: number;
     successfulTrades: number;
     assimilationBonus: { resource: string; mult: number };
+    // Per-rival multipliers from the procedural name (determine growth rates).
+    popGrowthMult: number;   // modifierMult × nounMult
+    militaryMult: number;    // modifierMult × conceptMult
   }>;
   // PART-2-LAYER-A/B/C — rare resource discoveries. Map of rareResourceId → count.
   // Obtained from trade partners (rareDrop chance), hunting (huntNow 15% chance),

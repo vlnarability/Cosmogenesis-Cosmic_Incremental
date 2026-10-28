@@ -1352,10 +1352,9 @@ export const useGameStore = create<GameStore>()(
             const treaty = s.treaties?.[r.id];
             const nonAggressionMult = (treaty?.type === "non_aggression") ? 0.5 : 1.0;
             const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
-            // Population growth: rivals grow their population at 0.03/sec base,
-            // scaled by stage tier (stronger rivals in later stages grow faster).
-            const stageTier = s.stageIndex + 1;
-            const popGrowth = 0.03 * r.strength * realDt;
+            // Population growth: uses the rival's own popGrowthMult (from the
+            // procedural name: modifierMult × nounMult). Base rate 0.03/sec.
+            const popGrowth = 0.03 * (r.popGrowthMult || 1) * realDt;
             const newThreat = r.threat + threatGrowth;
             const newPop = (r.population || 0) + popGrowth;
             if (newThreat >= 100) {
@@ -4151,13 +4150,28 @@ export const useGameStore = create<GameStore>()(
           rivals = [...carried, ...hidden, ...newRivals];
           get().addToLog(`Top 5 rivals carried forward to Creature stage. 5 new rivals appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
         } else {
-          // CREATURE → TRIBAL onward: generate 3-5 new rivals for the new
-          // stage, keep all existing visible rivals (no hiding).
-          const newCount = 3 + Math.floor(Math.random() * 3); // 3-5
+          // CREATURE → TRIBAL onward: pick top 3-5 rivals from the CURRENT
+          // stage (by population) and "move them up" (update their stage to
+          // the new stage). Generate 3-5 new rivals for the new stage.
+          // Remaining rivals STAY at their current stage (visible, interactable).
+          const carryCount = 3 + Math.floor(Math.random() * 3); // 3-5
+          const currentStageRivals = existingRivals
+            .filter((r) => r.stage === stage.id && !r.hidden && r.state === "active")
+            .sort((a, b) => (b.population || 0) - (a.population || 0));
+          const movedUp = currentStageRivals.slice(0, carryCount).map((r) => ({
+            ...r,
+            stage: nextStageDef.id as any,
+            // Strength grows slightly when moving up (they've grown alongside the player).
+            strength: r.strength * 1.15,
+          }));
+          // Mark the moved-up rivals in the existing list (replace their entries).
+          const movedUpIds = new Set(movedUp.map((r) => r.id));
+          const stayed = existingRivals.filter((r) => !movedUpIds.has(r.id));
+          const newCount = 3 + Math.floor(Math.random() * 3); // 3-5 new
           const newRivals = generateRivals(newCount, nextStageDef.id, usedNames, nextStageIdx + 1);
-          rivals = [...existingRivals, ...newRivals];
+          rivals = [...stayed, ...movedUp, ...newRivals];
           if (newRivals.length > 0) {
-            get().addToLog(`${newRivals.length} new rival${newRivals.length === 1 ? "" : "s"} appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
+            get().addToLog(`${carryCount} rivals moved up to ${nextStageDef.name}. ${newRivals.length} new rival${newRivals.length === 1 ? "" : "s"} appeared: ${newRivals.map((r) => r.name).join(", ")}.`);
           }
         }
 
