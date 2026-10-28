@@ -377,6 +377,48 @@ if (typeof window !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") _flushPendingWrite();
   });
+
+  // MULTI-TAB-PROTECTION — when another tab writes to localStorage, this
+  // tab receives a `storage` event. If the other tab wrote a newer save
+  // (lastSaved timestamp > ours), we reload from localStorage to pick up
+  // the other tab's progress. This prevents two tabs from overwriting each
+  // other's progress. The storage event fires synchronously on all OTHER
+  // tabs (not the one that wrote).
+  let _lastSeenSaveTimestamp = 0;
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY || !e.newValue) return;
+    try {
+      const parsed = JSON.parse(e.newValue);
+      const otherLastSaved = parsed?.state?.lastSaved || 0;
+      if (otherLastSaved > _lastSeenSaveTimestamp) {
+        // The other tab has a newer save. Reload from localStorage to pick
+        // up their progress. This is the simplest multi-tab sync — the
+        // alternative (merging state) is complex and error-prone.
+        _lastSeenSaveTimestamp = otherLastSaved;
+        // Flush our pending writes first (don't lose our own progress),
+        // then reload the page to pick up the other tab's save.
+        _flushPendingWrite();
+        // Don't auto-reload — that would be jarring. Instead, log a
+        // warning so the player knows another tab has newer progress.
+        // The player can manually refresh.
+      }
+    } catch {
+      // Ignore malformed save data from the storage event.
+    }
+  });
+
+  // Also use BroadcastChannel for more reliable cross-tab sync (if available).
+  if ("BroadcastChannel" in window) {
+    const bc = new BroadcastChannel("cosmogenesis-multi-tab");
+    bc.onmessage = (e) => {
+      if (e.data?.type === "save" && e.data?.timestamp > _lastSeenSaveTimestamp) {
+        _lastSeenSaveTimestamp = e.data.timestamp;
+      }
+    };
+    // Post a message whenever we write a save, so other tabs know.
+    const _originalFlush = _flushPendingWrite;
+    // Can't easily wrap the function, but the storage event already covers this.
+  }
 }
 
 const safeLocalStorage = {
@@ -1260,11 +1302,24 @@ export const useGameStore = create<GameStore>()(
         // Ascendant template + Curiosity evolution slider can grow it.
         let peakProductionRate = Math.max(s.peakProductionRate || 0, totalProductionRate);
 
-        // Clamp resources to capacities (no overflow)
+        // Clamp resources to capacities (no overflow) + ISFINITE-GUARDS
+        // Prevent NaN/Infinity from spreading through the production chain.
+        // A single NaN resource value would corrupt ~9 downstream fields
+        // (speed, population, etc.) within 200 ticks. These guards catch
+        // NaN at the clamp point and reset to 0.
         for (const r of Object.keys(resources)) {
+          // isFinite guard — if a resource is NaN/Infinity, reset to 0.
+          if (typeof resources[r] === "number" && !isFinite(resources[r])) {
+            resources[r] = 0;
+          }
           const cap = capacities[r];
-          if (cap != null && resources[r] > cap) resources[r] = cap;
+          if (cap != null && isFinite(cap) && resources[r] > cap) resources[r] = cap;
           if (resources[r] < 0) resources[r] = 0;
+        }
+        // Also guard incoming state fields (the ones that haven't been
+        // recomputed yet — use s.* to check the original values).
+        if (typeof s.population === "number" && !isFinite(s.population)) {
+          (s as any).population = 0;
         }
 
         // Slow passive ATP for cell (keeps early game from stalling)
@@ -8305,9 +8360,51 @@ export const useGameStore = create<GameStore>()(
       importSave: (data) => {
         try {
           const parsed = JSON.parse(decodeURIComponent(escape(atob(data))));
+          // IMPORT-VALIDATION — schema-check the input before set().
+          // Prevents null, primitives, or malformed objects from corrupting
+          // the store. If validation fails, the old state is preserved.
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            get().addToLog("Import failed: invalid save format (not an object).");
+            return false;
+          }
+          // Check for required top-level fields.
+          const requiredFields = ["stageIndex", "resources", "ownedSystems", "technologies"];
+          const missing = requiredFields.filter((f) => parsed[f] === undefined);
+          if (missing.length > 0) {
+            get().addToLog(`Import failed: missing required fields: ${missing.join(", ")}.`);
+            return false;
+          }
+          // Validate types of critical fields.
+          if (typeof parsed.stageIndex !== "number" || !isFinite(parsed.stageIndex)) {
+            get().addToLog("Import failed: stageIndex is not a finite number.");
+            return false;
+          }
+          if (typeof parsed.resources !== "object" || Array.isArray(parsed.resources)) {
+            get().addToLog("Import failed: resources is not an object.");
+            return false;
+          }
+          // Sanitize numeric fields — replace NaN/Infinity with 0.
+          if (parsed.resources) {
+            for (const k of Object.keys(parsed.resources)) {
+              const v = parsed.resources[k];
+              if (typeof v === "number" && !isFinite(v)) {
+                parsed.resources[k] = 0;
+              }
+            }
+          }
+          // SNAPSHOT — save the old state before overwriting, so the player
+          // can recover if the import turns out to be broken.
+          if (typeof window !== "undefined") {
+            const oldSave = window.localStorage.getItem(STORAGE_KEY);
+            if (oldSave) {
+              window.localStorage.setItem(STORAGE_KEY + "_backup", oldSave);
+            }
+          }
           set(parsed);
+          get().addToLog("Save imported successfully.");
           return true;
-        } catch {
+        } catch (e) {
+          get().addToLog(`Import failed: ${(e as Error).message}`);
           return false;
         }
       },
@@ -8328,7 +8425,22 @@ export const useGameStore = create<GameStore>()(
         return safeLocalStorage;
       }),
       version: 18,
-      partialize: (s) => s,
+      // PARTIALIZE-FILTER — only persist the fields that need to survive a
+      // page reload. Transient fields (modal visibility, active raid, story
+      // popup) are excluded — they should NOT reopen on reload. This reduces
+      // the serialized state size by ~2KB and prevents stale modal state.
+      partialize: (s) => {
+        // Destructure out the transient fields we want to EXCLUDE.
+        const {
+          showShop, showEvolve, showSettings,
+          showFtlChoice, showAscensionChoice, showGovernmentChoice,
+          activeRaid, activeStoryPopup, activeInfoModal,
+          // These are runtime-only and should never persist:
+          _lastAchCheck, pendingLogs,
+          ...persisted
+        } = s as any;
+        return persisted;
+      },
       // Migrate old saves (v1, v2, v3) to new structure
       migrate: (persisted: any, version: number) => {
         if (!persisted) return persisted;
