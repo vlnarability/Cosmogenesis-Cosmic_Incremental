@@ -284,3 +284,51 @@ export const TRADE_PARTNER_MAP: Record<string, TradePartner> = Object.fromEntrie
 export function tradePartnersForStage(stage: StageId): TradePartner[] {
   return TRADE_PARTNERS.filter((p) => p.stage === stage);
 }
+
+// S2 TRAVELING CARAVAN — stage-themed transport icon that rides the
+// shipment progress bar in the World tab. One per era so the visual
+// evolves with the player's tech level (camel → cart → freighter →
+// shuttle → jumpfreighter). Pure cosmetic; the math is unchanged.
+export function caravanIconForStage(stage: StageId): string {
+  switch (stage) {
+    case "tribal":       return "🐪";
+    case "civilization": return "🛺";
+    case "empire":       return "🚢";
+    case "solar":        return "🛰️";
+    case "galactic":     return "🛸";
+    default:             return "📦";
+  }
+}
+
+// F4 REPUTATION TIERS — partner reputation (0..100, grown +1 per shipment)
+// unlocks tiered benefits. This helper is the single source of truth for the
+// tier thresholds so the tick (benefit gating) and the World tab card (label
+// + color) never disagree. Benefits are applied in the tick; this returns
+// the cosmetic label + next-tier progress for the UI.
+export interface ReputationTier {
+  label: "Neutral" | "Friendly" | "Trusted" | "Esteemed" | "Exalted";
+  colorClass: string;     // tailwind text color
+  barClass: string;       // tailwind bg color for the tier bar
+  nextThreshold: number | null; // null at Exalted (maxed)
+}
+
+export function reputationTierOf(rep: number): ReputationTier {
+  const r = Math.max(0, Math.min(100, rep));
+  if (r >= 90) return { label: "Exalted",  colorClass: "text-fuchsia-300", barClass: "bg-fuchsia-500",  nextThreshold: null };
+  if (r >= 70) return { label: "Esteemed", colorClass: "text-violet-300",  barClass: "bg-violet-500",   nextThreshold: 90 };
+  if (r >= 40) return { label: "Trusted",  colorClass: "text-cyan-300",    barClass: "bg-cyan-500",     nextThreshold: 70 };
+  if (r >= 20) return { label: "Friendly", colorClass: "text-emerald-300", barClass: "bg-emerald-500",  nextThreshold: 40 };
+  return { label: "Neutral", colorClass: "text-muted-foreground", barClass: "bg-muted-foreground/50", nextThreshold: 20 };
+}
+
+// Human-readable benefit summary for a tier (shown on the trade card so the
+// player can see what the next tier unlocks without reading the tick code).
+export function reputationBenefits(rep: number): string[] {
+  const r = Math.max(0, Math.min(100, rep));
+  const out: string[] = [];
+  if (r >= 20) out.push("+10% shipment size");
+  if (r >= 40) out.push("faster cadence");
+  if (r >= 70) out.push("×1.5 rare odds");
+  if (r >= 90) out.push("bonus rare rolls");
+  return out;
+}

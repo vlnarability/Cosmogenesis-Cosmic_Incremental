@@ -305,6 +305,12 @@ export interface GameState {
     totalShipments?: number;
     /** Last delivery (transient UI hint — cleared on load; not used for logic). */
     lastShipment?: { resource: string; amount: number; rare?: string; at: number };
+    /** F4 REPUTATION — 0..100 partner reputation, grown by +1 per shipment
+     *  delivered. Tiered benefits unlock at 20/40/70/90 (Friendly / Trusted /
+     *  Esteemed / Exalted): bigger shipments, effective caravans, boosted rare
+     *  odds, and occasional bonus-rare shipments. Derived tier is computed in
+     *  the UI; this field is the raw accrual. */
+    reputation?: number;
   }>;
   // PART-2-LAYER-C — NPC rival civilizations. Each rival has:
   //   id, name, stage (which stage it appears at), state ("active"|"allied"|"conquered"|"merged"),
@@ -333,9 +339,22 @@ export interface GameState {
   // PART-2-LAYER-A/B/C — rare resource discoveries. Map of rareResourceId → count.
   // Obtained from trade partners (rareDrop chance), hunting (huntNow 15% chance),
   // and rival counter-raid loot. Each discovery unlocks a special system or tech
-  // (see rareResources.ts for the unlock mapping). NOT consumed — it's a
-  // persistent discovery flag.
+  // (see rareResources.ts for the unlock mapping).
+  //
+  // F1 RELIQUARY — the stockpile IS now consumable: spend 1 via consumeRare()
+  // to bank a permanent production bonus (reliquary[]). The discovery flag is
+  // (rareResources[id] + reliquary[id]) >= 1, so consuming down to 0 keeps the
+  // unlock intact as long as you've ever owned one. This creates a real choice:
+  // hoard rares for future unlocks, or consume the surplus for compounding buffs.
   rareResources: Record<string, number>;
+  /** F1 RELIQUARY — rareResourceId → count consumed for permanent bonuses.
+   *  Drives reliquaryBonus (per-resource production mult) in the tick.
+   *  Caps at the rare's `reliquary.maxConsume` (data/rareResources.ts). */
+  reliquary: Record<string, number>;
+  /** F2 DEEP HUNT — `time` (in-game seconds) of the last Deep Hunt. Drives
+   *  the 120s cooldown bar. Pause/speed-safe because it's in game-time, not
+   *  wall-clock. */
+  lastDeepHuntAt: number;
   // PART-2-LAYER-D — Treaties. Map of partnerId → treaty info.
   // Each treaty is signed with a trade partner OR a rival NPC. Treaty types:
   //   trade_agreement: +20% trade bonus for this partner
@@ -963,6 +982,14 @@ export interface GameStore extends GameState {
   // PART-2-LAYER-B — manual hunt. Spends military_power + population for
   // an immediate burst of food/materials/organic_matter + rare-drop chance.
   huntNow: () => void;
+  // F2 DEEP HUNT — a cooldown-gated premium hunt (120s in-game). Costs 3×
+  // the military + 3× the population of a normal hunt, but yields ~3× rewards
+  // and a 40% rare-drop chance (vs 15%) — printed verbatim on the button so
+  // the odds stay legible. Cooldown is tracked in game-time (pause/speed-safe).
+  huntDeepNow: () => void;
+  // F1 RELIQUARY — consume 1 of a rare resource for a permanent production
+  // bonus. No-op if the player has 0 stockpiled or has already hit maxConsume.
+  consumeRare: (relicId: string) => void;
   // PART-2-LAYER-C — resolve a raid event. action: "defend" (auto-roll,
   // may lose resources if military is too low) or "counter" (spend military
   // for guaranteed win + loot). Clears activeRaid.

@@ -31,6 +31,21 @@ export interface RareResourceDef {
   };
   /** Sources where this can be obtained. */
   sources: string[];
+  /** F1 RELIQUARY — consume 1 of this rare for a permanent production
+   *  bonus. The bonus is a per-resource multiplier (folded into the tick
+   *  alongside rival assimilation bonuses). maxConsume caps the compounding
+   *  so a single rare can't dominate. Optional — rares without this field
+   *  are discovery-only (no consume path). */
+  reliquary?: {
+    /** Human-readable bonus label, shown on the consume button. */
+    label: string;
+    /** Resource whose production is boosted (matches RESOURCE_MAP ids). */
+    resource: string;
+    /** Per-rank additive multiplier (0.05 = +5% per consume). */
+    perRank: number;
+    /** Max ranks the player can bank for this rare. */
+    maxConsume: number;
+  };
 }
 
 export const RARE_RESOURCES: RareResourceDef[] = [
@@ -46,6 +61,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "A specialized post that converts rare furs into steady gold income.",
     },
     sources: ["hunt", "trade:bone_clan"],
+    reliquary: { label: "+5% gold per rank", resource: "gold", perRank: 0.05, maxConsume: 5 },
   },
   {
     id: "bone_tools",
@@ -59,6 +75,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+15% materials production. The first tools beyond stone.",
     },
     sources: ["hunt"],
+    reliquary: { label: "+4% materials per rank", resource: "materials", perRank: 0.04, maxConsume: 5 },
   },
   {
     id: "venom_sac",
@@ -72,6 +89,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+25% military_power. Toxin-coated weapons strike fear.",
     },
     sources: ["hunt", "trade"],
+    reliquary: { label: "+5% military per rank", resource: "military_power", perRank: 0.05, maxConsume: 5 },
   },
   {
     id: "ancient_relic",
@@ -85,6 +103,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "A repository of lost knowledge. +20% science permanently.",
     },
     sources: ["hunt", "trade:scientists", "rival_loot"],
+    reliquary: { label: "+5% science per rank", resource: "science", perRank: 0.05, maxConsume: 5 },
   },
   {
     id: "river_pearls",
@@ -98,6 +117,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "A market that converts pearls into steady gold + culture income.",
     },
     sources: ["trade:river_runners"],
+    reliquary: { label: "+6% gold per rank", resource: "gold", perRank: 0.06, maxConsume: 5 },
   },
   {
     id: "marble_blocs",
@@ -111,6 +131,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+15% production + +10% culture. The finest stone money can buy.",
     },
     sources: ["trade:marble_republic"],
+    reliquary: { label: "+5% culture per rank", resource: "culture", perRank: 0.05, maxConsume: 5 },
   },
   {
     id: "iron_ore",
@@ -124,6 +145,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+20% military_power + +10% production. Iron changes everything.",
     },
     sources: ["trade:iron_horde"],
+    reliquary: { label: "+6% military per rank", resource: "military_power", perRank: 0.06, maxConsume: 5 },
   },
   {
     id: "silk_bolt",
@@ -137,6 +159,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+20% culture + +10% happiness. Silk softens every edge.",
     },
     sources: ["trade:silk_concord"],
+    reliquary: { label: "+5% culture per rank", resource: "culture", perRank: 0.05, maxConsume: 5 },
   },
   {
     id: "stellar_isotope",
@@ -150,6 +173,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "Unlocks antimatter reactors. +50% energy.",
     },
     sources: ["trade:stellar_hegemony", "rival_loot"],
+    reliquary: { label: "+8% energy per rank", resource: "energy", perRank: 0.08, maxConsume: 3 },
   },
   {
     id: "crystal_shard",
@@ -163,6 +187,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+25% data + +15% science. The crystal amplifies thought.",
     },
     sources: ["trade:crystal_compact"],
+    reliquary: { label: "+6% data per rank", resource: "data", perRank: 0.06, maxConsume: 5 },
   },
   {
     id: "rare_element",
@@ -176,6 +201,7 @@ export const RARE_RESOURCES: RareResourceDef[] = [
       desc: "+30% alloys. Refine the unstable into the unbreakable.",
     },
     sources: ["trade:outer_belt", "rival_loot"],
+    reliquary: { label: "+8% alloys per rank", resource: "alloys", perRank: 0.08, maxConsume: 3 },
   },
 ];
 
@@ -183,22 +209,27 @@ export const RARE_RESOURCE_MAP: Record<string, RareResourceDef> = Object.fromEnt
   RARE_RESOURCES.map((r) => [r.id, r])
 );
 
-/** Check if a rare resource has been discovered (count >= 1 in rareResources state). */
+/** Check if a rare resource has been discovered. F1 RELIQUARY: the flag is
+ *  (stockpiled + consumed) >= 1, so consuming down to 0 keeps the unlock
+ *  intact as long as you've ever owned one. `reliquary` defaults to {} for
+ *  callers that don't track it (legacy code paths). */
 export function isRareResourceDiscovered(
   rareResources: Record<string, number>,
-  id: string
+  id: string,
+  reliquary?: Record<string, number>
 ): boolean {
-  return (rareResources[id] || 0) >= 1;
+  return (rareResources[id] || 0) + ((reliquary?.[id]) || 0) >= 1;
 }
 
 /** Get all unlocks (system IDs + tech IDs) that the player has discovered via rare resources. */
 export function getDiscoveredUnlocks(
-  rareResources: Record<string, number>
+  rareResources: Record<string, number>,
+  reliquary?: Record<string, number>
 ): { systems: string[]; techs: string[] } {
   const systems: string[] = [];
   const techs: string[] = [];
   for (const r of RARE_RESOURCES) {
-    if (isRareResourceDiscovered(rareResources, r.id)) {
+    if (isRareResourceDiscovered(rareResources, r.id, reliquary)) {
       if (r.unlocks.type === "system") systems.push(r.unlocks.id);
       else techs.push(r.unlocks.id);
     }

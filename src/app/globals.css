@@ -502,6 +502,95 @@
 }
 
 /* ============================================================
+   S2 — TRAVELING CARAVAN BOB
+   The transport icon riding the shipment progress bar bobs gently
+   so a paused route still feels "in motion". Pointer-events:none
+   in the component so it never steals the bar's hover/aria target.
+   ============================================================ */
+
+@keyframes caravanBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.caravan-bob {
+  animation: caravanBob 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 1px 1px oklch(0 0 0 / 0.4));
+}
+
+/* ============================================================
+   S3 — RIVAL CARD THREAT-GLOW BORDER
+   A tiered border glow that intensifies with the rival's threat
+   stage (CALM → RISING → CRITICAL), readable at a glance without
+   reading the threat bar. CRITICAL adds a slow pulse so an
+   imminent raid is unmissable. Layered under the card's existing
+   border color so it composes cleanly.
+   ============================================================ */
+
+.rival-glow-calm {
+  box-shadow: inset 0 0 0 1px oklch(0.72 0.15 145 / 0.18), 0 0 6px -2px oklch(0.72 0.15 145 / 0.25);
+}
+.rival-glow-rising {
+  box-shadow: inset 0 0 0 1px oklch(0.75 0.15 75 / 0.30), 0 0 8px -1px oklch(0.75 0.15 75 / 0.40);
+}
+.rival-glow-critical {
+  box-shadow: inset 0 0 0 1px oklch(0.65 0.22 20 / 0.45), 0 0 14px -1px oklch(0.65 0.22 20 / 0.55);
+  animation: rivalGlowPulse 1.8s ease-in-out infinite;
+}
+@keyframes rivalGlowPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px oklch(0.65 0.22 20 / 0.45), 0 0 14px -1px oklch(0.65 0.22 20 / 0.45); }
+  50%      { box-shadow: inset 0 0 0 1px oklch(0.65 0.22 20 / 0.65), 0 0 20px 0  oklch(0.65 0.22 20 / 0.75); }
+}
+
+/* ============================================================
+   S4 — RARE DISCOVERY CARD SHIMMER + RARITY BORDER
+   Discovered rare-resource cards get a slow diagonal shine sweep
+   (like light catching a facet) + a rarity-tiered left accent bar
+   so the collection feels rewarding, not like a flat list. The
+   sweep runs once per ~5s and pauses under prefers-reduced-motion.
+   ============================================================ */
+
+.rare-card-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.rare-card-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    transparent 38%,
+    oklch(0.85 0.12 85 / 0.18) 50%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  animation: rareShineSweep 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes rareShineSweep {
+  0%   { background-position: 150% 0; }
+  60%  { background-position: -50% 0; }
+  100% { background-position: -50% 0; }
+}
+
+/* Rarity tier accent (left edge) — cosmetic only, tiers derived from
+   the rare's source count (more sources = "rarer" acquisition). */
+.rare-tier-common    { border-left: 3px solid oklch(0.72 0.10 85 / 0.45); }
+.rare-tier-uncommon  { border-left: 3px solid oklch(0.68 0.14 200 / 0.55); }
+.rare-tier-rare      { border-left: 3px solid oklch(0.62 0.20 300 / 0.65); }
+
+@media (prefers-reduced-motion: reduce) {
+  .caravan-bob,
+  .rival-glow-critical,
+  .rare-card-shimmer::after {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
    EVOLVE BUTTON — pulsing glow when ready
    ============================================================ */
 

@@ -14,7 +14,7 @@ import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../d
 import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP } from "../data/rivals";
-import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf } from "../data/tradePartners";
+import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf, reputationTierOf } from "../data/tradePartners";
 import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -598,6 +598,10 @@ function initialRunState(): Partial<GameState> {
       return generateRivals(10, "cell", usedNames, 1);
     })(),
     rareResources: {},
+    // F1 RELIQUARY — consumed-rare ranks (drives reliquaryBonus in the tick).
+    reliquary: {},
+    // F2 DEEP HUNT — gameTime of the last Deep Hunt (drives the 120s cooldown).
+    lastDeepHuntAt: 0,
     treaties: {},
     log: ["New run started. The first spark stirs."],
   };
@@ -1207,6 +1211,22 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
+        // F1 RELIQUARY — consumed-rare bonuses. Each rank banked in
+        // `reliquary[rareId]` grants def.reliquary.perRank to the rare's target
+        // resource. Aggregated the same way as rivalResourceBonus so a single
+        // `reliquaryBonus[r]` fold-in covers every consumed rare. Permanent +
+        // compounding (capped per-rare by maxConsume in the data).
+        const reliquaryBonus: Record<string, number> = {};
+        if (s.reliquary) {
+          for (const [rareId, rank] of Object.entries(s.reliquary)) {
+            if (!rank) continue;
+            const def = RARE_RESOURCE_MAP[rareId];
+            if (!def?.reliquary) continue;
+            const r = def.reliquary.resource;
+            reliquaryBonus[r] = (reliquaryBonus[r] || 0) + rank * def.reliquary.perRank;
+          }
+        }
+
         // PART-2-LAYER-D — treaty effects. research_pact gives +10% science.
         // Count the number of research_pact treaties for the science bonus.
         let treatyScienceMult = 0;
@@ -1291,7 +1311,7 @@ export const useGameStore = create<GameStore>()(
           const sysIsMineral = !!(produces.stone || produces.alloys);
           for (const [r, v] of Object.entries(produces)) {
             const archResBonus = archetype?.bonus.productionMult?.[r] || 0;
-            let resourceBonus = archResBonus + (govResourceBonus[r] || 0) + (rivalResourceBonus[r] || 0);
+            let resourceBonus = archResBonus + (govResourceBonus[r] || 0) + (rivalResourceBonus[r] || 0) + (reliquaryBonus[r] || 0);
             // LAYER-D — research_pact treaty gives +10% science per active pact.
             if (r === "science") resourceBonus += treatyScienceMult;
             if (r === "military_power" && allMilitaryMult) {
@@ -1385,7 +1405,18 @@ export const useGameStore = create<GameStore>()(
             // LAYER-D — trade_agreement treaty shortens delivery time by 20%.
             const treaty = s.treaties?.[partnerId];
             const treatyMult = (treaty?.type === "trade_agreement") ? 1.2 : 1.0;
-            const intervalEff = partner.shipmentInterval / (caravanMult * treatyMult);
+            // F4 REPUTATION — tiered benefits from partner reputation (grown
+            // +1 per shipment delivered). Tiers + benefits:
+            //   Friendly  (rep≥20): +10% shipment amount
+            //   Trusted   (rep≥40): +0.1 effective caravan (faster cadence)
+            //   Esteemed  (rep≥70): rare-drop chance ×1.5
+            //   Exalted   (rep≥90): 10% chance/shipment of a bonus rare roll
+            const rep = Math.max(0, Math.min(100, ag.reputation || 0));
+            const repAmountMult = rep >= 20 ? 1.10 : 1.0;
+            const repCaravanMult = rep >= 40 ? 0.10 : 0.0; // additive to caravanMult
+            const repRareMult = rep >= 70 ? 1.5 : 1.0;
+            const repBonusRareChance = rep >= 90 ? 0.10 : 0;
+            const intervalEff = partner.shipmentInterval / ((caravanMult + repCaravanMult) * treatyMult);
             let progress = (ag.shipmentProgress || 0) + realDt / intervalEff;
             let delivered = 0;
             while (progress >= 1 && delivered < 1000) {
@@ -1394,17 +1425,29 @@ export const useGameStore = create<GameStore>()(
             }
             if (delivered > 0) {
               const r = partner.givesResource;
-              const perShipment = partner.bonusPerTick * partner.shipmentInterval;
+              const perShipment = partner.bonusPerTick * partner.shipmentInterval * repAmountMult;
               resources[r] = (resources[r] || 0) + perShipment * delivered;
               // Rare roll — once per shipment, capped at 5 rolls per tick
               // call (offline chunk = one tick ⇒ no offline rare farming).
+              // F4: Esteemed rep boosts the chance; Exalted adds a bonus roll.
               let rareId: string | null = null;
               if (partner.rareDrop) {
                 const rolls = Math.min(delivered, 5);
+                const effChance = Math.min(0.95, partner.rareDrop.chance * repRareMult);
                 for (let i = 0; i < rolls; i++) {
-                  if (Math.random() < partner.rareDrop.chance) {
+                  if (Math.random() < effChance) {
                     rareId = partner.rareDrop.resource;
                     break;
+                  }
+                }
+                // Exalted bonus — a separate 10% roll per shipment for an
+                // EXTRA rare (stacks on top of the base roll).
+                if (!rareId && repBonusRareChance > 0) {
+                  for (let i = 0; i < rolls; i++) {
+                    if (Math.random() < repBonusRareChance) {
+                      rareId = partner.rareDrop.resource;
+                      break;
+                    }
                   }
                 }
               }
@@ -1422,10 +1465,13 @@ export const useGameStore = create<GameStore>()(
                 }
               }
               const prevTotal = ag.totalShipments || 0;
+              // F4 — reputation grows +1 per shipment delivered, capped at 100.
+              const newRep = Math.min(100, (ag.reputation || 0) + delivered);
               (nextAgreements ||= {})[partnerId] = {
                 ...ag,
                 shipmentProgress: progress,
                 totalShipments: prevTotal + delivered,
+                reputation: newRep,
                 lastShipment: { resource: r, amount: perShipment, rare: rareId || undefined, at: Date.now() },
               };
               // First-ever delivery gets a log line; routine shipments stay
@@ -1433,6 +1479,13 @@ export const useGameStore = create<GameStore>()(
               // the feedback — a log line every ~60s would be spam).
               if (prevTotal === 0) {
                 get().addToLog(`📦 First shipment from ${partner.name} arrived: +${Math.round(perShipment)} ${RESOURCE_MAP[r]?.name || r}${caravanCount > 0 ? ` (caravans ×${caravanCount} speed deliveries)` : ""}.`);
+              }
+              // F4 — log a tier-up so reputation progress feels rewarding (only
+              // on the threshold crossing, not every shipment).
+              const prevTier = reputationTierOf(ag.reputation || 0).label;
+              const newTier = reputationTierOf(newRep).label;
+              if (prevTier !== newTier) {
+                get().addToLog(`🤝 ${partner.name} now regards you as ${newTier} (reputation ${Math.round(newRep)}).`);
               }
             } else if (progress !== (ag.shipmentProgress || 0)) {
               // Progress advanced without a delivery — publish it so the
@@ -3724,8 +3777,10 @@ export const useGameStore = create<GameStore>()(
             }
           }
         }
-        // RARE-RESOURCE-UNLOCK — refuse if the required rare resource hasn't been discovered.
-        if (sys.requiresRareResource && (s.rareResources?.[sys.requiresRareResource] || 0) <= 0) {
+        // RARE-RESOURCE-UNLOCK — refuse if the required rare hasn't been
+        // discovered. F1 RELIQUARY: discovery = (stockpiled + consumed) >= 1,
+        // so consuming a rare down to 0 keeps its unlock buildable.
+        if (sys.requiresRareResource && ((s.rareResources?.[sys.requiresRareResource] || 0) + (s.reliquary?.[sys.requiresRareResource] || 0)) <= 0) {
           get().notifyPurchaseError(`Requires rare resource: ${sys.requiresRareResource}`);
           return;
         }
@@ -3897,8 +3952,9 @@ export const useGameStore = create<GameStore>()(
           get().notifyPurchaseError(`Requires ${archName} archetype`);
           return;
         }
-        // RARE-RESOURCE-UNLOCK — refuse if the required rare resource hasn't been discovered.
-        if (tech.requiresRareResource && (s.rareResources?.[tech.requiresRareResource] || 0) <= 0) {
+        // RARE-RESOURCE-UNLOCK — refuse if the required rare hasn't been
+        // discovered. F1 RELIQUARY: discovery = (stockpiled + consumed) >= 1.
+        if (tech.requiresRareResource && ((s.rareResources?.[tech.requiresRareResource] || 0) + (s.reliquary?.[tech.requiresRareResource] || 0)) <= 0) {
           get().notifyPurchaseError(`Requires rare resource: ${tech.requiresRareResource}`);
           return;
         }
@@ -8310,6 +8366,104 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`Hunt! Spent ${milCost} mil + ${popCost} pop. Gained ${foodGain} food, ${matGain} materials, ${orgGain} organic_matter.${rareMsg}`);
       },
 
+      // F2 DEEP HUNT — a cooldown-gated premium hunt. 3× the cost of a normal
+      // hunt, ~3× the yield, and a 40% rare-drop chance (vs 15%) printed on the
+      // button. 120s in-game cooldown (pause/speed-safe via gameTime) so it's a
+      // deliberate "expedition", not a spam button. Same 4-rare hunt table so
+      // the source-consistency ("hunt drops hunt-sourced rares") is preserved.
+      huntDeepNow: () => {
+        const s = get();
+        const stageTier = s.stageIndex + 1;
+        // Cooldown — tracked in game-time (`time`) so pause/speed affect it
+        // correctly (a paused game shouldn't cool down).
+        const DEEP_HUNT_COOLDOWN = 120;
+        const elapsed = (s.time || 0) - (s.lastDeepHuntAt || 0);
+        if (elapsed < DEEP_HUNT_COOLDOWN) {
+          const remain = Math.ceil(DEEP_HUNT_COOLDOWN - elapsed);
+          get().addToLog(`Deep Hunt is still recovering (${remain}s). Hunt normally in the meantime.`);
+          return;
+        }
+        const milCost = 15 * stageTier; // 3× normal hunt
+        const popCost = 3 * Math.max(1, Math.floor(stageTier / 2));
+        const mil = s.resources?.military_power ?? 0;
+        if (mil < milCost) {
+          get().addToLog(`Deep Hunt needs ${milCost} military_power (have ${mil.toFixed(0)}). Build more military first.`);
+          return;
+        }
+        if ((s.population || 0) < popCost) {
+          get().addToLog(`Deep Hunt needs ${popCost} population (have ${Math.floor(s.population || 0)}).`);
+          return;
+        }
+        // ~3× normal hunt rewards.
+        const foodGain = 45 * stageTier;
+        const matGain = 24 * stageTier;
+        const orgGain = 15 * stageTier;
+        const resources = { ...s.resources };
+        resources.military_power = mil - milCost;
+        resources.food = (resources.food || 0) + foodGain;
+        resources.materials = (resources.materials || 0) + matGain;
+        resources.organic_matter = (resources.organic_matter || 0) + orgGain;
+        for (const r of ["food", "materials", "organic_matter"]) {
+          const cap = s.capacities?.[r] || 0;
+          if (cap > 0 && (resources as any)[r] > cap) (resources as any)[r] = cap;
+        }
+        // Rare drop — 40% chance (printed verbatim on the button). Same table
+        // as the normal hunt so the hunt-sourced rares stay source-consistent.
+        let rareMsg = "";
+        if (Math.random() < 0.40) {
+          const rares = ["rare_furs", "bone_tools", "venom_sac", "ancient_relic"];
+          const drop = rares[Math.floor(Math.random() * rares.length)];
+          const rareResources = { ...s.rareResources };
+          const wasNew = !rareResources[drop];
+          rareResources[drop] = (rareResources[drop] || 0) + 1;
+          const rrDef = RARE_RESOURCE_MAP[drop];
+          rareMsg = wasNew
+            ? ` Rare ${rrDef?.name || drop} found! Unlocked: ${rrDef?.unlocks?.name || "something special"}.`
+            : ` Another ${rrDef?.name || drop} found.`;
+          set({ rareResources });
+        }
+        set({
+          resources,
+          population: Math.max(0, (s.population || 0) - popCost),
+          lastDeepHuntAt: s.time || 0,
+        });
+        get().addToLog(`Deep Hunt! Spent ${milCost} mil + ${popCost} pop. Gained ${foodGain} food, ${matGain} materials, ${orgGain} organic_matter.${rareMsg}`);
+      },
+
+      // F1 RELIQUARY — consume 1 of a rare resource for a permanent production
+      // bonus (banked in `reliquary`). The discovery flag is (stockpiled +
+      // consumed) >= 1, so consuming down to 0 keeps the unlock intact as long
+      // as you've ever owned one. No-op if the rare has no reliquary bonus, if
+      // the stockpile is empty, or if maxConsume is already reached.
+      consumeRare: (relicId) => {
+        const s = get();
+        const def = RARE_RESOURCE_MAP[relicId];
+        if (!def) {
+          get().addToLog(`Unknown relic: ${relicId}.`);
+          return;
+        }
+        if (!def.reliquary) {
+          get().addToLog(`${def.name} has no reliquary bonus — it's discovery-only.`);
+          return;
+        }
+        const stock = s.rareResources?.[relicId] || 0;
+        if (stock < 1) {
+          get().addToLog(`No ${def.name} to consume (need 1 stockpiled). Hunt or trade for one first.`);
+          return;
+        }
+        const consumed = s.reliquary?.[relicId] || 0;
+        if (consumed >= def.reliquary.maxConsume) {
+          get().addToLog(`${def.name} reliquary is maxed (${consumed}/${def.reliquary.maxConsume}). The bonus can't compound further.`);
+          return;
+        }
+        const rareResources = { ...s.rareResources, [relicId]: stock - 1 };
+        const reliquary = { ...s.reliquary, [relicId]: consumed + 1 };
+        set({ rareResources, reliquary });
+        const newRank = consumed + 1;
+        const totalBonus = newRank * def.reliquary.perRank;
+        get().addToLog(`${def.icon} ${def.name} consumed for the reliquary (rank ${newRank}/${def.reliquary.maxConsume}). ${def.reliquary.label} — now +${(totalBonus * 100).toFixed(0)}% ${(RESOURCE_MAP[def.reliquary.resource]?.name) || def.reliquary.resource}.`);
+      },
+
       // PART-2-LAYER-C — resolve a raid event. Called from the RaidModal
       // when the player picks Defend or Counter-Attack.
       //   "defend": auto-roll player's military vs rival strength. Win = no
@@ -8611,7 +8765,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 20,
+      version: 21,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9267,6 +9421,24 @@ export const useGameStore = create<GameStore>()(
             // No rivals array at all — generate 10 procedural cell-stage rivals.
             const usedNames = new Set<string>();
             persisted.rivals = generateRivals(10, "cell", usedNames, 1);
+          }
+        }
+
+        // V21-MIGRATION — F1 Reliquary + F2 Deep Hunt + F4 Trade Reputation.
+        //   reliquary:        {} (consumed-rare ranks — drives reliquaryBonus)
+        //   lastDeepHuntAt:   0  (gameTime of last Deep Hunt — drives cooldown)
+        //   tradeAgreements[].reputation: 0 (grown +1/shipment → tiered benefits)
+        // All three default to "no behavior change" on old saves: no consumed
+        // rares, no Deep Hunt history, Neutral reputation (no tier benefits yet).
+        if (version < 21) {
+          if (!persisted.reliquary) persisted.reliquary = {};
+          if (persisted.lastDeepHuntAt === undefined) persisted.lastDeepHuntAt = 0;
+          if (persisted.tradeAgreements) {
+            for (const pid of Object.keys(persisted.tradeAgreements)) {
+              const ag: any = persisted.tradeAgreements[pid];
+              if (!ag) continue;
+              if (ag.reputation === undefined) ag.reputation = 0;
+            }
           }
         }
 

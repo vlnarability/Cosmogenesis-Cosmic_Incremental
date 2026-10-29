@@ -6,6 +6,7 @@ import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { useActiveLayer, isLayerAtLeast } from "@/game/state/layerHelpers";
 import { computeResourceBreakdown, formatRate, type ResourceSource } from "@/game/state/resourceBreakdown";
 import { formatNumber, formatCompact, resourceColor, resourceIcon, resourceName } from "../shared/format";
+import { useTweenNumber } from "../shared/useTweenNumber";
 import { cn } from "@/lib/utils";
 import {
   HoverCard,
@@ -154,10 +155,10 @@ export function ResourceBar() {
                 IDEA-8 — Pantheon pill at L8+ when an Ascendant Avatar is
                 active, surfacing the active Divinity multiplier. */}
             {isLayerAtLeast("enlightenment", unlockedLayers) && (
-              <MetaPill icon="✨" label="Div" value={formatCompact(divinity)} color="text-violet-300" title="Divinity" />
+              <MetaPill icon="✨" label="Div" numericValue={divinity} color="text-violet-300" title="Divinity" />
             )}
             {isLayerAtLeast("apotheosis", unlockedLayers) && (
-              <MetaPill icon="👑" label="Faith" value={formatCompact(faith)} color="text-amber-300" title="Faith" />
+              <MetaPill icon="👑" label="Faith" numericValue={faith} color="text-amber-300" title="Faith" />
             )}
             {isLayerAtLeast("divinity", unlockedLayers) && pantheonDivMult > 0 && (
               <MetaPill
@@ -184,6 +185,10 @@ function ResourceChip({ id, value, capacity, breakdown }: {
   capacity: number;
   breakdown?: { net: number; sources: ResourceSource[] };
 }) {
+  // S1 NUMBER-TWEEN — chase the live value with an easeOutCubic RAF so the
+  // counter feels alive instead of snapping every tick. Snaps on huge jumps
+  // (prestige reset / save import) so there's no long countdown.
+  const tweenedValue = useTweenNumber(value, 450);
   const pct = capacity > 0 ? (value / capacity) * 100 : 0;
   const nearCap = pct > 90;
   const low = id === "happiness" ? value < 25 : false;
@@ -211,7 +216,7 @@ function ResourceChip({ id, value, capacity, breakdown }: {
             className="font-semibold tabular-nums text-xs"
             style={{ color: resourceColor(id) }}
           >
-            {formatNumber(value)}
+            {formatNumber(tweenedValue)}
           </span>
           <span className="text-[0.65rem] text-muted-foreground tabular-nums">
             /{formatNumber(capacity)}
@@ -333,23 +338,30 @@ function ResourceBreakdownTooltip({
 }
 
 // MetaPill — compact inline currency pill. Icon sits inline, no box wrapper.
+// S1 NUMBER-TWEEN: when `numericValue` is supplied (instead of a pre-formatted
+// `value` string), the pill tweens toward it and formats via `formatCompact`,
+// so Divinity / Faith / Pantheon counters breathe instead of snapping.
 function MetaPill({
   icon,
   label,
   value,
+  numericValue,
   color,
   title,
 }: {
   icon: string;
   label: string;
-  value: string;
+  value?: string;
+  numericValue?: number;
   color?: string;
   title?: string;
 }) {
+  const tweened = useTweenNumber(numericValue ?? 0, 600);
+  const display = numericValue !== undefined ? formatCompact(tweened) : value;
   return (
     <div className="res-chip shrink-0" title={title || label}>
       <span className="text-sm">{icon}</span>
-      <span className={cn("font-semibold text-xs tabular-nums", color)}>{value}</span>
+      <span className={cn("font-semibold text-xs tabular-nums", color)}>{display}</span>
       <span className="text-[0.6rem] text-muted-foreground uppercase">{label}</span>
     </div>
   );

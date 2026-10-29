@@ -61,6 +61,7 @@ export function SystemsTab() {
   // when the player has discovered that rare resource (count >= 1 in state).
   // Once discovered, the system appears even if it has no requiredTech.
   const rareResources = useGameStore((s) => s.rareResources || {});
+  const reliquary = useGameStore((s) => s.reliquary || {});
   const currentSystems = useMemo(
     () =>
       systemsForStage(stage.id).filter((sys) => {
@@ -68,11 +69,12 @@ export function SystemsTab() {
         if (!hasArchetypeInsight && sys.grantsAffinity && RARE_ARCHETYPES.has(sys.grantsAffinity.archetype)) return false;
         // Hide tech-locked + unowned systems to reduce clutter.
         if (sys.requiredTech && !technologies[sys.requiredTech] && (ownedSystems[sys.id] || 0) <= 0) return false;
-        // Rare-resource-unlocked systems: show only when the rare resource is discovered.
-        if (sys.requiresRareResource && (rareResources[sys.requiresRareResource] || 0) <= 0) return false;
+        // Rare-resource-unlocked systems: show only when discovered.
+        // F1 RELIQUARY: discovery = (stockpiled + consumed) >= 1.
+        if (sys.requiresRareResource && ((rareResources[sys.requiresRareResource] || 0) + (reliquary[sys.requiresRareResource] || 0)) <= 0) return false;
         return true;
       }),
-    [stage.id, lockedArchetype, hasArchetypeInsight, technologies, ownedSystems, rareResources]
+    [stage.id, lockedArchetype, hasArchetypeInsight, technologies, ownedSystems, rareResources, reliquary]
   );
   const costReduction = (upgrades["frugality"] || 0) * 0.04;
   const hasAutoBalancer = (upgrades["auto_balancer"] || 0) > 0;

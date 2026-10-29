@@ -58,8 +58,12 @@ function HuntCard() {
   const stageIndex = useGameStore((s) => s.stageIndex);
   const resources = useGameStore((s) => s.resources);
   const population = useGameStore((s) => s.population);
+  const gameTime = useGameStore((s) => s.time);
+  const lastDeepHuntAt = useGameStore((s) => s.lastDeepHuntAt || 0);
   const huntNow = useGameStore((s) => s.huntNow);
+  const huntDeepNow = useGameStore((s) => s.huntDeepNow);
   const [floats, setFloats] = useState<FloatNum[]>([]);
+  const [deepFloats, setDeepFloats] = useState<FloatNum[]>([]);
   const floatId = useRef(0);
 
   const stageTier = stageIndex + 1;
@@ -68,6 +72,20 @@ function HuntCard() {
   const mil = resources?.military_power ?? 0;
   const pop = population ?? 0;
   const canHunt = mil >= milCost && pop >= popCost;
+
+  // F2 DEEP HUNT — 3× cost, ~3× yield, 40% rare-drop chance, 120s cooldown.
+  const DEEP_COOLDOWN = 120;
+  const deepMilCost = 15 * stageTier;
+  const deepPopCost = 3 * Math.max(1, Math.floor(stageTier / 2));
+  const deepElapsed = Math.max(0, (gameTime || 0) - lastDeepHuntAt);
+  const deepRemaining = Math.max(0, DEEP_COOLDOWN - deepElapsed);
+  const deepOnCooldown = deepRemaining > 0;
+  const deepReady = !deepOnCooldown && mil >= deepMilCost && pop >= deepPopCost;
+  const deepFood = 45 * stageTier;
+  const deepMat = 24 * stageTier;
+  const deepOrg = 15 * stageTier;
+  // Cooldown progress 0..1 (1 = just used, 0 = ready).
+  const cdProgress = Math.min(1, deepElapsed / DEEP_COOLDOWN);
 
   // Estimated rewards (shown on the card so the player knows what they'll get).
   const foodGain = 15 * stageTier;
@@ -99,6 +117,28 @@ function HuntCard() {
     huntNow();
   };
 
+  const handleDeepHunt = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!deepReady) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const gains: [string, number][] = [
+      ["food", deepFood],
+      ["materials", deepMat],
+      ["organic_matter", deepOrg],
+    ];
+    const newFloats: FloatNum[] = gains.map(([r, v], i) => ({
+      id: floatId.current++,
+      text: `+${formatNumber(v)}${resourceIcon(r)}`,
+      color: resourceColor(r),
+      x: rect.width / 2 + (i - 1) * 30,
+      y: 10,
+    }));
+    setDeepFloats((prev) => [...prev, ...newFloats]);
+    setTimeout(() => {
+      setDeepFloats((prev) => prev.filter((f) => !newFloats.find((nf) => nf.id === f.id)));
+    }, 800);
+    huntDeepNow();
+  };
+
   return (
     <Card className="glass-panel">
       <CardHeader className="pb-2">
@@ -109,7 +149,8 @@ function HuntCard() {
           Spend military + population for an immediate burst of food, materials, and organic matter. 15% chance of a rare drop.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-2.5">
+        {/* Normal Hunt — always available when affordable */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap gap-2 text-xs">
             <span style={{ color: resourceColor("military_power") }}>
@@ -153,10 +194,77 @@ function HuntCard() {
           </Button>
         </div>
         {!canHunt && (
-          <p className="text-[0.65rem] text-muted-foreground/70 mt-2 italic">
+          <p className="text-[0.65rem] text-muted-foreground/70 italic">
             Need {milCost} military_power (have {Math.floor(mil)}) + {popCost} population (have {Math.floor(pop)}).
           </p>
         )}
+
+        {/* F2 DEEP HUNT — cooldown-gated premium expedition. 3× cost, ~3×
+            yield, 40% rare-drop chance (printed verbatim). The cooldown bar
+            depletes over 120 in-game seconds (pause/speed-safe via gameTime). */}
+        <div className="pt-2 border-t border-border/40">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-sm">🦁</span>
+            <span className="text-xs font-semibold text-violet-300">Deep Hunt</span>
+            <span className="text-[0.55rem] text-muted-foreground/70 italic">— a deliberate expedition</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span style={{ color: mil >= deepMilCost ? resourceColor("military_power") : "#ef4444" }}>
+                {resourceIcon("military_power")}{formatNumber(deepMilCost, 0)}
+              </span>
+              <span className={pop >= deepPopCost ? "text-muted-foreground" : "text-red-400"}>
+                + {deepPopCost} 👥 pop
+              </span>
+              <span className="text-muted-foreground/60">→</span>
+              <span style={{ color: resourceColor("food") }}>
+                +{formatNumber(deepFood, 0)}{resourceIcon("food")}
+              </span>
+              <span style={{ color: resourceColor("materials") }}>
+                +{formatNumber(deepMat, 0)}{resourceIcon("materials")}
+              </span>
+              <span style={{ color: resourceColor("organic_matter") }}>
+                +{formatNumber(deepOrg, 0)}{resourceIcon("organic_matter")}
+              </span>
+              <span className="text-amber-400 font-semibold">+ 40% rare drop</span>
+            </div>
+            <Button
+              size="sm"
+              disabled={!deepReady}
+              onClick={handleDeepHunt}
+              className={cn("ml-auto relative", deepReady && "bg-violet-500/20 border-violet-500/40 text-violet-100 hover:bg-violet-500/30")}
+              title={deepOnCooldown ? `Deep Hunt recovers in ${Math.ceil(deepRemaining)}s` : mil < deepMilCost ? `Need ${deepMilCost} military (have ${Math.floor(mil)})` : pop < deepPopCost ? `Need ${deepPopCost} population (have ${Math.floor(pop)})` : "Launch a Deep Hunt expedition"}
+            >
+              {deepFloats.map((f) => (
+                <span
+                  key={f.id}
+                  className="absolute font-bold text-sm pointer-events-none z-20"
+                  style={{
+                    left: `${f.x}px`,
+                    top: `${f.y}px`,
+                    color: f.color,
+                    animation: "floatUp 0.8s ease-out forwards",
+                  }}
+                >
+                  {f.text}
+                </span>
+              ))}
+              {deepOnCooldown ? `Recovering ${Math.ceil(deepRemaining)}s` : "Deep Hunt"}
+            </Button>
+          </div>
+          {/* Cooldown bar — depletes (fills toward empty) as it recovers. */}
+          {deepOnCooldown && (
+            <div className="h-1 rounded-full bg-muted/40 overflow-hidden mt-1.5" role="progressbar"
+              aria-valuemin={0} aria-valuemax={DEEP_COOLDOWN} aria-valuenow={Math.ceil(deepRemaining)}
+              aria-label={`Deep Hunt recovering, ${Math.ceil(deepRemaining)} seconds remaining`}
+            >
+              <div
+                className="h-full rounded-full bg-violet-500/70 transition-[width] duration-300"
+                style={{ width: `${(1 - cdProgress) * 100}%` }}
+              />
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -28,7 +28,7 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
-import { tradePartnersForStage, shipmentIntervalEff, shipmentAmount, caravanMultOf, type TradePartner } from "@/game/data/tradePartners";
+import { tradePartnersForStage, shipmentIntervalEff, shipmentAmount, caravanMultOf, caravanIconForStage, reputationTierOf, reputationBenefits, TRADE_PARTNER_MAP, type TradePartner } from "@/game/data/tradePartners";
 import {
   assimilationCost,
   MIL_REDUCTION_PER_COUNTER,
@@ -46,10 +46,11 @@ import { Badge } from "@/components/ui/badge";
 import {
   Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem, FileText,
   ChevronDown, ChevronRight, ShieldAlert, Lock, Timer, Crosshair, Scale, Package, Gift,
+  Sparkles, ScrollText,
 } from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export function WorldTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
@@ -64,6 +65,8 @@ export function WorldTab() {
   const assimilateRival = useGameStore((s) => s.assimilateRival);
   const resources = useGameStore((s) => s.resources || {});
   const rareResources = useGameStore((s) => s.rareResources || {});
+  const reliquary = useGameStore((s) => s.reliquary || {});
+  const consumeRare = useGameStore((s) => s.consumeRare);
   const treaties = useGameStore((s) => s.treaties || {});
   const signTreaty = useGameStore((s) => s.signTreaty);
   const breakTreaty = useGameStore((s) => s.breakTreaty);
@@ -95,6 +98,47 @@ export function WorldTab() {
     const rStageIdx = STAGES.findIndex((s) => s.id === r.stage);
     return rStageIdx >= 0 && rStageIdx <= stageIndex && !r.hidden;
   });
+
+  // F3 TREATIES OVERVIEW — derive a display row per active treaty with the
+  // partner name + the CONCRETE effect it's applying. Partners can be trade
+  // partners OR rivals; look both up. Effects mirror the tick wiring exactly
+  // (research_pact +10% science, trade_agreement ×1.2 cadence, etc.) so the
+  // card never disagrees with the simulation.
+  const treatyRows = useMemo(() => {
+    return Object.entries(treaties).map(([partnerId, t]) => {
+      const partner = TRADE_PARTNER_MAP[partnerId];
+      const rival = rivals.find((r) => r.id === partnerId);
+      const partnerName = partner?.name || rival?.name || partnerId;
+      const icon = partner?.icon || rival?.icon || "📜";
+      let typeLabel = "";
+      let effectDetail = "";
+      let colorClass = "text-muted-foreground";
+      switch (t.type) {
+        case "trade_agreement":
+          typeLabel = "Trade Agreement";
+          effectDetail = "×1.2 shipment cadence";
+          colorClass = "text-emerald-300";
+          break;
+        case "non_aggression":
+          typeLabel = "Non-Aggression";
+          effectDetail = "threat growth ×0.5";
+          colorClass = "text-cyan-300";
+          break;
+        case "mutual_defense":
+          typeLabel = "Mutual Defense";
+          effectDetail = "auto-win defends";
+          colorClass = "text-amber-300";
+          break;
+        case "research_pact":
+          typeLabel = "Research Pact";
+          effectDetail = "+10% science";
+          colorClass = "text-violet-300";
+          break;
+      }
+      return { partnerId, partnerName, icon, typeLabel, effectDetail, colorClass };
+    });
+  }, [treaties, rivals]);
+  const treatyCount = treatyRows.length;
 
   return (
     <div className="space-y-4">
@@ -130,6 +174,47 @@ export function WorldTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* F3 TREATIES OVERVIEW — a single card listing every active treaty
+          with its partner + the CONCRETE effect it's applying right now.
+          research_pact's +10% science is wired in the tick but was invisible;
+          this card makes diplomacy legible. Shown only when ≥1 treaty exists. */}
+      {treatyCount > 0 && (
+        <Card className="glass-panel">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ScrollText className="w-4 h-4 text-violet-300" />
+              Active Treaties
+              <Badge variant="outline" className="text-[0.55rem] text-violet-300 border-violet-500/30 ml-1">
+                {treatyCount}
+              </Badge>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Each treaty applies a concrete effect — hover a treaty for the relation cost it took to sign.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {treatyRows.map((row) => (
+                <div
+                  key={row.partnerId}
+                  className="flex items-center gap-2 p-1.5 rounded-md bg-muted/20 border border-border/40"
+                  title={`Signed with ${row.partnerName}. ${row.effectDetail}`}
+                >
+                  <span className="text-base shrink-0">{row.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[0.7rem] font-semibold truncate">{row.partnerName}</div>
+                    <div className={cn("text-[0.6rem] font-medium", row.colorClass)}>{row.typeLabel}</div>
+                  </div>
+                  <span className="text-[0.55rem] text-muted-foreground text-right leading-tight shrink-0 max-w-[45%]">
+                    {row.effectDetail}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Trade Partners */}
       {allPartners.length > 0 && (
@@ -194,6 +279,12 @@ export function WorldTab() {
                       treatyMult={treaties[p.id]?.type === "trade_agreement" ? 1.2 : 1}
                     />
                   )}
+                  {/* F4 REPUTATION — tier + progress to next threshold + active
+                      benefit chips. Reputation grows +1 per shipment delivered
+                      (wired in the tick); tiers unlock concrete benefits. */}
+                  {isEstablished && (
+                    <ReputationRow reputation={agreement?.reputation || 0} />
+                  )}
                   <div className="flex gap-1.5">
                     {!isEstablished ? (
                       <Button
@@ -244,12 +335,24 @@ export function WorldTab() {
               const bonusDesc = r.assimilationBonus
                 ? `+${(r.assimilationBonus.mult * 100).toFixed(0)}% ${r.assimilationBonus.resource}`
                 : "no longer a threat.";
+              // S3 THREAT-GLOW — tiered border glow so threat is readable at a
+              // glance without reading the bar. CALM/RISING/CRITICAL mirror the
+              // ThreatBar's non-color cues. Resolved rivals get the calm glow.
+              const tStage = threatStage(r.threat || 0);
+              const glowClass = !isActive
+                ? "rival-glow-calm"
+                : isCellStage
+                  ? ""
+                  : tStage.label === "CRITICAL" ? "rival-glow-critical"
+                  : tStage.label === "RISING"   ? "rival-glow-rising"
+                  : "rival-glow-calm";
               return (
                 <div
                   key={r.id}
                   className={cn(
                     "stat-card rounded-lg border p-3 transition-colors",
-                    isActive ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/40 bg-emerald-500/5"
+                    isActive ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/40 bg-emerald-500/5",
+                    glowClass
                   )}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -423,7 +526,12 @@ export function WorldTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {RARE_RESOURCES.map((rrDef) => {
               const count = rareResources[rrDef.id] || 0;
-              const discovered = count >= 1;
+              // F1 RELIQUARY — discovery = (stockpiled + consumed) >= 1, so
+              // consuming down to 0 keeps the card visible (you've still
+              // "found" it). The ×N badge shows the STOCKPILE only; consumed
+              // ranks are shown separately on the consume row.
+              const consumed = reliquary[rrDef.id] || 0;
+              const discovered = count + consumed >= 1;
               if (!discovered) {
                 // Undiscovered — hint at where to look (only sources the
                 // player can currently reach; later-stage partners hidden).
@@ -452,10 +560,27 @@ export function WorldTab() {
               const unlockStatusLabel = unlockUsed
                 ? (rrDef.unlocks.type === "system" ? "Built — bonus active" : "Researched — bonus active")
                 : (rrDef.unlocks.type === "system" ? "Ready to build" : "Ready to research");
+              // S4 SHIMMER + RARITY TIER — discovered cards get a slow shine
+              // sweep + a left accent bar whose color reflects how MANY
+              // sources can drop it (1 = common, 2 = uncommon, 3+ = rare).
+              // Cosmetic only; the unlock math is unchanged.
+              const srcCount = rrDef.sources.length;
+              const tierClass = srcCount >= 3 ? "rare-tier-rare" : srcCount === 2 ? "rare-tier-uncommon" : "rare-tier-common";
+              // F1 RELIQUARY — consume row. Only for rares with a reliquary
+              // bonus. Shows current rank / max + the per-rank bonus, with a
+              // Consume button (disabled at 0 stockpile or max rank).
+              const relDef = rrDef.reliquary;
+              const rank = consumed;
+              const atMax = relDef ? rank >= relDef.maxConsume : false;
+              const canConsume = relDef ? count >= 1 && !atMax : false;
+              const totalBonus = relDef ? rank * relDef.perRank : 0;
               return (
                 <div
                   key={rrDef.id}
-                  className="stat-card rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5"
+                  className={cn(
+                    "stat-card rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 rare-card-shimmer",
+                    tierClass
+                  )}
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-lg shrink-0">{rrDef.icon}</span>
@@ -480,6 +605,49 @@ export function WorldTab() {
                       )}>
                         {unlockStatusLabel}
                       </div>
+                      {/* F1 RELIQUARY consume row */}
+                      {relDef && (
+                        <div className="mt-1.5 pt-1.5 border-t border-amber-500/15 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[0.55rem] text-violet-300/90 font-semibold uppercase tracking-wide flex items-center gap-0.5">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              Reliquary
+                            </div>
+                            <div className="text-[0.6rem] text-muted-foreground leading-tight">
+                              {relDef.label}
+                              {rank > 0 && (
+                                <span className="text-violet-300 font-semibold"> · active +{(totalBonus * 100).toFixed(0)}%</span>
+                              )}
+                            </div>
+                            {/* Rank pips */}
+                            <div className="flex gap-0.5 mt-0.5">
+                              {Array.from({ length: relDef.maxConsume }).map((_, i) => (
+                                <span
+                                  key={i}
+                                  className={cn(
+                                    "w-1.5 h-1.5 rounded-full",
+                                    i < rank ? "bg-violet-400" : "bg-muted-foreground/25"
+                                  )}
+                                />
+                              ))}
+                              <span className="text-[0.5rem] text-muted-foreground ml-1 tabular-nums">{rank}/{relDef.maxConsume}</span>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={canConsume ? "default" : "outline"}
+                            className={cn(
+                              "h-6 px-2 text-[0.6rem] shrink-0",
+                              canConsume && "bg-violet-500/20 border-violet-500/40 text-violet-200 hover:bg-violet-500/30"
+                            )}
+                            disabled={!canConsume}
+                            onClick={() => consumeRare(rrDef.id)}
+                            title={atMax ? "Reliquary maxed — bonus can't compound further" : count < 1 ? "No stockpile to consume" : `Consume 1 ${rrDef.name} for ${relDef.label} (rank ${rank + 1}/${relDef.maxConsume})`}
+                          >
+                            {atMax ? "Maxed" : count < 1 ? "None" : "Consume"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -557,13 +725,24 @@ function ShipmentTracker({
           )}
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mb-1" role="progressbar"
+      <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mb-1 relative" role="progressbar"
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}
       >
         <div
           className="h-full rounded-full bg-emerald-500/80 transition-[width] duration-300"
           style={{ width: `${progress * 100}%` }}
         />
+        {/* S2 TRAVELING CARAVAN — a stage-themed transport icon rides the
+            right edge of the fill, gliding between tick updates via a CSS
+            transition on `left`. Makes "more caravans = busier routes"
+            visually obvious: the icon visibly advances toward each delivery. */}
+        <span
+          className="absolute -top-[3px] text-[0.7rem] leading-none pointer-events-none select-none caravan-bob"
+          style={{ left: `calc(${progress * 100}% - 6px)`, transition: "left 300ms linear" }}
+          aria-hidden
+        >
+          {caravanIconForStage(partner.stage)}
+        </span>
       </div>
       <div className="flex items-center justify-between text-[0.55rem]">
         <span className="text-muted-foreground/80">
@@ -599,6 +778,58 @@ function ShipmentTracker({
               +{Math.round(last.amount)} {resourceIcon(last.resource)} arrived
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// F4 ReputationRow — compact tier + progress readout for an active
+// trade route. Reputation grows +1 per shipment delivered (wired in
+// the tick); tiers unlock concrete benefits shown as chips. The mini
+// bar shows progress toward the NEXT threshold (capped at Exalted).
+// ============================================================
+function ReputationRow({ reputation }: { reputation: number }) {
+  const rep = Math.max(0, Math.min(100, reputation));
+  const tier = reputationTierOf(rep);
+  const benefits = reputationBenefits(rep);
+  // Progress toward the next threshold (0..1). Exalted = full bar.
+  const prevThreshold = rep >= 90 ? 90 : rep >= 70 ? 70 : rep >= 40 ? 40 : rep >= 20 ? 20 : 0;
+  const span = tier.nextThreshold ? tier.nextThreshold - prevThreshold : 1;
+  const within = tier.nextThreshold ? Math.min(1, Math.max(0, (rep - prevThreshold) / span)) : 1;
+  return (
+    <div className="mb-2" aria-label={`Reputation ${Math.round(rep)} of 100 — ${tier.label}`}>
+      <div className="flex items-center justify-between text-[0.6rem] mb-0.5">
+        <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          <Handshake className="w-3 h-3" />
+          Reputation
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className={cn("font-bold tabular-nums", tier.colorClass)}>{Math.round(rep)}/100</span>
+          <span className={cn("font-bold uppercase tracking-wide px-1 py-px rounded border", tier.colorClass, "border-current/30 bg-current/5")}>
+            {tier.label}
+          </span>
+        </span>
+      </div>
+      <div className="h-1 rounded-full bg-muted/40 overflow-hidden mb-1" role="progressbar"
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(rep)}
+      >
+        <div
+          className={cn("h-full rounded-full transition-all duration-500", tier.barClass)}
+          style={{ width: `${within * 100}%` }}
+        />
+      </div>
+      {benefits.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {benefits.map((b) => (
+            <span
+              key={b}
+              className="text-[0.5rem] px-1 py-px rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-medium"
+            >
+              {b}
+            </span>
+          ))}
         </div>
       )}
     </div>
