@@ -336,6 +336,21 @@ let _pendingWrite: { name: string; value: string } | null = null;
 let _writeTimer: ReturnType<typeof setTimeout> | null = null;
 let _quotaWarned = false;
 
+// ===========================================================================
+// OFFLINE-SIMULATION GUARD
+// Set while applyOfflineProgress() replays the production tick in 1-hour
+// chunks. The tick's AUTOMATION blocks (auto-evolver, auto-ascend) check
+// this flag and stay silent: firing them mid-simulation would cascade
+// multiple prestige resets (High review finding) and stack dozens of
+// setTimeout calls during a single offline catch-up. The player makes
+// prestige decisions when they return — offline progress is production
+// only. The flag is process-level (not persisted).
+// ===========================================================================
+let _simulatingOffline = false;
+export function isSimulatingOffline() {
+  return _simulatingOffline;
+}
+
 function _flushPendingWrite() {
   if (_writeTimer) {
     clearTimeout(_writeTimer);
@@ -1402,11 +1417,17 @@ export const useGameStore = create<GameStore>()(
             if (s.activeRaid) return r;
             // Threat growth: 0.5/sec base, reduced by player's military_power
             // relative to rival strength. LAYER-D: non_aggression pact halves growth.
+            // DESIGN-SPEC: rival interactions begin at creature stage — cell-stage
+            // rivals are foreshadowing only. The player has NO military at cell
+            // stage, so raid events there have zero counterplay. Cell rivals still
+            // grow population (visible in World tab) but never build threat.
             const mil = resources.military_power || 0;
             const milRatio = mil / (r.strength * 50); // 1.0 = sufficient military
             const treaty = s.treaties?.[r.id];
             const nonAggressionMult = (treaty?.type === "non_aggression") ? 0.5 : 1.0;
-            const threatGrowth = Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
+            const threatGrowth = r.stage === "cell"
+              ? 0
+              : Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
             // Population growth: uses the rival's own popGrowthMult (from the
             // procedural name: modifierMult × nounMult). Base rate 0.03/sec.
             const popGrowth = 0.03 * (r.popGrowthMult || 1) * realDt;
@@ -1662,9 +1683,10 @@ export const useGameStore = create<GameStore>()(
         // ---- Auto-Evolver: check every 2s, trigger evolve if threshold met ----
         // Player MUST purchase the auto_evolver shop upgrade (15 EP) to enable.
         // Threshold scales with level: 1.2, 1.4, 1.6, 1.8, 2.0, 2.2 (auto-evolves EARLIER as level rises).
+        // OFFLINE-GUARD: never fires during offline-progress simulation (see _simulatingOffline).
         const autoEvolveLvl = s.upgrades["auto_evolver"] || 0;
         const hasAutoEvolver = autoEvolveLvl > 0;
-        if (!trialAutobuyersBlocked && hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
+        if (!_simulatingOffline && !trialAutobuyersBlocked && hasAutoEvolver && newTime - (autoTimers.evolve || 0) >= 2) {
           autoTimers.evolve = newTime;
           const stage = STAGES[s.stageIndex];
           const next = nextStage(stage.id);
@@ -1716,8 +1738,12 @@ export const useGameStore = create<GameStore>()(
         // The player must own the `auto_ascend` PP upgrade. We defer the actual
         // triggerPrestige() call via setTimeout to avoid mutating state mid-tick
         // (same pattern as Auto-Evolver above). `STAGES.length - 1` is Galactic.
+        // OFFLINE-GUARD: never fires during offline-progress simulation —
+        // otherwise one offline catch-up at Galactic stage could cascade MULTIPLE
+        // prestige resets (each 3600s chunk queues its own setTimeout). One
+        // prestige per session-visibility window is the intended behavior.
         const hasAutoAscend = (s.upgrades["auto_ascend"] || 0) > 0;
-        if (hasAutoAscend && s.stageIndex >= STAGES.length - 1) {
+        if (!_simulatingOffline && hasAutoAscend && s.stageIndex >= STAGES.length - 1) {
           setTimeout(() => {
             get().addToLog("🌌 Auto-Ascend: triggering prestige.");
             get().triggerPrestige();
@@ -7624,17 +7650,29 @@ export const useGameStore = create<GameStore>()(
 
         // Apply tick at compressed speed (cap at 86400 per call to avoid huge loops)
         // We simulate in chunks of 3600s (1 hour) to stay performant
+        // OFFLINE-GUARD: _simulatingOffline suppresses tick automation
+        // (auto-evolver / auto-ascend) for the duration — see its declaration.
         const chunkSize = 3600;
         let remaining = appliedDt;
-        // Temporarily set speed to 1 and call tick with large dt
-        while (remaining > 0) {
-          const chunk = Math.min(chunkSize, remaining);
-          get().tick(chunk);
-          remaining -= chunk;
-          // Re-read state in case it changed
-          const cur = get();
-          if (cur.paused) break;
+        _simulatingOffline = true;
+        try {
+          // Temporarily set speed to 1 and call tick with large dt
+          while (remaining > 0) {
+            const chunk = Math.min(chunkSize, remaining);
+            get().tick(chunk);
+            remaining -= chunk;
+            // Re-read state in case it changed
+            const cur = get();
+            if (cur.paused) break;
+          }
+        } finally {
+          _simulatingOffline = false;
         }
+
+        // IDEMPOTENCY: mark the catch-up as consumed. Without this, a second
+        // applyOfflineProgress() call (e.g. a duplicated visibilitychange event)
+        // would re-simulate the SAME elapsed window and double-apply gains.
+        set({ lastSaved: Date.now() });
 
         const after = get();
         const resourcesGained: Record<string, number> = {};

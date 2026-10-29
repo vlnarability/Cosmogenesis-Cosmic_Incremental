@@ -15,25 +15,33 @@
 // Either choice clears activeRaid + resets the rival's threat to 0.
 
 import { useGameStore } from "@/game/state/store";
-import { RIVAL_MAP } from "@/game/data/rivals";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Swords, Shield, Crosshair, TrendingUp, TrendingDown } from "lucide-react";
+import { Swords, Shield, Crosshair, TrendingUp, TrendingDown, Users } from "lucide-react";
 import { formatNumber, resourceColor, resourceIcon } from "../shared/format";
 import { cn } from "@/lib/utils";
 
+// PROCEDURAL-RIVALS FIX — RIVAL_MAP (legacy) is EMPTY: procedural rivals live
+// in the store's `rivals` array. Look the raider up there so the modal shows
+// the real display name, icon, strength, and population instead of falling
+// back to the raw rival id + a hardcoded strength of 1.
 export function RaidModal() {
   const activeRaid = useGameStore((s) => s.activeRaid);
   const resolveRaid = useGameStore((s) => s.resolveRaid);
   const resources = useGameStore((s) => s.resources || {});
+  const rivals = useGameStore((s) => s.rivals || []);
 
   if (!activeRaid) return null;
 
-  const rivalDef = RIVAL_MAP[activeRaid];
+  const rivalDef = rivals.find((r) => r.id === activeRaid);
   const rivalName = rivalDef?.name || activeRaid;
   const rivalIcon = rivalDef?.icon || "⚔️";
-  const rivalDesc = rivalDef?.desc || "";
   const strength = rivalDef?.strength || 1;
+  const population = rivalDef?.population || 0;
+  // Flavor line built from the raider's live stats (procedural rivals have no static desc).
+  const rivalDesc = rivalDef
+    ? `Their spies have watched you for ages. ${Math.floor(population)} souls marshal beneath the banner of ${rivalName} — and their patience has run out.`
+    : "Their forces descend upon your borders.";
 
   const mil = resources.military_power || 0;
   const counterCost = Math.max(20, 40 * strength);
@@ -71,6 +79,16 @@ export function RaidModal() {
               {strength.toFixed(1)}
             </span>
           </div>
+          {rivalDef && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <Users className="w-3 h-3" /> Their population:
+              </span>
+              <span className="font-semibold tabular-nums text-muted-foreground">
+                {formatNumber(population, 0)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between text-sm pt-1 border-t border-border/40">
             <span className="text-muted-foreground">Defend win chance:</span>
             <span className={cn(

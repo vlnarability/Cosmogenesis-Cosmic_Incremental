@@ -43,11 +43,23 @@ export function useGameLoop() {
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - lastFrame.current) / 1000);
       lastFrame.current = now;
-      tickRef.current(dt);
+      // RESILIENCE: a single runtime error inside tick() must never kill the
+      // RAF loop — otherwise the game freezes silently with no feedback.
+      // Catch, log loudly, and keep ticking so the player can keep playing
+      // (and their next save captures the state).
+      try {
+        tickRef.current(dt);
+      } catch (err) {
+        console.error("[Cosmogenesis] tick error (loop continues):", err);
+      }
       // Auto-save every 30s
       if (now - lastSave.current > 30000) {
         lastSave.current = now;
-        saveRef.current();
+        try {
+          saveRef.current();
+        } catch (err) {
+          console.error("[Cosmogenesis] auto-save error:", err);
+        }
       }
       raf = requestAnimationFrame(loop);
     };

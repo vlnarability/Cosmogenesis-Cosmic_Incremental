@@ -183,6 +183,16 @@ export function GameShell() {
   const stageIndex = useGameStore((s) => s.stageIndex);
   const stage = STAGES[stageIndex];
 
+  // QA-HOOK — dev-only: expose the zustand store on `window.__COSMO` so
+  // agent-browser / console QA can inspect and drive state (e.g. forcing a
+  // raid: `__COSMO.setState({ activeRaid: __COSMO.getState().rivals[0].id })`).
+  // Stripped from production builds by the NODE_ENV check.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      (window as unknown as Record<string, unknown>).__COSMO = useGameStore;
+    }
+  }, []);
+
   // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked) the base game is
   // fully abstracted into the Divine Engine panel; we swap out StagePanel.
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);

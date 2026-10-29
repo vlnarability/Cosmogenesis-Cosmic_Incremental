@@ -172,6 +172,21 @@ export function generateRivals(
   stageTier: number
 ): GeneratedRival[] {
   const rivals: GeneratedRival[] = [];
+  // ICON-BAG: pick icons from a shuffled copy of RIVAL_ICONS so every rival
+  // in a batch gets a UNIQUE icon (a raw random pick drew duplicates —
+  // e.g. three 🐗 rivals on one stage's World tab). Refill if a batch
+  // somehow needs more icons than the list holds.
+  let iconBag: string[] = [];
+  const takeIcon = (): string => {
+    if (iconBag.length === 0) {
+      iconBag = [...RIVAL_ICONS];
+      for (let i = iconBag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [iconBag[i], iconBag[j]] = [iconBag[j], iconBag[i]];
+      }
+    }
+    return iconBag.pop() as string;
+  };
   for (let i = 0; i < count; i++) {
     const parts = generateRivalName(usedNames);
     const id = generateRivalId(parts.name);
@@ -189,7 +204,7 @@ export function generateRivals(
       strength,
       population,
       hidden: false,
-      icon: RIVAL_ICONS[Math.floor(Math.random() * RIVAL_ICONS.length)],
+      icon: takeIcon(),
       counteredRaids: 0,
       successfulTrades: 0,
       assimilationBonus: {
