@@ -8,14 +8,24 @@ import { Trophy, X } from "lucide-react";
 
 // AUTO-DISMISS: the toast closes itself after 12s so unattended queues can't
 // pile up on screen. Hovering pauses the countdown (player is reading it);
-// the progress bar shows the remaining time. Manual dismiss still works and,
-// on hover-resume, the timer continues from where it paused.
+// the progress bar shows the remaining time.
+//
+// TOAST-QUEUE: with multiple achievements queued, each one plays for its own
+// 12s window, then ADVANCES to the next (front-of-queue pop) — the queue is
+// never nuked wholesale by a timeout. A "+N QUEUED" badge in the header
+// counts the rest. Buttons:
+//   X       → clear the ENTIRE queue (dismissAchievementToast)
+//   Dismiss → advance to the next queued achievement
+//   View All→ clear queue + jump to the achievements tab
+// All dismissals animate out (slideOutRight) before applying.
 
 const AUTO_DISMISS_MS = 12_000;
+const EXIT_MS = 220;
 
 export function AchievementToast() {
   const newAchievements = useGameStore((s) => s.newAchievements || []);
   const dismissAchievementToast = useGameStore((s) => s.dismissAchievementToast);
+  const advanceAchievementToast = useGameStore((s) => s.advanceAchievementToast);
   const setTab = useGameStore((s) => s.setTab);
   const activeStoryPopup = useGameStore((s) => s.activeStoryPopup);
   const showEvolve = useGameStore((s) => s.showEvolve);
@@ -23,12 +33,14 @@ export function AchievementToast() {
 
   const [remaining, setRemaining] = useState(AUTO_DISMISS_MS);
   const [hovered, setHovered] = useState(false);
+  const [closing, setClosing] = useState(false);
   const hoveredRef = useRef(false);
   const lastTsRef = useRef<number | null>(null);
-  // Deadline model: when this toast's queue-front changes we (re)arm a
-  // absolute deadline. Hovering shifts the deadline forward (freezes the
-  // countdown). All state updates happen inside the RAF callback (async) —
-  // effects below only touch refs, avoiding cascading-render lint errors.
+  // Absolute deadline for the CURRENT queue front. The countdown effect
+  // (below) re-arms it every time firstId changes — one loop lifetime per
+  // queued achievement, so a popped front always gets a fresh countdown
+  // (the previous implementation kept one long-lived RAF loop that died
+  // after the first expiry and left later toasts frozen at 0%).
   const deadlineRef = useRef<number>(0);
 
   // Don't show toast when a story popup or modal is open (avoids overlap).
@@ -42,18 +54,22 @@ export function AchievementToast() {
   const firstId = newAchievements[0];
   const ach = firstId ? ACHIEVEMENT_MAP[firstId] : undefined;
 
-  const hasMore = newAchievements.length > 1;
+  const queuedCount = Math.max(0, newAchievements.length - 1);
 
-  // Re-arm the countdown whenever the front-of-queue achievement changes.
-  useEffect(() => {
-    deadlineRef.current = performance.now() + AUTO_DISMISS_MS;
-  }, [firstId]);
-
-  // Countdown loop — freezes while hovered. Only runs while visible.
+  // Countdown loop — one lifetime PER queue front (firstId in deps).
+  // When the front expires, advanceAchievementToast() pops it; firstId
+  // changes; this effect cleans up and starts a fresh 12s countdown for
+  // the next achievement. Hovering freezes the countdown by pushing the
+  // deadline forward. All setState happens inside the RAF callback.
   useEffect(() => {
     if (hidden) return;
-    let raf: number;
+    // Fresh deadline for this queue front.
+    deadlineRef.current = performance.now() + AUTO_DISMISS_MS;
+    lastTsRef.current = null;
+    let raf = 0;
+    let cancelled = false;
     const step = (now: number) => {
+      if (cancelled) return;
       if (lastTsRef.current != null && hoveredRef.current) {
         // Hovering: push the deadline out by exactly the time spent paused,
         // so the countdown resumes where it left off.
@@ -63,15 +79,31 @@ export function AchievementToast() {
       const rem = Math.max(0, deadlineRef.current - now);
       setRemaining(rem);
       if (rem <= 0) {
-        dismissAchievementToast();
+        // Front expired — pop it. firstId changes → effect restarts with a
+        // fresh countdown for the next achievement (or hidden=true cleans
+        // up entirely when the queue empties).
+        advanceAchievementToast();
         return;
       }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-    // dismissAchievementToast is a stable store action.
-  }, [dismissAchievementToast, hidden]);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [advanceAchievementToast, hidden, firstId]);
+
+  // Animated exit: play slideOutRight, THEN apply the store mutation.
+  // While `closing` is true the countdown keeps whatever value it had.
+  const exitThen = (fn: () => void) => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(() => {
+      fn();
+      setClosing(false);
+    }, EXIT_MS);
+  };
 
   if (hidden || !ach) return null;
 
@@ -79,7 +111,12 @@ export function AchievementToast() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 max-w-sm animate-[slideUp_0.3s_ease]"
+      key={firstId}
+      className={
+        closing
+          ? "fixed bottom-4 right-4 z-50 max-w-sm animate-[slideOutRight_0.22s_ease_forwards]"
+          : "fixed bottom-4 right-4 z-50 max-w-sm animate-[slideUp_0.3s_ease]"
+      }
       onMouseEnter={() => { hoveredRef.current = true; setHovered(true); }}
       onMouseLeave={() => { hoveredRef.current = false; lastTsRef.current = null; setHovered(false); }}
     >
@@ -90,9 +127,20 @@ export function AchievementToast() {
           <span className="text-[0.65rem] uppercase tracking-[0.2em] font-bold text-primary">
             Achievement Unlocked
           </span>
+          {/* +N QUEUED badge — counts the achievements still waiting behind
+              this one. Calmer than a pile of separate toasts. */}
+          {queuedCount > 0 && (
+            <span
+              className="text-[0.55rem] px-1.5 py-0.5 rounded-full border border-primary/40 bg-primary/10 text-primary font-bold tabular-nums"
+              aria-label={`${queuedCount} more achievements queued`}
+            >
+              +{queuedCount} QUEUED
+            </span>
+          )}
           <button
-            onClick={dismissAchievementToast}
-            aria-label="Dismiss achievement toast"
+            onClick={() => exitThen(dismissAchievementToast)}
+            aria-label="Dismiss all achievement toasts"
+            title={queuedCount > 0 ? "Clear all queued achievements" : "Dismiss"}
             className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -110,11 +158,6 @@ export function AchievementToast() {
               <span className="text-[0.6rem] px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-400 font-semibold">
                 +{(ach.bonus.value * 100).toFixed(1)}% {ach.bonus.type}
               </span>
-              {hasMore && (
-                <span className="text-[0.6rem] text-muted-foreground">
-                  +{newAchievements.length - 1} more
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -124,19 +167,20 @@ export function AchievementToast() {
             size="sm"
             variant="outline"
             className="h-7 text-xs flex-1"
-            onClick={() => {
+            onClick={() => exitThen(() => {
               setTab("achievements");
               dismissAchievementToast();
-            }}
+            })}
           >
             View All
           </Button>
           <Button
             size="sm"
             className="h-7 text-xs flex-1"
-            onClick={dismissAchievementToast}
+            onClick={() => exitThen(advanceAchievementToast)}
+            title={queuedCount > 0 ? "Show the next queued achievement" : "Dismiss"}
           >
-            Dismiss
+            {queuedCount > 0 ? "Next" : "Dismiss"}
           </Button>
         </div>
         {/* Auto-dismiss countdown — pauses on hover */}

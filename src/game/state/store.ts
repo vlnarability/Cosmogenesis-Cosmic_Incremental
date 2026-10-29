@@ -763,6 +763,8 @@ function initialMetaState(): Partial<GameState> {
     ftlChoice: null as string | null,          // set when FTL path chosen (warp_theory|hyperlanes|jump_theory)
     ascensionChoice: null as string | null,    // set when ascension path chosen
     activeRaid: null as string | null,         // rivalId when a raid event is active
+    // RAID-RECAP — transient (excluded from persistence via partialize).
+    lastRaidOutcome: null as GameState["lastRaidOutcome"],
     // FIX-UI-TABS — Log/Archive/Codex/Awards moved into a shared info
     // modal accessible from the gear dropdown (no longer on the main tab bar).
     activeInfoModal: null,
@@ -7633,6 +7635,15 @@ export const useGameStore = create<GameStore>()(
         set({ newAchievements: [] });
       },
 
+      // TOAST-QUEUE — pop the front achievement only. Used by the toast's
+      // Dismiss button + the 12s auto-dismiss so a pileup plays through
+      // one achievement at a time (with the +N QUEUED badge counting the
+      // rest) instead of discarding the whole queue.
+      advanceAchievementToast: () => {
+        const s = get();
+        set({ newAchievements: (s.newAchievements || []).slice(1) });
+      },
+
       applyOfflineProgress: () => {
         const s = get();
         if (!s.lastSaved) return null;
@@ -8259,7 +8270,23 @@ export const useGameStore = create<GameStore>()(
             rival.counteredRaids = (rival.counteredRaids || 0) + 1;
             rival.relation = Math.max(-100, (rival.relation || 0) - 5);
             rivals[idx] = rival;
-            set({ resources, rivals, activeRaid: null });
+            set({
+              resources,
+              rivals,
+              activeRaid: null,
+              // RAID-RECAP — banner shows the guaranteed win + loot.
+              lastRaidOutcome: {
+                rivalName,
+                rivalIcon: rival.icon || "⚔️",
+                action: "counter",
+                won: true,
+                winChance: 1,
+                roll: 100,
+                loot: { gold: goldGain, culture: cultureGain },
+                counteredRaids: rival.counteredRaids,
+                at: Date.now(),
+              },
+            });
             get().addToLog(`Counter-attack on ${rivalName}! Raid repelled +${goldGain} gold, +${cultureGain} culture. (Counter-raids: ${rival.counteredRaids} — assimilation military cost reduced by ${rival.counteredRaids * MIL_REDUCTION_PER_COUNTER}.)`);
             return;
           }
@@ -8270,28 +8297,66 @@ export const useGameStore = create<GameStore>()(
         // LAYER-D: mutual_defense treaty = guaranteed win (ally joins defense).
         const hasMutualDefense = s.treaties?.[rivalId]?.type === "mutual_defense";
         const winChance = hasMutualDefense ? 1.0 : Math.min(0.95, mil / (rival.strength * 50));
-        const won = hasMutualDefense || Math.random() < winChance;
+        // RAID-RECAP — the roll, shown as a percentage so the player can see
+        // WHY they lost ("34% chance, rolled 71 — needed ≤34"). Enough to
+        // explain the result without dumping every modifier.
+        const roll = Math.floor(Math.random() * 100) + 1;
+        const won = hasMutualDefense || roll <= winChance * 100;
         if (won) {
           // Win: no loss, small relation bonus (respect).
           rival.relation = Math.min(100, (rival.relation || 0) + 5);
           rivals[idx] = rival;
-          set({ rivals, activeRaid: null });
-          get().addToLog(`Defense against ${rivalName} successful! No losses. Relation +5.`);
+          set({
+            rivals,
+            activeRaid: null,
+            lastRaidOutcome: {
+              rivalName,
+              rivalIcon: rival.icon || "⚔️",
+              action: "defend",
+              won: true,
+              winChance,
+              roll,
+              at: Date.now(),
+            },
+          });
+          get().addToLog(`Defense against ${rivalName} successful! (Win chance ${(winChance * 100).toFixed(0)}%, rolled ${roll}.) No losses. Relation +5.`);
         } else {
           // Lose: 10% resource loss + relation hit.
+          const resourceLoss: Record<string, number> = {};
           for (const r of RESOURCES) {
             if (r.category !== "primary") continue;
             const cur = resources[r.id] || 0;
             if (cur > 0) {
               const loss = cur * 0.10;
               resources[r.id] = Math.max(0, cur - loss);
+              if (loss >= 0.1) resourceLoss[r.id] = loss;
             }
           }
           rival.relation = Math.max(-100, (rival.relation || 0) - 10);
           rivals[idx] = rival;
-          set({ resources, rivals, activeRaid: null });
-          get().addToLog(`Defense against ${rivalName} failed! 10% resources lost. Build more military or counter-attack next time.`);
+          set({
+            resources,
+            rivals,
+            activeRaid: null,
+            lastRaidOutcome: {
+              rivalName,
+              rivalIcon: rival.icon || "⚔️",
+              action: "defend",
+              won: false,
+              winChance,
+              roll,
+              resourceLoss,
+              at: Date.now(),
+            },
+          });
+          get().addToLog(`Defense against ${rivalName} failed! (Win chance ${(winChance * 100).toFixed(0)}%, rolled ${roll}.) 10% resources lost. Build more military or counter-attack next time.`);
         }
+      },
+
+      // RAID-RECAP — clear the recap banner. Called by the banner's click
+      // handler and its auto-timeout.
+      dismissRaidRecap: () => {
+        set({ lastRaidOutcome: null });
       },
 
       // PART-2-LAYER-D — sign a treaty with an NPC (trade partner or rival).
@@ -8479,6 +8544,7 @@ export const useGameStore = create<GameStore>()(
           showShop, showEvolve, showSettings,
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           activeRaid, activeStoryPopup, activeInfoModal,
+          lastRaidOutcome,
           // These are runtime-only and should never persist:
           _lastAchCheck, pendingLogs,
           ...persisted

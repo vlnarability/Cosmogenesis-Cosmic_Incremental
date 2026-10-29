@@ -351,6 +351,23 @@ export interface GameState {
   // The RaidModal opens; player chooses Defend (auto-roll) or Counter-Attack
   // (spend military for guaranteed win + loot). Null when no raid is active.
   activeRaid: string | null;
+  // RAID-RECAP — outcome summary of the most recently resolved raid, shown
+  // by the RaidRecapBanner for a few seconds after resolution. Transient
+  // (excluded from persistence — an old banner should never re-appear on
+  // reload). Carries just enough numbers to explain the result (win chance,
+  // roll, losses/loot) without full dice math.
+  lastRaidOutcome: {
+    rivalName: string;
+    rivalIcon: string;
+    action: "defend" | "counter";
+    won: boolean;
+    winChance: number;          // 0-1, as shown in the modal
+    roll: number;               // 0-100 die roll (defend only; 100 for counter)
+    resourceLoss?: Record<string, number>; // per-resource 10% losses (defend loss)
+    loot?: { gold: number; culture: number }; // counter-attack loot
+    counteredRaids?: number;    // rival's new counter-raid count (counter only)
+    at: number;                 // Date.now() when resolved
+  } | null;
   log: string[];
 
   // Meta state
@@ -904,6 +921,11 @@ export interface GameStore extends GameState {
   ) => void;
   dismissStory: (id: string) => void;
   dismissAchievementToast: () => void;
+  // TOAST-QUEUE — pops only the FRONT achievement (shows the next queued
+  // one). dismissAchievementToast clears the whole queue (X button /
+  // View All); the Dismiss button + 12s auto-dismiss advance instead, so a
+  // pileup plays through one at a time instead of nuking the queue.
+  advanceAchievementToast: () => void;
   applyOfflineProgress: () => { elapsed: number; resourcesGained: Record<string, number>; applied: boolean } | null;
   hardReset: () => void;
   saveGame: () => void;
@@ -937,6 +959,8 @@ export interface GameStore extends GameState {
   // may lose resources if military is too low) or "counter" (spend military
   // for guaranteed win + loot). Clears activeRaid.
   resolveRaid: (action: "defend" | "counter") => void;
+  // RAID-RECAP — clear the recap banner (click / auto-timeout).
+  dismissRaidRecap: () => void;
   // PART-2-LAYER-D — sign/break treaties with NPCs.
   signTreaty: (partnerId: string, type: "trade_agreement" | "non_aggression" | "mutual_defense" | "research_pact") => void;
   breakTreaty: (partnerId: string) => void;

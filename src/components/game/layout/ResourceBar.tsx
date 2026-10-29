@@ -184,6 +184,11 @@ function ResourceChip({ id, value, capacity, breakdown }: {
   const hasSources = !!(breakdown && breakdown.sources.length > 0);
   const netPositive = net > 0.005;
   const netNegative = net < -0.005;
+  // HUD-DE-NOISE: idle resources (|net| < 0.005) hide their rate entirely —
+  // a wall of "0/s" chips is persistent noise. The rate span only renders
+  // when something is actually flowing. (The tooltip still explains
+  // per-system contributions on hover.)
+  const showRate = netPositive || netNegative;
   return (
     <HoverCard openDelay={200} closeDelay={150}>
       <HoverCardTrigger asChild>
@@ -204,19 +209,22 @@ function ResourceChip({ id, value, capacity, breakdown }: {
           <span className="text-[0.65rem] text-muted-foreground tabular-nums">
             /{formatNumber(capacity)}
           </span>
-          {/* Net rate/sec — colored green/red/neutral. Always rendered
-              (even at 0) so the chip height stays stable across resources. */}
-          <span
-            className={cn(
-              "ml-1 text-[0.6rem] tabular-nums font-medium",
-              netPositive && "text-emerald-400",
-              netNegative && "text-red-400",
-              !netPositive && !netNegative && "text-muted-foreground/70"
-            )}
-            title={hasSources ? "Hover for per-system breakdown" : "No systems affect this resource yet"}
-          >
-            {formatRate(net)}
-          </span>
+          {/* Net rate/sec — only rendered when something is actually
+              flowing (non-zero). Idle chips drop the rate entirely,
+              reserving attention for resources that matter. */}
+          {showRate && (
+            <span
+              className={cn(
+                "ml-1 text-[0.6rem] tabular-nums font-medium",
+                netPositive && "text-emerald-400",
+                netNegative && "text-red-400",
+                !netPositive && !netNegative && "text-muted-foreground/70"
+              )}
+              title={hasSources ? "Hover for per-system breakdown" : "No systems affect this resource yet"}
+            >
+              {formatRate(net)}
+            </span>
+          )}
           {/* Mini progress bar */}
           <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b overflow-hidden bg-muted/40">
             <div

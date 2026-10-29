@@ -4,6 +4,7 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { useActiveLayer, layerName } from "@/game/state/layerHelpers";
 import { useActiveDimension } from "@/game/state/useDimension";
+import { estimateTimeToRaid, counterAttackCost, formatTimeToRaid } from "@/game/data/rivals";
 import { formatNumber, formatCompact, formatTime } from "../shared/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,9 +45,10 @@ import {
   ScrollText,
   Trophy,
   BookOpen,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
 
 // ============================================================
 // Header — "Command Bar" redesign (P2)
@@ -120,6 +122,32 @@ export function Header() {
   const { activeLayerId, activeLayerRank, isAtLeast } = useActiveLayer();
   const isL2Plus = isAtLeast("enlightenment");
   const isL4Plus = isAtLeast("genesis");
+
+  // === MILITARY READINESS BADGE (conditional — only when action is needed) ===
+  // Per user feedback: a global always-on warning becomes invisible. So the
+  // badge ONLY appears when ALL of:
+  //   1. a rival raid is imminent (< 90s at current growth),
+  //   2. the player CAN'T counter-attack it yet (military < cost),
+  //   3. the base game is visible (L1 only).
+  // Clicking it jumps to the World tab.
+  const rivals = useGameStore((s) => s.rivals);
+  const military = useGameStore((s) => s.resources?.military_power || 0);
+  const treaties = useGameStore((s) => s.treaties);
+  const raidWarnings = useMemo(() => {
+    if (isL2Plus) return [] as Array<{ name: string; ttr: number }>;
+    return (rivals || [])
+      .filter((r) => {
+        if (r.state !== "active" || r.hidden || r.stage === "cell") return false;
+        const ttr = estimateTimeToRaid(r, military, treaties?.[r.id]?.type);
+        return isFinite(ttr) && ttr < 90 && military < counterAttackCost(r.strength || 1);
+      })
+      .map((r) => ({
+        name: r.name,
+        ttr: estimateTimeToRaid(r, military, treaties?.[r.id]?.type),
+      }))
+      .sort((a, b) => a.ttr - b.ttr);
+  }, [rivals, military, treaties, isL2Plus]);
+  const topRaidWarning = raidWarnings[0];
 
   // Layer definitions — these are the items shown in the Layers dropdown.
   // At L1–L3 the next 1–2 unlocked layers also appear as standalone buttons
@@ -263,8 +291,29 @@ export function Header() {
           )}
         </div>
 
-        {/* ===== RIGHT ZONE — Pause + Speed + Layers dropdown (desktop) + Gear menu ===== */}
+        {/* ===== RIGHT ZONE — Raid warning (conditional) + Pause + Speed + Layers dropdown (desktop) + Gear menu ===== */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* MILITARY READINESS — only when a raid is imminent AND the player
+              can't counter it yet. Click → World tab. Hidden at L2+ (base
+              game runs in the background there). */}
+          {topRaidWarning && (
+            <button
+              onClick={() => setTab("world")}
+              className="flex items-center gap-1.5 h-8 px-2 rounded-md border border-rose-500/50 bg-rose-500/10 hover:bg-rose-500/20 transition-colors threat-imminent-pulse"
+              title={`${topRaidWarning.name} raids in ~${formatTimeToRaid(topRaidWarning.ttr)} and your military can't counter yet. Click for details.`}
+              aria-label={`Raid imminent: ${topRaidWarning.name} in ${formatTimeToRaid(topRaidWarning.ttr)}. Open World tab.`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="text-[0.65rem] font-bold text-rose-400 tabular-nums whitespace-nowrap">
+                RAID {formatTimeToRaid(topRaidWarning.ttr)}
+              </span>
+              {raidWarnings.length > 1 && (
+                <span className="text-[0.6rem] text-rose-400/70 tabular-nums">
+                  +{raidWarnings.length - 1}
+                </span>
+              )}
+            </button>
+          )}
           {/* Pause toggle */}
           <Button
             variant="ghost"

@@ -93,11 +93,15 @@ export function computeResourceBreakdown(s: GameState): ResourceBreakdown {
         idleByCap,
       });
     }
-    // Upkeep — disabled systems consume no upkeep (matches real tick).
+    // Upkeep — matches the real tick's cap-aware idling: a system whose
+    // outputs are ALL at cap consumes NO upkeep either (the tick `continue`s
+    // past the whole system). Previously the breakdown kept counting upkeep
+    // for cap-idled systems, showing a misleading NEGATIVE rate while the
+    // resource sat safely at cap. Disabled systems also consume no upkeep.
     if (!disabled && sys.upkeep) {
       for (const [r, v] of Object.entries(sys.upkeep)) {
         const entry = ensure(r);
-        const amount = -((v as number) * count);
+        const amount = idleByCap ? 0 : -((v as number) * count);
         entry.net += amount;
         entry.sources.push({
           systemId: sysId,
@@ -106,7 +110,7 @@ export function computeResourceBreakdown(s: GameState): ResourceBreakdown {
           amount,
           kind: "upkeep",
           disabled,
-          idleByCap: false,
+          idleByCap,
         });
       }
     }

@@ -228,6 +228,64 @@ export const MIL_REDUCTION_PER_COUNTER = 30;
 export const CUL_REDUCTION_PER_TRADE = 25;
 export const MIN_ASSIMILATION_COST = 50;
 
+// ============================================================
+// THREAT INTELLIGENCE HELPERS (UI-facing)
+// Mirrors the tick's threat-growth formula so the UI and the
+// simulation never disagree. Used by the World tab threat bar,
+// the Rival Intelligence section, and the Header readiness badge.
+// ============================================================
+
+/** Counter-attack cost for a rival (mirrors resolveRaid's formula). */
+export function counterAttackCost(rivalStrength: number): number {
+  return Math.max(20, 40 * rivalStrength);
+}
+
+/**
+ * Estimated seconds until this rival's threat hits 100% (a raid fires).
+ * Returns Infinity when no threat accumulates (cell stage / pact-frozen).
+ * Mirrors the tick: growth = max(0.1, 0.5 − milRatio·0.4) × NAP-mult.
+ */
+export function estimateTimeToRaid(
+  rival: { threat: number; strength: number; stage: string; state: string; hidden?: boolean },
+  playerMilitary: number,
+  treatyType?: string
+): number {
+  if (rival.stage === "cell") return Infinity; // design spec: no raids at cell
+  if (rival.state !== "active" || rival.hidden) return Infinity;
+  const milRatio = playerMilitary / ((rival.strength || 1) * 50);
+  const napMult = treatyType === "non_aggression" ? 0.5 : 1;
+  const growth = Math.max(0.1, 0.5 - milRatio * 0.4) * napMult;
+  if (growth <= 0) return Infinity;
+  return Math.max(0, (100 - (rival.threat || 0)) / growth);
+}
+
+/** Human label for a time-to-raid estimate ("~42s", "~3m", "—"). */
+export function formatTimeToRaid(sec: number): string {
+  if (!isFinite(sec)) return "—";
+  if (sec < 90) return `~${Math.max(1, Math.round(sec))}s`;
+  return `~${Math.max(1, Math.round(sec / 60))}m`;
+}
+
+/** Accessibility-friendly threat stage (color is applied separately). */
+export function threatStage(threat: number): {
+  label: string;        // CALM / RISING / CRITICAL — non-color textual cue
+  colorClass: string;   // tailwind text color
+  barClass: string;     // tailwind bg color for the bar fill
+} {
+  if (threat >= 75) return { label: "CRITICAL", colorClass: "text-rose-400", barClass: "bg-rose-500" };
+  if (threat >= 40) return { label: "RISING", colorClass: "text-amber-400", barClass: "bg-amber-500" };
+  return { label: "CALM", colorClass: "text-emerald-400", barClass: "bg-emerald-500" };
+}
+
+/** Plain-language relation label for the diplomacy readout. */
+export function relationLabel(relation: number): string {
+  if (relation >= 75) return "Allied-ready";
+  if (relation >= 25) return "Cordial";
+  if (relation > -25) return "Neutral";
+  if (relation > -50) return "Wary";
+  return "Hostile";
+}
+
 export function assimilationCost(
   rivalStrength: number,
   counteredRaids: number,

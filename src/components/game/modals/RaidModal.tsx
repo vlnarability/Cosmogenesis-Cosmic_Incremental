@@ -20,6 +20,15 @@ import { Button } from "@/components/ui/button";
 import { Swords, Shield, Crosshair, TrendingUp, TrendingDown, Users } from "lucide-react";
 import { formatNumber, resourceColor, resourceIcon } from "../shared/format";
 import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+
+// RAID-FX COOLDOWN — raids are urgent but must not become vibration noise:
+// the screen-edge vignette + card shake only play if no raid FX fired in
+// the last 60s (per user feedback: avoid the shake if raids happen often).
+// Cell-stage raids no longer exist (threat-gated), so this only matters
+// for genuine late-stage raid clusters.
+let _lastRaidFxAt = 0;
+const RAID_FX_COOLDOWN_MS = 60_000;
 
 // PROCEDURAL-RIVALS FIX — RIVAL_MAP (legacy) is EMPTY: procedural rivals live
 // in the store's `rivals` array. Look the raider up there so the modal shows
@@ -49,8 +58,14 @@ export function RaidModal() {
   const canCounter = mil >= counterCost;
 
   return (
-    <Dialog open={!!activeRaid} onOpenChange={() => { /* don't allow close — must choose */ }}>
-      <DialogContent className="max-w-md glass-strong" >
+    <>
+      <Dialog open={!!activeRaid} onOpenChange={() => { /* don't allow close — must choose */ }}>
+        <DialogContent className="max-w-md glass-strong">
+        {/* RAID-FX — mounts each time the dialog content renders (= modal
+            opens). Cooldown-gated (60s) so a burst of raids never turns into
+            constant screen motion. Renders the vignette + applies the brief
+            card shake. */}
+        <RaidFx />
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Swords className="w-5 h-5 text-rose-400" />
@@ -156,7 +171,38 @@ export function RaidModal() {
         <div className="mt-2 text-[0.65rem] text-muted-foreground/70 italic text-center">
           You must choose one option to continue.
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
+}
+
+// RAID-FX — mounts when the raid dialog content mounts (modal opens),
+// decides ONCE (cooldown-gated) whether this open warrants the vignette +
+// card shake, then applies both. The shake is added to the dialog element
+// imperatively on mount and removed on unmount/timeout so radix's animation
+// classes aren't clobbered.
+function RaidFx() {
+  const [play] = useState(() => {
+    const now = Date.now();
+    if (now - _lastRaidFxAt < RAID_FX_COOLDOWN_MS) return false;
+    _lastRaidFxAt = now;
+    return true;
+  });
+
+  useEffect(() => {
+    if (!play) return;
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return;
+    const SHAKE = "animate-[raidShake_0.4s_ease-out]";
+    dialog.classList.add(SHAKE);
+    const t = window.setTimeout(() => dialog.classList.remove(SHAKE), 500);
+    return () => {
+      window.clearTimeout(t);
+      dialog.classList.remove(SHAKE);
+    };
+  }, [play]);
+
+  if (!play) return null;
+  return <div className="raid-vignette" aria-hidden />;
 }

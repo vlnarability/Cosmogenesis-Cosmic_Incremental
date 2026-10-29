@@ -59,6 +59,8 @@ function HuntCard() {
   const resources = useGameStore((s) => s.resources);
   const population = useGameStore((s) => s.population);
   const huntNow = useGameStore((s) => s.huntNow);
+  const [floats, setFloats] = useState<FloatNum[]>([]);
+  const floatId = useRef(0);
 
   const stageTier = stageIndex + 1;
   const milCost = 5 * stageTier;
@@ -71,6 +73,31 @@ function HuntCard() {
   const foodGain = 15 * stageTier;
   const matGain = 8 * stageTier;
   const orgGain = 5 * stageTier;
+
+  // FLOATING GAINS — same source-tied feedback as the manual action buttons
+  // (per user: numbers tied to the source of the gain make cause/effect
+  // legible). The Hunt button previously had none.
+  const handleHunt = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!canHunt) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const gains: [string, number][] = [
+      ["food", foodGain],
+      ["materials", matGain],
+      ["organic_matter", orgGain],
+    ];
+    const newFloats: FloatNum[] = gains.map(([r, v], i) => ({
+      id: floatId.current++,
+      text: `+${formatNumber(v)}${resourceIcon(r)}`,
+      color: resourceColor(r),
+      x: rect.width / 2 + (i - 1) * 30,
+      y: 10,
+    }));
+    setFloats((prev) => [...prev, ...newFloats]);
+    setTimeout(() => {
+      setFloats((prev) => prev.filter((f) => !newFloats.find((nf) => nf.id === f.id)));
+    }, 800);
+    huntNow();
+  };
 
   return (
     <Card className="glass-panel">
@@ -104,9 +131,24 @@ function HuntCard() {
           <Button
             size="sm"
             disabled={!canHunt}
-            onClick={() => huntNow()}
-            className="ml-auto"
+            onClick={handleHunt}
+            className="ml-auto relative"
           >
+            {/* Floating gains — same pattern as ActionCard */}
+            {floats.map((f) => (
+              <span
+                key={f.id}
+                className="absolute font-bold text-sm pointer-events-none z-20"
+                style={{
+                  left: `${f.x}px`,
+                  top: `${f.y}px`,
+                  color: f.color,
+                  animation: "floatUp 0.8s ease-out forwards",
+                }}
+              >
+                {f.text}
+              </span>
+            ))}
             Hunt Now
           </Button>
         </div>

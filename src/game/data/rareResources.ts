@@ -15,6 +15,8 @@
 // and buildable/researchable. The resource is NOT consumed (it's a
 // "discovery flag" that persists — you've found it, it's yours).
 
+import { TRADE_PARTNER_MAP } from "./tradePartners";
+
 export interface RareResourceDef {
   id: string;
   name: string;
@@ -202,4 +204,43 @@ export function getDiscoveredUnlocks(
     }
   }
   return { systems, techs };
+}
+
+/**
+ * Human-readable source list for a rare resource ("Hunting · Trade — Bone Clan
+ * · Counter-raid loot"). Used by the Rare Discoveries tracker so players can
+ * see WHERE an undiscovered resource can still be found — tracking what's
+ * received AND what's still out there.
+ */
+export function formatSources(sources: string[]): string {
+  return sources
+    .map((src) => {
+      if (src === "hunt") return "Hunting";
+      if (src === "trade") return "Trade routes";
+      if (src === "rival_loot") return "Counter-raid loot";
+      if (src.startsWith("trade:")) {
+        const partnerId = src.slice(6);
+        const name = TRADE_PARTNER_MAP[partnerId]?.name;
+        return name ? `Trade — ${name}` : "Trade routes";
+      }
+      return src;
+    })
+    .join(" · ");
+}
+
+/**
+ * Spoiler-free source list: only sources the player can currently reach.
+ * Generic sources (hunt / rival loot / trade) always pass; a specific trade
+ * partner only passes if their stage is within `metStageIds` (current +
+ * earlier stages). Returns the FULL sentence ("Found via Hunting · Trade —
+ * Bone Clan" / "Found beyond this age.") so callers render it as-is.
+ */
+export function formatReachableSources(sources: string[], metStageIds: string[]): string {
+  const reachable = sources.filter((src) => {
+    if (!src.startsWith("trade:")) return true;
+    const partner = TRADE_PARTNER_MAP[src.slice(6)];
+    return !!partner && metStageIds.includes(partner.stage);
+  });
+  if (reachable.length === 0) return "Found beyond this age.";
+  return `Found via ${formatSources(reachable)}`;
 }

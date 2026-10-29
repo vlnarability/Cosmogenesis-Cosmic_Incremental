@@ -29,12 +29,24 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { tradePartnersForStage } from "@/game/data/tradePartners";
-import { assimilationCost, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE } from "@/game/data/rivals";
-import { RARE_RESOURCE_MAP } from "@/game/data/rareResources";
+import {
+  assimilationCost,
+  MIL_REDUCTION_PER_COUNTER,
+  CUL_REDUCTION_PER_TRADE,
+  estimateTimeToRaid,
+  formatTimeToRaid,
+  threatStage,
+  relationLabel,
+  counterAttackCost,
+} from "@/game/data/rivals";
+import { RARE_RESOURCES, RARE_RESOURCE_MAP, formatReachableSources } from "@/game/data/rareResources";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem, FileText } from "lucide-react";
+import {
+  Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem, FileText,
+  ChevronDown, ChevronRight, ShieldAlert, Lock, Timer, Crosshair, Scale,
+} from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -45,6 +57,7 @@ export function WorldTab() {
   const tradeAgreements = useGameStore((s) => s.tradeAgreements || {});
   const rivals = useGameStore((s) => s.rivals || []);
   const ownedSystems = useGameStore((s) => s.ownedSystems || {});
+  const technologies = useGameStore((s) => s.technologies || {});
   const establishTrade = useGameStore((s) => s.establishTrade);
   const breakTrade = useGameStore((s) => s.breakTrade);
   const counterRaid = useGameStore((s) => s.counterRaid);
@@ -55,6 +68,7 @@ export function WorldTab() {
   const signTreaty = useGameStore((s) => s.signTreaty);
   const breakTreaty = useGameStore((s) => s.breakTreaty);
   const [treatyPartner, setTreatyPartner] = useState<string | null>(null);
+  const [intelOpen, setIntelOpen] = useState<string | null>(null);
 
   // Collect all trade partners for the current stage + earlier stages
   // (the player may have established trade routes in past stages that
@@ -150,7 +164,14 @@ export function WorldTab() {
                   <div className="text-[0.65rem] text-muted-foreground mb-2">
                     Gives: <span className="font-semibold text-foreground">{resourceIcon(p.givesResource)} {resourceName(p.givesResource)} +{p.bonusPerTick}/s</span>
                     {p.rareDrop && (
-                      <span className="ml-2">Rare: <span className="text-amber-400">{resourceName(p.rareDrop.resource)} ({(p.rareDrop.chance * 100).toFixed(0)}%)</span></span>
+                      <span className="ml-2">
+                        Rare drop:{" "}
+                        <span className="text-amber-400">
+                          {RARE_RESOURCE_MAP[p.rareDrop.resource]?.icon || "💎"}{" "}
+                          {RARE_RESOURCE_MAP[p.rareDrop.resource]?.name || resourceName(p.rareDrop.resource)}{" "}
+                          ({(p.rareDrop.chance * 100).toFixed(0)}%)
+                        </span>
+                      </span>
                     )}
                   </div>
                   {isEstablished && (
@@ -251,18 +272,23 @@ export function WorldTab() {
                   )}
                   {isActive && !isCellStage && (
                     <>
+                      {/* THREAT-BAR — color shift + non-color cues: stage label
+                          (CALM/RISING/CRITICAL), stripe pattern at CRITICAL,
+                          and a live time-to-raid estimate. The pulse animation
+                          only plays when a raid is genuinely imminent (< 60s
+                          remaining — a real decision window), never for a
+                          static threat level. */}
+                      <ThreatBar
+                        threat={r.threat}
+                        timeToRaid={estimateTimeToRaid(r, milHave, treaties[r.id]?.type)}
+                      />
                       <div className="text-[0.65rem] text-muted-foreground mb-1">
-                        Threat: <span className={cn("font-semibold", r.threat > 70 ? "text-rose-400" : r.threat > 40 ? "text-amber-400" : "text-emerald-400")}>{r.threat.toFixed(0)}/100</span>
+                        Relation:{" "}
+                        <span className={cn("font-semibold", r.relation > 0 ? "text-emerald-400" : r.relation < -50 ? "text-rose-400" : "text-amber-400")}>
+                          {relationLabel(r.relation || -25)}
+                        </span>{" "}
+                        <span className="text-muted-foreground/60 tabular-nums">({(r.relation > 0 ? "+" : "") + (r.relation || 0).toFixed(0)})</span>
                       </div>
-                      <div className="text-[0.65rem] text-muted-foreground mb-1">
-                        Relation: <span className={cn("font-semibold", r.relation > 0 ? "text-emerald-400" : r.relation < -50 ? "text-rose-400" : "text-amber-400")}>{r.relation > 0 ? "+" : ""}{r.relation.toFixed(0)}</span>
-                      </div>
-                      {r.threat > 70 && (
-                        <div className="text-[0.6rem] text-rose-400 italic flex items-center gap-1 mb-2">
-                          <AlertTriangle className="w-3 h-3" />
-                          Raid imminent — build military!
-                        </div>
-                      )}
                       {/* ASSIMILATION-COST-DISPLAY per user spec */}
                       <div className="text-[0.6rem] text-muted-foreground mb-2 p-1.5 rounded bg-muted/30 border border-border/40">
                         <div className="font-semibold mb-0.5">Assimilation cost:</div>
@@ -318,6 +344,30 @@ export function WorldTab() {
                       </p>
                     )}
                   </div>
+                  {/* RIVAL INTELLIGENCE — expandable assessment (per user
+                      feedback: keep it concrete, avoid analysis paralysis —
+                      one plain-language read + a compact stat grid). */}
+                  {isActive && !isCellStage && (
+                    <div className="mt-1">
+                      <button
+                        onClick={() => setIntelOpen(intelOpen === r.id ? null : r.id)}
+                        aria-expanded={intelOpen === r.id}
+                        className="w-full flex items-center gap-1 text-[0.6rem] uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors py-0.5"
+                      >
+                        {intelOpen === r.id
+                          ? <ChevronDown className="w-3 h-3" />
+                          : <ChevronRight className="w-3 h-3" />}
+                        Rival Intelligence
+                      </button>
+                      {intelOpen === r.id && (
+                        <RivalIntel
+                          rival={r}
+                          military={milHave}
+                          treatyType={treaties[r.id]?.type}
+                        />
+                      )}
+                    </div>
+                  )}
                   {/* LAYER-D — Treaty section for rivals (creature+ only). */}
                   {isActive && !isCellStage && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
                 </div>
@@ -327,22 +377,70 @@ export function WorldTab() {
         </div>
       )}
 
-      {/* Rare Discoveries — shows all rare resources the player has found,
-          what they unlock, and whether the unlock has been used. Per user
-          request: trade caravan progress + rare drops visible on World tab. */}
-      {Object.keys(rareResources).length > 0 && (
+      {/* RARE DISCOVERIES TRACKER — per user request: 'Add some way to track
+          the rare resources received and what they provide.' Shows:
+            - progress: N / total discovered
+            - each DISCOVERED rare: count, what it unlocks, and whether that
+              unlock has been used (built / researched) or is still available
+            - each UNDISCOVERED rare: "???" + where it can be found (sources
+              limited to civilizations you've actually met — no spoilers)
+          Section appears from creature stage (when hunting opens) onward. */}
+      {(stageIndex >= 1 || Object.keys(rareResources).length > 0) && (
         <div>
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-            <Gem className="w-4 h-4 text-amber-400" />
-            Rare Discoveries
-          </h3>
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Gem className="w-4 h-4 text-amber-400" />
+              Rare Discoveries
+            </h3>
+            <span className="text-[0.65rem] text-muted-foreground tabular-nums shrink-0">
+              {Object.keys(rareResources).length} / {RARE_RESOURCES.length} found
+            </span>
+          </div>
+          {/* Discovery progress bar */}
+          <div className="h-1 rounded-full bg-muted/40 mb-2.5 overflow-hidden" role="progressbar"
+            aria-valuemin={0} aria-valuemax={RARE_RESOURCES.length}
+            aria-valuenow={Object.keys(rareResources).length}
+          >
+            <div
+              className="h-full bg-amber-500/80 rounded-full transition-all"
+              style={{ width: `${(Object.keys(rareResources).length / RARE_RESOURCES.length) * 100}%` }}
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {Object.entries(rareResources).map(([rid, count]) => {
-              const rrDef = RARE_RESOURCE_MAP[rid];
-              if (!rrDef) return null;
+            {RARE_RESOURCES.map((rrDef) => {
+              const count = rareResources[rrDef.id] || 0;
+              const discovered = count >= 1;
+              if (!discovered) {
+                // Undiscovered — hint at where to look (only sources the
+                // player can currently reach; later-stage partners hidden).
+                const reachableHint = formatReachableSources(rrDef.sources, stageIds);
+                return (
+                  <div
+                    key={rrDef.id}
+                    className="stat-card rounded-lg border border-border/40 bg-muted/10 p-2.5 opacity-70"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-lg shrink-0 grayscale opacity-60"><Lock className="w-4 h-4" /></span>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-sm text-muted-foreground">???</span>
+                        <p className="text-[0.6rem] text-muted-foreground/80 leading-snug mt-0.5">
+                          <span className="text-amber-400/80">{reachableHint}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              // Discovered — what it provides + whether it's been claimed.
+              const unlockUsed = rrDef.unlocks.type === "system"
+                ? (ownedSystems[rrDef.unlocks.id] || 0) > 0
+                : !!technologies[rrDef.unlocks.id];
+              const unlockStatusLabel = unlockUsed
+                ? (rrDef.unlocks.type === "system" ? "Built — bonus active" : "Researched — bonus active")
+                : (rrDef.unlocks.type === "system" ? "Ready to build" : "Ready to research");
               return (
                 <div
-                  key={rid}
+                  key={rrDef.id}
                   className="stat-card rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5"
                 >
                   <div className="flex items-start gap-2">
@@ -350,18 +448,23 @@ export function WorldTab() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-semibold text-sm text-amber-300 truncate">{rrDef.name}</span>
-                        {count > 1 && (
-                          <Badge variant="outline" className="text-[0.55rem] text-amber-400 border-amber-500/30 shrink-0">
-                            ×{count}
-                          </Badge>
-                        )}
+                        <Badge variant="outline" className="text-[0.55rem] text-amber-400 border-amber-500/30 shrink-0">
+                          ×{count}
+                        </Badge>
                       </div>
                       <p className="text-[0.65rem] text-muted-foreground italic leading-snug mb-1">
                         {rrDef.desc}
                       </p>
                       <div className="text-[0.6rem] text-amber-400/80 flex items-center gap-1">
-                        <Check className="w-2.5 h-2.5" />
-                        Unlocks: {rrDef.unlocks.name}
+                        {unlockUsed ? <Check className="w-2.5 h-2.5" /> : <Gem className="w-2.5 h-2.5" />}
+                        {rrDef.unlocks.name}
+                        <span className="text-muted-foreground/60">· {rrDef.unlocks.desc}</span>
+                      </div>
+                      <div className={cn(
+                        "text-[0.55rem] mt-1 font-semibold uppercase tracking-wide",
+                        unlockUsed ? "text-emerald-400" : "text-amber-400"
+                      )}>
+                        {unlockStatusLabel}
                       </div>
                     </div>
                   </div>
@@ -386,6 +489,140 @@ export function WorldTab() {
       {/* Hunting action placeholder — per user: 'add a hunt button on
           actions that spends military and/or pop to trigger immediately'.
           This belongs on the Actions tab, not here. Documented for next round. */}
+    </div>
+  );
+}
+
+// ============================================================
+// ThreatBar — rival threat readout with full accessibility coding:
+//   color (emerald→amber→rose) + stage LABEL (CALM/RISING/CRITICAL) +
+// diagonal stripe pattern at CRITICAL + live time-to-raid estimate.
+// The pulse animation ONLY plays when a raid is genuinely imminent
+// (< 60s remaining — enough time to still respond), so it stays a
+// real signal instead of background noise.
+// ============================================================
+function ThreatBar({ threat, timeToRaid }: { threat: number; timeToRaid: number }) {
+  const t = Math.max(0, Math.min(100, threat));
+  const stage = threatStage(t);
+  const imminent = isFinite(timeToRaid) && timeToRaid < 60;
+  return (
+    <div className="mb-1.5" role="img" aria-label={`Threat ${t.toFixed(0)} of 100 — ${stage.label}${isFinite(timeToRaid) ? `, raid in approximately ${formatTimeToRaid(timeToRaid)}` : ""}`}>
+      <div className="flex items-center justify-between text-[0.6rem] mb-0.5">
+        <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          <ShieldAlert className="w-3 h-3" />
+          Threat
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className={cn("font-bold tabular-nums", stage.colorClass)}>{t.toFixed(0)}/100</span>
+          <span
+            className={cn(
+              "font-bold uppercase tracking-wide px-1 py-px rounded border",
+              stage.colorClass,
+              t >= 75 ? "border-rose-500/40 bg-rose-500/10" : t >= 40 ? "border-amber-500/40 bg-amber-500/10" : "border-emerald-500/40 bg-emerald-500/10"
+            )}
+          >
+            {stage.label}
+          </span>
+          {isFinite(timeToRaid) && (
+            <span className={cn("text-muted-foreground tabular-nums flex items-center gap-0.5", imminent && "text-rose-400 font-bold threat-imminent-pulse")}>
+              <Timer className="w-2.5 h-2.5" />
+              raid in {formatTimeToRaid(timeToRaid)}
+            </span>
+          )}
+        </span>
+      </div>
+      {/* Bar fill — stripes at CRITICAL are a non-color cue for
+          color-blind players. */}
+      <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all duration-500", stage.barClass, t >= 75 && "threat-bar-stripes")}
+          style={{ width: `${t}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// RivalIntel — expandable "Rival Intelligence" assessment. Deliberately
+// CONCISE (per user feedback on analysis paralysis): one plain-language
+// reading + a compact 2×2 stat grid. No charts, no history graphs.
+// ============================================================
+function RivalIntel({
+  rival,
+  military,
+  treatyType,
+}: {
+  rival: {
+    id: string;
+    name: string;
+    strength: number;
+    relation: number;
+    threat: number;
+    stage: string;
+    state: string;
+    counteredRaids?: number;
+    successfulTrades?: number;
+    assimilationBonus?: { resource: string; mult: number };
+  };
+  military: number;
+  treatyType?: string;
+}) {
+  const strength = rival.strength || 1;
+  const cost = counterAttackCost(strength);
+  const winChance = Math.min(0.95, military / (strength * 50));
+  const ttr = estimateTimeToRaid(rival, military, treatyType);
+
+  // Plain-language reading — the ONE thing the player actually needs.
+  let read: string;
+  if (treatyType === "non_aggression") {
+    read = "Non-aggression pact holds — their threat grows at half pace.";
+  } else if (military >= cost) {
+    read = `You outgun them. A counter-raid is a guaranteed victory for ⚔️ ${formatNumber(cost, 0)} — and each one makes assimilation cheaper.`;
+  } else if (winChance >= 0.5) {
+    read = `Your defenses hold the edge (${(winChance * 100).toFixed(0)}% win chance), but a counter-raid needs ⚔️ ${formatNumber(cost, 0)}.`;
+  } else if (military > 0) {
+    read = `Your military is thin (${(winChance * 100).toFixed(0)}% win chance). Build toward ⚔️ ${formatNumber(cost, 0)} for a safe counter-attack.`;
+  } else {
+    read = `You have no military. If they raid before you arm, losses are certain — build toward ⚔️ ${formatNumber(cost, 0)}.`;
+  }
+
+  return (
+    <div className="mt-1 mb-1 rounded-lg border border-border/50 bg-muted/20 p-2 space-y-1.5 animate-[slideUp_0.2s_ease]">
+      {/* Plain-language reading first */}
+      <p className="text-[0.65rem] leading-snug text-foreground/90 italic">{read}</p>
+      {/* Compact stat grid */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[0.6rem]">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground flex items-center gap-1"><Crosshair className="w-2.5 h-2.5" /> Your military</span>
+          <span className="font-semibold tabular-nums" style={{ color: resourceColor("military_power") }}>
+            {formatNumber(military, 0)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Their strength</span>
+          <span className="font-semibold tabular-nums text-rose-400">{strength.toFixed(1)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Defend odds</span>
+          <span className={cn("font-semibold tabular-nums", winChance > 0.7 ? "text-emerald-400" : winChance > 0.4 ? "text-amber-400" : "text-rose-400")}>
+            {(winChance * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground flex items-center gap-1"><Timer className="w-2.5 h-2.5" /> Raid in</span>
+          <span className="font-semibold tabular-nums">{formatTimeToRaid(ttr)}</span>
+        </div>
+      </div>
+      {/* Assimilation prize preview */}
+      {rival.assimilationBonus && (
+        <div className="flex items-center justify-between text-[0.6rem] pt-1 border-t border-border/40">
+          <span className="text-muted-foreground flex items-center gap-1"><Scale className="w-2.5 h-2.5" /> If assimilated</span>
+          <span className="font-semibold text-amber-400">
+            +{(rival.assimilationBonus.mult * 100).toFixed(0)}% {resourceName(rival.assimilationBonus.resource)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
