@@ -28,7 +28,7 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
-import { tradePartnersForStage } from "@/game/data/tradePartners";
+import { tradePartnersForStage, shipmentIntervalEff, shipmentAmount, caravanMultOf, type TradePartner } from "@/game/data/tradePartners";
 import {
   assimilationCost,
   MIL_REDUCTION_PER_COUNTER,
@@ -45,7 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Globe, TrendingUp, Swords, Handshake, AlertTriangle, Check, Gem, FileText,
-  ChevronDown, ChevronRight, ShieldAlert, Lock, Timer, Crosshair, Scale,
+  ChevronDown, ChevronRight, ShieldAlert, Lock, Timer, Crosshair, Scale, Package, Gift,
 } from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
@@ -79,12 +79,15 @@ export function WorldTab() {
   // Trade Caravan count — sum across ALL stage-specific caravan systems.
   // Each stage has its own (tribal_trade_caravan, trade_caravan,
   // empire_trade_caravan, solar_trade_caravan, galactic_trade_caravan).
+  // SHIPMENT-HELPERS: caravanMultOf is the SAME formula the tick uses, so
+  // the card's ETA matches the simulation exactly.
   const caravanCount =
     (ownedSystems["tribal_trade_caravan"] || 0) +
     (ownedSystems["trade_caravan"] || 0) +
     (ownedSystems["empire_trade_caravan"] || 0) +
     (ownedSystems["solar_trade_caravan"] || 0) +
     (ownedSystems["galactic_trade_caravan"] || 0);
+  const caravanMult = caravanMultOf(ownedSystems);
 
   // Rivals for the current + past stages. Exclude hidden rivals (those
   // that didn't make the cut at Cell→Creature carry-forward).
@@ -161,24 +164,35 @@ export function WorldTab() {
                       </p>
                     </div>
                   </div>
+                  {/* SHIPMENT FRAMING — per user feedback, a flat "+0.3/s"
+                      drip read like an idle-game stat with no cause→effect.
+                      Pre-establishment the card sells the ROUTE in concrete
+                      terms: what arrives, how much, how often. */}
                   <div className="text-[0.65rem] text-muted-foreground mb-2">
-                    Gives: <span className="font-semibold text-foreground">{resourceIcon(p.givesResource)} {resourceName(p.givesResource)} +{p.bonusPerTick}/s</span>
+                    Ships{" "}
+                    <span className="font-semibold text-foreground">
+                      {resourceIcon(p.givesResource)} +{Math.round(shipmentAmount(p))} {resourceName(p.givesResource)}
+                    </span>{" "}
+                    every ~{p.shipmentInterval}s
+                    {caravanCount > 0 && (
+                      <span className="text-emerald-400/80"> (faster with your {caravanCount} caravan{caravanCount === 1 ? "" : "s"})</span>
+                    )}
                     {p.rareDrop && (
-                      <span className="ml-2">
-                        Rare drop:{" "}
-                        <span className="text-amber-400">
-                          {RARE_RESOURCE_MAP[p.rareDrop.resource]?.icon || "💎"}{" "}
-                          {RARE_RESOURCE_MAP[p.rareDrop.resource]?.name || resourceName(p.rareDrop.resource)}{" "}
-                          ({(p.rareDrop.chance * 100).toFixed(0)}%)
+                      <span className="ml-1.5">
+                        ·{" "}
+                        <span className="text-amber-400" title="Rolled once per shipment — the odds are real, not a slot machine">
+                          🎁 {(p.rareDrop.chance * 100).toFixed(0)}% rare chance/shipment
                         </span>
                       </span>
                     )}
                   </div>
                   {isEstablished && (
-                    <div className="text-[0.65rem] text-emerald-400 mb-2 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      Active — {caravanCount > 0 ? `×${caravanCount} caravans` : "no caravans assigned"}
-                    </div>
+                    <ShipmentTracker
+                      partner={p}
+                      agreement={agreement}
+                      caravanMult={caravanMult}
+                      treatyMult={treaties[p.id]?.type === "trade_agreement" ? 1.2 : 1}
+                    />
                   )}
                   <div className="flex gap-1.5">
                     {!isEstablished ? (
@@ -489,6 +503,104 @@ export function WorldTab() {
       {/* Hunting action placeholder — per user: 'add a hunt button on
           actions that spends military and/or pop to trigger immediately'.
           This belongs on the Actions tab, not here. Documented for next round. */}
+    </div>
+  );
+}
+
+// ============================================================
+// ShipmentTracker — TRADE-SHIPMENTS card readout for an ACTIVE
+// trade route (per user feedback: passive rare receipt felt like a
+// slot machine — no cadence, no agency). Shows:
+//   · progress bar filling toward the next delivery
+//   · concrete "Next: +N res in ~Ns" (same math as the tick)
+//   · explicit rare odds per shipment — understanding > randomness
+//   · a brief arrival float (+N 🪵 / 🎁 rare) when a shipment lands
+// The tracker re-renders every tick (shipmentProgress changes), so
+// the bar animates natively and the 4s arrival window self-clears.
+// ============================================================
+function ShipmentTracker({
+  partner,
+  agreement,
+  caravanMult,
+  treatyMult,
+}: {
+  partner: TradePartner;
+  agreement: { shipmentProgress?: number; totalShipments?: number; lastShipment?: { resource: string; amount: number; rare?: string; at: number } };
+  caravanMult: number;
+  treatyMult: number;
+}) {
+  const progress = Math.min(1, Math.max(0, agreement.shipmentProgress || 0));
+  const intervalEff = shipmentIntervalEff(partner, caravanMult, treatyMult);
+  const amount = shipmentAmount(partner);
+  const eta = Math.max(1, Math.round((1 - progress) * intervalEff));
+  const last = agreement.lastShipment;
+  // Show the arrival float for 4s after a delivery. Date.now() is safe
+  // here — this is client-only game UI and lastShipment is cleared on load.
+  const lastAge = last ? (Date.now() - last.at) / 1000 : Infinity;
+  const showFloat = last && lastAge < 4;
+  const rareDef = partner.rareDrop ? RARE_RESOURCE_MAP[partner.rareDrop.resource] : undefined;
+  return (
+    <div className="mb-2" aria-label={`Next shipment: plus ${Math.round(amount)} ${resourceName(partner.givesResource)} in about ${eta} seconds`}>
+      {/* Progress bar + concrete ETA */}
+      <div className="flex items-center justify-between text-[0.6rem] mb-0.5">
+        <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          <Package className="w-3 h-3" />
+          Next: <span className="text-foreground font-semibold">+{Math.round(amount)} {resourceIcon(partner.givesResource)}</span>
+        </span>
+        <span className="text-muted-foreground tabular-nums flex items-center gap-0.5">
+          <Timer className="w-2.5 h-2.5" />
+          ~{eta}s
+          {(caravanMult * treatyMult) > 1 && (
+            <span className="text-emerald-400/90" title={`Deliveries ×${(caravanMult * treatyMult).toFixed(1)} faster (caravans${treatyMult > 1 ? " + trade treaty" : ""})`}>
+              ⚡
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mb-1" role="progressbar"
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}
+      >
+        <div
+          className="h-full rounded-full bg-emerald-500/80 transition-[width] duration-300"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[0.55rem]">
+        <span className="text-muted-foreground/80">
+          {(agreement.totalShipments || 0) > 0 ? `${agreement.totalShipments} shipment${(agreement.totalShipments || 0) === 1 ? "" : "s"} received` : "First shipment en route"}
+        </span>
+        {partner.rareDrop && (
+          <span className="text-amber-400/90 flex items-center gap-0.5" title={`Each shipment has a ${(partner.rareDrop.chance * 100).toFixed(0)}% chance to carry ${rareDef?.name || "a rare discovery"}`}>
+            <Gift className="w-2.5 h-2.5" />
+            {(partner.rareDrop.chance * 100).toFixed(0)}% rare
+          </span>
+        )}
+      </div>
+      {/* Arrival float — slides up + fades out. Golden variant when the
+          shipment carried a rare (ties the surprise to the understood odds). */}
+      {showFloat && last && (
+        <div
+          key={agreement.totalShipments}
+          className={cn(
+            "shipment-float mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.6rem] font-semibold border",
+            last.rare
+              ? "bg-amber-500/15 border-amber-500/50 text-amber-300"
+              : "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+          )}
+          role="status"
+        >
+          {last.rare ? (
+            <>
+              <Gift className="w-3 h-3" />
+              Rare! {RARE_RESOURCE_MAP[last.rare]?.name || last.rare} ×{1}
+            </>
+          ) : (
+            <>
+              +{Math.round(last.amount)} {resourceIcon(last.resource)} arrived
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

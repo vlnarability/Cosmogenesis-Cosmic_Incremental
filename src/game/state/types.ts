@@ -297,7 +297,15 @@ export interface GameState {
   pendingGovernment: string | null;
   // PART-2-LAYER-A — Trade agreements. Map of partnerId → { established: number (timestamp), relation: number }.
   // Drives the Layer A Trade system + the Civ→Empire evolve gate (requiresTradeRoutes).
-  tradeAgreements: Record<string, { established: number; relation: number }>;
+  tradeAgreements: Record<string, {
+    established: number; relation: number;
+    /** TRADE-SHIPMENTS — 0..1 progress toward the next delivery. */
+    shipmentProgress?: number;
+    /** Lifetime shipments received from this partner. */
+    totalShipments?: number;
+    /** Last delivery (transient UI hint — cleared on load; not used for logic). */
+    lastShipment?: { resource: string; amount: number; rare?: string; at: number };
+  }>;
   // PART-2-LAYER-C — NPC rival civilizations. Each rival has:
   //   id, name, stage (which stage it appears at), state ("active"|"allied"|"conquered"|"merged"),
   //   threat (0-100, grows over time), relation (-100 to +100), strength (scales with player).

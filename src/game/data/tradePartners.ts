@@ -25,17 +25,70 @@ export interface TradePartner {
   /** Resource the partner gives as a bonus (passive generation while
    * trade agreement is active). */
   givesResource: string;
-  /** Per-tick bonus amount (scales with caravan count). */
+  /** Nominal per-second bonus rate. Long-run income = bonusPerTick × all
+   * multipliers — but it arrives in SHIPMENTS (see shipmentInterval), not a
+   * continuous drip, so every delivery is visible and cause→effect. */
   bonusPerTick: number;
+  /** Seconds between shipments at base speed (no caravans / treaty).
+   * Each shipment delivers bonusPerTick × shipmentInterval of the resource.
+   * Caravans + trade treaties SHORTEN the interval (deliveries arrive
+   * faster) while the per-shipment amount stays constant — more caravans
+   * visibly means busier routes, not abstract numbers. */
+  shipmentInterval: number;
   /** Rare resource the partner can offer (unlocks special systems/techs
    * once trade is established). Optional. */
   rareDrop?: {
     resource: string;
-    chance: number; // 0-1, per caravan per tick
+    /** 0-1 chance PER SHIPMENT — rolled once when a shipment arrives.
+     * Shown to the player verbatim on the partner card, so a rare arriving
+     * is an understood mechanic instead of a slot-machine jackpot. */
+    chance: number;
   };
   /** Cost to establish the trade (one-time, paid in the partner's stage
    * currency). */
   establishCost: Record<string, number>;
+}
+
+// ============================================================
+// SHIPMENT HELPERS — shared by the tick, the World tab cards, and the
+// resource-breakdown tooltip so all three agree on delivery math.
+// ============================================================
+
+/** The five caravan systems that speed up trade shipments (one per era,
+ * including the tribal one). */
+const CARAVAN_SYSTEM_IDS = [
+  "tribal_trade_caravan",
+  "trade_caravan",
+  "empire_trade_caravan",
+  "solar_trade_caravan",
+  "galactic_trade_caravan",
+] as const;
+
+/** Total caravan systems owned across all eras. */
+export function caravanCountOf(ownedSystems: Record<string, number> | undefined | null): number {
+  if (!ownedSystems) return 0;
+  let n = 0;
+  for (const id of CARAVAN_SYSTEM_IDS) n += ownedSystems[id] || 0;
+  return n;
+}
+
+/** Shipment-speed multiplier from caravans (×1.0 → ×2.0, +10% each). */
+export function caravanMultOf(ownedSystems: Record<string, number> | undefined | null): number {
+  return 1 + Math.min(10, caravanCountOf(ownedSystems)) * 0.1;
+}
+
+/** Effective seconds between shipments for a partner given caravans + treaty. */
+export function shipmentIntervalEff(
+  partner: TradePartner,
+  caravanMult: number,
+  treatyMult: number
+): number {
+  return partner.shipmentInterval / (caravanMult * treatyMult);
+}
+
+/** Per-shipment delivery amount (CONSTANT — caravans speed cadence, not size). */
+export function shipmentAmount(partner: TradePartner): number {
+  return partner.bonusPerTick * partner.shipmentInterval;
 }
 
 export const TRADE_PARTNERS: TradePartner[] = [
@@ -48,7 +101,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A harsh mountain tribe. They trade furs and bone tools for wood.",
     givesResource: "gold",
     bonusPerTick: 0.3,
-    rareDrop: { resource: "rare_furs", chance: 0.02 },
+    shipmentInterval: 75,
+    rareDrop: { resource: "rare_furs", chance: 0.08 },
     establishCost: { wood: 50, stone: 30 },
   },
   {
@@ -59,6 +113,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "Goat-herders and weavers. They trade cloth for clay.",
     givesResource: "culture",
     bonusPerTick: 0.4,
+    shipmentInterval: 75,
     establishCost: { clay: 40, wood: 20 },
   },
   {
@@ -69,7 +124,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "River traders. They trade fish and pearls for lumber.",
     givesResource: "food",
     bonusPerTick: 0.5,
-    rareDrop: { resource: "river_pearls", chance: 0.03 },
+    shipmentInterval: 75,
+    rareDrop: { resource: "river_pearls", chance: 0.1 },
     establishCost: { lumber: 30, stone: 20 },
   },
 
@@ -82,7 +138,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A city-state of sculptors and senators. They trade influence for production.",
     givesResource: "influence",
     bonusPerTick: 0.4,
-    rareDrop: { resource: "marble_blocs", chance: 0.02 },
+    shipmentInterval: 70,
+    rareDrop: { resource: "marble_blocs", chance: 0.1 },
     establishCost: { production: 200, gold: 100 },
   },
   {
@@ -93,7 +150,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A nomadic military society. They trade military_power for gold.",
     givesResource: "military_power",
     bonusPerTick: 0.6,
-    rareDrop: { resource: "iron_ore", chance: 0.04 },
+    shipmentInterval: 70,
+    rareDrop: { resource: "iron_ore", chance: 0.12 },
     establishCost: { gold: 150, production: 100 },
   },
   {
@@ -104,7 +162,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "Weavers of silk and secrets. They trade culture for science.",
     givesResource: "culture",
     bonusPerTick: 0.5,
-    rareDrop: { resource: "silk_bolt", chance: 0.03 },
+    shipmentInterval: 70,
+    rareDrop: { resource: "silk_bolt", chance: 0.1 },
     establishCost: { gold: 120, science: 80 },
   },
 
@@ -117,7 +176,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A sprawling multi-system empire. They trade science for energy.",
     givesResource: "science",
     bonusPerTick: 0.8,
-    rareDrop: { resource: "stellar_isotope", chance: 0.02 },
+    shipmentInterval: 65,
+    rareDrop: { resource: "stellar_isotope", chance: 0.1 },
     establishCost: { energy: 500, data: 200 },
   },
   {
@@ -128,7 +188,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "Miners of crystalline worlds. They trade data for alloys.",
     givesResource: "data",
     bonusPerTick: 0.7,
-    rareDrop: { resource: "crystal_shard", chance: 0.03 },
+    shipmentInterval: 65,
+    rareDrop: { resource: "crystal_shard", chance: 0.12 },
     establishCost: { energy: 400, gold: 300 },
   },
   {
@@ -139,6 +200,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "An ocean-empire. They trade influence for energy.",
     givesResource: "influence",
     bonusPerTick: 0.6,
+    shipmentInterval: 65,
     establishCost: { energy: 450, science: 250 },
   },
 
@@ -151,6 +213,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "The dense inner-system planets. They trade food for alloys.",
     givesResource: "food",
     bonusPerTick: 1.0,
+    shipmentInterval: 60,
     establishCost: { alloys: 300, energy: 400 },
   },
   {
@@ -161,7 +224,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "Asteroid-belt miners. They trade alloys for data.",
     givesResource: "alloys",
     bonusPerTick: 1.2,
-    rareDrop: { resource: "rare_element", chance: 0.04 },
+    shipmentInterval: 60,
+    rareDrop: { resource: "rare_element", chance: 0.14 },
     establishCost: { energy: 500, data: 200 },
   },
   {
@@ -172,6 +236,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "Atmosphere-skimmers. They trade energy for science.",
     givesResource: "energy",
     bonusPerTick: 1.5,
+    shipmentInterval: 60,
     establishCost: { alloys: 400, science: 300 },
   },
 
@@ -184,6 +249,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A warlike star nation. They trade military_power for data.",
     givesResource: "military_power",
     bonusPerTick: 2.0,
+    shipmentInterval: 55,
     establishCost: { data: 1000, energy: 800 },
   },
   {
@@ -194,6 +260,7 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A league of peaceful systems. They trade influence for science.",
     givesResource: "influence",
     bonusPerTick: 1.8,
+    shipmentInterval: 55,
     establishCost: { data: 800, science: 600 },
   },
   {
@@ -204,7 +271,8 @@ export const TRADE_PARTNERS: TradePartner[] = [
     desc: "A research-focused star nation. They trade science for data.",
     givesResource: "science",
     bonusPerTick: 2.2,
-    rareDrop: { resource: "ancient_relic", chance: 0.02 },
+    shipmentInterval: 55,
+    rareDrop: { resource: "ancient_relic", chance: 0.12 },
     establishCost: { data: 1200, energy: 1000 },
   },
 ];

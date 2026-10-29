@@ -303,10 +303,13 @@ export function StagePanel() {
               met={oneOfSystemsMet}
             />
           )}
-          {/* requiresRivalsResolved — all rivals must be non-active */}
+          {/* requiresRivalsResolved — all VISIBLE rivals must be non-active.
+              QA-FIX: hidden rivals (cell-stage stragglers, not shown in the
+              World tab, not interactable) are excluded so this count matches
+              what the player can actually see and resolve. */}
           {reqs.requiresRivalsResolved && (() => {
             const rivals = useGameStore.getState().rivals || [];
-            const activeCount = rivals.filter((r: any) => r?.state === "active").length;
+            const activeCount = rivals.filter((r: any) => r?.state === "active" && !r?.hidden).length;
             return <GateRow label={`Resolve all rivals (${activeCount} active)`} met={activeCount === 0} />;
           })()}
           {/* requiresGovernmentChosen — must have a pending or active government */}

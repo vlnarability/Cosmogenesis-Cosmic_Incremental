@@ -17,6 +17,7 @@
 import type { GameState } from "./types";
 import { SYSTEM_MAP } from "../data/systems";
 import { STAGES } from "../data/stages";
+import { TRADE_PARTNER_MAP, caravanMultOf } from "../data/tradePartners";
 
 export interface ResourceSource {
   systemId: string;
@@ -30,6 +31,10 @@ export interface ResourceSource {
   disabled: boolean;
   /** Whether the system is at cap-idle (all its outputs are at capacity). */
   idleByCap: boolean;
+  /** TRADE-SHIPMENTS — set on trade-partner pseudo-sources: the income
+   * arrives as periodic shipments, not a continuous drip. Tooltip renders a
+   * 📦 marker instead of implying a steady stream. */
+  viaTrade?: boolean;
 }
 
 export interface ResourceBreakdownEntry {
@@ -114,6 +119,38 @@ export function computeResourceBreakdown(s: GameState): ResourceBreakdown {
         });
       }
     }
+  }
+
+  // TRADE-SHIPMENTS — established trade partners appear as pseudo-sources
+  // so the resource tooltip explains EVERY gain (per user verdict: numbers
+  // tied to gain sources). Amount shown is the nominal per-second equivalent
+  // (per-shipment size ÷ effective interval); the viaTrade flag renders a 📦
+  // "in shipments" marker so the cadence is honest.
+  // CAP-AWARE: when the resource sits at cap, deliveries overflow and are
+  // wasted — the same semantics the chip-level "hide idle rates" fix uses
+  // for systems. Show 0 + an "idle (cap)" marker instead of a phantom rate.
+  const caravanMult = caravanMultOf(s.ownedSystems);
+  for (const partnerId of Object.keys(s.tradeAgreements || {})) {
+    const partner = TRADE_PARTNER_MAP[partnerId];
+    if (!partner) continue;
+    const treatyMult = ((s.treaties || {})[partnerId]?.type === "trade_agreement") ? 1.2 : 1.0;
+    const intervalEff = partner.shipmentInterval / (caravanMult * treatyMult);
+    const entry = ensure(partner.givesResource);
+    const cap = capacities[partner.givesResource] || 0;
+    const resVal = (resources[partner.givesResource] || 0);
+    const atCap = cap > 0 && resVal >= cap - 0.01;
+    const amount = atCap ? 0 : (partner.bonusPerTick * partner.shipmentInterval) / intervalEff;
+    entry.net += amount;
+    entry.sources.push({
+      systemId: `trade:${partnerId}`,
+      systemName: partner.name,
+      systemIcon: partner.icon,
+      amount,
+      kind: "produce",
+      disabled: false,
+      idleByCap: atCap,
+      viaTrade: true,
+    });
   }
 
   // Sort sources: produces (descending) then upkeep (ascending) so the

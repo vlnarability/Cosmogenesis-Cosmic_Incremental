@@ -80,6 +80,11 @@ export function ResourceBar() {
   const technologies = useGameStore((s) => s.technologies);
   const capacitiesState = useGameStore((s) => s.capacities);
   const resourcesState = useGameStore((s) => s.resources);
+  // TRADE-SHIPMENTS — trade partners contribute pseudo-sources to the
+  // tooltip (income tied to its source, per user verdict), so the
+  // breakdown must recompute when routes/treaties change too.
+  const tradeAgreements = useGameStore((s) => s.tradeAgreements);
+  const treaties = useGameStore((s) => s.treaties);
   const breakdown = useMemo(
     () => computeResourceBreakdown({
       ownedSystems,
@@ -88,8 +93,10 @@ export function ResourceBar() {
       resources: resourcesState,
       capacities: capacitiesState,
       stageIndex,
+      tradeAgreements,
+      treaties,
     } as never),
-    [ownedSystems, systemEnabled, technologies, resourcesState, capacitiesState, stageIndex]
+    [ownedSystems, systemEnabled, technologies, resourcesState, capacitiesState, stageIndex, tradeAgreements, treaties]
   );
 
   // === L1: stage-resource chip rendering (kept intact for first playthrough) ===
@@ -294,11 +301,19 @@ function ResourceBreakdownTooltip({
           >
             <span className="text-sm leading-none">{src.systemIcon}</span>
             <span className="flex-1 truncate text-[0.7rem]">{src.systemName}</span>
+            {src.viaTrade && (
+              <span className="text-[0.55rem] text-cyan-400/90 italic shrink-0" title="Arrives as periodic shipments — see the World tab for the delivery timer">📦 shipments</span>
+            )}
             {src.disabled && (
               <span className="text-[0.55rem] text-muted-foreground italic">disabled</span>
             )}
             {src.idleByCap && (
-              <span className="text-[0.55rem] text-amber-400 italic">idle (cap)</span>
+              <span
+                className="text-[0.55rem] text-amber-400 italic"
+                title={src.viaTrade ? "Shipments still arrive, but the resource is at cap — the delivery overflows and is wasted. Raise capacity or spend it down." : undefined}
+              >
+                {src.viaTrade ? "wasted (cap)" : "idle (cap)"}
+              </span>
             )}
             <span
               className={cn(

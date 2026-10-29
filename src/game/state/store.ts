@@ -14,7 +14,7 @@ import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../d
 import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP } from "../data/rivals";
-import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage } from "../data/tradePartners";
+import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf } from "../data/tradePartners";
 import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -1355,39 +1355,94 @@ export const useGameStore = create<GameStore>()(
         // TRADE-CARAVAN-PER-STAGE: each stage has its own trade caravan
         // system (tribal_trade_caravan, trade_caravan, empire_trade_caravan,
         // solar_trade_caravan, galactic_trade_caravan). Sum all of them.
-        const caravanCount =
-          (s.ownedSystems?.["tribal_trade_caravan"] || 0) +
-          (s.ownedSystems?.["trade_caravan"] || 0) +
-          (s.ownedSystems?.["empire_trade_caravan"] || 0) +
-          (s.ownedSystems?.["solar_trade_caravan"] || 0) +
-          (s.ownedSystems?.["galactic_trade_caravan"] || 0);
-        const caravanMult = 1 + Math.min(10, caravanCount) * 0.1;
+        // SHIPMENT-HELPERS: use the shared caravanCountOf/caravanMultOf so the
+        // tick, the World tab cards, and the resource tooltip agree exactly.
+        const caravanCount = caravanCountOf(s.ownedSystems);
+        const caravanMult = caravanMultOf(s.ownedSystems);
         let tradesThisTick = 0;
         if (s.tradeAgreements) {
+          // TRADE-SHIPMENTS — trade income arrives in VISIBLE, cyclical
+          // deliveries instead of an invisible background drip, and rare
+          // resources roll ONCE per shipment with the odds shown verbatim on
+          // the partner card (per user feedback: passive rare receipt felt
+          // like a slot machine — no cadence, no agency).
+          //
+          // Math: each shipment delivers bonusPerTick × shipmentInterval
+          // (CONSTANT size); caravans + trade treaties SHORTEN the interval.
+          // Long-run average is identical to the old drip
+          // (bonusPerTick × caravanMult × treatyMult per second) — only the
+          // PRESENTATION changed from "numbers silently ticking up" to
+          // "a caravan arrives every N seconds".
+          //
+          // Offline safety: the while-loop below handles large dt chunks
+          // natively (bulk delivery). Rare rolls are capped at 5 per tick
+          // call so a long offline catch-up can't rain rares.
+          let nextAgreements: Record<string, any> | null = null;
           for (const partnerId of Object.keys(s.tradeAgreements)) {
             const partner = TRADE_PARTNER_MAP[partnerId];
             if (!partner) continue;
-            const rate = partner.bonusPerTick * caravanMult;
-            const r = partner.givesResource;
-            // LAYER-D — trade_agreement treaty gives +20% bonus for this partner.
+            const ag = (s.tradeAgreements as any)[partnerId];
+            // LAYER-D — trade_agreement treaty shortens delivery time by 20%.
             const treaty = s.treaties?.[partnerId];
             const treatyMult = (treaty?.type === "trade_agreement") ? 1.2 : 1.0;
-            resources[r] = (resources[r] || 0) + rate * treatyMult * realDt;
-            tradesThisTick++;
-            // Rare drop roll (per partner per tick). Track on rareResources state.
-            if (partner.rareDrop && Math.random() < partner.rareDrop.chance * realDt * 10) {
-              const rareR = partner.rareDrop.resource;
-              const rareResources = { ...(s as any).rareResources || {} };
-              const wasNew = !rareResources[rareR];
-              rareResources[rareR] = (rareResources[rareR] || 0) + 1;
-              (s as any).rareResources = rareResources;
-              if (wasNew) {
-                // First discovery — log it with the unlock description.
-                const rrDef = RARE_RESOURCE_MAP[rareR];
-                const unlockDesc = rrDef?.unlocks?.desc || "a special unlock";
-                get().addToLog(`${partner.name} offered ${rrDef?.name || rareR}! ${rrDef?.unlocks?.name || "Something"} unlocked: ${unlockDesc}`);
-              }
+            const intervalEff = partner.shipmentInterval / (caravanMult * treatyMult);
+            let progress = (ag.shipmentProgress || 0) + realDt / intervalEff;
+            let delivered = 0;
+            while (progress >= 1 && delivered < 1000) {
+              progress -= 1;
+              delivered++;
             }
+            if (delivered > 0) {
+              const r = partner.givesResource;
+              const perShipment = partner.bonusPerTick * partner.shipmentInterval;
+              resources[r] = (resources[r] || 0) + perShipment * delivered;
+              // Rare roll — once per shipment, capped at 5 rolls per tick
+              // call (offline chunk = one tick ⇒ no offline rare farming).
+              let rareId: string | null = null;
+              if (partner.rareDrop) {
+                const rolls = Math.min(delivered, 5);
+                for (let i = 0; i < rolls; i++) {
+                  if (Math.random() < partner.rareDrop.chance) {
+                    rareId = partner.rareDrop.resource;
+                    break;
+                  }
+                }
+              }
+              if (rareId) {
+                const rareResources = { ...(s as any).rareResources || {} };
+                const wasNew = !rareResources[rareId];
+                rareResources[rareId] = (rareResources[rareId] || 0) + 1;
+                (s as any).rareResources = rareResources;
+                const rrDef = RARE_RESOURCE_MAP[rareId];
+                if (wasNew) {
+                  const unlockDesc = rrDef?.unlocks?.desc || "a special unlock";
+                  get().addToLog(`🎁 A shipment from ${partner.name} carried ${rrDef?.icon || "💎"} ${rrDef?.name || rareId}! ${rrDef?.unlocks?.name || "Something"} unlocked: ${unlockDesc}`);
+                } else {
+                  get().addToLog(`🎁 ${partner.name}'s shipment carried another ${rrDef?.icon || "💎"} ${rrDef?.name || rareId} (×${rareResources[rareId]}).`);
+                }
+              }
+              const prevTotal = ag.totalShipments || 0;
+              (nextAgreements ||= {})[partnerId] = {
+                ...ag,
+                shipmentProgress: progress,
+                totalShipments: prevTotal + delivered,
+                lastShipment: { resource: r, amount: perShipment, rare: rareId || undefined, at: Date.now() },
+              };
+              // First-ever delivery gets a log line; routine shipments stay
+              // silent (the card's arrival animation + resource float carry
+              // the feedback — a log line every ~60s would be spam).
+              if (prevTotal === 0) {
+                get().addToLog(`📦 First shipment from ${partner.name} arrived: +${Math.round(perShipment)} ${RESOURCE_MAP[r]?.name || r}${caravanCount > 0 ? ` (caravans ×${caravanCount} speed deliveries)` : ""}.`);
+              }
+            } else if (progress !== (ag.shipmentProgress || 0)) {
+              // Progress advanced without a delivery — publish it so the
+              // card's progress bar animates smoothly each tick.
+              (nextAgreements ||= {})[partnerId] = { ...ag, shipmentProgress: progress };
+            }
+            tradesThisTick++;
+          }
+          if (nextAgreements) {
+            (s as any).tradeAgreements = { ...s.tradeAgreements, ...nextAgreements };
           }
         }
         // Increment the lifetime successfulTrades counter (reduces assimilation
@@ -4018,9 +4073,15 @@ export const useGameStore = create<GameStore>()(
         }
         // (3) requiresRivalsResolved — all NPC rivals must be in a non-active
         // state (allied/conquered/merged). Used by Creature→Tribal + Empire→Solar.
+        // QA-FIX (progression blocker): HIDDEN rivals are excluded — they
+        // are the cell-stage stragglers that didn't survive the carry-forward
+        // cut (not interactable, not shown in the World tab). Counting them
+        // made "resolve all rivals" impossible: the player could ally/conquer
+        // every visible rival and the gate would still read 5 active. The
+        // World tab + this gate now agree: only VISIBLE rivals count.
         if (reqs.requiresRivalsResolved) {
           const rivals = s.rivals || [];
-          const activeCount = rivals.filter((r: any) => r?.state === "active").length;
+          const activeCount = rivals.filter((r: any) => r?.state === "active" && !r?.hidden).length;
           if (activeCount > 0) {
             get().addToLog(`Cannot evolve: ${activeCount} rival${activeCount === 1 ? "" : "s"} still active — conquer, merge, or ally with all of them.`);
             return;
@@ -4071,9 +4132,22 @@ export const useGameStore = create<GameStore>()(
         const totalTech = stageTechCount;
         const score = computeScore(s);
 
-        if (s.population < reqs.minPopulation * evolveBoost) return;
-        if (totalSystems < reqs.minSystems * evolveBoost) return;
-        if (totalTech < reqs.minTech * evolveBoost) return;
+        // QA-FIX: these three gates used to `return` SILENTLY — clicking the
+        // evolve button with unmet requirements gave zero feedback while every
+        // other gate above logs its reason. Mirror that behavior so the log
+        // always explains WHY nothing happened.
+        if (s.population < reqs.minPopulation * evolveBoost) {
+          get().addToLog(`Cannot evolve: population ${Math.floor(s.population)} < ${Math.ceil(reqs.minPopulation * evolveBoost)} (need ${Math.ceil(reqs.minPopulation * evolveBoost - s.population)} more).`);
+          return;
+        }
+        if (totalSystems < reqs.minSystems * evolveBoost) {
+          get().addToLog(`Cannot evolve: ${totalSystems} ${stage.name}-stage systems < ${Math.ceil(reqs.minSystems * evolveBoost)} — build more this-stage systems.`);
+          return;
+        }
+        if (totalTech < reqs.minTech * evolveBoost) {
+          get().addToLog(`Cannot evolve: ${totalTech} ${stage.name}-stage techs < ${Math.ceil(reqs.minTech * evolveBoost)} — research more this-stage techs.`);
+          return;
+        }
         // Score is NOT a requirement — it only affects EP earned at prestige
 
         const nextStageIdx = s.stageIndex + 1;
@@ -8036,10 +8110,14 @@ export const useGameStore = create<GameStore>()(
           resources,
           tradeAgreements: {
             ...s.tradeAgreements,
-            [partnerId]: { established: Date.now(), relation: 0 },
+            // TRADE-SHIPMENTS — first delivery arrives after one full
+            // interval; the World tab card animates progress from 0.
+            [partnerId]: { established: Date.now(), relation: 0, shipmentProgress: 0, totalShipments: 0 },
           },
         });
-        get().addToLog(`Trade route established with ${partner.name}. Gives ${partner.givesResource} +${partner.bonusPerTick}/s.`);
+        const perShipment = partner.bonusPerTick * partner.shipmentInterval;
+        const caravans = caravanCountOf(s.ownedSystems);
+        get().addToLog(`Trade route established with ${partner.name}. A shipment of ${RESOURCE_MAP[partner.givesResource]?.name || partner.givesResource} (+${Math.round(perShipment)}) arrives every ~${Math.round(partner.shipmentInterval)}s${caravans > 0 ? ` (faster — you have ${caravans} caravan${caravans === 1 ? "" : "s"})` : " — build trade caravans to speed deliveries"}.`);
       },
 
       // PART-2-LAYER-A — break a trade agreement.
@@ -8533,7 +8611,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 19,
+      version: 20,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9142,6 +9220,22 @@ export const useGameStore = create<GameStore>()(
             "bulk_fuse_10x", "bulk_fuse_100x", "bulk_fuse_max",
           ]) {
             if (persisted.upgrades[id] === undefined) persisted.upgrades[id] = 0;
+          }
+        }
+
+        // V20-MIGRATION — TRADE-SHIPMENTS: default the new per-agreement
+        // shipment fields on old saves and clear any stale lastShipment
+        // (it's a transient UI hint — a fresh page load shouldn't replay an
+        // old arrival animation).
+        if (version < 20) {
+          if (persisted.tradeAgreements) {
+            for (const pid of Object.keys(persisted.tradeAgreements)) {
+              const ag: any = persisted.tradeAgreements[pid];
+              if (!ag) continue;
+              if (ag.shipmentProgress === undefined) ag.shipmentProgress = 0;
+              if (ag.totalShipments === undefined) ag.totalShipments = 0;
+              delete ag.lastShipment;
+            }
           }
         }
 
