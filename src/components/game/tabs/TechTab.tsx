@@ -2,7 +2,7 @@
 
 import { useGameStore } from "@/game/state/store";
 import { techsForStage, TECH_MAP, TECHS } from "@/game/data/techs";
-import { STAGES } from "@/game/data/stages";
+import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { useActiveLayer } from "@/game/state/layerHelpers";
 import { ARCHETYPE_MAP } from "@/game/data/archetypes";
 import { formatNumber, resourceColor, resourceIcon } from "../shared/format";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Lock, GitBranch, History, Layers } from "lucide-react";
+import { CheckCircle2, Lock, GitBranch, History, Layers, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import type { TechDef } from "@/game/state/types";
@@ -99,6 +99,11 @@ export function TechTab() {
   // Group current stage techs by branch
   const currentBranches = groupByBranch(currentTechs);
 
+  // ROUND D2 — Tree view toggle. The giant tech tree spans Tribal→Galactic.
+  // At Cell/Creature (Mutations/Discoveries), only list view is available.
+  const isTreeStage = stageIndex >= 2; // Tribal (index 2) onward
+  const [viewMode, setViewMode] = useState<"list" | "tree">("list");
+
   return (
     <div className="space-y-4">
       {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
@@ -108,27 +113,61 @@ export function TechTab() {
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
+                {viewMode === "tree" ? <Network className="w-4 h-4" /> : <GitBranch className="w-4 h-4" />}
                 {stage.name} {stage.techLabel || "Technology"}
               </CardTitle>
               <CardDescription>
-                Research permanent bonuses. Prerequisites must be met before higher tiers unlock.
+                {viewMode === "tree"
+                  ? "The full tech tree — research across stages. Earlier-stage techs stay researchable; later stages unlock as you advance."
+                  : "Research permanent bonuses. Prerequisites must be met before higher tiers unlock."}
               </CardDescription>
             </div>
+            {/* ROUND D2 — List/Tree view toggle (Tree only at Tribal+). */}
+            {isTreeStage && (
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-md border transition-colors flex items-center gap-1",
+                    viewMode === "list"
+                      ? "border-primary bg-primary/15 text-primary font-semibold"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <GitBranch className="w-3 h-3" /> List
+                </button>
+                <button
+                  onClick={() => setViewMode("tree")}
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-md border transition-colors flex items-center gap-1",
+                    viewMode === "tree"
+                      ? "border-primary bg-primary/15 text-primary font-semibold"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Network className="w-3 h-3" /> Tree
+                </button>
+              </div>
+            )}
           </div>
         </CardHeader>
       </Card>
 
-      {/* Current stage techs — always shown */}
-      {Object.keys(currentBranches).length === 0 ? (
-        <Card className="glass-panel">
-          <CardContent className="py-8 text-center text-muted-foreground">
-            <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            No techs for this stage yet.
-          </CardContent>
-        </Card>
+      {/* ROUND D2 — Tree view: horizontally-scrolling stage columns. */}
+      {viewMode === "tree" && isTreeStage ? (
+        <TechTreeCanvas stageIndex={stageIndex} />
       ) : (
-        <BranchList branches={currentBranches} />
+        /* Current stage techs — list view (always shown when not in tree mode). */
+        Object.keys(currentBranches).length === 0 ? (
+          <Card className="glass-panel">
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              No techs for this stage yet.
+            </CardContent>
+          </Card>
+        ) : (
+          <BranchList branches={currentBranches} />
+        )
       )}
     </div>
   );
@@ -320,6 +359,185 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           {owned ? "Researched" : lockedByExclusive ? `Locked by ${lockedByExclusiveName}` : !prereqMet ? "Locked" : !canAfford ? "Can't afford" : "Research"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ROUND D2 — TechTreeCanvas
+// The horizontally-scrolling tech tree. Columns = stages (Tribal → Galactic),
+// rows = branches within each stage. Each tech is a compact node card.
+// The current stage's column is highlighted; earlier stages are researchable
+// (you can catch up on missed techs); later stages are locked ("advance first").
+// Per user spec: "horizontally-scrolling columns by stage, with vertical
+// position = branch."
+// ============================================================
+
+// The stages that form the giant tech tree (Tribal onward).
+const TREE_STAGES = STAGE_IDS.slice(2); // ["tribal", "civilization", "empire", "solar", "galactic"]
+
+function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
+  const technologies = useGameStore((s) => s.technologies);
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  const rareResources = useGameStore((s) => s.rareResources || {});
+  const reliquary = useGameStore((s) => s.reliquary || {});
+
+  // For each tree stage, compute the visible techs (same filter as list view).
+  const stageColumns = useMemo(() => {
+    return TREE_STAGES.map((stageId) => {
+      const stageIdx = STAGE_IDS.indexOf(stageId as any);
+      const stageDef = STAGES[stageIdx];
+      const techs = techsForStage(stageId).filter((t) => {
+        if (t.hiddenFromTechTab) return false;
+        if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
+        if (t.requiresRareResource && ((rareResources[t.requiresRareResource] || 0) + (reliquary[t.requiresRareResource] || 0)) <= 0) return false;
+        const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);
+        if (!prereqMet && !technologies[t.id]) return false;
+        return true;
+      });
+      const branches = groupByBranch(techs);
+      const researched = techs.filter((t) => technologies[t.id]).length;
+      return { stageId, stageIdx, stageDef, branches, total: techs.length, researched };
+    });
+  }, [technologies, lockedArchetype, rareResources, reliquary]);
+
+  return (
+    <div className="overflow-x-auto custom-scroll pb-2">
+      <div className="flex gap-3 min-w-max">
+        {stageColumns.map(({ stageId, stageIdx, stageDef, branches, total, researched }) => {
+          const isCurrent = stageIdx === stageIndex;
+          const isPast = stageIdx < stageIndex;
+          const isFuture = stageIdx > stageIndex;
+          return (
+            <div
+              key={stageId}
+              className={cn(
+                "shrink-0 w-[240px] rounded-lg border p-2 space-y-2",
+                isCurrent ? "border-primary/40 bg-primary/5" : "border-border/40 bg-muted/10",
+                isFuture && "opacity-50"
+              )}
+            >
+              {/* Column header */}
+              <div className="sticky top-0 z-10 -mx-2 -mt-2 px-2 py-1.5 bg-inherit border-b border-border/40 mb-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className={cn("text-xs font-bold flex items-center gap-1", isCurrent ? "text-primary" : "text-muted-foreground")}>
+                    <span>{stageDef.icon}</span>
+                    {stageDef.name}
+                  </span>
+                  <span className="text-[0.55rem] text-muted-foreground tabular-nums">
+                    {researched}/{total}
+                  </span>
+                </div>
+                <div className="text-[0.5rem] text-muted-foreground/70 uppercase tracking-wide">
+                  {stageDef.techLabel || "Technology"}
+                </div>
+              </div>
+              {/* Branch sections */}
+              {Object.keys(branches).length === 0 ? (
+                <p className="text-[0.6rem] text-muted-foreground/50 italic text-center py-2">No techs visible.</p>
+              ) : (
+                Object.entries(branches).map(([branch, techs]) => (
+                  <div key={branch} className="space-y-1">
+                    <div className="text-[0.55rem] font-semibold uppercase tracking-wide text-muted-foreground/80 border-b border-border/20 pb-0.5">
+                      {branch}
+                    </div>
+                    {techs.sort((a, b) => a.tier - b.tier).map((tech) => (
+                      <TreeTechNode
+                        key={tech.id}
+                        tech={tech}
+                        isFutureStage={isFuture}
+                        futureStageName={isFuture ? stageDef.name : undefined}
+                      />
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// A compact tech node for the tree canvas. Smaller than the list-view TechCard.
+function TreeTechNode({
+  tech,
+  isFutureStage,
+  futureStageName,
+}: {
+  tech: TechDef;
+  isFutureStage: boolean;
+  futureStageName?: string;
+}) {
+  const technologies = useGameStore((s) => s.technologies);
+  const resources = useGameStore((s) => s.resources);
+  const buyTech = useGameStore((s) => s.buyTech);
+  const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
+
+  const owned = !!technologies[tech.id];
+  const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
+  const canAfford = debugFreeBuy || Object.entries(tech.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+  const lockedByExclusive = tech.exclusiveWith?.find((exclId) => technologies[exclId]);
+  const stageLocked = isFutureStage; // can't research future-stage techs
+  const disabled = owned || stageLocked || !prereqMet || !canAfford || !!lockedByExclusive;
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border p-1.5 transition-all",
+        owned ? "border-emerald-500/40 bg-emerald-500/5 opacity-70" :
+        stageLocked ? "border-border/30 bg-muted/5 opacity-40" :
+        !prereqMet ? "border-border/30 opacity-50" :
+        lockedByExclusive ? "border-red-500/20 opacity-40" :
+        "border-border/50 hover:border-primary/40 hover:bg-primary/5 cursor-pointer"
+      )}
+      onClick={() => !disabled && buyTech(tech.id)}
+    >
+      <div className="flex items-center gap-1.5">
+        {owned ? (
+          <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+        ) : stageLocked ? (
+          <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
+        ) : !prereqMet ? (
+          <Lock className="w-3 h-3 text-muted-foreground shrink-0" />
+        ) : (
+          <span className="w-3 h-3 rounded-full border border-muted-foreground/40 shrink-0" />
+        )}
+        <span className={cn("text-[0.7rem] font-semibold leading-tight truncate flex-1", owned && "text-emerald-300")}>
+          {tech.name}
+        </span>
+        <span className="text-[0.5rem] text-muted-foreground/60 tabular-nums shrink-0">T{tech.tier}</span>
+      </div>
+      {/* Cost (only if not owned + not stage-locked) */}
+      {!owned && !stageLocked && (
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          {Object.entries(tech.cost).slice(0, 3).map(([r, v]) => {
+            const enough = (resources[r] || 0) >= (v as number);
+            return (
+              <span
+                key={r}
+                className={cn("text-[0.55rem] tabular-nums", enough ? "" : "text-red-400")}
+                style={enough ? { color: resourceColor(r) } : undefined}
+              >
+                {resourceIcon(r)}{formatNumber(v as number, 0)}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {/* Stage-locked label */}
+      {stageLocked && (
+        <div className="text-[0.5rem] text-muted-foreground/60 italic mt-0.5">
+          Advance to {futureStageName} first
+        </div>
+      )}
+      {/* Prereq indicator (cross-stage) */}
+      {!owned && !stageLocked && tech.requires && tech.requires.length > 0 && !prereqMet && (
+        <div className="text-[0.5rem] text-amber-400/70 italic mt-0.5">
+          ← requires {tech.requires.map((r) => TECH_MAP[r]?.name || r).join(", ")}
+        </div>
+      )}
     </div>
   );
 }

@@ -4051,7 +4051,15 @@ export const useGameStore = create<GameStore>()(
         const tech = TECH_MAP[techId];
         if (!tech) return;
         if (s.technologies[techId]) return;
-        if (tech.stage !== STAGES[s.stageIndex].id) return;
+        // ROUND D2 — allow researching techs from the CURRENT stage OR EARLIER
+        // stages (the giant tech tree spans Tribal→Galactic; you can catch up
+        // on missed techs from earlier stages at any point). LATER-stage techs
+        // are blocked (can't research Galactic techs while in Tribal).
+        const techStageIdx = STAGE_IDS.indexOf(tech.stage as any);
+        if (techStageIdx > s.stageIndex) {
+          get().notifyPurchaseError(`Advance to ${STAGES[techStageIdx]?.name || tech.stage} stage first.`);
+          return;
+        }
         // EITHER-OR — check if an exclusive tech has been researched
         if (tech.exclusiveWith) {
           for (const exclId of tech.exclusiveWith) {
