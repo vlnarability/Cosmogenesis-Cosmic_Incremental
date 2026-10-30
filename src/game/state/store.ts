@@ -312,6 +312,78 @@ import {
 export const STORAGE_KEY = "evolution_idle_v2";
 
 // ===========================================================================
+// ROUND F2 — SAVE SLOTS
+// 3 save slots. The current slot is tracked in a separate localStorage key.
+// The slot-aware storage adapter (below) redirects all persist reads/writes
+// to the slot-specific key. The LandingPage shows a slot picker.
+// ===========================================================================
+export const NUM_SLOTS = 3;
+const SLOT_KEY = STORAGE_KEY + "_slot"; // tracks the current slot (1, 2, or 3)
+
+/** The localStorage key for a specific slot. */
+export function slotKey(slot: number): string {
+  return `${STORAGE_KEY}_slot${slot}`;
+}
+
+/** Get the current slot (1, 2, or 3). Defaults to 1. */
+export function getCurrentSlot(): number {
+  if (typeof window === "undefined") return 1;
+  const s = window.localStorage.getItem(SLOT_KEY);
+  const n = s ? parseInt(s, 10) : 1;
+  return n >= 1 && n <= NUM_SLOTS ? n : 1;
+}
+
+/** Set the current slot (1, 2, or 3). The page must reload for the persist
+ *  middleware to re-hydrate from the new slot. */
+export function setCurrentSlot(slot: number): void {
+  if (typeof window === "undefined") return;
+  if (slot < 1 || slot > NUM_SLOTS) return;
+  window.localStorage.setItem(SLOT_KEY, String(slot));
+}
+
+/** Read save info (stage name + layer) for a slot, or null if empty. */
+export function readSlotInfo(slot: number): { stageName: string; layerName: string | null; totalRuns: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(slotKey(slot));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const state = parsed?.state;
+    if (!state) return null;
+    const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
+    const stageName = stages[state.stageIndex] || `Stage ${(state.stageIndex || 0) + 1}`;
+    const ul = state.unlockedLayers || {};
+    const layerOrder: [string, string][] = [
+      ["enlightenment", "Enlightenment"], ["transcendence", "Transcendence"],
+      ["genesis", "Genesis"], ["apotheosis", "Apotheosis"],
+      ["singularity", "Singularity"], ["omnipotence", "Omnipotence"],
+      ["divinity", "Divinity"], ["infinity", "Infinity"], ["eternity", "Eternity"],
+    ];
+    let layerName: string | null = null;
+    for (const [key, name] of layerOrder) { if (ul[key]) layerName = name; }
+    return { stageName, layerName, totalRuns: state.totalRuns || 0 };
+  } catch { return null; }
+}
+
+// One-time migration: if the old single-key save exists (STORAGE_KEY) but
+// slot 1 doesn't, copy it to slot 1. Runs on module load (client-side only).
+if (typeof window !== "undefined") {
+  try {
+    if (!window.localStorage.getItem(slotKey(1))) {
+      const oldSave = window.localStorage.getItem(STORAGE_KEY);
+      if (oldSave) {
+        window.localStorage.setItem(slotKey(1), oldSave);
+        // Don't delete the old key — leave it as a backup.
+      }
+    }
+    // Ensure the slot tracker exists.
+    if (!window.localStorage.getItem(SLOT_KEY)) {
+      window.localStorage.setItem(SLOT_KEY, "1");
+    }
+  } catch { /* localStorage might be blocked — ignore */ }
+}
+
+// ===========================================================================
 // SAFE + DEBOUNCED localStorage ADAPTER
 //
 // BUG-QUOTA-EXCEEDED: the original persist config called
@@ -402,7 +474,7 @@ if (typeof window !== "undefined") {
   // tabs (not the one that wrote).
   let _lastSeenSaveTimestamp = 0;
   window.addEventListener("storage", (e) => {
-    if (e.key !== STORAGE_KEY || !e.newValue) return;
+    if (e.key !== slotKey(getCurrentSlot()) || !e.newValue) return;
     try {
       const parsed = JSON.parse(e.newValue);
       const otherLastSaved = parsed?.state?.lastSaved || 0;
@@ -454,6 +526,16 @@ const safeLocalStorage = {
     if (_pendingWrite?.name === name) _pendingWrite = null;
     window.localStorage.removeItem(name);
   },
+};
+
+// ROUND F2 — Slot-aware storage adapter. Wraps safeLocalStorage + redirects
+// all reads/writes to the slot-specific key (slotKey(getCurrentSlot())). The
+// persist middleware uses this instead of safeLocalStorage directly, so all
+// save/load operations go to the correct slot transparently.
+const slotLocalStorage = {
+  getItem: (_name: string) => safeLocalStorage.getItem(slotKey(getCurrentSlot())),
+  setItem: (_name: string, value: string) => safeLocalStorage.setItem(slotKey(getCurrentSlot()), value),
+  removeItem: (_name: string) => safeLocalStorage.removeItem(slotKey(getCurrentSlot())),
 };
 
 // ===== KEYBOARD SHORTCUTS (DEBUG-SHORTCUTS) =====
@@ -8137,7 +8219,8 @@ export const useGameStore = create<GameStore>()(
 
       hardReset: () => {
         if (typeof window !== "undefined") {
-          localStorage.removeItem(STORAGE_KEY);
+          // ROUND F2 — clear the current slot's save (not the old single key).
+          localStorage.removeItem(slotKey(getCurrentSlot()));
         }
         const fresh = { ...initialRunState(), ...initialMetaState() };
         set(fresh);
@@ -9094,7 +9177,8 @@ export const useGameStore = create<GameStore>()(
         // BUG-QUOTA-EXCEEDED: use the safe+debounced adapter so the
         // tick doesn't crash when localStorage fills up. See the
         // adapter definition near the top of this file.
-        return safeLocalStorage;
+        // ROUND F2 — use the slot-aware adapter so saves go to the correct slot.
+        return slotLocalStorage;
       }),
       version: 25,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a

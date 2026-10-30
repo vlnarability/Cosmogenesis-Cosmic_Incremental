@@ -25,70 +25,34 @@
 // deliberate entry moment.
 
 import { useEffect, useState } from "react";
-import { STORAGE_KEY, useGameStore } from "@/game/state/store";
+import { STORAGE_KEY, useGameStore, getCurrentSlot, setCurrentSlot, readSlotInfo, NUM_SLOTS } from "@/game/state/store";
 
 export function LandingPage({ onDescend }: { onDescend: () => void }) {
-  const [hasSave, setHasSave] = useState(false);
-  const [saveStage, setSaveStage] = useState<string | null>(null);
-  const [saveLayer, setSaveLayer] = useState<string | null>(null); // layer NAME (e.g. "Enlightenment") or null for L1
-  // ROUND E — hardmode toggle (only for fresh games; existing saves keep their mode).
+  // ROUND F2 — save slot picker. 3 slots, each showing save info or "Empty".
+  const [selectedSlot, setSelectedSlot] = useState(1);
+  const [slotInfos, setSlotInfos] = useState<(ReturnType<typeof readSlotInfo> | null)[]>([null, null, null]);
+  // ROUND E — hardmode toggle (only for fresh/empty slots).
   const difficultyMode = useGameStore((s) => s.difficultyMode);
   const setDifficultyMode = useGameStore((s) => s.setDifficultyMode);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Defer the localStorage read off the effect's synchronous body so
-    // we don't trigger a cascading-render lint error. The microtask
-    // still runs before paint, so the user sees the correct "continue"
-    // copy on first paint.
     queueMicrotask(() => {
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        setHasSave(true);
-        const parsed = JSON.parse(raw);
-        const state = parsed?.state;
-        if (state) {
-          if (typeof state.stageIndex === "number") {
-            const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
-            setSaveStage(stages[state.stageIndex] || `Stage ${state.stageIndex + 1}`);
-          }
-          // Determine the highest unlocked prestige layer (L2-L10).
-          // L1 (Evolution) is the base game — always unlocked, doesn't count
-          // as a prestige layer for the button-verb logic. Only L2+
-          // (Enlightenment and above) counts as "prestige layer active".
-          // Per user: 'use the name of the Layer rather than the number.'
-          const ul = state.unlockedLayers || {};
-          // Layer order + display names. L1 (evolution) is excluded — it's
-          // the base game, not a prestige layer.
-          const layerOrder: [string, string][] = [
-            ["enlightenment", "Enlightenment"],
-            ["transcendence", "Transcendence"],
-            ["genesis", "Genesis"],
-            ["apotheosis", "Apotheosis"],
-            ["singularity", "Singularity"],
-            ["omnipotence", "Omnipotence"],
-            ["divinity", "Divinity"],
-            ["infinity", "Infinity"],
-            ["eternity", "Eternity"],
-          ];
-          let highestName: string | null = null;
-          for (const [key, name] of layerOrder) {
-            if (ul[key]) highestName = name;
-          }
-          setSaveLayer(highestName);
-        }
-      } catch {
-        // Malformed save — treat as no save; the player starts fresh.
-      }
+      const current = getCurrentSlot();
+      setSelectedSlot(current);
+      const infos = Array.from({ length: NUM_SLOTS }, (_, i) => readSlotInfo(i + 1));
+      setSlotInfos(infos);
     });
   }, []);
 
-  // LAYER-AWARE-BUTTON-COPY: the "Descend" verb implies starting from
-  // outside the cosmos. For L2+ prestige-layer saves, the player is
-  // resuming a Divine Engine run — "Return" fits better. The button
-  // glyph (↓) stays the same.
-  const buttonVerb = saveLayer ? "Return" : "Descend";
+  const selectedInfo = slotInfos[selectedSlot - 1];
+  const selectedHasSave = !!selectedInfo;
+  const buttonVerb = selectedInfo?.layerName ? "Return" : "Descend";
+
+  const handleDescend = () => {
+    setCurrentSlot(selectedSlot);
+    onDescend();
+  };
 
   return (
     <main className="min-h-screen bg-[#060814] text-[#e8e2d4] flex flex-col selection:bg-[#7dd3fc]/30 selection:text-white">
@@ -139,10 +103,61 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           of a galaxy that bears your name.
         </p>
 
-        {/* ROUND E — Hardmode toggle. Only for fresh games (no save). Existing
-            saves keep their difficulty mode. Two quiet text-link buttons. */}
-        {!hasSave && (
-          <div className="mb-12">
+        {/* ROUND F2 — Save slot picker. 3 slots, each showing save info or
+            "Empty". Clicking a slot selects it. The Descend button loads the
+            selected slot. */}
+        <div className="mb-8">
+          <span className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#e8e2d4]/35 block mb-2">
+            Save Slots
+          </span>
+          <div className="flex gap-3">
+            {slotInfos.map((info, i) => {
+              const slotNum = i + 1;
+              const isSelected = selectedSlot === slotNum;
+              return (
+                <button
+                  key={slotNum}
+                  onClick={() => setSelectedSlot(slotNum)}
+                  className={`text-left p-2 rounded border transition-all min-w-[100px] ${
+                    isSelected
+                      ? "border-[#7dd3fc]/50 bg-[#7dd3fc]/5"
+                      : "border-[#e8e2d4]/10 hover:border-[#e8e2d4]/25"
+                  }`}
+                >
+                  <div className={`font-mono text-[0.55rem] uppercase tracking-wide ${isSelected ? "text-[#7dd3fc]" : "text-[#e8e2d4]/30"}`}>
+                    Slot {slotNum}
+                  </div>
+                  {info ? (
+                    <div className="mt-0.5">
+                      <div className="text-xs text-[#e8e2d4]/70">
+                        {info.stageName}
+                      </div>
+                      {info.layerName && (
+                        <div className="text-[0.6rem] text-[#e8e2d4]/40">
+                          {info.layerName}
+                        </div>
+                      )}
+                      {info.totalRuns > 0 && (
+                        <div className="text-[0.55rem] text-[#e8e2d4]/30">
+                          {info.totalRuns} run{info.totalRuns === 1 ? "" : "s"}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[0.65rem] text-[#e8e2d4]/25 italic mt-0.5">
+                      Empty
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ROUND E — Hardmode toggle. Only shows when the selected slot is
+            empty (fresh game). Existing saves keep their difficulty mode. */}
+        {!selectedHasSave && (
+          <div className="mb-8">
             <div className="flex items-center gap-4 mb-1">
               <span className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#e8e2d4]/35">
                 Difficulty
@@ -178,21 +193,21 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
         )}
 
         {/* Descend — quiet text link with underline, not a glowing CTA.
-            Save state appended inline (no separate paragraph). */}
+            Shows the selected slot's save info inline. */}
         <button
-          onClick={onDescend}
+          onClick={handleDescend}
           className="group inline-flex items-baseline gap-3 text-left w-fit cursor-pointer"
         >
           <span className="font-mono text-xs uppercase tracking-[0.3em] text-[#7dd3fc] border-b border-[#7dd3fc]/40 pb-1 group-hover:border-[#7dd3fc] group-hover:pb-1.5 transition-all">
             {buttonVerb}
           </span>
-          {hasSave ? (
+          {selectedHasSave ? (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/45">
-              {saveLayer || saveStage || "· continue"}
+              {selectedInfo?.layerName || selectedInfo?.stageName || "· continue"}
             </span>
           ) : (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/30">
-              · begin anew
+              · slot {selectedSlot} · begin anew
             </span>
           )}
         </button>
