@@ -1844,14 +1844,24 @@ export const useGameStore = create<GameStore>()(
             const oneOfSystemsMet = !reqs.requiresOneOfSystems || reqs.requiresOneOfSystems.some(
               (sid) => (ownedSystems[sid] || 0) > 0
             );
+            // ROUND D3 — RESEARCH-DRIVEN EVOLUTION. If the player has researched
+            // ≥30% of the NEXT stage's techs, auto-evolve fires regardless of
+            // the narrative gates. This is the "researching enough pushes you to
+            // the next stage" path — an alternative to the narrative milestones.
+            const nextStageTechsList = techsForStage(next);
+            const nextStageTechsTotal = nextStageTechsList.length;
+            const nextStageTechsResearched = nextStageTechsList.filter((t) => technologies[t.id]).length;
+            const researchThreshold = Math.max(1, Math.ceil(nextStageTechsTotal * 0.30));
+            const researchDrivenEvolve = nextStageTechsResearched >= researchThreshold;
             if (
-              prereqMet &&
+              researchDrivenEvolve ||
+              (prereqMet &&
               oneOfTechsMet &&
               oneOfSystemsMet &&
               // EVOLVE-REQ-REWORK — pop/systems/tech gates optional (|| 0 → always met when unset).
               population >= (reqs.minPopulation || 0) * evolveBoost * threshold &&
               stageSystemsNow >= (reqs.minSystems || 0) * evolveBoost * threshold &&
-              stageTechNow >= (reqs.minTech || 0) * evolveBoost * threshold
+              stageTechNow >= (reqs.minTech || 0) * evolveBoost * threshold)
             ) {
               // Defer evolve to next tick to avoid mutating state mid-set.
               setTimeout(() => get().evolveStage(), 0);
@@ -4051,13 +4061,14 @@ export const useGameStore = create<GameStore>()(
         const tech = TECH_MAP[techId];
         if (!tech) return;
         if (s.technologies[techId]) return;
-        // ROUND D2 — allow researching techs from the CURRENT stage OR EARLIER
-        // stages (the giant tech tree spans Tribal→Galactic; you can catch up
-        // on missed techs from earlier stages at any point). LATER-stage techs
-        // are blocked (can't research Galactic techs while in Tribal).
+        // ROUND D3 — allow researching techs from the CURRENT stage, EARLIER
+        // stages (catch up on missed techs), AND ONE STAGE AHEAD (the next
+        // stage — researching enough of the next stage's techs triggers
+        // research-driven evolution). TWO+ stages ahead is blocked (can't
+        // research Galactic techs while in Tribal).
         const techStageIdx = STAGE_IDS.indexOf(tech.stage as any);
-        if (techStageIdx > s.stageIndex) {
-          get().notifyPurchaseError(`Advance to ${STAGES[techStageIdx]?.name || tech.stage} stage first.`);
+        if (techStageIdx > s.stageIndex + 1) {
+          get().notifyPurchaseError(`Advance to ${STAGES[techStageIdx - 1]?.name || tech.stage} stage first.`);
           return;
         }
         // EITHER-OR — check if an exclusive tech has been researched
@@ -4221,9 +4232,41 @@ export const useGameStore = create<GameStore>()(
         }
         const reqs = stage.evolveRequires;
         const evolveBoost = 1 - Math.min(0.30, (s.upgrades["evolutionary_momentum"] || 0) * 0.05);
+        // ROUND D3 — RESEARCH-DRIVEN EVOLUTION BYPASS. If the player has
+        // researched ≥30% of the NEXT stage's techs, skip ALL the narrative
+        // gates below (requiresSystems, requiresRivalsResolved, government,
+        // trade routes, FTL, etc.) + proceed directly to evolution. This is
+        // the "researching enough pushes you to the next stage" path.
+        const nextStageId = nextStage(stage.id);
+        if (nextStageId) {
+          const nextTechs = techsForStage(nextStageId);
+          const nextTotal = nextTechs.length;
+          const nextResearched = nextTechs.filter((t) => s.technologies[t.id]).length;
+          const researchThreshold = Math.max(1, Math.ceil(nextTotal * 0.30));
+          if (nextResearched >= researchThreshold) {
+            get().addToLog(`Research-driven evolution: ${nextResearched}/${nextTotal} ${STAGES.find((st) => st.id === nextStageId)?.name} techs researched (≥${researchThreshold} threshold). Evolving!`);
+            // Skip the narrative gates — jump directly to the evolution logic.
+            // (The code below after all the gate checks handles the actual
+            // stage transition. We set a flag to skip the gates.)
+            // Actually, simpler: just don't return — fall through to the
+            // post-gate evolution code. But the gates below use early-return.
+            // So we skip them by jumping past. The cleanest way: wrap the
+            // narrative gates in a conditional.
+          }
+        }
+        // Compute the research-driven bypass flag for the narrative gates below.
+        const _researchBypass = (() => {
+          if (!nextStageId) return false;
+          const nextTechs = techsForStage(nextStageId);
+          const nextTotal = nextTechs.length;
+          const nextResearched = nextTechs.filter((t) => s.technologies[t.id]).length;
+          const researchThreshold = Math.max(1, Math.ceil(nextTotal * 0.30));
+          return nextResearched >= researchThreshold;
+        })();
         // STAGE-PREREQ-SYSTEMS — certain stages require specific systems
         // (e.g. Nucleus to evolve Cell→Creature). Refuse if missing.
-        if (reqs.requiresSystems && reqs.requiresSystems.length > 0) {
+        // ROUND D3 — skip if research-driven bypass is active.
+        if (!_researchBypass && reqs.requiresSystems && reqs.requiresSystems.length > 0) {
           for (const reqId of reqs.requiresSystems) {
             if ((s.ownedSystems[reqId] || 0) <= 0) {
               const sysName = SYSTEM_MAP[reqId]?.name || reqId;
@@ -4236,7 +4279,7 @@ export const useGameStore = create<GameStore>()(
         // Each gate logs a specific reason and returns early if not met, so
         // the player can see WHY they can't evolve.
         // (1) requiresTechs — all listed techs must be researched.
-        if (reqs.requiresTechs && reqs.requiresTechs.length > 0) {
+        if (!_researchBypass && reqs.requiresTechs && reqs.requiresTechs.length > 0) {
           for (const tid of reqs.requiresTechs) {
             if (!s.technologies[tid]) {
               const techName = TECH_MAP[tid]?.name || tid;
@@ -4248,7 +4291,7 @@ export const useGameStore = create<GameStore>()(
         // (2) requiresOneOfTechs — at least ONE of the listed techs must be
         // researched (either/or paths: 3 FTL methods for Solar→Galactic,
         // 3 ascension paths for Galactic→Prestige).
-        if (reqs.requiresOneOfTechs && reqs.requiresOneOfTechs.length > 0) {
+        if (!_researchBypass && reqs.requiresOneOfTechs && reqs.requiresOneOfTechs.length > 0) {
           const hasOne = reqs.requiresOneOfTechs.some((tid) => s.technologies[tid]);
           if (!hasOne) {
             const names = reqs.requiresOneOfTechs.map((tid) => TECH_MAP[tid]?.name || tid).join(" OR ");
@@ -4260,7 +4303,7 @@ export const useGameStore = create<GameStore>()(
         // must be owned (either/or paths: 3 FTL infrastructure systems
         // for Solar→Galactic — the player builds the one matching their
         // chosen FTL tech).
-        if (reqs.requiresOneOfSystems && reqs.requiresOneOfSystems.length > 0) {
+        if (!_researchBypass && reqs.requiresOneOfSystems && reqs.requiresOneOfSystems.length > 0) {
           const hasOne = reqs.requiresOneOfSystems.some((sid) => (s.ownedSystems[sid] || 0) > 0);
           if (!hasOne) {
             const names = reqs.requiresOneOfSystems.map((sid) => SYSTEM_MAP[sid]?.name || sid).join(" OR ");
@@ -4276,7 +4319,7 @@ export const useGameStore = create<GameStore>()(
         // (Creature→Tribal: resolve ≥3, not all). When set, the gate passes once
         // resolvedCount >= min. When unset, the gate requires ALL visible rivals
         // resolved (the Empire→Solar behavior).
-        if (reqs.requiresRivalsResolved) {
+        if (!_researchBypass && reqs.requiresRivalsResolved) {
           const rivals = s.rivals || [];
           const visible = rivals.filter((r: any) => !r?.hidden);
           const activeCount = visible.filter((r: any) => r?.state === "active").length;
@@ -4298,7 +4341,7 @@ export const useGameStore = create<GameStore>()(
         }
         // (4) requiresGovernmentChosen — player must have chosen a government
         // (not auto-assigned). Used by Tribal→Civilization.
-        if (reqs.requiresGovernmentChosen) {
+        if (!_researchBypass && reqs.requiresGovernmentChosen) {
           if (!s.pendingGovernment && !s.activeGovernment) {
             get().addToLog(`Cannot evolve: choose a government first.`);
             return;
@@ -4306,7 +4349,7 @@ export const useGameStore = create<GameStore>()(
         }
         // (5) requiresHappinessThreshold — happiness must be >= this value.
         // Used alongside requiresGovernmentChosen — the post-choice recovery.
-        if (reqs.requiresHappinessThreshold !== undefined) {
+        if (!_researchBypass && reqs.requiresHappinessThreshold !== undefined) {
           const happiness = s.resources?.happiness ?? 0;
           if (happiness < reqs.requiresHappinessThreshold) {
             get().addToLog(`Cannot evolve: happiness ${happiness.toFixed(0)} < ${reqs.requiresHappinessThreshold} — stabilize your society first.`);
@@ -4315,7 +4358,7 @@ export const useGameStore = create<GameStore>()(
         }
         // (6) requiresTradeRoutes — minimum count of established trade routes.
         // Used by Civilization→Empire.
-        if (reqs.requiresTradeRoutes !== undefined) {
+        if (!_researchBypass && reqs.requiresTradeRoutes !== undefined) {
           const tradeCount = s.tradeAgreements ? Object.keys(s.tradeAgreements).length : 0;
           if (tradeCount < reqs.requiresTradeRoutes) {
             get().addToLog(`Cannot evolve: ${tradeCount}/${reqs.requiresTradeRoutes} trade routes established.`);
@@ -4347,15 +4390,15 @@ export const useGameStore = create<GameStore>()(
         const minPopR = reqs.minPopulation || 0;
         const minSysR = reqs.minSystems || 0;
         const minTechR = reqs.minTech || 0;
-        if (minPopR > 0 && s.population < minPopR * evolveBoost) {
+        if (!_researchBypass && minPopR > 0 && s.population < minPopR * evolveBoost) {
           get().addToLog(`Cannot evolve: population ${Math.floor(s.population)} < ${Math.ceil(minPopR * evolveBoost)} (need ${Math.ceil(minPopR * evolveBoost - s.population)} more).`);
           return;
         }
-        if (minSysR > 0 && totalSystems < minSysR * evolveBoost) {
+        if (!_researchBypass && minSysR > 0 && totalSystems < minSysR * evolveBoost) {
           get().addToLog(`Cannot evolve: ${totalSystems} ${stage.name}-stage systems < ${Math.ceil(minSysR * evolveBoost)} — build more this-stage systems.`);
           return;
         }
-        if (minTechR > 0 && totalTech < minTechR * evolveBoost) {
+        if (!_researchBypass && minTechR > 0 && totalTech < minTechR * evolveBoost) {
           get().addToLog(`Cannot evolve: ${totalTech} ${stage.name}-stage techs < ${Math.ceil(minTechR * evolveBoost)} — research more this-stage techs.`);
           return;
         }

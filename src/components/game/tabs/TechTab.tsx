@@ -407,20 +407,26 @@ function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
         {stageColumns.map(({ stageId, stageIdx, stageDef, branches, total, researched }) => {
           const isCurrent = stageIdx === stageIndex;
           const isPast = stageIdx < stageIndex;
-          const isFuture = stageIdx > stageIndex;
+          // ROUND D3 — the NEXT stage (stageIdx === stageIndex + 1) is
+          // researchable (researching ≥30% of its techs triggers evolution).
+          // Only stages 2+ ahead are locked.
+          const isNext = stageIdx === stageIndex + 1;
+          const isLocked = stageIdx > stageIndex + 1;
           return (
             <div
               key={stageId}
               className={cn(
                 "shrink-0 w-[240px] rounded-lg border p-2 space-y-2",
-                isCurrent ? "border-primary/40 bg-primary/5" : "border-border/40 bg-muted/10",
-                isFuture && "opacity-50"
+                isCurrent ? "border-primary/40 bg-primary/5" :
+                isNext ? "border-amber-500/30 bg-amber-500/5" :
+                "border-border/40 bg-muted/10",
+                isLocked && "opacity-50"
               )}
             >
               {/* Column header */}
               <div className="sticky top-0 z-10 -mx-2 -mt-2 px-2 py-1.5 bg-inherit border-b border-border/40 mb-1">
                 <div className="flex items-center justify-between gap-1">
-                  <span className={cn("text-xs font-bold flex items-center gap-1", isCurrent ? "text-primary" : "text-muted-foreground")}>
+                  <span className={cn("text-xs font-bold flex items-center gap-1", isCurrent ? "text-primary" : isNext ? "text-amber-400" : "text-muted-foreground")}>
                     <span>{stageDef.icon}</span>
                     {stageDef.name}
                   </span>
@@ -430,6 +436,7 @@ function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
                 </div>
                 <div className="text-[0.5rem] text-muted-foreground/70 uppercase tracking-wide">
                   {stageDef.techLabel || "Technology"}
+                  {isNext && <span className="text-amber-400/90 normal-case ml-1">— research to evolve</span>}
                 </div>
               </div>
               {/* Branch sections */}
@@ -445,8 +452,8 @@ function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
                       <TreeTechNode
                         key={tech.id}
                         tech={tech}
-                        isFutureStage={isFuture}
-                        futureStageName={isFuture ? stageDef.name : undefined}
+                        isFutureStage={isLocked}
+                        futureStageName={isLocked ? stageDef.name : undefined}
                       />
                     ))}
                   </div>
