@@ -13,7 +13,7 @@ import { STORY_MAP, STORY_TRIGGERS } from "../data/story";
 import { ARCHETYPE_MAP, dominantArchetype, isArchetypeImmuneToEvent } from "../data/archetypes";
 import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "../data/governments";
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
-import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP } from "../data/rivals";
+import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP, randomRivalArchetype } from "../data/rivals";
 import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf, reputationTierOf } from "../data/tradePartners";
 import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
 import { NUCLEUS_POOL_MAP, poolArchetypesFor, NUCLEUS_SYSTEM_IDS } from "../data/nucleusPools";
@@ -8903,7 +8903,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 22,
+      version: 23,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9592,6 +9592,21 @@ export const useGameStore = create<GameStore>()(
         if (version < 22) {
           if (persisted.nucleusChoice === undefined) persisted.nucleusChoice = null;
           if (persisted.showNucleusChoice === undefined) persisted.showNucleusChoice = false;
+        }
+
+        // V23-MIGRATION — ROUND C rival archetypes. Old saves (v22) don't have
+        // the archetype field on rivals. Assign a weighted-random archetype to
+        // each existing rival. The archetype's military/pop bonuses are NOT
+        // retroactively baked into strength/popGrowthMult (those were already
+        // set at generation) — this is purely for display + future interactions.
+        // Newly-generated rivals (post-migration) get the full baked-in bonuses.
+        if (version < 23) {
+          if (Array.isArray(persisted.rivals)) {
+            persisted.rivals = persisted.rivals.map((r: any) => ({
+              ...r,
+              archetype: r.archetype || randomRivalArchetype(),
+            }));
+          }
         }
 
         return persisted;

@@ -347,6 +347,11 @@ export interface GameState {
     // Per-rival multipliers from the procedural name (determine growth rates).
     popGrowthMult: number;   // modifierMult × nounMult
     militaryMult: number;    // modifierMult × conceptMult
+    // ROUND C — the rival's archetype (randomly assigned at creation, weighted
+    // by the 1-trillion-species rarity table). The archetype's military +
+    // pop-growth bonuses are baked into strength/popGrowthMult at generation.
+    // Shown on the rival card as an icon + tooltip.
+    archetype?: string;
   }>;
   // PART-2-LAYER-A/B/C — rare resource discoveries. Map of rareResourceId → count.
   // Obtained from trade partners (rareDrop chance), hunting (huntNow 15% chance),

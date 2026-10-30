@@ -28,6 +28,7 @@
 
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
+import { ARCHETYPE_MAP } from "@/game/data/archetypes";
 import { tradePartnersForStage, shipmentIntervalEff, shipmentAmount, caravanMultOf, caravanIconForStage, reputationTierOf, reputationBenefits, TRADE_PARTNER_MAP, type TradePartner } from "@/game/data/tradePartners";
 import {
   assimilationCost,
@@ -437,9 +438,25 @@ export function WorldTab() {
                               <span className="text-lg shrink-0">{r.icon}</span>
                               <div className="min-w-0">
                                 <span className="font-semibold text-sm truncate block">{r.name}</span>
-                                <span className="text-[0.55rem] text-muted-foreground uppercase tracking-wide">
-                                  {r.stage}
-                                </span>
+                                <div className="flex items-center gap-1 text-[0.55rem] text-muted-foreground uppercase tracking-wide">
+                                  <span>{r.stage}</span>
+                                  {/* ROUND C — the rival's archetype (weighted-random at creation).
+                                      Shown as the archetype's glyph + name, with a tooltip of its bonus. */}
+                                  {(() => {
+                                    const archDef = r.archetype ? ARCHETYPE_MAP[r.archetype] : null;
+                                    if (!archDef) return null;
+                                    return (
+                                      <span
+                                        className="flex items-center gap-0.5 px-1 py-px rounded-full border font-medium normal-case tracking-normal"
+                                        style={{ borderColor: `${archDef.color}40`, color: archDef.color, background: `${archDef.color}08` }}
+                                        title={`${archDef.name} — ${archDef.bonus.label}`}
+                                      >
+                                        <span>{archDef.glyph}</span>
+                                        <span className="truncate max-w-[60px]">{archDef.name}</span>
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -1027,6 +1044,7 @@ function RivalIntel({
     counteredRaids?: number;
     successfulTrades?: number;
     assimilationBonus?: { resource: string; mult: number };
+    archetype?: string;
   };
   military: number;
   treatyType?: string;
@@ -1077,6 +1095,32 @@ function RivalIntel({
           <span className="font-semibold tabular-nums">{formatTimeToRaid(ttr)}</span>
         </div>
       </div>
+      {/* ROUND C — the rival's archetype buffs/debuff. Shown in the intel
+          section so the player can see WHY this rival is strong/weak. */}
+      {rival.archetype && (() => {
+        const archDef = ARCHETYPE_MAP[rival.archetype];
+        if (!archDef) return null;
+        return (
+          <div className="pt-1.5 border-t border-border/40 space-y-0.5">
+            <div className="flex items-center gap-1 text-[0.6rem]">
+              <span className="font-semibold" style={{ color: archDef.color }}>
+                {archDef.glyph} {archDef.name}
+              </span>
+              <span className="text-muted-foreground/60 text-[0.5rem] italic">{archDef.blurb}</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {archDef.bonus.buffs.map((b, i) => (
+                <span key={i} className="text-[0.5rem] px-1 py-px rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300/90">
+                  {b}
+                </span>
+              ))}
+              <span className="text-[0.5rem] px-1 py-px rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-300/90">
+                {archDef.bonus.debuff}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
       {/* Assimilation prize preview */}
       {rival.assimilationBonus && (
         <div className="flex items-center justify-between text-[0.6rem] pt-1 border-t border-border/40">

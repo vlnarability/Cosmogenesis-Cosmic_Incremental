@@ -19,6 +19,7 @@
 
 import type { StageId } from "../state/types";
 import { STAGE_RESOURCES } from "./resources";
+import { ARCHETYPE_MAP } from "./archetypes";
 
 // ============================================================
 // NAME LISTS WITH MULTIPLIERS
@@ -162,6 +163,61 @@ export interface GeneratedRival {
   // Per-rival multipliers from the name (determine growth rates).
   popGrowthMult: number;
   militaryMult: number;
+  // ROUND C — the rival's archetype (weighted-random at creation).
+  archetype: string;
+}
+
+// ============================================================
+// ROUND C — RIVAL ARCHETYPE WEIGHTED PICK
+// Per user spec: rivals get a randomly-assigned archetype at creation,
+// weighted by the 1-trillion-species rarity table. ALL 25 archetypes are in
+// the pool (rare ones can spawn even if the player hasn't unlocked them —
+// the rarity shop only gates the PLAYER's access, not the rival's). The
+// combined entries in the user's table (Aquatic/Molluscoid, Reptilian/Avian,
+// Fungoid/Plantoid, Viruloid/Necroid) are split evenly.
+// ============================================================
+export const RIVAL_ARCHETYPE_WEIGHTS: Record<string, number> = {
+  // Eukaryotes (92% total)
+  arthropoid: 25.0,
+  humanoid: 18.0,
+  mammalian: 15.0,
+  aquatic: 6.5,
+  molluscoid: 6.5,
+  reptilian: 6.0,
+  avian: 6.0,
+  fungoid: 4.5,
+  plantoid: 4.5,
+  // Nucleoid Region (4% total)
+  extremophile: 1.5,
+  radiotrophic: 1.0,
+  crystal: 0.8,
+  aerosol: 0.5,
+  plasmold: 0.2,
+  // Nuclear Body (3% total)
+  viruloid: 0.9,
+  necroid: 0.9,
+  myceloid: 0.7,
+  gelatinous: 0.3,
+  prionoid: 0.15,
+  photonic: 0.05,
+  // Nucleomorph (1% total)
+  mechanoid: 0.4,
+  lithoid: 0.3,
+  toxoid: 0.15,
+  symbiote: 0.1,
+  voidborn: 0.05,
+};
+
+/** Pick a random archetype id, weighted by RIVAL_ARCHETYPE_WEIGHTS. */
+export function randomRivalArchetype(): string {
+  const entries = Object.entries(RIVAL_ARCHETYPE_WEIGHTS);
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let roll = Math.random() * total;
+  for (const [id, w] of entries) {
+    roll -= w;
+    if (roll <= 0) return id;
+  }
+  return entries[0][0]; // fallback
 }
 
 /** Generate N new rivals for the given stage. */
@@ -190,10 +246,21 @@ export function generateRivals(
   for (let i = 0; i < count; i++) {
     const parts = generateRivalName(usedNames);
     const id = generateRivalId(parts.name);
-    // Strength: base scales with stage tier, multiplied by the name's militaryMult.
-    const strength = (0.8 + stageTier * 0.6) * parts.militaryMult;
+    // ROUND C — assign a weighted-random archetype. The archetype's military
+    // + pop-growth bonuses bake into the rival's strength + popGrowthMult so
+    // the tick (which reads r.strength + r.popGrowthMult directly) applies
+    // them with no new wiring. A Toxoid rival (+15% military) is stronger;
+    // a Viruloid rival (+35% pop growth) grows population faster.
+    const archetypeId = randomRivalArchetype();
+    const archDef = ARCHETYPE_MAP[archetypeId];
+    const archMilMult = archDef?.bonus.militaryPowerMult || 0;
+    const archPopMult = archDef?.bonus.populationGrowthMult || 0;
+    // Strength: base scales with stage tier × name militaryMult × archetype military bonus.
+    const strength = (0.8 + stageTier * 0.6) * parts.militaryMult * (1 + archMilMult);
+    // popGrowthMult: name mult × archetype pop-growth bonus.
+    const popGrowthMult = parts.popGrowthMult * (1 + archPopMult);
     // Population: random starting value, scaled by stage tier + popGrowthMult.
-    const population = Math.floor((1 + Math.random() * 5 * stageTier) * parts.popGrowthMult);
+    const population = Math.floor((1 + Math.random() * 5 * stageTier) * popGrowthMult);
     rivals.push({
       id,
       name: parts.name,
@@ -211,8 +278,9 @@ export function generateRivals(
         resource: randomStageResource(stage),
         mult: 0.10 + Math.random() * 0.20,
       },
-      popGrowthMult: parts.popGrowthMult,
+      popGrowthMult,
       militaryMult: parts.militaryMult,
+      archetype: archetypeId,
     });
   }
   return rivals;
