@@ -4627,6 +4627,15 @@ export const useGameStore = create<GameStore>()(
           rivals,
         });
         get().addToLog(`Evolved to ${nextStageDef.name}. ${nextStageDef.tagline}`);
+        // ROUND D4 — RESOURCE TRANSITION notification. If the new stage's
+        // primary material replaces an old resource, log a transition message
+        // so the player knows to convert their old systems.
+        if (nextStageDef.resourceReplaces) {
+          const { old, new: newRes, label } = nextStageDef.resourceReplaces;
+          const oldName = RESOURCE_MAP[old]?.name || old;
+          const newName = RESOURCE_MAP[newRes]?.name || newRes;
+          get().addToLog(`📦 Resource transition: ${label} Old ${oldName}-producing systems can be converted to produce ${newName} for 25% cost.`);
+        }
       },
 
       triggerPrestige: () => {

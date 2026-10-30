@@ -3327,6 +3327,9 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 30, stone: 25, materials: 20 },
     costGrowth: 1.24,
     produces: { materials: 1.2, military_power: 0.3 },
+    // ROUND D4 — cross-resource upgrade chain: replaces the tribal Quarry
+    // (stone → materials). Building this marks owned quarries as legacy.
+    upgradeReplaces: "quarry",
     requiredTech: "civ_smithing",
   },
   {
@@ -5174,6 +5177,9 @@ export const SYSTEMS: SystemDef[] = [
     requiredTech: "generation_ships",
     costGrowth: 1.24,
     produces: { alloys: 2.5 },
+    // ROUND D4 — cross-resource upgrade chain: replaces the Empire Factory
+    // (production → alloys). Building this marks owned factories as legacy.
+    upgradeReplaces: "emp_factory",
     upkeep: { energy: 0.4 },
   },
   {

@@ -129,6 +129,13 @@ export interface StageDef {
   /** ROUND D — the per-stage label for the Tech tab (e.g. Cell→"Mutations",
    * Creature→"Discoveries"). Falls back to "Technology" when unset. */
   techLabel?: string;
+  /** ROUND D4 — the old resource this stage's primary material REPLACES.
+   * When the player evolves to this stage, a "resource transition"
+   * notification logs (e.g. "Production has replaced Wood as your primary
+   * building material — convert old systems for 25% cost"). The actual
+   * conversion uses the upgradeReplaces mechanic on systems. Informational
+   * only — drives the notification + the Codex resource-progression display. */
+  resourceReplaces?: { old: string; new: string; label: string };
   tagline: string;
   desc: string;
   icon: string;
