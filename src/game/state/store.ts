@@ -15,7 +15,7 @@ import { GOVERNMENT_MAP, HAPPINESS_DRIFT_SCALE, pickGovernmentForEmpire } from "
 import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../data/achievements";
 import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP, randomRivalArchetype } from "../data/rivals";
 import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf, reputationTierOf } from "../data/tradePartners";
-import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
+import { RARE_RESOURCE_MAP, RARE_RESOURCES, getDiscoveredUnlocks } from "../data/rareResources";
 import { NUCLEUS_POOL_MAP, poolArchetypesFor, NUCLEUS_SYSTEM_IDS } from "../data/nucleusPools";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
@@ -1610,8 +1610,10 @@ export const useGameStore = create<GameStore>()(
                 }
               }
               const prevTotal = ag.totalShipments || 0;
-              // F4 — reputation grows +1 per shipment delivered, capped at 100.
-              const newRep = Math.min(100, (ag.reputation || 0) + delivered);
+              // F4 — reputation grows per shipment delivered, capped at 100.
+              // ROUND F3 — trade_rep_boost doubles the growth (+2/shipment).
+              const repInc = delivered * ((s.upgrades["trade_rep_boost"] || 0) > 0 ? 2 : 1);
+              const newRep = Math.min(100, (ag.reputation || 0) + repInc);
               (nextAgreements ||= {})[partnerId] = {
                 ...ag,
                 shipmentProgress: progress,
@@ -1997,6 +1999,58 @@ export const useGameStore = create<GameStore>()(
             ) {
               // Defer evolve to next tick to avoid mutating state mid-set.
               setTimeout(() => get().evolveStage(), 0);
+            }
+          }
+        }
+
+        // ROUND F3 — NEW AUTO-BUYERS for the new systems.
+        // Auto-Reliquary: every 10s, consume a rare if stockpile > 1 (keep 1 for unlock).
+        const hasAutoReliquary = (s.upgrades["auto_reliquary"] || 0) > 0;
+        if (!_simulatingOffline && hasAutoReliquary && newTime - ((autoTimers as any).reliquary || 0) >= 10) {
+          (autoTimers as any).reliquary = newTime;
+          // Find a rare with stockpile > 1 that hasn't hit maxConsume.
+          for (const rrDef of RARE_RESOURCES) {
+            if (!rrDef.reliquary) continue;
+            const stock = (s as any).rareResources?.[rrDef.id] || 0;
+            const consumed = (s as any).reliquary?.[rrDef.id] || 0;
+            const masteryBonus = (s.upgrades["reliquary_mastery"] || 0);
+            const maxConsume = rrDef.reliquary.maxConsume + masteryBonus;
+            if (stock > 1 && consumed < maxConsume) {
+              setTimeout(() => get().consumeRare(rrDef.id), 0);
+              break; // one per tick
+            }
+          }
+        }
+
+        // Auto-Deep-Hunt: fire when off cooldown + affordable.
+        const hasAutoDeepHunt = (s.upgrades["auto_deep_hunt"] || 0) > 0;
+        if (!_simulatingOffline && hasAutoDeepHunt && s.stageIndex >= 1) {
+          const deepHuntCooldown = 120 * (1 - Math.min(0.30, (s.upgrades["deep_hunt_efficiency"] || 0) * 0.10));
+          const deepElapsed = (s.time || 0) - (s.lastDeepHuntAt || 0);
+          if (deepElapsed >= deepHuntCooldown) {
+            // Check affordability before firing (the action also checks, but
+            // we avoid the log spam of failed attempts).
+            const stageTier = s.stageIndex + 1;
+            const milCost = 15 * stageTier;
+            const popCost = 3 * Math.max(1, Math.floor(stageTier / 2));
+            const mil = (s as any).resources?.military_power || 0;
+            const pop = s.population || 0;
+            if (mil >= milCost && pop >= popCost) {
+              setTimeout(() => get().huntDeepNow(), 0);
+            }
+          }
+        }
+
+        // Auto-Converter: every 15s, convert legacy systems to their upgrades.
+        const hasAutoConverter = (s.upgrades["auto_converter"] || 0) > 0;
+        if (!_simulatingOffline && hasAutoConverter && newTime - ((autoTimers as any).converter || 0) >= 15) {
+          (autoTimers as any).converter = newTime;
+          // Find the first legacy system with owned > 0 + convert it.
+          const legacySystems = s.legacySystems || {};
+          for (const sysId of Object.keys(legacySystems)) {
+            if ((s.ownedSystems[sysId] || 0) > 0) {
+              setTimeout(() => get().convertLegacySystem(sysId), 0);
+              break; // one per tick
             }
           }
         }
@@ -8777,7 +8831,8 @@ export const useGameStore = create<GameStore>()(
         const stageTier = s.stageIndex + 1;
         // Cooldown — tracked in game-time (`time`) so pause/speed affect it
         // correctly (a paused game shouldn't cool down).
-        const DEEP_HUNT_COOLDOWN = 120;
+        // ROUND F3 — deep_hunt_efficiency reduces the cooldown by 10% per level.
+        const DEEP_HUNT_COOLDOWN = 120 * (1 - Math.min(0.30, (s.upgrades["deep_hunt_efficiency"] || 0) * 0.10));
         const elapsed = (s.time || 0) - (s.lastDeepHuntAt || 0);
         if (elapsed < DEEP_HUNT_COOLDOWN) {
           const remain = Math.ceil(DEEP_HUNT_COOLDOWN - elapsed);
@@ -8858,7 +8913,7 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         const consumed = s.reliquary?.[relicId] || 0;
-        if (consumed >= def.reliquary.maxConsume) {
+        if (consumed >= def.reliquary.maxConsume + (s.upgrades["reliquary_mastery"] || 0)) {
           get().addToLog(`${def.name} reliquary is maxed (${consumed}/${def.reliquary.maxConsume}). The bonus can't compound further.`);
           return;
         }

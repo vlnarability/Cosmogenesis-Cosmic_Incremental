@@ -68,6 +68,70 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "auto_evolver", value: 0.2 },
   },
 
+  // ===== ROUND F3 — NEW AUTO-BUYERS + FEATURE UPGRADES =====
+  // Auto-buyers for the new systems (reliquary, deep hunt, legacy conversion).
+  // Feature upgrades that enhance the new mechanics.
+  {
+    id: "auto_reliquary",
+    name: "Auto-Reliquary",
+    desc: (l) => l ? "Every 10s, automatically consumes a rare resource into the reliquary (keeping 1 for the unlock). Banks permanent bonuses without micro-management." : "Auto-consumes rares into the reliquary every 10s",
+    baseCost: 10,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    category: "automation",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "auto_deep_hunt",
+    name: "Auto-Expedition",
+    desc: (l) => l ? "Automatically fires Deep Hunt when off cooldown + affordable. Never waste a cooldown window again." : "Auto-fires Deep Hunt when ready + affordable",
+    baseCost: 12,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    category: "automation",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "auto_converter",
+    name: "Auto-Converter",
+    desc: (l) => l ? "Every 15s, automatically converts legacy systems to their upgrade successors for 25% cost. Keeps your economy modernized." : "Auto-converts legacy systems every 15s",
+    baseCost: 8,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    category: "automation",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "reliquary_mastery",
+    name: "Reliquary Mastery",
+    desc: (l) => `Reliquary max ranks +${l} for all rares. Bank more permanent bonuses.`,
+    baseCost: 15,
+    maxLevel: 3,
+    costGrowth: 2.0,
+    category: "prestige",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "deep_hunt_efficiency",
+    name: "Expedition Efficiency",
+    desc: (l) => `Deep Hunt cooldown -${l * 10}%. Hunt more often.`,
+    baseCost: 10,
+    maxLevel: 3,
+    costGrowth: 1.8,
+    category: "prestige",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+  {
+    id: "trade_rep_boost",
+    name: "Diplomatic Trade Networks",
+    desc: (l) => l ? "Trade reputation grows +2 per shipment instead of +1. Reach Esteemed/Exalted faster." : "Trade reputation growth doubled (+2/shipment)",
+    baseCost: 8,
+    maxLevel: 1,
+    costGrowth: 1.0,
+    category: "prestige",
+    effect: { type: "auto_mult", value: 0.0 },
+  },
+
   // ===== ECONOMY =====
   {
     id: "frugality",
