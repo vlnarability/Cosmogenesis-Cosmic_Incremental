@@ -672,6 +672,7 @@ function initialRunState(): Partial<GameState> {
     ownedSystems: {},
     systemEnabled: {},
     legacySystems: {}, // ROUND D — systems marked legacy by upgrade chains
+    caravanAssignments: {} as Record<string, number>, // F5 — per-route caravan allocation
     technologies: {},
     archetypeAffinity: {},
     lockedArchetype: null,
@@ -1523,7 +1524,16 @@ export const useGameStore = create<GameStore>()(
         // SHIPMENT-HELPERS: use the shared caravanCountOf/caravanMultOf so the
         // tick, the World tab cards, and the resource tooltip agree exactly.
         const caravanCount = caravanCountOf(s.ownedSystems);
-        const caravanMult = caravanMultOf(s.ownedSystems);
+        // F5 — per-route caravan assignment. Assigned caravans boost their
+        // route more (×0.15 each); unassigned caravans spread evenly (×0.1
+        // each across all active routes). Falls back to the global mult when
+        // no assignments are set (preserves the old behavior).
+        const _caravanAssignments = s.caravanAssignments || {};
+        const _assignedTotal = Object.values(_caravanAssignments).reduce((a: number, b: any) => a + (b || 0), 0);
+        const _unassigned = Math.max(0, caravanCount - _assignedTotal);
+        const _activeRouteCount = Math.max(1, Object.keys(s.tradeAgreements || {}).length);
+        const _unassignedPerRoute = _unassigned / _activeRouteCount;
+        const caravanMult = caravanMultOf(s.ownedSystems); // fallback global mult (used when no assignments)
         let tradesThisTick = 0;
         if (s.tradeAgreements) {
           // TRADE-SHIPMENTS — trade income arrives in VISIBLE, cyclical
@@ -1561,7 +1571,13 @@ export const useGameStore = create<GameStore>()(
             const repCaravanMult = rep >= 40 ? 0.10 : 0.0; // additive to caravanMult
             const repRareMult = rep >= 70 ? 1.5 : 1.0;
             const repBonusRareChance = rep >= 90 ? 0.10 : 0;
-            const intervalEff = partner.shipmentInterval / ((caravanMult + repCaravanMult) * treatyMult);
+            // F5 — per-route caravan mult: assigned caravans boost this route
+            // more (×0.15 each); unassigned caravans spread evenly (×0.1 each).
+            // Falls back to the global caravanMult when no assignments are set.
+            const routeCaravanMult = _assignedTotal > 0
+              ? (1 + (_caravanAssignments[partnerId] || 0) * 0.15 + _unassignedPerRoute * 0.1)
+              : caravanMult;
+            const intervalEff = partner.shipmentInterval / ((routeCaravanMult + repCaravanMult) * treatyMult);
             let progress = (ag.shipmentProgress || 0) + realDt / intervalEff;
             let delivered = 0;
             while (progress >= 1 && delivered < 1000) {
@@ -1706,6 +1722,23 @@ export const useGameStore = create<GameStore>()(
             (s as any).activeRaid = raidTriggered;
           }
           (s as any).rivals = rivals;
+        }
+
+        // F4 — RIVAL TRIBUTE. Allied rivals pay periodic tribute (gold +
+        // culture scaled by their strength). This gives allying with strong
+        // rivals a tangible payoff beyond just neutralizing the threat.
+        // Merged rivals already give the assimilationBonus (production mult).
+        // Conquered rivals gave one-time loot. Allied rivals give an ONGOING
+        // trickle — the diplomatic income path.
+        if (s.rivals && s.rivals.length > 0) {
+          for (const r of s.rivals as any[]) {
+            if (r.state !== "allied" || r.hidden) continue;
+            const strength = r.strength || 1;
+            const relation = (r.relation || 0) / 100; // 0..1 factor
+            const tributeMult = 0.5 + relation * 0.5; // 0.5× at relation 0, 1× at relation 100
+            resources.gold = (resources.gold || 0) + strength * 0.05 * tributeMult * realDt;
+            resources.culture = (resources.culture || 0) + strength * 0.02 * tributeMult * realDt;
+          }
         }
 
         // ARCHETYPES-REWORK — archetype happiness drift (Fungoid -15% / Toxoid -10%).
@@ -8612,8 +8645,30 @@ export const useGameStore = create<GameStore>()(
         if (!s.tradeAgreements?.[partnerId]) return;
         const next = { ...s.tradeAgreements };
         delete next[partnerId];
-        set({ tradeAgreements: next });
+        // F5 — clear caravan assignment for the broken route.
+        const caravanAssignments = { ...(s.caravanAssignments || {}) };
+        delete caravanAssignments[partnerId];
+        set({ tradeAgreements: next, caravanAssignments });
         get().addToLog(`Trade route with ${partnerId} broken.`);
+      },
+
+      // F5 — set caravan assignment for a route. Clamped so the total assigned
+      // can't exceed the player's caravan count.
+      setCaravanAssignment: (partnerId, count) => {
+        const s = get();
+        const caravanCount = caravanCountOf(s.ownedSystems);
+        const assignments = { ...(s.caravanAssignments || {}) };
+        const assignedToOthers = Object.entries(assignments)
+          .filter(([id]) => id !== partnerId)
+          .reduce((sum, [, n]) => sum + (n || 0), 0);
+        const maxForThis = Math.max(0, caravanCount - assignedToOthers);
+        const clamped = Math.max(0, Math.min(count, maxForThis));
+        if (clamped === 0) {
+          delete assignments[partnerId];
+        } else {
+          assignments[partnerId] = clamped;
+        }
+        set({ caravanAssignments: assignments });
       },
 
       // PART-1 — FTL / Ascension / Government choice modal setters + choosers.
@@ -9235,7 +9290,7 @@ export const useGameStore = create<GameStore>()(
         // ROUND F2 — use the slot-aware adapter so saves go to the correct slot.
         return slotLocalStorage;
       }),
-      version: 25,
+      version: 26,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9954,6 +10009,13 @@ export const useGameStore = create<GameStore>()(
         if (version < 25) {
           if (persisted.difficultyMode === undefined) persisted.difficultyMode = "normal";
           if (persisted.researchingTech === undefined) persisted.researchingTech = null;
+        }
+
+        // V26-MIGRATION — F5 caravan assignments. Old saves (v25) don't have
+        // the caravanAssignments field. Default to {} (no assignments — falls
+        // back to the global caravan mult, preserving old behavior).
+        if (version < 26) {
+          if (!persisted.caravanAssignments) persisted.caravanAssignments = {};
         }
 
         return persisted;

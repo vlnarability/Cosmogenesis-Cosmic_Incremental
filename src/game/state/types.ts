@@ -314,6 +314,11 @@ export interface GameState {
    *  chain has been built. Legacy systems still produce but are flagged for
    *  conversion (convert legacy → new for 25% of new cost). */
   legacySystems: Record<string, boolean>;
+  /** F5 — per-route caravan assignment. Maps partnerId → number of caravans
+   *  assigned to that route. Assigned caravans boost that route's delivery
+   *  speed more (×0.15 each); unassigned caravans spread evenly (×0.1 each
+   *  across all active routes). Total assigned can't exceed caravanCount. */
+  caravanAssignments: Record<string, number>;
   technologies: Record<string, boolean>;
   archetypeAffinity: Record<string, number>; // drift during run
   lockedArchetype: string | null; // locked at Creature→Tribal
@@ -1032,6 +1037,9 @@ export interface GameStore extends GameState {
   // PART-2-LAYER-A — establish / break trade agreements with NPC partners.
   establishTrade: (partnerId: string) => void;
   breakTrade: (partnerId: string) => void;
+  /** F5 — set the caravan assignment for a trade route. Clamped to
+   *  [0, caravanCount - assignedToOtherRoutes]. */
+  setCaravanAssignment: (partnerId: string, count: number) => void;
   // PART-1 — FTL/Ascension/Government choice modal state + choosers.
   setShowFtlChoice: (v: boolean) => void;
   setShowAscensionChoice: (v: boolean) => void;

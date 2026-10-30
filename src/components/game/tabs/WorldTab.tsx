@@ -324,6 +324,12 @@ export function WorldTab() {
                   {isEstablished && (
                     <ReputationRow reputation={agreement?.reputation || 0} />
                   )}
+                  {/* F5 — per-route caravan assignment. +/− buttons to allocate
+                      caravans to this route (boosts its delivery speed more than
+                      the global spread). Only shows when the player has caravans. */}
+                  {isEstablished && caravanCount > 0 && (
+                    <CaravanAssignment partnerId={p.id} caravanCount={caravanCount} />
+                  )}
                   <div className="flex gap-1.5">
                     {!isEstablished ? (
                       <Button
@@ -535,6 +541,19 @@ export function WorldTab() {
                                   Resolved — {bonusDesc}
                                 </div>
                               )}
+                              {/* F4 — allied rivals pay periodic tribute. */}
+                              {!isActive && r.state === "allied" && (() => {
+                                const strength = r.strength || 1;
+                                const relation = (r.relation || 0) / 100;
+                                const tributeMult = 0.5 + relation * 0.5;
+                                const goldPerSec = (strength * 0.05 * tributeMult).toFixed(2);
+                                const culturePerSec = (strength * 0.02 * tributeMult).toFixed(2);
+                                return (
+                                  <div className="text-[0.6rem] text-amber-400/80 mb-2 flex items-center gap-1">
+                                    🤝 Tribute: +{goldPerSec} 🪙/s · +{culturePerSec} 🎭/s
+                                  </div>
+                                );
+                              })()}
                               <div className="flex gap-1.5">
                                 {!isCellStage && (
                                   <>
@@ -1196,6 +1215,49 @@ function TreatySection({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// F5 — CaravanAssignment. Per-route caravan allocation with +/−
+// buttons. Shows the current assignment + the total caravans
+// available. Assigned caravans boost this route's delivery speed
+// more (×0.15 each) than the global spread (×0.1 each).
+// ============================================================
+function CaravanAssignment({ partnerId, caravanCount }: { partnerId: string; caravanCount: number }) {
+  const assignments = useGameStore((s) => s.caravanAssignments || {});
+  const setCaravanAssignment = useGameStore((s) => s.setCaravanAssignment);
+  const assigned = assignments[partnerId] || 0;
+  const totalAssigned = Object.values(assignments).reduce((a, b) => a + (b || 0), 0);
+  const available = caravanCount - totalAssigned + assigned; // available for THIS route
+
+  return (
+    <div className="mb-2 flex items-center justify-between text-[0.6rem]">
+      <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+        🐪 Caravans
+      </span>
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => setCaravanAssignment(partnerId, Math.max(0, assigned - 1))}
+          className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
+          disabled={assigned <= 0}
+          aria-label="Decrease caravan assignment"
+        >
+          −
+        </button>
+        <span className="font-semibold tabular-nums text-foreground min-w-[40px] text-center">
+          {assigned}/{caravanCount}
+        </span>
+        <button
+          onClick={() => setCaravanAssignment(partnerId, assigned + 1)}
+          className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
+          disabled={available <= assigned}
+          aria-label="Increase caravan assignment"
+        >
+          +
+        </button>
       </div>
     </div>
   );
