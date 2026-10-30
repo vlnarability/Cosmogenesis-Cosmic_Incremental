@@ -10,11 +10,11 @@ export const STAGES: StageDef[] = [
     accent: "#22d3ee",
     bgGradient: "radial-gradient(ellipse at top, #0c4a6e 0%, #082f49 40%, #020617 100%)",
     duration: "5-60 min",
-    // EVOLVE-REQ-REWORK — Cell→Creature: build the Nucleus (one of the 4
-    // nucleus alternatives, once that feature lands) + a # of organelles.
-    // Pop + tech gates removed per user spec — evolution is driven by
-    // narrative milestones + the nucleus choice, not by grinding.
-    evolveRequires: { minSystems: 4, requiresSystems: ["nucleus"] },
+    // EVOLVE-REQ-REWORK — Cell→Creature: build ONE of the 4 nucleus
+    // alternatives (Nucleus / Nucleoid Region / Nucleomorph / Nuclear Body —
+    // mutually exclusive, each locks an archetype pool) + a # of organelles.
+    // Pop + tech gates removed per user spec.
+    evolveRequires: { minSystems: 4, requiresOneOfSystems: ["nucleus", "nucleoid_region", "nucleomorph", "nuclear_body"] },
     storyIntro:
       "In the warm dark of a young sea, something stirs. A membrane holds. A spark of ATP ignites. " +
       "You are not yet awake — but you are becoming. The first law of this universe is survival.",

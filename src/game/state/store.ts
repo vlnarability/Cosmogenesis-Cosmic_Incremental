@@ -16,6 +16,7 @@ import { ACHIEVEMENTS, achievementBonus, type AchievementCheckCtx } from "../dat
 import { generateRivals, generateRivalName, generateRivalId, assimilationCost, RIVAL_BASE_MIL_COST, RIVAL_BASE_CUL_COST, MIL_REDUCTION_PER_COUNTER, CUL_REDUCTION_PER_TRADE, MIN_ASSIMILATION_COST, RIVAL_MAP } from "../data/rivals";
 import { TRADE_PARTNERS, TRADE_PARTNER_MAP, tradePartnersForStage, caravanCountOf, caravanMultOf, reputationTierOf } from "../data/tradePartners";
 import { RARE_RESOURCE_MAP, getDiscoveredUnlocks } from "../data/rareResources";
+import { NUCLEUS_POOL_MAP, poolArchetypesFor, NUCLEUS_SYSTEM_IDS } from "../data/nucleusPools";
 import { EVENTS, eventsForStage, EVENT_MAP } from "../data/events";
 import {
   CHALLENGES,
@@ -770,8 +771,13 @@ function initialMetaState(): Partial<GameState> {
     showFtlChoice: false,         // triggered by researching `ftl_theory` (Solar)
     showAscensionChoice: false,   // triggered by researching `ascension_theory` (Galactic)
     showGovernmentChoice: false,  // triggered by researching `political_theory` (Tribal)
+    // ROUND A — nucleus choice modal (Cell stage). Fires when the player
+    // tries to buy a drift organelle without a nucleusChoice. The choice
+    // locks the player into one of 4 archetype pools (data/nucleusPools.ts).
+    showNucleusChoice: false,
     ftlChoice: null as string | null,          // set when FTL path chosen (warp_theory|hyperlanes|jump_theory)
     ascensionChoice: null as string | null,    // set when ascension path chosen
+    nucleusChoice: null as string | null,      // nucleus|nucleoid_region|nucleomorph|nuclear_body
     activeRaid: null as string | null,         // rivalId when a raid event is active
     // RAID-RECAP — transient (excluded from persistence via partialize).
     lastRaidOutcome: null as GameState["lastRaidOutcome"],
@@ -3792,6 +3798,34 @@ export const useGameStore = create<GameStore>()(
           get().notifyPurchaseError(`Requires rare resource: ${sys.requiresRareResource}`);
           return;
         }
+        // ROUND A — NUCLEUS-POOL LOCK. The 4 nucleus alternatives (nucleus /
+        // nucleoid_region / nucleomorph / nuclear_body) are mutually exclusive
+        // (enforced by exclusiveWith above). Once the player chooses one, all
+        // OTHER cell-stage drift systems (organelles with grantsAffinity) must
+        // grant drift toward an archetype IN the chosen pool. This is the
+        // "choosing a nucleus restricts any organelle that doesn't match that
+        // pool" rule from the user spec.
+        if (sys.grantsAffinity && sys.stage === "cell") {
+          // The 4 nucleus systems themselves bypass the pool check — they're
+          // the choice mechanism, not subject to it. They're handled by
+          // exclusiveWith (you can only own one).
+          const isNucleusVariant = NUCLEUS_SYSTEM_IDS.includes(sys.id);
+          if (!isNucleusVariant) {
+            if (!s.nucleusChoice) {
+              // No nucleus chosen yet — block the drift purchase + fire the
+              // choice modal so the player picks a pool first.
+              set({ showNucleusChoice: true });
+              get().notifyPurchaseError("Choose a nucleus first — it determines which lineage you can drift toward.");
+              return;
+            }
+            const pool = poolArchetypesFor(s.nucleusChoice);
+            if (pool && !pool.includes(sys.grantsAffinity.archetype)) {
+              const poolName = NUCLEUS_POOL_MAP[s.nucleusChoice]?.name || s.nucleusChoice;
+              get().notifyPurchaseError(`Outside your chosen lineage (${poolName}) — this organelle drifts toward a different pool.`);
+              return;
+            }
+          }
+        }
         // FIX-ARCHETYPE-LOCKED — archetype-locked systems are only buildable
         // by the matching locked archetype (Tribal→Galactic archetype-drift
         // systems). Refuse purchase with an inline error.
@@ -3898,6 +3932,18 @@ export const useGameStore = create<GameStore>()(
           archetypeAffinity[arch] = (archetypeAffinity[arch] || 0) + sys.grantsAffinity.amount * bought;
         }
 
+        // ROUND A — if the player just built one of the 4 nucleus alternatives
+        // directly (via the Systems tab rather than the choice modal), record
+        // the nucleusChoice so the pool lock activates. The choice modal is
+        // the preferred path (it explains the pools), but direct purchase is
+        // also valid — the player learns their pool from the system's desc.
+        let nucleusChoiceUpdate: { nucleusChoice: string } | undefined;
+        if (NUCLEUS_SYSTEM_IDS.includes(sys.id) && !s.nucleusChoice) {
+          nucleusChoiceUpdate = { nucleusChoice: sys.id };
+          const poolName = NUCLEUS_POOL_MAP[sys.id]?.name || sys.id;
+          get().addToLog(`Lineage chosen: ${poolName}. Your drift is now restricted to its archetype pool.`);
+        }
+
         // Trigger story
         const newStory = { ...s.storyUnlocked };
         let activePopup = s.activeStoryPopup;
@@ -3916,6 +3962,7 @@ export const useGameStore = create<GameStore>()(
           storyUnlocked: newStory,
           activeStoryPopup: activePopup,
           totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
+          ...(nucleusChoiceUpdate || {}),
         });
         get().addToLog(`Built ${bought}× ${sys.name}.`);
       },
@@ -3959,6 +4006,22 @@ export const useGameStore = create<GameStore>()(
           const archName = ARCHETYPE_MAP[tech.requiredArchetype]?.name || tech.requiredArchetype;
           get().notifyPurchaseError(`Requires ${archName} archetype`);
           return;
+        }
+        // ROUND A — NUCLEUS-POOL LOCK for cell-stage mutations (techs with
+        // grantsAffinity). Per user spec: choosing a nucleus restricts any
+        // mutation that would give drift toward something not in that pool.
+        if (tech.grantsAffinity && tech.stage === "cell") {
+          if (!s.nucleusChoice) {
+            set({ showNucleusChoice: true });
+            get().notifyPurchaseError("Choose a nucleus first — it determines which lineage your mutations can drift toward.");
+            return;
+          }
+          const pool = poolArchetypesFor(s.nucleusChoice);
+          if (pool && !pool.includes(tech.grantsAffinity.archetype)) {
+            const poolName = NUCLEUS_POOL_MAP[s.nucleusChoice]?.name || s.nucleusChoice;
+            get().notifyPurchaseError(`Outside your chosen lineage (${poolName}) — this mutation drifts toward a different pool.`);
+            return;
+          }
         }
         // RARE-RESOURCE-UNLOCK — refuse if the required rare hasn't been
         // discovered. F1 RELIQUARY: discovery = (stockpiled + consumed) >= 1.
@@ -4273,15 +4336,29 @@ export const useGameStore = create<GameStore>()(
         // (persists across prestiges). Drives the "???" reveal state on radar.
         let revealedLineageArchetypes = { ...(s.revealedLineageArchetypes || {}) };
         if (stage.id === "creature" && !lockedArchetype) {
-          const dom = dominantArchetype(s.archetypeAffinity);
+          // ROUND A — filter the affinity by the chosen nucleus pool before
+          // picking the dominant. The buySystem/buyTech gates already reject
+          // out-of-pool drift, but this is a defensive guard against drift
+          // from events/story/rare-resources that bypass those checks. If no
+          // nucleus was chosen (legacy save), fall back to the unfiltered
+          // dominant (preserves old behavior).
+          const pool = poolArchetypesFor(s.nucleusChoice);
+          const filteredAffinity = pool
+            ? Object.fromEntries(
+                Object.entries(s.archetypeAffinity || {}).filter(([k]) => pool.includes(k))
+              )
+            : (s.archetypeAffinity || {});
+          const dom = dominantArchetype(filteredAffinity);
           if (dom) {
             lockedArchetype = dom;
             revealedLineageArchetypes[dom] = true;
-            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom].name}.`);
+            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[dom]?.name || dom}.`);
           } else {
-            lockedArchetype = "humanoid"; // default fallback
-            revealedLineageArchetypes["humanoid"] = true;
-            get().addToLog(`Lineage locked: Humanoid (no drift).`);
+            // Fallback: the chosen pool's flagship (or humanoid if no nucleus).
+            const fallback = s.nucleusChoice ? (NUCLEUS_POOL_MAP[s.nucleusChoice]?.flagship || "humanoid") : "humanoid";
+            lockedArchetype = fallback;
+            revealedLineageArchetypes[fallback] = true;
+            get().addToLog(`Lineage locked: ${ARCHETYPE_MAP[fallback]?.name || fallback} (no drift).`);
           }
         }
 
@@ -8216,6 +8293,31 @@ export const useGameStore = create<GameStore>()(
       setShowFtlChoice: (v) => set({ showFtlChoice: v }),
       setShowAscensionChoice: (v) => set({ showAscensionChoice: v }),
       setShowGovernmentChoice: (v) => set({ showGovernmentChoice: v }),
+      // ROUND A — nucleus choice modal open/close + the chooser.
+      setShowNucleusChoice: (v) => set({ showNucleusChoice: v }),
+      chooseNucleusPath: (pathId) => {
+        const s = get();
+        if (!pathId) return;
+        if (s.nucleusChoice) return; // already chosen — permanent, can't re-pick
+        const pool = NUCLEUS_POOL_MAP[pathId];
+        if (!pool) return; // invalid id
+        // Record the choice + auto-build the chosen nucleus system (so the
+        // player immediately gets its flagship drift + the evolve gate is
+        // satisfiable). The other 3 are locked via exclusiveWith.
+        const ownedSystems = { ...s.ownedSystems, [pathId]: 1 };
+        // Seed initial drift toward the flagship archetype (the nucleus
+        // system's grantsAffinity would do this on buy, but since we're
+        // auto-building, apply it directly).
+        const archetypeAffinity = { ...(s.archetypeAffinity || {}) };
+        archetypeAffinity[pool.flagship] = (archetypeAffinity[pool.flagship] || 0) + 2;
+        set({
+          nucleusChoice: pathId,
+          showNucleusChoice: false,
+          ownedSystems,
+          archetypeAffinity,
+        });
+        get().addToLog(`Lineage chosen: ${pool.name} (${pool.subtitle}). Your drift is now restricted to its archetype pool. The other nucleus forms are locked.`);
+      },
       chooseFtlPath: (pathId) => {
         const s = get();
         if (!pathId) return;
@@ -8801,7 +8903,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 21,
+      version: 22,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -8811,6 +8913,7 @@ export const useGameStore = create<GameStore>()(
         const {
           showShop, showEvolve, showSettings,
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
+          showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
           activeRaid, activeStoryPopup, activeInfoModal,
           lastRaidOutcome,
           // These are runtime-only and should never persist:
@@ -9479,6 +9582,16 @@ export const useGameStore = create<GameStore>()(
               if (ag.reputation === undefined) ag.reputation = 0;
             }
           }
+        }
+
+        // V22-MIGRATION — ROUND A nucleus choice. Old saves (v21) don't have
+        // nucleusChoice. Default to null (no pool chosen — the player picks on
+        // their next Cell-stage run, or stays un-gated if they're past Cell).
+        // Legacy saves past Cell stage with existing lockedArchetype are
+        // unaffected — the pool filter only applies to NEW archetype locks.
+        if (version < 22) {
+          if (persisted.nucleusChoice === undefined) persisted.nucleusChoice = null;
+          if (persisted.showNucleusChoice === undefined) persisted.showNucleusChoice = false;
         }
 
         return persisted;

@@ -43,6 +43,7 @@ const EvolveModal = lazy(() => import("../modals/EvolveModal").then(m => ({ defa
 const FTLChoiceModal = lazy(() => import("../modals/FTLChoiceModal").then(m => ({ default: m.FTLChoiceModal })));
 const AscensionChoiceModal = lazy(() => import("../modals/AscensionChoiceModal").then(m => ({ default: m.AscensionChoiceModal })));
 const GovernmentChoiceModal = lazy(() => import("../modals/GovernmentChoiceModal").then(m => ({ default: m.GovernmentChoiceModal })));
+const NucleusChoiceModal = lazy(() => import("../modals/NucleusChoiceModal").then(m => ({ default: m.NucleusChoiceModal })));
 const RaidModal = lazy(() => import("../modals/RaidModal").then(m => ({ default: m.RaidModal })));
 const RaidRecapBanner = lazy(() => import("../modals/RaidRecapBanner").then(m => ({ default: m.RaidRecapBanner })));
 const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
@@ -401,6 +402,7 @@ export function GameShell() {
         <FTLChoiceModal />
         <AscensionChoiceModal />
         <GovernmentChoiceModal />
+        <NucleusChoiceModal />
         <RaidModal />
         <RaidRecapBanner />
         <StoryPopup />

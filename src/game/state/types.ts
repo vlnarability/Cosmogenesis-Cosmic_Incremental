@@ -384,8 +384,15 @@ export interface GameState {
   showFtlChoice: boolean;
   showAscensionChoice: boolean;
   showGovernmentChoice: boolean;
+  // ROUND A — nucleus choice modal. Fires at Cell stage when the player
+  // attempts to buy a drift organelle without having chosen a nucleus. The
+  // choice locks the player into one of 4 archetype pools (see
+  // data/nucleusPools.ts) + restricts all cell-stage drift to that pool.
+  showNucleusChoice: boolean;
   ftlChoice: string | null;          // warp_theory | hyperlanes | jump_theory
   ascensionChoice: string | null;    // tech_ascension | bio_ascension | psionic_ascension
+  /** nucleus | nucleoid_region | nucleomorph | nuclear_body (null until chosen). */
+  nucleusChoice: string | null;
   // PART-2-LAYER-C — active raid event. Set when a rival's threat hits 100%.
   // The RaidModal opens; player chooses Defend (auto-roll) or Counter-Attack
   // (spend military for guaranteed win + loot). Null when no raid is active.
@@ -986,6 +993,9 @@ export interface GameStore extends GameState {
   setShowFtlChoice: (v: boolean) => void;
   setShowAscensionChoice: (v: boolean) => void;
   setShowGovernmentChoice: (v: boolean) => void;
+  // ROUND A — nucleus choice modal (Cell stage, archetype-pool lock).
+  setShowNucleusChoice: (v: boolean) => void;
+  chooseNucleusPath: (pathId: string) => void;
   chooseFtlPath: (pathId: string) => void;
   chooseAscensionPath: (pathId: string) => void;
   // PART-2-LAYER-C — rival mechanics.
