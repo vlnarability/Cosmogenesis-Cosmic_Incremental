@@ -804,6 +804,9 @@ function initialMetaState(): Partial<GameState> {
     tutorialDismissed: false,
     eventFrequency: "normal",
     reduceMotion: false,
+    // ROUND E — hardmode defaults.
+    difficultyMode: "normal" as "normal" | "hard",
+    researchingTech: null as { id: string; progress: number } | null,
 
     // AUTOBUYER-SETTINGS — archetype / government targeting preferences.
     // All four slots default to null (no preference); the shop panel sets
@@ -973,9 +976,55 @@ export const useGameStore = create<GameStore>()(
 
         // LOG-QUEUE — batch all deferred log messages from this tick into
         // a single array, flushed with ONE setTimeout at the end.
+        const pendingLogs: string[] = [];
+
+        // ROUND E — HARDMODE research progress. If a tech is being researched,
+        // advance its progress. When complete, apply the tech's effects (the
+        // same logic as buyTech's instant-complete path, deferred to here).
+        if (s.researchingTech) {
+          const rt = s.researchingTech;
+          const tech = TECH_MAP[rt.id];
+          if (!tech) {
+            // Stale — clear it.
+            (s as any).researchingTech = null;
+          } else {
+            const researchTime = tech.tier * 15; // seconds
+            const newProgress = rt.progress + dt / researchTime;
+            if (newProgress >= 1) {
+              // Complete the research.
+              const technologies = { ...s.technologies, [rt.id]: true };
+              const archetypeAffinity = { ...s.archetypeAffinity };
+              if (tech.grantsAffinity) {
+                archetypeAffinity[tech.grantsAffinity.archetype] =
+                  (archetypeAffinity[tech.grantsAffinity.archetype] || 0) + tech.grantsAffinity.amount;
+              }
+              (s as any).technologies = technologies;
+              (s as any).archetypeAffinity = archetypeAffinity;
+              (s as any).researchingTech = null;
+              (s as any).totalTechResearched = (s.totalTechResearched || 0) + 1;
+              pendingLogs.push(`Research complete: ${tech.name}.`);
+              // Fire modal triggers (same as buyTech's instant path).
+              if (rt.id === "ftl_theory" && !s.ftlChoice) {
+                (s as any).showFtlChoice = true;
+                pendingLogs.push("FTL research breakthrough! Your team needs you to choose a path.");
+              } else if (rt.id === "transcendence_research" && !s.ascensionChoice) {
+                (s as any).showAscensionChoice = true;
+                pendingLogs.push("Ascension theory proven! Your civilization must choose its final form.");
+              } else if (rt.id === "political_theory" && !s.activeGovernment) {
+                (s as any).showGovernmentChoice = true;
+                pendingLogs.push("Political theory discovered. Choose a form of government.");
+              }
+            } else {
+              // Still researching — update progress.
+              (s as any).researchingTech = { ...rt, progress: newProgress };
+            }
+          }
+        }
+
+        // LOG-QUEUE — batch all deferred log messages from this tick into
+        // a single array, flushed with ONE setTimeout at the end.
         // Replaces ~35 individual pendingLogs.push(msg)
         // calls with a single deferred flush.
-        const pendingLogs: string[] = [];
 
         // ACHIEVEMENT-EXPANSION — track consecutive idle duration (real
         // time since the last player-initiated action). When the gap
@@ -1551,7 +1600,8 @@ export const useGameStore = create<GameStore>()(
             const nonAggressionMult = (treaty?.type === "non_aggression") ? 0.5 : 1.0;
             const threatGrowth = r.stage === "cell"
               ? 0
-              : Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt;
+              : Math.max(0.1, 0.5 - milRatio * 0.4) * nonAggressionMult * realDt
+                * (s.difficultyMode === "hard" ? 1.5 : 1.0); // ROUND E — hardmode ×1.5
             // Population growth: uses the rival's own popGrowthMult (from the
             // procedural name: modifierMult × nounMult). Base rate 0.03/sec.
             const popGrowth = 0.03 * (r.popGrowthMult || 1) * realDt;
@@ -3856,6 +3906,8 @@ export const useGameStore = create<GameStore>()(
           }
         }
         const challengeCostMult = challengeDebuff.costMult ?? 1;
+        // ROUND E — hardmode: system costs × 1.5.
+        const hardmodeCostMult = s.difficultyMode === "hard" ? 1.5 : 1.0;
         if (challengeDebuff.disableMilitary && sys.category === "Military") {
           get().addToLog(`Trial ${CHALLENGE_MAP[s.activeChallenge!]?.name} forbids military systems.`);
           return;
@@ -3909,7 +3961,7 @@ export const useGameStore = create<GameStore>()(
           }
           let canAfford = true;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor * hardmodeCostMult);
             if ((res[r] || 0) < scaled) {
               canAfford = false;
               if (!missingResourceId) missingResourceId = r;
@@ -3918,7 +3970,7 @@ export const useGameStore = create<GameStore>()(
           }
           if (!canAfford) break;
           for (const [r, v] of Object.entries(cost)) {
-            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor);
+            const scaled = Math.ceil((v as number) * challengeCostMult * archCostFactor * hardmodeCostMult);
             res[r] -= scaled;
           }
           bought++;
@@ -4163,6 +4215,24 @@ export const useGameStore = create<GameStore>()(
             const scaled = Math.ceil((v as number) * challengeCostMult * layerTechCostMult);
             res[r] -= scaled;
           }
+        }
+        // ROUND E — HARDMODE. In hard mode, techs take research time instead
+        // of being instant. The cost is deducted now, but the tech isn't
+        // researched yet — a `researchingTech` timer starts (progress 0..1).
+        // The tick advances it; when progress >= 1, the tech completes.
+        // Only one tech at a time in hard mode.
+        if (s.difficultyMode === "hard") {
+          if (s.researchingTech) {
+            get().notifyPurchaseError(`Already researching ${TECH_MAP[s.researchingTech.id]?.name || s.researchingTech.id}. Wait for it to complete.`);
+            return;
+          }
+          const researchTime = tech.tier * 15; // seconds (tier 1 = 15s, tier 2 = 30s, etc.)
+          set({
+            resources: res,
+            researchingTech: { id: techId, progress: 0 },
+          });
+          get().addToLog(`Researching ${tech.name} (hardmode — ${researchTime}s to complete)...`);
+          return; // don't set technologies yet — the tick completes it
         }
         const technologies = { ...s.technologies, [techId]: true };
         const archetypeAffinity = { ...s.archetypeAffinity };
@@ -7818,6 +7888,7 @@ export const useGameStore = create<GameStore>()(
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
       setEventFrequency: (freq) => set({ eventFrequency: freq }),
       setReduceMotion: (v) => set({ reduceMotion: v }),
+      setDifficultyMode: (mode) => set({ difficultyMode: mode }),
 
       // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for
       // counter-based achievements ("Title Clicker", "Easter Egg: Hidden
@@ -9025,7 +9096,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 24,
+      version: 25,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9036,6 +9107,7 @@ export const useGameStore = create<GameStore>()(
           showShop, showEvolve, showSettings,
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
+          researchingTech, // ROUND E — transient (research progress doesn't persist across reload)
           activeRaid, activeStoryPopup, activeInfoModal,
           lastRaidOutcome,
           // These are runtime-only and should never persist:
@@ -9736,6 +9808,13 @@ export const useGameStore = create<GameStore>()(
         // field populates when the player builds an upgrade-chain system).
         if (version < 24) {
           if (!persisted.legacySystems) persisted.legacySystems = {};
+        }
+
+        // V25-MIGRATION — ROUND E hardmode. Old saves (v24) don't have
+        // difficultyMode or researchingTech. Default to "normal" + null.
+        if (version < 25) {
+          if (persisted.difficultyMode === undefined) persisted.difficultyMode = "normal";
+          if (persisted.researchingTech === undefined) persisted.researchingTech = null;
         }
 
         return persisted;

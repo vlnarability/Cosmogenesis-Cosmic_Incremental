@@ -25,12 +25,15 @@
 // deliberate entry moment.
 
 import { useEffect, useState } from "react";
-import { STORAGE_KEY } from "@/game/state/store";
+import { STORAGE_KEY, useGameStore } from "@/game/state/store";
 
 export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const [hasSave, setHasSave] = useState(false);
   const [saveStage, setSaveStage] = useState<string | null>(null);
   const [saveLayer, setSaveLayer] = useState<string | null>(null); // layer NAME (e.g. "Enlightenment") or null for L1
+  // ROUND E — hardmode toggle (only for fresh games; existing saves keep their mode).
+  const difficultyMode = useGameStore((s) => s.difficultyMode);
+  const setDifficultyMode = useGameStore((s) => s.setDifficultyMode);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -131,10 +134,48 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
         </p>
 
         {/* Context — one sentence, evocative. No marketing adjectives. */}
-        <p className="text-sm text-[#e8e2d4]/45 max-w-md leading-relaxed mb-12">
+        <p className="text-sm text-[#e8e2d4]/45 max-w-md leading-relaxed mb-8">
           Seven stages of life separate the first spark of ATP from the rim
           of a galaxy that bears your name.
         </p>
+
+        {/* ROUND E — Hardmode toggle. Only for fresh games (no save). Existing
+            saves keep their difficulty mode. Two quiet text-link buttons. */}
+        {!hasSave && (
+          <div className="mb-12">
+            <div className="flex items-center gap-4 mb-1">
+              <span className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#e8e2d4]/35">
+                Difficulty
+              </span>
+              <button
+                onClick={() => setDifficultyMode("normal")}
+                className={`font-mono text-xs uppercase tracking-[0.2em] border-b pb-1 transition-all ${
+                  difficultyMode === "normal"
+                    ? "text-[#7dd3fc] border-[#7dd3fc]/60"
+                    : "text-[#e8e2d4]/30 border-transparent hover:text-[#e8e2d4]/50"
+                }`}
+              >
+                Normal
+              </button>
+              <button
+                onClick={() => setDifficultyMode("hard")}
+                className={`font-mono text-xs uppercase tracking-[0.2em] border-b pb-1 transition-all ${
+                  difficultyMode === "hard"
+                    ? "text-[#fbbf24] border-[#fbbf24]/60"
+                    : "text-[#e8e2d4]/30 border-transparent hover:text-[#e8e2d4]/50"
+                }`}
+              >
+                Hard
+              </button>
+            </div>
+            {difficultyMode === "hard" && (
+              <p className="text-[0.7rem] text-[#fbbf24]/50 italic max-w-md leading-relaxed">
+                Techs take time to research (tier × 15s). System costs × 1.5.
+                Rival threat growth × 1.5. Only one tech researches at a time.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Descend — quiet text link with underline, not a glowing CTA.
             Save state appended inline (no separate paragraph). */}

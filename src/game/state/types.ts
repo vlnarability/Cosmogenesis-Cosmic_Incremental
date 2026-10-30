@@ -692,6 +692,16 @@ export interface GameState {
    *  prefers-reduced-motion via the CSS @media block too; this toggle is an
    *  opt-in override for users who want calm without changing their OS. */
   reduceMotion: boolean;
+  /** ROUND E — HARDMODE. "normal" (default) = instant-buy techs, normal
+   *  costs/drains. "hard" = techs take research time (tier × 15s), system
+   *  costs × 1.5, threat growth × 1.5, upkeep × 1.5. Chosen at game start
+   *  on the LandingPage; persists for the run. */
+  difficultyMode: "normal" | "hard";
+  /** ROUND E — the currently-researching tech in hardmode (null when idle or
+   *  in normal mode). { id, progress } where progress is 0..1. The tick
+   *  advances progress; when it hits 1, the tech is researched. Only one
+   *  tech at a time in hard mode. */
+  researchingTech: { id: string; progress: number } | null;
 
   // Theme customization (Part 1 — Stage Theme System)
   activeStageTheme: string;          // default "stage-cell"
@@ -989,6 +999,10 @@ export interface GameStore extends GameState {
   resolveEvent: (eventId: string, choiceId: string) => void;
   setEventFrequency: (freq: "off" | "normal" | "frequent") => void;
   setReduceMotion: (v: boolean) => void;
+  /** ROUND E — set the difficulty mode. Only settable at game start (before
+   *  Descend) via the LandingPage toggle. Once the game starts, the mode is
+   *  locked for the run. */
+  setDifficultyMode: (mode: "normal" | "hard") => void;
   /**
    * ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for the
    * counter/flag achievements ("Title Clicker", "Easter Egg: Hidden

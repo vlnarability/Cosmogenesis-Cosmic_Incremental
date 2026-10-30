@@ -104,10 +104,40 @@ export function TechTab() {
   const isTreeStage = stageIndex >= 2; // Tribal (index 2) onward
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
+  // ROUND E — hardmode research progress banner.
+  const researchingTech = useGameStore((s) => s.researchingTech);
+  const difficultyMode = useGameStore((s) => s.difficultyMode);
+
   return (
     <div className="space-y-4">
       {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
       <PurchaseErrorBanner />
+      {/* ROUND E — hardmode research progress banner. Shows the currently-
+          researching tech + a progress bar. Only in hard mode. */}
+      {difficultyMode === "hard" && researchingTech && (
+        <Card className="glass-panel border-amber-500/30">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-amber-300 font-semibold flex items-center gap-1.5">
+                <span className="animate-pulse">🔬</span>
+                Researching: {TECH_MAP[researchingTech.id]?.name || researchingTech.id}
+              </span>
+              <span className="text-muted-foreground tabular-nums">
+                {Math.round(researchingTech.progress * 100)}%
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-amber-500/80 transition-[width] duration-300"
+                style={{ width: `${researchingTech.progress * 100}%` }}
+              />
+            </div>
+            <p className="text-[0.6rem] text-muted-foreground/70 mt-1">
+              Other techs are locked until this research completes.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -247,6 +277,11 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
   const debugFreeBuy = useGameStore((s) => s.debugFreeBuy);
   // HIDE-UNKNOWN-LINEAGE — drives ??? masking of the affinity-grant badge.
   const revealedAffinity = useGameStore((s) => s.revealedLineageArchetypes || {});
+  // ROUND E — hardmode: lock other techs while one is researching.
+  const difficultyMode = useGameStore((s) => s.difficultyMode);
+  const researchingTech = useGameStore((s) => s.researchingTech);
+  const isResearchingThis = researchingTech?.id === tech.id;
+  const researchBusy = difficultyMode === "hard" && !!researchingTech && !isResearchingThis;
 
   const owned = !!technologies[tech.id];
   const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
@@ -254,7 +289,7 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
   // EITHER-OR — check if an exclusive tech is already researched
   const lockedByExclusive = tech.exclusiveWith?.find((exclId) => technologies[exclId]);
   const lockedByExclusiveName = lockedByExclusive ? TECH_MAP[lockedByExclusive]?.name : undefined;
-  const disabled = owned || !prereqMet || !canAfford || !!lockedByExclusive;
+  const disabled = owned || !prereqMet || !canAfford || !!lockedByExclusive || researchBusy;
 
   return (
     <div className={`stat-card transition-opacity ${owned ? "opacity-60" : !prereqMet ? "opacity-50" : lockedByExclusive ? "opacity-40 border-red-500/30" : ""}`}>
@@ -356,7 +391,7 @@ function TechCard({ tech }: { tech: typeof TECHS[number] }) {
           disabled={disabled}
           onClick={() => buyTech(tech.id)}
         >
-          {owned ? "Researched" : lockedByExclusive ? `Locked by ${lockedByExclusiveName}` : !prereqMet ? "Locked" : !canAfford ? "Can't afford" : "Research"}
+          {owned ? "Researched" : isResearchingThis ? "Researching..." : researchBusy ? "Busy" : lockedByExclusive ? `Locked by ${lockedByExclusiveName}` : !prereqMet ? "Locked" : !canAfford ? "Can't afford" : "Research"}
         </Button>
       </div>
     </div>
