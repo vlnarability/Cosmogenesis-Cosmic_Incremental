@@ -4,6 +4,7 @@ export const STAGES: StageDef[] = [
   {
     id: "cell",
     name: "Cell",
+    techLabel: "Mutations",
     tagline: "A single spark in the dark",
     desc: "Awaken as a single cell. Harvest ATP, build organelles, discover the building blocks of life.",
     icon: "⚡",
@@ -25,6 +26,7 @@ export const STAGES: StageDef[] = [
   {
     id: "creature",
     name: "Creature",
+    techLabel: "Discoveries",
     tagline: "The first body learns to move",
     desc: "A multicellular organism emerges. Hunt, gather, and develop your body plan.",
     icon: "🧬",
@@ -48,6 +50,7 @@ export const STAGES: StageDef[] = [
   {
     id: "tribal",
     name: "Tribal",
+    techLabel: "Innovations",
     tagline: "Fire is remembered",
     desc: "Gather your kin. Build, settle, and discover the first technologies of civilization.",
     icon: "🔥",
@@ -69,6 +72,7 @@ export const STAGES: StageDef[] = [
   {
     id: "civilization",
     name: "Civilization",
+    techLabel: "Research",
     tagline: "Cities learn to dream",
     desc: "Build cities, develop production, research science, and shape culture.",
     icon: "🏛️",
@@ -90,6 +94,7 @@ export const STAGES: StageDef[] = [
   {
     id: "empire",
     name: "Empire",
+    techLabel: "Technology",
     tagline: "Distance begins to obey",
     desc: "Manage multiple regions. Logistics, rivals, and the age of grand administration.",
     icon: "⚔️",
@@ -113,6 +118,7 @@ export const STAGES: StageDef[] = [
   {
     id: "solar",
     name: "Solar",
+    techLabel: "Engineering",
     tagline: "The sky stops being a wall",
     desc: "Colonize worlds. Harness energy and alloys. Choose your path to the stars.",
     icon: "☀️",
@@ -137,6 +143,7 @@ export const STAGES: StageDef[] = [
   {
     id: "galactic",
     name: "Galactic",
+    techLabel: "Ascension",
     tagline: "The galaxy takes a shape",
     desc: "An interstellar civilization. Build megastructures and choose your ascension path.",
     icon: "🌌",

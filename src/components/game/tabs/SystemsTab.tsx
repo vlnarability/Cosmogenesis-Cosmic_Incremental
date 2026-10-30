@@ -371,6 +371,13 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
   const ownedSystemsState = useGameStore((s) => s.ownedSystems);
   const archDef = sys.grantsAffinity ? ARCHETYPE_MAP[sys.grantsAffinity.archetype] : null;
   const archRevealed = !!(sys.grantsAffinity && revealedAffinity[sys.grantsAffinity.archetype]);
+  // ROUND D — upgrade chain. legacySystems flags old systems; convertLegacySystem
+  // is the action. Find the upgrade target (the system that replaces this one).
+  const legacySystems = useGameStore((s) => s.legacySystems || {});
+  const convertLegacySystem = useGameStore((s) => s.convertLegacySystem);
+  const isLegacy = !!legacySystems[sys.id];
+  // Find the system that replaces this one (if any) by scanning SYSTEMS.
+  const upgradeTarget = SYSTEMS.find((sy) => sy.upgradeReplaces === sys.id);
 
   // Compute actual affordable qty for Max + total cost for display
   const costReduction = useGameStore((s) => (s.upgrades["frugality"] || 0) * 0.04);
@@ -516,6 +523,31 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
                 )}
               </span>
             ))}
+          </div>
+        )}
+        {/* ROUND D — UPGRADE CHAIN. If this system is legacy (replaced by a
+            newer one), show a "Legacy" badge + a convert button. If this
+            system HAS an upgradeReplaces, show a note it upgrades the old. */}
+        {isLegacy && upgradeTarget && owned > 0 && (
+          <div className="flex items-center gap-2 text-xs mt-1 p-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
+            <Badge variant="outline" className="text-[0.55rem] text-amber-400 border-amber-500/40 shrink-0">Legacy</Badge>
+            <span className="text-[0.65rem] text-muted-foreground flex-1">
+              Upgrades to <span className="font-semibold text-foreground">{upgradeTarget.name}</span>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[0.6rem] text-amber-300 border-amber-500/40 hover:bg-amber-500/10 shrink-0"
+              onClick={() => convertLegacySystem(sys.id)}
+              title={`Convert ${owned}× ${sys.name} to ${upgradeTarget.name} for 25% of the build cost`}
+            >
+              Convert ({owned}×)
+            </Button>
+          </div>
+        )}
+        {sys.upgradeReplaces && !isLegacy && (
+          <div className="text-[0.55rem] text-violet-400/80 italic mt-0.5">
+            ⬆ Upgrades: {SYSTEM_MAP[sys.upgradeReplaces]?.name || sys.upgradeReplaces}
           </div>
         )}
         {/* Population growth (pop-growth systems) — per-system rate */}

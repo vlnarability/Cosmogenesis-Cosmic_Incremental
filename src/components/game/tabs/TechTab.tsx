@@ -109,7 +109,7 @@ export function TechTab() {
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 <GitBranch className="w-4 h-4" />
-                {stage.name} Technology
+                {stage.name} {stage.techLabel || "Technology"}
               </CardTitle>
               <CardDescription>
                 Research permanent bonuses. Prerequisites must be met before higher tiers unlock.

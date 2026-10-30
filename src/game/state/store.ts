@@ -589,6 +589,7 @@ function initialRunState(): Partial<GameState> {
     capacities,
     ownedSystems: {},
     systemEnabled: {},
+    legacySystems: {}, // ROUND D — systems marked legacy by upgrade chains
     technologies: {},
     archetypeAffinity: {},
     lockedArchetype: null,
@@ -3944,6 +3945,17 @@ export const useGameStore = create<GameStore>()(
           get().addToLog(`Lineage chosen: ${poolName}. Your drift is now restricted to its archetype pool.`);
         }
 
+        // ROUND D — UPGRADE CHAIN. If this system replaces an older one + the
+        // player owns some of the old system, mark it "legacy". Legacy systems
+        // still produce but are flagged for conversion (25%-cost upgrade).
+        let legacySystemsUpdate: { legacySystems: Record<string, boolean> } | undefined;
+        if (sys.upgradeReplaces && (ownedSystems[sys.upgradeReplaces] || 0) > 0) {
+          const legacySystems = { ...(s.legacySystems || {}), [sys.upgradeReplaces]: true };
+          legacySystemsUpdate = { legacySystems };
+          const oldName = SYSTEM_MAP[sys.upgradeReplaces]?.name || sys.upgradeReplaces;
+          get().addToLog(`${oldName}s are now legacy — convert them to ${sys.name} for 25% of the build cost.`);
+        }
+
         // Trigger story
         const newStory = { ...s.storyUnlocked };
         let activePopup = s.activeStoryPopup;
@@ -3963,6 +3975,7 @@ export const useGameStore = create<GameStore>()(
           activeStoryPopup: activePopup,
           totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
           ...(nucleusChoiceUpdate || {}),
+          ...(legacySystemsUpdate || {}),
         });
         get().addToLog(`Built ${bought}× ${sys.name}.`);
       },
@@ -3973,6 +3986,55 @@ export const useGameStore = create<GameStore>()(
         const systemEnabled = { ...s.systemEnabled };
         systemEnabled[systemId] = systemEnabled[systemId] === false ? true : false;
         set({ systemEnabled });
+      },
+
+      // ROUND D — convert a legacy system to its upgrade successor for 25% of
+      // the new system's cost per unit. Decrements the old system, increments
+      // the new one. Clears the legacy flag when the old count hits 0.
+      convertLegacySystem: (oldSystemId, qty) => {
+        const s = get();
+        const oldSys = SYSTEM_MAP[oldSystemId];
+        if (!oldSys) return;
+        // Find the new system that replaces this one (scan SYSTEMS for
+        // upgradeReplaces === oldSystemId). There should be exactly one.
+        const newSys = SYSTEMS.find((sy) => sy.upgradeReplaces === oldSystemId);
+        if (!newSys) {
+          get().addToLog(`${oldSys.name} has no upgrade target.`);
+          return;
+        }
+        const oldOwned = s.ownedSystems[oldSystemId] || 0;
+        if (oldOwned <= 0) {
+          get().addToLog(`No ${oldSys.name}s to convert.`);
+          return;
+        }
+        const convertQty = Math.min(qty || oldOwned, oldOwned);
+        // Cost: 25% of the new system's baseCost per unit (no costGrowth scaling
+        // — conversion is a flat 25% of base, rewarding proactive upgrading).
+        const costMult = 0.25;
+        const resources = { ...s.resources };
+        for (const [r, v] of Object.entries(newSys.baseCost)) {
+          const needed = (v as number) * costMult * convertQty;
+          if ((resources[r] || 0) < needed) {
+            get().notifyPurchaseError(`Not enough ${RESOURCE_MAP[r]?.name || r} to convert ${convertQty}× ${oldSys.name} (need ${Math.ceil(needed)}).`);
+            return;
+          }
+        }
+        // Deduct the conversion cost.
+        for (const [r, v] of Object.entries(newSys.baseCost)) {
+          const needed = (v as number) * costMult * convertQty;
+          resources[r] = (resources[r] || 0) - needed;
+        }
+        // Move the systems: decrement old, increment new.
+        const ownedSystems = { ...s.ownedSystems };
+        ownedSystems[oldSystemId] = oldOwned - convertQty;
+        ownedSystems[newSys.id] = (ownedSystems[newSys.id] || 0) + convertQty;
+        // Clear the legacy flag if the old count hits 0.
+        const legacySystems = { ...(s.legacySystems || {}) };
+        if (ownedSystems[oldSystemId] <= 0) delete legacySystems[oldSystemId];
+        // Enable the new system (in case it was disabled).
+        const systemEnabled = { ...s.systemEnabled, [newSys.id]: true };
+        set({ resources, ownedSystems, legacySystems, systemEnabled });
+        get().addToLog(`Converted ${convertQty}× ${oldSys.name} → ${newSys.name} (25% cost).`);
       },
 
       enableAllSystems: (enabled) => {
@@ -8903,7 +8965,7 @@ export const useGameStore = create<GameStore>()(
         // adapter definition near the top of this file.
         return safeLocalStorage;
       }),
-      version: 23,
+      version: 24,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9607,6 +9669,13 @@ export const useGameStore = create<GameStore>()(
               archetype: r.archetype || randomRivalArchetype(),
             }));
           }
+        }
+
+        // V24-MIGRATION — ROUND D upgrade chains. Old saves (v23) don't have
+        // the legacySystems field. Default to {} (no legacy systems — the
+        // field populates when the player builds an upgrade-chain system).
+        if (version < 24) {
+          if (!persisted.legacySystems) persisted.legacySystems = {};
         }
 
         return persisted;

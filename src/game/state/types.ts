@@ -85,6 +85,12 @@ export interface SystemDef {
   // rareResources state). Used for systems unlocked by trade/hunt/rival
   // rare drops (see rareResources.ts for the mapping).
   requiresRareResource?: string;
+  /** ROUND D — UPGRADE CHAIN. If set, this system REPLACES the named older
+   *  system when built. The old system is marked "legacy" (still produces,
+   *  but flagged for upgrade). The player can convert legacy → new for 25%
+   *  of the new system's cost via the convertLegacySystem action. Forms
+   *  cross-stage upgrade chains (e.g. Power Plant → Nuclear → Fusion → Dyson). */
+  upgradeReplaces?: string;
 }
 
 export interface TechDef {
@@ -120,6 +126,9 @@ export interface TechDef {
 export interface StageDef {
   id: StageId;
   name: string;
+  /** ROUND D — the per-stage label for the Tech tab (e.g. Cell→"Mutations",
+   * Creature→"Discoveries"). Falls back to "Technology" when unset. */
+  techLabel?: string;
   tagline: string;
   desc: string;
   icon: string;
@@ -294,6 +303,10 @@ export interface GameState {
   capacities: Record<string, number>;
   ownedSystems: Record<string, number>;
   systemEnabled: Record<string, boolean>; // per-system on/off toggle
+  /** ROUND D — systems marked "legacy" because a newer system in the upgrade
+   *  chain has been built. Legacy systems still produce but are flagged for
+   *  conversion (convert legacy → new for 25% of new cost). */
+  legacySystems: Record<string, boolean>;
   technologies: Record<string, boolean>;
   archetypeAffinity: Record<string, number>; // drift during run
   lockedArchetype: string | null; // locked at Creature→Tribal
@@ -921,6 +934,10 @@ export interface GameStore extends GameState {
   performAction: (actionId: string) => void;
   buySystem: (systemId: string, qty: number) => void;
   toggleSystem: (systemId: string) => void;
+  /** ROUND D — convert a legacy system to its upgrade successor for 25% of
+   *  the new system's cost per unit. Decrements the old system, increments
+   *  the new one. Clears the legacy flag when the old count hits 0. */
+  convertLegacySystem: (oldSystemId: string, qty?: number) => void;
   enableAllSystems: (enabled: boolean) => void;
   buyTech: (techId: string) => void;
   buyUpgrade: (upgradeId: string) => void;

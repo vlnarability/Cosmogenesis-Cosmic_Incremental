@@ -3244,6 +3244,8 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 15, wood: 10 },
     costGrowth: 1.20,
     produces: { food: 1.5 },
+    // ROUND D — upgrade chain: replaces the tribal Farm.
+    upgradeReplaces: "farm",
   },
   {
     id: "civ_well",
@@ -4311,12 +4313,14 @@ export const SYSTEMS: SystemDef[] = [
     name: "Nuclear Plant",
     desc: "Reactor, cooling tower, containment dome. A gram lights a city.",
     stage: "empire",
-    icon: "☢️",
-    category: "Energy",
+    icon: "☢️",    category: "Energy",
     baseCost: { production: 800, gold: 600, science: 400 },
     costGrowth: 1.32,
     produces: { energy: 30.0, science: 0.5 },
     upkeep: { materials: 0.5 },
+    // ROUND D — upgrade chain: replaces the basic Power Plant. Building this
+    // marks owned Power Plants as "legacy" (convertible for 25% cost).
+    upgradeReplaces: "emp_power_plant",
     requiredTech: "emp_nuclear_fission",
   },
   {
@@ -4329,6 +4333,8 @@ export const SYSTEMS: SystemDef[] = [
     baseCost: { production: 400, gold: 300, science: 200, knowledge: 100 },
     costGrowth: 1.30,
     produces: { science: 10.0, culture: 1.0, data: 1.0 },
+    // ROUND D — upgrade chain: replaces the Civilization Academy.
+    upgradeReplaces: "academy",
     requiredTech: "emp_modern_scientific_method",
   },
   {
