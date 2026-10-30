@@ -50,11 +50,13 @@ export function EvolveModal() {
     .length;
   const score = computeScore(resources, ownedSystems, technologies, population, time);
 
+  // EVOLVE-REQ-REWORK — pop/systems/tech gates optional. Filter out unset
+  // gates (need 0 / falsy) so the EvolveModal only shows relevant checks.
   const checks = [
-    { label: "Population", current: population, need: reqs.minPopulation * evolveBoost },
-    { label: "Systems built", current: totalSystems, need: reqs.minSystems * evolveBoost },
-    { label: "Technologies", current: totalTech, need: reqs.minTech * evolveBoost },
-  ];
+    { label: "Population", current: population, need: (reqs.minPopulation || 0) * evolveBoost },
+    { label: "Systems built", current: totalSystems, need: (reqs.minSystems || 0) * evolveBoost },
+    { label: "Technologies", current: totalTech, need: (reqs.minTech || 0) * evolveBoost },
+  ].filter((c) => c.need > 0);
   // STAGE-PREREQ-SYSTEMS — additional hard requirement (e.g. Nucleus
   // required to evolve Cell→Creature). Surfaced as an extra check row.
   if (reqs.requiresSystems && reqs.requiresSystems.length > 0) {

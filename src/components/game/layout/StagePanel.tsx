@@ -56,9 +56,15 @@ export function StagePanel() {
 
   const reqs = stage.evolveRequires;
   const evolveBoost = 1 - Math.min(0.30, (upgrades["evolutionary_momentum"] || 0) * 0.05);
-  const popPct = Math.min(100, (population / (reqs.minPopulation * evolveBoost)) * 100);
-  const sysPct = Math.min(100, (totalSystems / (reqs.minSystems * evolveBoost)) * 100);
-  const techPct = Math.min(100, (totalTech / (reqs.minTech * evolveBoost)) * 100);
+  // EVOLVE-REQ-REWORK — pop/systems/tech gates are optional. When unset,
+  // the pct is 100 (always met). Cell keeps minSystems (organelle count);
+  // other stages evolve via narrative milestones.
+  const minPop = reqs.minPopulation || 0;
+  const minSys = reqs.minSystems || 0;
+  const minTech = reqs.minTech || 0;
+  const popPct = minPop > 0 ? Math.min(100, (population / (minPop * evolveBoost)) * 100) : 100;
+  const sysPct = minSys > 0 ? Math.min(100, (totalSystems / (minSys * evolveBoost)) * 100) : 100;
+  const techPct = minTech > 0 ? Math.min(100, (totalTech / (minTech * evolveBoost)) * 100) : 100;
   // STAGE-PREREQ-SYSTEMS — additional hard requirement (e.g. Nucleus
   // required to evolve Cell→Creature). All listed systems must be owned.
   const prereqMet = !reqs.requiresSystems || reqs.requiresSystems.every(
@@ -184,21 +190,24 @@ export function StagePanel() {
         )}
       </div>
 
-      {/* Stats grid (2 — systems/tech) */}
+      {/* Stats grid (2 — systems/tech). EVOLVE-REQ-REWORK: only show a stat
+          tile when its min is set (Cell keeps minSystems; most stages have no
+          systems/tech gate). When unset, the tile shows the count with no
+          gate (ok=true, need="—"). */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <MiniStat
           icon={<Sparkles className="w-3 h-3" />}
           label="Systems"
           value={formatNumber(totalSystems, 0)}
-          ok={totalSystems >= reqs.minSystems * evolveBoost}
-          need={formatNumber(reqs.minSystems * evolveBoost, 0)}
+          ok={minSys > 0 ? totalSystems >= minSys * evolveBoost : true}
+          need={minSys > 0 ? formatNumber(minSys * evolveBoost, 0) : "—"}
         />
         <MiniStat
           icon={<TrendingUp className="w-3 h-3" />}
           label="Tech"
           value={formatNumber(totalTech, 0)}
-          ok={totalTech >= reqs.minTech * evolveBoost}
-          need={formatNumber(reqs.minTech * evolveBoost, 0)}
+          ok={minTech > 0 ? totalTech >= minTech * evolveBoost : true}
+          need={minTech > 0 ? formatNumber(minTech * evolveBoost, 0) : "—"}
         />
       </div>
 
@@ -303,13 +312,19 @@ export function StagePanel() {
               met={oneOfSystemsMet}
             />
           )}
-          {/* requiresRivalsResolved — all VISIBLE rivals must be non-active.
-              QA-FIX: hidden rivals (cell-stage stragglers, not shown in the
-              World tab, not interactable) are excluded so this count matches
-              what the player can actually see and resolve. */}
+          {/* requiresRivalsResolved — rivals must be resolved. EVOLVE-REQ-REWORK:
+              requiresRivalsMin sets a minimum RESOLVED count (Creature→Tribal:
+              resolve ≥3). When unset, ALL visible rivals must be resolved
+              (Empire→Solar). Hidden rivals (cell-stage stragglers) excluded. */}
           {reqs.requiresRivalsResolved && (() => {
             const rivals = useGameStore.getState().rivals || [];
-            const activeCount = rivals.filter((r: any) => r?.state === "active" && !r?.hidden).length;
+            const visible = rivals.filter((r: any) => !r?.hidden);
+            const activeCount = visible.filter((r: any) => r?.state === "active").length;
+            const resolvedCount = visible.filter((r: any) => r?.state !== "active").length;
+            const min = reqs.requiresRivalsMin;
+            if (min && min > 0) {
+              return <GateRow label={`Resolve ≥ ${min} rivals (${resolvedCount}/${min} resolved)`} met={resolvedCount >= min} />;
+            }
             return <GateRow label={`Resolve all rivals (${activeCount} active)`} met={activeCount === 0} />;
           })()}
           {/* requiresGovernmentChosen — must have a pending or active government */}

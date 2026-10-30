@@ -204,21 +204,37 @@ export function GameShell() {
   // BACKGROUND-SIMULATION — at L2+ (Enlightenment unlocked) the base game is
   // fully abstracted into the Divine Engine panel; we swap out StagePanel.
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
-  const showDivineEngine = !!(unlockedLayers?.enlightenment);
+  const activeChallenge = useGameStore((s) => s.activeChallenge);
+  // BUGFIX-TRIALS: when a Trial is active, the player needs the base-game
+  // tabs (Actions/Systems/Tech/World) to actually play it — building systems,
+  // researching, etc. At L2+ those are normally hidden (Divine Engine mode),
+  // but a trial forces base-game mode. `inTrial` overrides both the tab
+  // visibility + the DivineEngine panel swap + the auto-redirect.
+  const inTrial = !!activeChallenge;
+  const showDivineEngine = !!(unlockedLayers?.enlightenment) && !inTrial;
   const setTab = useGameStore((s) => s.setTab);
 
   // AUTO-REDIRECT: At L2+, if the current tab is a hidden base-game tab
   // (actions/systems/tech/production), redirect to "story" so the player
   // never sees the Cell Actions / Manual Action section.
-  // REMOVE-PRESTIGE-TAB — redirect to "story" instead of "prestige".
+  // BUGFIX-TRIALS: skip the redirect when a Trial is active — the player
+  // needs those tabs. Also auto-switch TO actions when a trial starts so
+  // they land on a usable surface.
   const prevShowDivineEngine = useRef(showDivineEngine);
+  const prevInTrial = useRef(inTrial);
   useEffect(() => {
     const hiddenTabs = ["actions", "systems", "tech", "production"];
     if (showDivineEngine && hiddenTabs.includes(currentTab)) {
       setTab("story");
     }
+    // When a trial BEGINS (inTrial flips false→true), jump to the Actions
+    // tab so the player immediately sees the base-game surface they need.
+    if (inTrial && !prevInTrial.current && !hiddenTabs.includes(currentTab) && currentTab !== "world") {
+      setTab("actions");
+    }
     prevShowDivineEngine.current = showDivineEngine;
-  }, [showDivineEngine, currentTab, setTab]);
+    prevInTrial.current = inTrial;
+  }, [showDivineEngine, inTrial, currentTab, setTab]);
 
   // Theme state — apply CSS classes to the root div.
   // Special overrides everything; otherwise stage + optional layer overlay.

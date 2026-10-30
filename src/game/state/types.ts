@@ -127,9 +127,14 @@ export interface StageDef {
   bgGradient: string; // css
   duration: string;
   evolveRequires: {
-    minPopulation: number;
-    minSystems: number;
-    minTech: number;
+    // EVOLVE-REQ-REWORK — pop/systems/tech stat gates are now OPTIONAL.
+    // Most stages evolve via narrative milestones (nucleus choice, rival
+    // resolution, government, trade routes, FTL, ascension) instead of
+    // grinding stats. Cell is the exception (keeps minSystems for the
+    // organelle count). Defaults to 0 when unset.
+    minPopulation?: number;
+    minSystems?: number;
+    minTech?: number;
     // STAGE-PREREQ-SYSTEMS — systems that MUST be owned (count > 0)
     // to evolve past this stage. Used to gate evolution behind key
     // biological milestones (e.g. Nucleus required to evolve Cell→Creature).
@@ -151,6 +156,13 @@ export interface StageDef {
      * Used by Creature→Tribal (conquer/merge with rival creatures) and
      * Empire→Solar (ally with or wipe out all rival empires). */
     requiresRivalsResolved?: boolean;
+    /** EVOLVE-REQ-REWORK — minimum number of rivals that must be RESOLVED
+     * (state !== "active") to evolve. When set, the gate passes once
+     * resolvedCount >= this number (the player doesn't have to resolve ALL
+     * visible rivals). Used by Creature→Tribal (resolve ≥3). When unset +
+     * requiresRivalsResolved is true, the gate requires ALL visible rivals
+     * resolved (the Empire→Solar behavior). */
+    requiresRivalsMin?: number;
     /** Player must have chosen a government (not auto-assigned) to evolve.
      * Used by Tribal→Civilization. Choosing causes a happiness hit that
      * the player must recover from before evolving. */

@@ -1841,9 +1841,10 @@ export const useGameStore = create<GameStore>()(
               prereqMet &&
               oneOfTechsMet &&
               oneOfSystemsMet &&
-              population >= reqs.minPopulation * evolveBoost * threshold &&
-              stageSystemsNow >= reqs.minSystems * evolveBoost * threshold &&
-              stageTechNow >= reqs.minTech * evolveBoost * threshold
+              // EVOLVE-REQ-REWORK — pop/systems/tech gates optional (|| 0 → always met when unset).
+              population >= (reqs.minPopulation || 0) * evolveBoost * threshold &&
+              stageSystemsNow >= (reqs.minSystems || 0) * evolveBoost * threshold &&
+              stageTechNow >= (reqs.minTech || 0) * evolveBoost * threshold
             ) {
               // Defer evolve to next tick to avoid mutating state mid-set.
               setTimeout(() => get().evolveStage(), 0);
@@ -4134,20 +4135,32 @@ export const useGameStore = create<GameStore>()(
             return;
           }
         }
-        // (3) requiresRivalsResolved — all NPC rivals must be in a non-active
-        // state (allied/conquered/merged). Used by Creature→Tribal + Empire→Solar.
-        // QA-FIX (progression blocker): HIDDEN rivals are excluded — they
-        // are the cell-stage stragglers that didn't survive the carry-forward
-        // cut (not interactable, not shown in the World tab). Counting them
-        // made "resolve all rivals" impossible: the player could ally/conquer
-        // every visible rival and the gate would still read 5 active. The
-        // World tab + this gate now agree: only VISIBLE rivals count.
+        // (3) requiresRivalsResolved — NPC rivals must be resolved (state !==
+        // "active": allied/conquered/merged). Used by Creature→Tribal +
+        // Empire→Solar. QA-FIX: HIDDEN rivals are excluded (cell-stage stragglers
+        // that didn't survive the carry-forward cut — not interactable).
+        // EVOLVE-REQ-REWORK: requiresRivalsMin sets a minimum RESOLVED count
+        // (Creature→Tribal: resolve ≥3, not all). When set, the gate passes once
+        // resolvedCount >= min. When unset, the gate requires ALL visible rivals
+        // resolved (the Empire→Solar behavior).
         if (reqs.requiresRivalsResolved) {
           const rivals = s.rivals || [];
-          const activeCount = rivals.filter((r: any) => r?.state === "active" && !r?.hidden).length;
-          if (activeCount > 0) {
-            get().addToLog(`Cannot evolve: ${activeCount} rival${activeCount === 1 ? "" : "s"} still active — conquer, merge, or ally with all of them.`);
-            return;
+          const visible = rivals.filter((r: any) => !r?.hidden);
+          const activeCount = visible.filter((r: any) => r?.state === "active").length;
+          const resolvedCount = visible.filter((r: any) => r?.state !== "active").length;
+          const min = reqs.requiresRivalsMin;
+          if (min && min > 0) {
+            // Resolve ≥N rivals gate (Creature→Tribal).
+            if (resolvedCount < min) {
+              get().addToLog(`Cannot evolve: resolve at least ${min} rival${min === 1 ? "" : "s"} (conquer, merge, or ally) — ${resolvedCount}/${min} resolved so far.`);
+              return;
+            }
+          } else {
+            // Resolve ALL visible rivals gate (Empire→Solar).
+            if (activeCount > 0) {
+              get().addToLog(`Cannot evolve: ${activeCount} rival${activeCount === 1 ? "" : "s"} still active — conquer, merge, or ally with all of them.`);
+              return;
+            }
           }
         }
         // (4) requiresGovernmentChosen — player must have chosen a government
@@ -4195,20 +4208,22 @@ export const useGameStore = create<GameStore>()(
         const totalTech = stageTechCount;
         const score = computeScore(s);
 
-        // QA-FIX: these three gates used to `return` SILENTLY — clicking the
-        // evolve button with unmet requirements gave zero feedback while every
-        // other gate above logs its reason. Mirror that behavior so the log
-        // always explains WHY nothing happened.
-        if (s.population < reqs.minPopulation * evolveBoost) {
-          get().addToLog(`Cannot evolve: population ${Math.floor(s.population)} < ${Math.ceil(reqs.minPopulation * evolveBoost)} (need ${Math.ceil(reqs.minPopulation * evolveBoost - s.population)} more).`);
+        // EVOLVE-REQ-REWORK — pop/systems/tech gates optional. Skip the
+        // check entirely when the min is unset (most stages evolve via
+        // narrative milestones now). Only log when the gate is actually set.
+        const minPopR = reqs.minPopulation || 0;
+        const minSysR = reqs.minSystems || 0;
+        const minTechR = reqs.minTech || 0;
+        if (minPopR > 0 && s.population < minPopR * evolveBoost) {
+          get().addToLog(`Cannot evolve: population ${Math.floor(s.population)} < ${Math.ceil(minPopR * evolveBoost)} (need ${Math.ceil(minPopR * evolveBoost - s.population)} more).`);
           return;
         }
-        if (totalSystems < reqs.minSystems * evolveBoost) {
-          get().addToLog(`Cannot evolve: ${totalSystems} ${stage.name}-stage systems < ${Math.ceil(reqs.minSystems * evolveBoost)} — build more this-stage systems.`);
+        if (minSysR > 0 && totalSystems < minSysR * evolveBoost) {
+          get().addToLog(`Cannot evolve: ${totalSystems} ${stage.name}-stage systems < ${Math.ceil(minSysR * evolveBoost)} — build more this-stage systems.`);
           return;
         }
-        if (totalTech < reqs.minTech * evolveBoost) {
-          get().addToLog(`Cannot evolve: ${totalTech} ${stage.name}-stage techs < ${Math.ceil(reqs.minTech * evolveBoost)} — research more this-stage techs.`);
+        if (minTechR > 0 && totalTech < minTechR * evolveBoost) {
+          get().addToLog(`Cannot evolve: ${totalTech} ${stage.name}-stage techs < ${Math.ceil(minTechR * evolveBoost)} — research more this-stage techs.`);
           return;
         }
         // Score is NOT a requirement — it only affects EP earned at prestige

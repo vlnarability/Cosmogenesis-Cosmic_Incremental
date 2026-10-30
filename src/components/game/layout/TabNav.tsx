@@ -105,17 +105,23 @@ export function TabNav() {
   const openLayerModal = useGameStore((s) => s.openLayerModal);
   const activeLayerModal = useGameStore((s) => s.activeLayerModal);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+  const activeChallenge = useGameStore((s) => s.activeChallenge);
   const { isAtLeast } = useActiveLayer();
 
   const isL2Plus = isAtLeast("enlightenment");
+  // BUGFIX-TRIALS: when a Trial is active, force-show the base-game tabs
+  // (Actions/Systems/Tech/World) even at L2+, + hide the layer tabs so the
+  // player has a focused base-game surface to actually play the trial.
+  const inTrial = !!activeChallenge;
 
-  // Main tabs: at L2+, hide Actions/Systems/Tech.
-  const visibleMainTabs = MAIN_TABS.filter(() => !isL2Plus);
+  // Main tabs: at L2+, hide Actions/Systems/Tech — UNLESS a Trial is active.
+  const visibleMainTabs = inTrial ? MAIN_TABS : MAIN_TABS.filter(() => !isL2Plus);
 
   // Layer tabs: shown when their layer is unlocked. Higher layers MERGE
   // lower layers out of the tab bar (their content is still rendered
   // inside the higher tab — see GameShell's universe/lab cases).
-  const visibleLayerTabs = LAYER_TABS.filter((tab) => {
+  // BUGFIX-TRIALS: hide all layer tabs during a Trial (focused base-game mode).
+  const visibleLayerTabs = inTrial ? [] : LAYER_TABS.filter((tab) => {
     // L4 Galaxy — hidden when L5 (Apotheosis) unlocks (merged into the Universe tab).
     if (tab.id === "galaxy" && !!unlockedLayers?.apotheosis) return false;
     // L5 Conquest (now "Galactic Cluster") — hidden when L6 (Singularity) unlocks (merged into Universe).

@@ -10,7 +10,11 @@ export const STAGES: StageDef[] = [
     accent: "#22d3ee",
     bgGradient: "radial-gradient(ellipse at top, #0c4a6e 0%, #082f49 40%, #020617 100%)",
     duration: "5-60 min",
-    evolveRequires: { minPopulation: 8, minSystems: 4, minTech: 2, requiresSystems: ["nucleus"] },
+    // EVOLVE-REQ-REWORK — Cell→Creature: build the Nucleus (one of the 4
+    // nucleus alternatives, once that feature lands) + a # of organelles.
+    // Pop + tech gates removed per user spec — evolution is driven by
+    // narrative milestones + the nucleus choice, not by grinding.
+    evolveRequires: { minSystems: 4, requiresSystems: ["nucleus"] },
     storyIntro:
       "In the warm dark of a young sea, something stirs. A membrane holds. A spark of ATP ignites. " +
       "You are not yet awake — but you are becoming. The first law of this universe is survival.",
@@ -30,7 +34,10 @@ export const STAGES: StageDef[] = [
     // PART-1 — Creature→Tribal requires conquering OR merging with a rival creature
     // pack. The first political act — absorbing or defeating a neighbor — is what
     // turns a pack into a tribe. (User rejected 'first event choice' as too easy/random.)
-    evolveRequires: { minPopulation: 30, minSystems: 8, minTech: 3, requiresRivalsResolved: true },
+    // EVOLVE-REQ-REWORK — Creature→Tribal: resolve ≥3 rivals (conquer OR
+    // merge), not all. The first political act — absorbing or defeating 3
+    // neighbors — turns a pack into a tribe. Pop/systems/tech gates removed.
+    evolveRequires: { requiresRivalsResolved: true, requiresRivalsMin: 3 },
     storyIntro:
       "The first body uncurls. Eyes that were spots now see. Hunger that was instinct now becomes want. " +
       "The world is wide and full of teeth. You must move, eat, fear, and remember.",
@@ -49,7 +56,9 @@ export const STAGES: StageDef[] = [
     duration: "60-120 min",
     // PART-1 — Tribal→Civ requires choosing a government (no auto-assign) AND
     // recovering happiness to >=50% after the disruption of new governance.
-    evolveRequires: { minPopulation: 80, minSystems: 10, minTech: 4, requiresGovernmentChosen: true, requiresHappinessThreshold: 50 },
+    // EVOLVE-REQ-REWORK — Tribal→Civ: choose a government + recover happiness
+    // to ≥50%. Pop/systems/tech gates removed.
+    evolveRequires: { requiresGovernmentChosen: true, requiresHappinessThreshold: 50 },
     storyIntro:
       "The fire holds through the night. The circle of faces becomes a circle of names. " +
       "Story is born — and with story, the first memory that outlives a single life.",
@@ -68,7 +77,9 @@ export const STAGES: StageDef[] = [
     duration: "120-180 min",
     // PART-1 — Civ→Empire requires building Capitol + establishing multiple
     // trade routes (≥3, representing connections to multiple city-states).
-    evolveRequires: { minPopulation: 200, minSystems: 12, minTech: 5, requiresTradeRoutes: 3 },
+    // EVOLVE-REQ-REWORK — Civ→Empire: build Capitol + establish ≥3 trade
+    // routes. Pop/systems/tech gates removed.
+    evolveRequires: { requiresTradeRoutes: 3 },
     storyIntro:
       "Stone rises in courses. Laws are carved beside grain counts. " +
       "The city learns to dream of more than tomorrow — it dreams of empire.",
@@ -89,7 +100,9 @@ export const STAGES: StageDef[] = [
     // empires before breaking the sky. An empire can't reach for the stars while
     // wars rage at home. (User correction: FTL choice is NOT here — FTL is
     // chosen in Solar to unlock Galactic.)
-    evolveRequires: { minPopulation: 600, minSystems: 14, minTech: 7, requiresRivalsResolved: true },
+    // EVOLVE-REQ-REWORK — Empire→Solar: resolve ALL rival empires before
+    // breaking the sky. Pop/systems/tech gates removed.
+    evolveRequires: { requiresRivalsResolved: true },
     storyIntro:
       "Distance begins to obey. The roads of an empire run long, and along them ride not just grain and gold — " +
       "but the slow weight of rivals who dream the same dreams.",
@@ -111,7 +124,9 @@ export const STAGES: StageDef[] = [
     // THIS is where the FTL choice happens — you develop FTL IN the Solar stage
     // to unlock the galaxy. (User correction: FTL is NOT learned before going
     // to space — it's learned IN space to reach the galaxy.)
-    evolveRequires: { minPopulation: 1000, minSystems: 12, minTech: 8, requiresOneOfTechs: ["warp_theory", "hyperlanes", "jump_theory"], requiresOneOfSystems: ["warp_gate", "hyperlane_network", "jump_array"] },
+    // EVOLVE-REQ-REWORK — Solar→Galactic: choose 1 of 3 FTL methods + build
+    // matching infrastructure. Pop/systems/tech gates removed.
+    evolveRequires: { requiresOneOfTechs: ["warp_theory", "hyperlanes", "jump_theory"], requiresOneOfSystems: ["warp_gate", "hyperlane_network", "jump_array"] },
     storyIntro:
       "The sky stops being a wall. A ship breaks the sky and does not fall. " +
       "The first new world waits in the dark — and beyond it, a hundred more.",
@@ -131,7 +146,9 @@ export const STAGES: StageDef[] = [
     // PART-1 — Galactic→Prestige requires choosing 1 of 3 mutually-exclusive
     // ascension paths (Tech Singularity / Bio Transcendence / Psionic Awakening)
     // + completing the Ascension Project megastructure.
-    evolveRequires: { minPopulation: 2000, minSystems: 12, minTech: 10, requiresOneOfTechs: ["tech_ascension", "bio_ascension", "psionic_ascension"], requiresSystems: ["ascension_project"] },
+    // EVOLVE-REQ-REWORK — Galactic→Prestige: choose 1 of 3 ascension paths +
+    // complete the Ascension Project. Pop/systems/tech gates removed.
+    evolveRequires: { requiresOneOfTechs: ["tech_ascension", "bio_ascension", "psionic_ascension"], requiresSystems: ["ascension_project"] },
     storyIntro:
       "The galaxy takes a shape. A thousand suns answer one banner. " +
       "The question is no longer whether to live — but what kind of life deserves to live forever.",
