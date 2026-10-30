@@ -46,6 +46,7 @@ import {
   Trophy,
   BookOpen,
   AlertTriangle,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
@@ -530,6 +531,16 @@ export function Header() {
               >
                 <ListTree className="w-3.5 h-3.5" />
                 <span>Log</span>
+              </DropdownMenuItem>
+              {/* F1 — Statistics dashboard. Surfaces run + lifetime counters
+                  (playtime, actions, systems built, rares consumed, deep
+                  hunts, treaties, max reputation, etc.). */}
+              <DropdownMenuItem
+                onClick={() => openInfoModal("stats")}
+                className="cursor-pointer text-xs"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Statistics</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {/* Settings */}

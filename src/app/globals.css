@@ -582,6 +582,69 @@
 .rare-tier-uncommon  { border-left: 3px solid oklch(0.68 0.14 200 / 0.55); }
 .rare-tier-rare      { border-left: 3px solid oklch(0.62 0.20 300 / 0.65); }
 
+/* ============================================================
+   S1 — ACHIEVEMENT TIERED STYLING
+   Prestigious achievements get visual weight: legendary (golden border
+   + sparkle sweep), rare (violet border), secret (cyan "hidden" accent).
+   Common keeps the default primary styling. Applied on the toast + the
+   AchievementsTab earned cards.
+   ============================================================ */
+.ach-tier-legendary {
+  border-color: oklch(0.75 0.15 85 / 0.6) !important;
+  box-shadow: 0 0 0 1px oklch(0.75 0.15 85 / 0.3), 0 0 16px -4px oklch(0.75 0.15 85 / 0.5);
+}
+.ach-tier-legendary .ach-icon-box {
+  background: oklch(0.75 0.15 85 / 0.18) !important;
+  border-color: oklch(0.75 0.15 85 / 0.5) !important;
+  animation: achSparkle 3.5s ease-in-out infinite;
+}
+@keyframes achSparkle {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.85 0.12 85 / 0); }
+  50%      { box-shadow: 0 0 12px 2px oklch(0.85 0.12 85 / 0.4); }
+}
+.ach-tier-rare {
+  border-color: oklch(0.65 0.20 300 / 0.5) !important;
+}
+.ach-tier-rare .ach-icon-box {
+  background: oklch(0.65 0.20 300 / 0.15) !important;
+  border-color: oklch(0.65 0.20 300 / 0.4) !important;
+}
+.ach-tier-secret {
+  border-color: oklch(0.70 0.15 200 / 0.5) !important;
+}
+.ach-tier-secret .ach-icon-box {
+  background: oklch(0.70 0.15 200 / 0.12) !important;
+  border-color: oklch(0.70 0.15 200 / 0.4) !important;
+}
+.reduce-motion .ach-tier-legendary .ach-icon-box { animation: none !important; }
+
+/* ============================================================
+   S6 — REPUTATION TIER-UP MICRO-INTERACTION
+   When a trade partner crosses a reputation threshold (Neutral→Friendly
+   →Trusted→Esteemed→Exalted), the tier badge pulses + a "+TIER" float
+   rises + fades. The tick logs the tier-up too; this is the visual
+   feedback that makes reputation progress feel earned.
+   ============================================================ */
+.rep-tier-up-pulse {
+  animation: repTierPulse 1.2s ease-out;
+}
+@keyframes repTierPulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 oklch(0.72 0.15 145 / 0.6); }
+  30%  { transform: scale(1.18); box-shadow: 0 0 12px 2px oklch(0.72 0.15 145 / 0.5); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(0.72 0.15 145 / 0); }
+}
+.rep-tier-up-float {
+  color: oklch(0.72 0.15 145);
+  animation: repTierFloat 1.2s ease-out forwards;
+}
+@keyframes repTierFloat {
+  0%   { opacity: 0; transform: translateY(0); }
+  20%  { opacity: 1; transform: translateY(-4px); }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+.reduce-motion .rep-tier-up-pulse,
+.reduce-motion .rep-tier-up-float { animation: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .caravan-bob,
   .rival-glow-critical,

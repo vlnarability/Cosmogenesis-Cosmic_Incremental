@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useGameStore } from "@/game/state/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ListTree, Trash2 } from "lucide-react";
+import { ListTree, Trash2, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   logCategoryOf,
@@ -29,8 +29,14 @@ export function LogTab() {
   const log = useGameStore((s) => s.log);
   const addToLog = useGameStore((s) => s.addToLog);
   const [filter, setFilter] = useState<Filter>("all");
+  // F6 — search query. Filters log entries by keyword (case-insensitive).
+  // Combines with the category filter (both must match). An empty query = no
+  // keyword filter.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
 
   // Categorize once per render; build per-category counts for the chips.
+  // The filtered list applies BOTH the category filter + the search query.
   const { filtered, counts } = useMemo(() => {
     const counts: Record<LogCategory, number> = {
       combat: 0, trade: 0, diplomacy: 0, hunt: 0, story: 0, system: 0,
@@ -39,10 +45,12 @@ export function LogTab() {
     for (const line of log) {
       const cat = logCategoryOf(line);
       counts[cat]++;
-      if (filter === "all" || cat === filter) filtered.push(line);
+      const catOk = filter === "all" || cat === filter;
+      const queryOk = !q || line.toLowerCase().includes(q);
+      if (catOk && queryOk) filtered.push(line);
     }
     return { filtered, counts };
-  }, [log, filter]);
+  }, [log, filter, q]);
 
   const clearLog = () => {
     // Use the store's log setter via a direct state set through addToLog
@@ -75,13 +83,36 @@ export function LogTab() {
             </button>
           )}
         </div>
+        {/* F6 — search box. Filters log entries by keyword (case-insensitive),
+            combined with the category filter. The clear (X) button resets the
+            query. The result count shows how many entries match. */}
+        <div className="relative mt-2">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search log…"
+            className="w-full h-7 pl-7 pr-7 text-xs rounded-md bg-muted/30 border border-border/60 focus:border-primary/50 focus:outline-none placeholder:text-muted-foreground/60"
+            aria-label="Search log entries"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+              aria-label="Clear search"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
         {/* Filter chips — All + one per category, each with its count. */}
         <div className="flex flex-wrap gap-1 mt-2">
           <FilterChip
             active={filter === "all"}
             onClick={() => setFilter("all")}
             label="All"
-            count={log.length}
+            count={q ? filtered.length : log.length}
             activeClass="bg-primary/15 border-primary/40 text-primary"
             inactiveClass="border-border/60 text-muted-foreground hover:text-foreground"
           />
@@ -105,7 +136,11 @@ export function LogTab() {
         <div className="font-mono text-xs space-y-0.5 h-full overflow-y-auto pr-1 custom-scroll">
           {filtered.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">
-              {log.length === 0 ? "No events yet." : `No ${filter === "all" ? "" : LOG_CATEGORIES[filter as LogCategory]?.label.toLowerCase() || ""} events.`}
+              {log.length === 0
+                ? "No events yet."
+                : q
+                  ? `No entries match "${query}".`
+                  : `No ${filter === "all" ? "" : LOG_CATEGORIES[filter as LogCategory]?.label.toLowerCase() || ""} events.`}
             </p>
           ) : (
             filtered.map((line, i) => {

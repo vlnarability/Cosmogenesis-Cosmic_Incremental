@@ -27,13 +27,17 @@ export function useKeyboardShortcuts() {
   const setShowEvolve = useGameStore((s) => s.setShowEvolve);
   const setShowSettings = useGameStore((s) => s.setShowSettings);
   const openLayerModal = useGameStore((s) => s.openLayerModal);
+  const openInfoModal = useGameStore((s) => s.openInfoModal);
   const dismissStory = useGameStore((s) => s.dismissStory);
   const saveGame = useGameStore((s) => s.saveGame);
+  // F7 — base-game action shortcuts.
+  const huntDeepNow = useGameStore((s) => s.huntDeepNow);
 
   const activeStoryPopup = useGameStore((s) => s.activeStoryPopup);
   const activeEvent = useGameStore((s) => s.activeEvent);
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
+  const stageIndex = useGameStore((s) => s.stageIndex);
   // Subscribe to keyboardShortcuts so the handler re-binds when the player
   // rebinds a key in Settings. (We don't read it inside the handler — we
   // pull the latest value via the selector each event.)
@@ -92,6 +96,20 @@ export function useKeyboardShortcuts() {
         setTab("prestige" as TabId);
         return;
       }
+      // F7 — base-game navigation + action shortcuts.
+      if (matches("world")) {
+        setTab("world" as TabId);
+        return;
+      }
+      if (matches("log")) {
+        openInfoModal("log");
+        return;
+      }
+      if (matches("deepHunt")) {
+        // Stage-gated: only fires from creature+ (where hunting is available).
+        if (stageIndex >= 1) huntDeepNow();
+        return;
+      }
 
       // === Layer-gated actions ===
       // Walk each layer-action id. For each, check (a) the key matches the
@@ -128,8 +146,9 @@ export function useKeyboardShortcuts() {
     return () => window.removeEventListener("keydown", handler);
   }, [
     togglePause, setSpeed, setTab, setShowShop, setShowEvolve, setShowSettings,
-    openLayerModal, dismissStory, saveGame,
+    openLayerModal, openInfoModal, dismissStory, saveGame, huntDeepNow,
     activeStoryPopup, activeEvent, unlockedChallenges, unlockedLayers,
+    stageIndex,
     keyboardShortcuts,
   ]);
 }

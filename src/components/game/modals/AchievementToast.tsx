@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/game/state/store";
-import { ACHIEVEMENT_MAP } from "@/game/data/achievements";
+import { ACHIEVEMENT_MAP, achievementTier } from "@/game/data/achievements";
 import { Button } from "@/components/ui/button";
 import { Trophy, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // AUTO-DISMISS: the toast closes itself after 12s so unattended queues can't
 // pile up on screen. Hovering pauses the countdown (player is reading it);
@@ -108,6 +109,10 @@ export function AchievementToast() {
   if (hidden || !ach) return null;
 
   const progress = Math.max(0, Math.min(1, remaining / AUTO_DISMISS_MS));
+  // S1 TIERED — golden border + sparkle for legendary, violet for rare, cyan
+  // for secret. The tier class drives the border + icon-box styling.
+  const tier = achievementTier(ach);
+  const tierClass = `ach-tier-${tier}`;
 
   return (
     <div
@@ -120,13 +125,26 @@ export function AchievementToast() {
       onMouseEnter={() => { hoveredRef.current = true; setHovered(true); }}
       onMouseLeave={() => { hoveredRef.current = false; lastTsRef.current = null; setHovered(false); }}
     >
-      <div className="glass-strong rounded-lg border border-primary/50 overflow-hidden shadow-2xl">
+      <div className={cn("glass-strong rounded-lg border border-primary/50 overflow-hidden shadow-2xl", tierClass)}>
         {/* Header bar */}
         <div className="bg-primary/20 px-3 py-1.5 flex items-center gap-2 border-b border-primary/30">
           <Trophy className="w-3.5 h-3.5 text-primary" />
           <span className="text-[0.65rem] uppercase tracking-[0.2em] font-bold text-primary">
             Achievement Unlocked
           </span>
+          {/* S1 — tier label so the prestige is legible at a glance. */}
+          {tier !== "common" && (
+            <span
+              className={cn(
+                "text-[0.5rem] px-1 py-px rounded-full border font-bold uppercase tracking-wide",
+                tier === "legendary" && "border-amber-500/50 bg-amber-500/15 text-amber-300",
+                tier === "rare" && "border-violet-500/50 bg-violet-500/15 text-violet-300",
+                tier === "secret" && "border-cyan-500/50 bg-cyan-500/15 text-cyan-300"
+              )}
+            >
+              {tier}
+            </span>
+          )}
           {/* +N QUEUED badge — counts the achievements still waiting behind
               this one. Calmer than a pile of separate toasts. */}
           {queuedCount > 0 && (
@@ -148,7 +166,7 @@ export function AchievementToast() {
         </div>
         {/* Body */}
         <div className="p-3 flex items-start gap-3">
-          <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0 bg-primary/15 border border-primary/40">
+          <div className="ach-icon-box w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0 bg-primary/15 border border-primary/40">
             {ach.icon}
           </div>
           <div className="min-w-0 flex-1">

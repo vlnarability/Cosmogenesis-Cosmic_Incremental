@@ -48,6 +48,10 @@ const SHORTCUT_LABELS: Record<string, string> = {
   war: "War Layer (L9)",
   genesis: "Genesis Engine Layer (L10)",
   close: "Close Modal / Dismiss Popup",
+  // F7 — base-game action shortcuts.
+  world: "Open World Tab",
+  log: "Open Run Log",
+  deepHunt: "Deep Hunt (creature+)",
 };
 
 // Display-friendly key label. Space → "Space", Escape → "Esc", letters

@@ -608,7 +608,7 @@ export interface GameState {
    * component (LogTab / ArchiveTab / CodexTab / AchievementsTab) in a
    * Dialog.
    */
-  activeInfoModal: "log" | "archive" | "codex" | "achievements" | null;
+  activeInfoModal: "log" | "archive" | "codex" | "achievements" | "stats" | null;
   /**
    * P6 — Modal Consolidation. Single source-of-truth for which layer modal
    * is open. Holds the layer id ("enlightenment", "transcendence", ...,
@@ -914,7 +914,7 @@ export interface GameStore extends GameState {
    * (Log / Archive / Codex / Awards) wrapped in a Dialog. Closes any
    * other open info modal first so only one is on screen at a time.
    */
-  openInfoModal: (target: "log" | "archive" | "codex" | "achievements") => void;
+  openInfoModal: (target: "log" | "archive" | "codex" | "achievements" | "stats") => void;
   /** Closes the shared InfoModal (clears `activeInfoModal`). */
   closeInfoModal: () => void;
   /**

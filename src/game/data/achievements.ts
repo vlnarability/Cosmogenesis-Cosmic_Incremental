@@ -71,6 +71,25 @@ export interface AchievementDef {
   bonus: { type: AchievementBonusType; value: number };
   // For display: tiers/progress (optional, not implemented yet)
   tier?: number;
+  // F8 PROGRESS — optional. If present + the achievement is locked, the
+  // AchievementsTab renders an individual card with a progress bar
+  // (current/max) instead of collapsing into the hidden-goals summary.
+  // Returning null means "not trackable" → stays hidden. Use for numeric-
+  // threshold achievements so long-term goals feel trackable.
+  progress?: (ctx: AchievementCheckCtx) => { current: number; max: number } | null;
+}
+
+// S1 TIERED STYLING — derive a display tier from the achievement's category +
+// bonus value. Used by the toast + the AchievementsTab to give prestigious
+// achievements visual weight (golden border + sparkle for legendary, cyan
+// "secret" accent for fun/hidden, violet for rare milestones).
+export type AchievementTier = "legendary" | "rare" | "secret" | "common";
+
+export function achievementTier(ach: AchievementDef): AchievementTier {
+  if (ach.category === "fun") return "secret";
+  if (ach.category === "layers") return "legendary";
+  if (ach.bonus.value >= 0.02) return "rare";
+  return "common";
 }
 
 export interface AchievementCheckCtx {
@@ -1013,6 +1032,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🌱",
     check: (c) => c.totalRuns >= 1,
     bonus: { type: "production", value: 0.005 },
+    progress: (c) => ({ current: Math.min(c.totalRuns || 0, 1), max: 1 }),
   },
   {
     id: "milestone_ten_runs",
@@ -1022,6 +1042,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🔁",
     check: (c) => c.totalRuns >= 10,
     bonus: { type: "production", value: 0.01 },
+    progress: (c) => ({ current: Math.min(c.totalRuns || 0, 10), max: 10 }),
   },
   {
     id: "milestone_fifty_runs",
@@ -1031,6 +1052,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🔂",
     check: (c) => c.totalRuns >= 50,
     bonus: { type: "production", value: 0.015 },
+    progress: (c) => ({ current: Math.min(c.totalRuns || 0, 50), max: 50 }),
   },
   {
     id: "milestone_hundred_runs",
@@ -1040,6 +1062,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "♾️",
     check: (c) => c.totalRuns >= 100,
     bonus: { type: "production", value: 0.02 },
+    progress: (c) => ({ current: Math.min(c.totalRuns || 0, 100), max: 100 }),
   },
   {
     id: "milestone_five_hundred_runs",
@@ -1730,6 +1753,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "⚱️",
     check: (c) => (c.totalRaresConsumed || 0) >= 10,
     bonus: { type: "production", value: 0.015 },
+    progress: (c) => ({ current: Math.min(c.totalRaresConsumed || 0, 10), max: 10 }),
   },
   {
     id: "milestone_reliquary_maxed",
@@ -1757,6 +1781,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🏕️",
     check: (c) => (c.totalDeepHunts || 0) >= 25,
     bonus: { type: "production", value: 0.015 },
+    progress: (c) => ({ current: Math.min(c.totalDeepHunts || 0, 25), max: 25 }),
   },
   {
     id: "milestone_diplomat_first",
@@ -1775,6 +1800,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🤝",
     check: (c) => (c.treatiesSignedCount || 0) >= 3,
     bonus: { type: "production", value: 0.01 },
+    progress: (c) => ({ current: Math.min(c.treatiesSignedCount || 0, 3), max: 3 }),
   },
   {
     id: "milestone_trade_esteemed",
@@ -1784,6 +1810,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "⭐",
     check: (c) => (c.maxTradeReputation || 0) >= 40,
     bonus: { type: "production", value: 0.01 },
+    progress: (c) => ({ current: Math.min(c.maxTradeReputation || 0, 40), max: 40 }),
   },
   {
     id: "milestone_trade_exalted",
@@ -1793,6 +1820,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🌟",
     check: (c) => (c.maxTradeReputation || 0) >= 90,
     bonus: { type: "production", value: 0.02 },
+    progress: (c) => ({ current: Math.min(c.maxTradeReputation || 0, 90), max: 90 }),
   },
 
   // ========================================================================

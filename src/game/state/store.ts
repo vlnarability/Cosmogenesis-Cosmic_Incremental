@@ -493,6 +493,12 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: Record<string, string> = {
   war: "f",
   genesis: "e",
   close: "Escape",
+  // F7 — base-game shortcuts (non-layer). World opens the World tab; Log
+  // opens the Log modal; Deep Hunt fires the cooldown-gated expedition
+  // (creature+ only — the handler checks stageIndex). All rebindable.
+  world: "w",
+  log: "L",
+  deepHunt: "q",
 };
 
 // Mapping of layer-action id → layer id (the unlock gate the hook checks).

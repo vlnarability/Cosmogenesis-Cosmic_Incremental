@@ -50,7 +50,7 @@ import {
 } from "lucide-react";
 import { formatNumber, resourceIcon, resourceName, resourceColor } from "../shared/format";
 import { cn } from "@/lib/utils";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 
 export function WorldTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
@@ -97,6 +97,44 @@ export function WorldTab() {
   const stageRivals = rivals.filter((r) => {
     const rStageIdx = STAGES.findIndex((s) => s.id === r.stage);
     return rStageIdx >= 0 && rStageIdx <= stageIndex && !r.hidden;
+  });
+
+  // S7 RIVAL COLLAPSE — group rivals by stage so a Galactic player can
+  // collapse the Creature/Tribal noise. Default: current stage expanded,
+  // earlier stages collapsed. Per-card collapse lets the player fold
+  // individual cards within an expanded stage. Both states persist for the
+  // session (component state, not saved — a fresh visit resets to defaults).
+  const currentStageId = STAGES[stageIndex]?.id;
+  const [collapsedStages, setCollapsedStages] = useState<Set<string>>(new Set());
+  const [collapsedRivals, setCollapsedRivals] = useState<Set<string>>(new Set());
+  // Group rivals by stage, ordered current-stage-first then earlier stages
+  // reverse-chronological (so Tribal sorts above Creature, etc.).
+  const rivalsByStage = useMemo(() => {
+    const groups: { stageId: string; rivals: typeof stageRivals }[] = [];
+    const seen = new Set<string>();
+    // Current stage first.
+    if (currentStageId) {
+      const cur = stageRivals.filter((r) => r.stage === currentStageId);
+      if (cur.length) { groups.push({ stageId: currentStageId, rivals: cur }); seen.add(currentStageId); }
+    }
+    // Earlier stages reverse-chronological.
+    for (let i = stageIndex - 1; i >= 0; i--) {
+      const sid = STAGES[i].id;
+      if (seen.has(sid)) continue;
+      const g = stageRivals.filter((r) => r.stage === sid);
+      if (g.length) groups.push({ stageId: sid, rivals: g });
+    }
+    return groups;
+  }, [stageRivals, stageIndex, currentStageId]);
+  const toggleStage = (sid: string) => setCollapsedStages((prev) => {
+    const next = new Set(prev);
+    if (next.has(sid)) next.delete(sid); else next.add(sid);
+    return next;
+  });
+  const toggleRival = (rid: string) => setCollapsedRivals((prev) => {
+    const next = new Set(prev);
+    if (next.has(rid)) next.delete(rid); else next.add(rid);
+    return next;
   });
 
   // F3 TREATIES OVERVIEW — derive a display row per active treaty with the
@@ -315,182 +353,232 @@ export function WorldTab() {
         </div>
       )}
 
-      {/* Rivals */}
+      {/* Rivals — grouped by stage with collapsible headers + per-card
+          collapse (S7). Earlier stages default collapsed so a Galactic
+          player isn't buried in Creature/Tribal noise; the current stage
+          is expanded. Each card's header row is always visible; the details
+          (threat bar, assimilation cost, buttons, intel, treaty) fold away
+          when the card is collapsed. */}
       {stageRivals.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
             <Swords className="w-4 h-4 text-rose-400" />
             Rivals
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {stageRivals.map((r) => {
-              const isActive = r.state === "active";
-              const isCellStage = r.stage === "cell";
-              const cost = isActive && !isCellStage
-                ? assimilationCost(r.strength || 1, r.counteredRaids || 0, r.successfulTrades || 0)
-                : { military: 0, culture: 0 };
-              const milHave = resources.military_power || 0;
-              const culHave = resources.culture || 0;
-              const canAssimilate = isActive && !isCellStage && milHave >= cost.military && culHave >= cost.culture;
-              const bonusDesc = r.assimilationBonus
-                ? `+${(r.assimilationBonus.mult * 100).toFixed(0)}% ${r.assimilationBonus.resource}`
-                : "no longer a threat.";
-              // S3 THREAT-GLOW — tiered border glow so threat is readable at a
-              // glance without reading the bar. CALM/RISING/CRITICAL mirror the
-              // ThreatBar's non-color cues. Resolved rivals get the calm glow.
-              const tStage = threatStage(r.threat || 0);
-              const glowClass = !isActive
-                ? "rival-glow-calm"
-                : isCellStage
-                  ? ""
-                  : tStage.label === "CRITICAL" ? "rival-glow-critical"
-                  : tStage.label === "RISING"   ? "rival-glow-rising"
-                  : "rival-glow-calm";
-              return (
-                <div
-                  key={r.id}
+          {rivalsByStage.map((group) => {
+            const isCurrent = group.stageId === currentStageId;
+            // Default: current stage expanded, earlier stages collapsed.
+            // `collapsedStages` tracks explicit toggles (flips the default).
+            const stageCollapsed = isCurrent
+              ? collapsedStages.has(group.stageId)
+              : !collapsedStages.has(group.stageId);
+            const activeCount = group.rivals.filter((r) => r.state === "active").length;
+            const stageName = STAGES.find((s) => s.id === group.stageId)?.name || group.stageId;
+            return (
+              <div key={group.stageId}>
+                {/* Stage-group collapsible header */}
+                <button
+                  onClick={() => toggleStage(group.stageId)}
+                  aria-expanded={!stageCollapsed}
                   className={cn(
-                    "stat-card rounded-lg border p-3 transition-colors",
-                    isActive ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/40 bg-emerald-500/5",
-                    glowClass
+                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md border transition-colors text-left",
+                    isCurrent ? "border-rose-500/30 bg-rose-500/5" : "border-border/40 bg-muted/20"
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-lg shrink-0">{r.icon}</span>
-                      <div className="min-w-0">
-                        <span className="font-semibold text-sm truncate block">{r.name}</span>
-                        <span className="text-[0.55rem] text-muted-foreground uppercase tracking-wide">
-                          {r.stage}
-                        </span>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[0.55rem]",
-                        isActive
-                          ? "text-rose-400 border-rose-500/40"
-                          : "text-emerald-400 border-emerald-500/40"
-                      )}
-                    >
-                      {r.state}
-                    </Badge>
-                  </div>
-                  {/* Population — always shown (per user: 'always show you the population'). */}
-                  <div className="text-[0.65rem] text-muted-foreground mb-1">
-                    👥 Population: <span className="font-semibold text-foreground">{Math.floor(r.population || 0)}</span>
-                  </div>
-                  {/* Military strength — shown from creature+ (per user: 'eventually when stage appropriate'). */}
-                  {!isCellStage && (
-                    <div className="text-[0.65rem] text-muted-foreground mb-1">
-                      ⚔️ Strength: <span className="font-semibold text-rose-400">{(r.strength || 1).toFixed(1)}</span>
-                    </div>
+                  {stageCollapsed
+                    ? <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                  <span className={cn("text-xs font-semibold capitalize", isCurrent ? "text-rose-300" : "text-muted-foreground")}>
+                    {stageName}
+                  </span>
+                  <span className="text-[0.6rem] text-muted-foreground tabular-nums">
+                    {group.rivals.length} rival{group.rivals.length === 1 ? "" : "s"}
+                    {activeCount > 0 && <span className="text-rose-400/80"> · {activeCount} active</span>}
+                  </span>
+                  {!isCurrent && (
+                    <span className="ml-auto text-[0.55rem] text-muted-foreground/60 italic">earlier stage</span>
                   )}
-                  {isActive && !isCellStage && (
-                    <>
-                      {/* THREAT-BAR — color shift + non-color cues: stage label
-                          (CALM/RISING/CRITICAL), stripe pattern at CRITICAL,
-                          and a live time-to-raid estimate. The pulse animation
-                          only plays when a raid is genuinely imminent (< 60s
-                          remaining — a real decision window), never for a
-                          static threat level. */}
-                      <ThreatBar
-                        threat={r.threat}
-                        timeToRaid={estimateTimeToRaid(r, milHave, treaties[r.id]?.type)}
-                      />
-                      <div className="text-[0.65rem] text-muted-foreground mb-1">
-                        Relation:{" "}
-                        <span className={cn("font-semibold", r.relation > 0 ? "text-emerald-400" : r.relation < -50 ? "text-rose-400" : "text-amber-400")}>
-                          {relationLabel(r.relation || -25)}
-                        </span>{" "}
-                        <span className="text-muted-foreground/60 tabular-nums">({(r.relation > 0 ? "+" : "") + (r.relation || 0).toFixed(0)})</span>
-                      </div>
-                      {/* ASSIMILATION-COST-DISPLAY per user spec */}
-                      <div className="text-[0.6rem] text-muted-foreground mb-2 p-1.5 rounded bg-muted/30 border border-border/40">
-                        <div className="font-semibold mb-0.5">Assimilation cost:</div>
-                        <div className="flex flex-wrap gap-2">
-                          <span style={{ color: resourceColor("military_power") }}>
-                            ⚔️ {formatNumber(cost.military, 0)} mil
-                            <span className="text-muted-foreground/70 ml-1">(have {formatNumber(milHave, 0)})</span>
-                          </span>
-                          <span style={{ color: resourceColor("culture") }}>
-                            🎭 {formatNumber(cost.culture, 0)} cul
-                            <span className="text-muted-foreground/70 ml-1">(have {formatNumber(culHave, 0)})</span>
-                          </span>
-                        </div>
-                        <div className="mt-1 text-[0.55rem] text-muted-foreground/70">
-                          Counter-raids: {r.counteredRaids || 0} (−{(r.counteredRaids || 0) * MIL_REDUCTION_PER_COUNTER} mil) ·
-                          Successful trades: {Math.floor(r.successfulTrades || 0)} (−{Math.floor(r.successfulTrades || 0) * CUL_REDUCTION_PER_TRADE} cul)
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {!isActive && (
-                    <div className="text-[0.65rem] text-emerald-400 mb-2 flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Resolved — {bonusDesc}
-                    </div>
-                  )}
-                  <div className="flex gap-1.5">
-                    {!isCellStage && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs flex-1"
-                          disabled={!isActive}
-                          onClick={() => counterRaid(r.id)}
+                </button>
+                {/* The grid — hidden when the stage group is collapsed. */}
+                {!stageCollapsed && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1.5">
+                    {group.rivals.map((r) => {
+                      const isActive = r.state === "active";
+                      const isCellStage = r.stage === "cell";
+                      const cost = isActive && !isCellStage
+                        ? assimilationCost(r.strength || 1, r.counteredRaids || 0, r.successfulTrades || 0)
+                        : { military: 0, culture: 0 };
+                      const milHave = resources.military_power || 0;
+                      const culHave = resources.culture || 0;
+                      const canAssimilate = isActive && !isCellStage && milHave >= cost.military && culHave >= cost.culture;
+                      const bonusDesc = r.assimilationBonus
+                        ? `+${(r.assimilationBonus.mult * 100).toFixed(0)}% ${r.assimilationBonus.resource}`
+                        : "no longer a threat.";
+                      const tStage = threatStage(r.threat || 0);
+                      const glowClass = !isActive
+                        ? "rival-glow-calm"
+                        : isCellStage
+                          ? ""
+                          : tStage.label === "CRITICAL" ? "rival-glow-critical"
+                          : tStage.label === "RISING"   ? "rival-glow-rising"
+                          : "rival-glow-calm";
+                      const rivalCollapsed = collapsedRivals.has(r.id);
+                      return (
+                        <div
+                          key={r.id}
+                          className={cn(
+                            "stat-card rounded-lg border p-3 transition-colors",
+                            isActive ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/40 bg-emerald-500/5",
+                            glowClass
+                          )}
                         >
-                          Counter-Raid
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={canAssimilate ? "default" : "outline"}
-                          className={cn("h-7 text-xs flex-1", canAssimilate && "bg-amber-500/20 border-amber-500/40")}
-                          disabled={!canAssimilate}
-                          onClick={() => assimilateRival(r.id)}
-                        >
-                          Assimilate
-                        </Button>
-                      </>
-                    )}
-                    {isCellStage && isActive && (
-                      <p className="text-[0.6rem] text-muted-foreground/60 italic text-center w-full py-1">
-                        Rival cells — no interaction available at this stage
-                      </p>
-                    )}
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-lg shrink-0">{r.icon}</span>
+                              <div className="min-w-0">
+                                <span className="font-semibold text-sm truncate block">{r.name}</span>
+                                <span className="text-[0.55rem] text-muted-foreground uppercase tracking-wide">
+                                  {r.stage}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* S7 per-card collapse chevron — folds the details. */}
+                              <button
+                                onClick={() => toggleRival(r.id)}
+                                aria-expanded={!rivalCollapsed}
+                                aria-label={rivalCollapsed ? "Expand rival details" : "Collapse rival details"}
+                                className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+                              >
+                                {rivalCollapsed
+                                  ? <ChevronRight className="w-3.5 h-3.5" />
+                                  : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[0.55rem]",
+                                  isActive
+                                    ? "text-rose-400 border-rose-500/40"
+                                    : "text-emerald-400 border-emerald-500/40"
+                                )}
+                              >
+                                {r.state}
+                              </Badge>
+                            </div>
+                          </div>
+                          {/* Details — hidden when the card is collapsed. */}
+                          {!rivalCollapsed && (
+                            <>
+                              {/* Population — always shown (per user: 'always show you the population'). */}
+                              <div className="text-[0.65rem] text-muted-foreground mb-1">
+                                👥 Population: <span className="font-semibold text-foreground">{Math.floor(r.population || 0)}</span>
+                              </div>
+                              {/* Military strength — shown from creature+. */}
+                              {!isCellStage && (
+                                <div className="text-[0.65rem] text-muted-foreground mb-1">
+                                  ⚔️ Strength: <span className="font-semibold text-rose-400">{(r.strength || 1).toFixed(1)}</span>
+                                </div>
+                              )}
+                              {isActive && !isCellStage && (
+                                <>
+                                  <ThreatBar
+                                    threat={r.threat}
+                                    timeToRaid={estimateTimeToRaid(r, milHave, treaties[r.id]?.type)}
+                                  />
+                                  <div className="text-[0.65rem] text-muted-foreground mb-1">
+                                    Relation:{" "}
+                                    <span className={cn("font-semibold", r.relation > 0 ? "text-emerald-400" : r.relation < -50 ? "text-rose-400" : "text-amber-400")}>
+                                      {relationLabel(r.relation || -25)}
+                                    </span>{" "}
+                                    <span className="text-muted-foreground/60 tabular-nums">({(r.relation > 0 ? "+" : "") + (r.relation || 0).toFixed(0)})</span>
+                                  </div>
+                                  <div className="text-[0.6rem] text-muted-foreground mb-2 p-1.5 rounded bg-muted/30 border border-border/40">
+                                    <div className="font-semibold mb-0.5">Assimilation cost:</div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <span style={{ color: resourceColor("military_power") }}>
+                                        ⚔️ {formatNumber(cost.military, 0)} mil
+                                        <span className="text-muted-foreground/70 ml-1">(have {formatNumber(milHave, 0)})</span>
+                                      </span>
+                                      <span style={{ color: resourceColor("culture") }}>
+                                        🎭 {formatNumber(cost.culture, 0)} cul
+                                        <span className="text-muted-foreground/70 ml-1">(have {formatNumber(culHave, 0)})</span>
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 text-[0.55rem] text-muted-foreground/70">
+                                      Counter-raids: {r.counteredRaids || 0} (−{(r.counteredRaids || 0) * MIL_REDUCTION_PER_COUNTER} mil) ·
+                                      Successful trades: {Math.floor(r.successfulTrades || 0)} (−{Math.floor(r.successfulTrades || 0) * CUL_REDUCTION_PER_TRADE} cul)
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                              {!isActive && (
+                                <div className="text-[0.65rem] text-emerald-400 mb-2 flex items-center gap-1">
+                                  <Check className="w-3 h-3" />
+                                  Resolved — {bonusDesc}
+                                </div>
+                              )}
+                              <div className="flex gap-1.5">
+                                {!isCellStage && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs flex-1"
+                                      disabled={!isActive}
+                                      onClick={() => counterRaid(r.id)}
+                                    >
+                                      Counter-Raid
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant={canAssimilate ? "default" : "outline"}
+                                      className={cn("h-7 text-xs flex-1", canAssimilate && "bg-amber-500/20 border-amber-500/40")}
+                                      disabled={!canAssimilate}
+                                      onClick={() => assimilateRival(r.id)}
+                                    >
+                                      Assimilate
+                                    </Button>
+                                  </>
+                                )}
+                                {isCellStage && isActive && (
+                                  <p className="text-[0.6rem] text-muted-foreground/60 italic text-center w-full py-1">
+                                    Rival cells — no interaction available at this stage
+                                  </p>
+                                )}
+                              </div>
+                              {isActive && !isCellStage && (
+                                <div className="mt-1">
+                                  <button
+                                    onClick={() => setIntelOpen(intelOpen === r.id ? null : r.id)}
+                                    aria-expanded={intelOpen === r.id}
+                                    className="w-full flex items-center gap-1 text-[0.6rem] uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors py-0.5"
+                                  >
+                                    {intelOpen === r.id
+                                      ? <ChevronDown className="w-3 h-3" />
+                                      : <ChevronRight className="w-3 h-3" />}
+                                    Rival Intelligence
+                                  </button>
+                                  {intelOpen === r.id && (
+                                    <RivalIntel
+                                      rival={r}
+                                      military={milHave}
+                                      treatyType={treaties[r.id]?.type}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              {isActive && !isCellStage && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {/* RIVAL INTELLIGENCE — expandable assessment (per user
-                      feedback: keep it concrete, avoid analysis paralysis —
-                      one plain-language read + a compact stat grid). */}
-                  {isActive && !isCellStage && (
-                    <div className="mt-1">
-                      <button
-                        onClick={() => setIntelOpen(intelOpen === r.id ? null : r.id)}
-                        aria-expanded={intelOpen === r.id}
-                        className="w-full flex items-center gap-1 text-[0.6rem] uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors py-0.5"
-                      >
-                        {intelOpen === r.id
-                          ? <ChevronDown className="w-3 h-3" />
-                          : <ChevronRight className="w-3 h-3" />}
-                        Rival Intelligence
-                      </button>
-                      {intelOpen === r.id && (
-                        <RivalIntel
-                          rival={r}
-                          military={milHave}
-                          treatyType={treaties[r.id]?.type}
-                        />
-                      )}
-                    </div>
-                  )}
-                  {/* LAYER-D — Treaty section for rivals (creature+ only). */}
-                  {isActive && !isCellStage && <TreatySection partnerId={r.id} relation={r.relation || -25} treaties={treaties} signTreaty={signTreaty} breakTreaty={breakTreaty} />}
-                </div>
-              );
-            })}
-          </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -794,12 +882,31 @@ function ReputationRow({ reputation }: { reputation: number }) {
   const rep = Math.max(0, Math.min(100, reputation));
   const tier = reputationTierOf(rep);
   const benefits = reputationBenefits(rep);
+  // S6 TIER-UP MICRO-INTERACTION — detect when the tier label crosses a
+  // threshold + briefly pulse the badge + show a "+TIER" float. The ref
+  // tracks the previous tier; the effect arms a 1.2s window when it changes.
+  const prevTierRef = useRef<string>(tier.label);
+  const [tierUp, setTierUp] = useState(false);
+  useEffect(() => {
+    if (prevTierRef.current !== tier.label && prevTierRef.current !== "") {
+      const prevLabel = prevTierRef.current;
+      prevTierRef.current = tier.label;
+      // Defer the setState via microtask so it's not synchronous in the effect
+      // body (satisfies react-hooks/set-state-in-effect + avoids cascading).
+      queueMicrotask(() => {
+        setTierUp(true);
+        setTimeout(() => setTierUp(false), 1200);
+      });
+      return;
+    }
+    prevTierRef.current = tier.label;
+  }, [tier.label]);
   // Progress toward the next threshold (0..1). Exalted = full bar.
   const prevThreshold = rep >= 90 ? 90 : rep >= 70 ? 70 : rep >= 40 ? 40 : rep >= 20 ? 20 : 0;
   const span = tier.nextThreshold ? tier.nextThreshold - prevThreshold : 1;
   const within = tier.nextThreshold ? Math.min(1, Math.max(0, (rep - prevThreshold) / span)) : 1;
   return (
-    <div className="mb-2" aria-label={`Reputation ${Math.round(rep)} of 100 — ${tier.label}`}>
+    <div className="mb-2 relative" aria-label={`Reputation ${Math.round(rep)} of 100 — ${tier.label}`}>
       <div className="flex items-center justify-between text-[0.6rem] mb-0.5">
         <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
           <Handshake className="w-3 h-3" />
@@ -807,7 +914,11 @@ function ReputationRow({ reputation }: { reputation: number }) {
         </span>
         <span className="flex items-center gap-1.5">
           <span className={cn("font-bold tabular-nums", tier.colorClass)}>{Math.round(rep)}/100</span>
-          <span className={cn("font-bold uppercase tracking-wide px-1 py-px rounded border", tier.colorClass, "border-current/30 bg-current/5")}>
+          <span className={cn(
+            "font-bold uppercase tracking-wide px-1 py-px rounded border",
+            tier.colorClass, "border-current/30 bg-current/5",
+            tierUp && "rep-tier-up-pulse"
+          )}>
             {tier.label}
           </span>
         </span>
@@ -820,6 +931,15 @@ function ReputationRow({ reputation }: { reputation: number }) {
           style={{ width: `${within * 100}%` }}
         />
       </div>
+      {/* S6 — "+TIER" float on threshold crossing. Rises + fades. */}
+      {tierUp && (
+        <span
+          className="absolute right-0 top-3 text-[0.55rem] font-bold pointer-events-none rep-tier-up-float"
+          aria-hidden
+        >
+          ↑ {tier.label}
+        </span>
+      )}
       {benefits.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {benefits.map((b) => (

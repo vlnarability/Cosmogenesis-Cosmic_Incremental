@@ -146,6 +146,12 @@ export function OfflineSummary({ elapsed, resourcesGained, onClose }: OfflineSum
               )}
             </>
           )}
+
+          {/* S2 — "Your standing now" footer-context. A snapshot of the
+              trade/diplomacy/rare economy so a returning player sees where
+              things stand without opening the World tab. Not deltas (those
+              need offline-event tracking) — current state, framed as context. */}
+          <StandingNow />
         </div>
 
         {/* Footer */}
@@ -159,3 +165,56 @@ export function OfflineSummary({ elapsed, resourcesGained, onClose }: OfflineSum
   );
 }
 
+
+// StandingNow — a compact read-only snapshot of the trade/diplomacy/rare
+// economy. Shown at the bottom of the OfflineSummary so a returning player
+// sees their standing without opening the World tab. Reads from the store;
+// no actions. Hidden entirely if there's nothing to show (no trade, no
+// treaties, no rares, no rivals) to avoid noise on early-game players.
+function StandingNow() {
+  const tradeAgreements = useGameStore((s) => s.tradeAgreements || {});
+  const treaties = useGameStore((s) => s.treaties || {});
+  const rareResources = useGameStore((s) => s.rareResources || {});
+  const reliquary = useGameStore((s) => s.reliquary || {});
+  const rivals = useGameStore((s) => s.rivals || []);
+
+  const routes = Object.keys(tradeAgreements).length;
+  let maxRep = 0;
+  for (const ag of Object.values(tradeAgreements)) {
+    const r = (ag as any)?.reputation || 0;
+    if (r > maxRep) maxRep = r;
+  }
+  const treatiesCount = Object.keys(treaties).length;
+  const raresCount = Object.keys(rareResources).length;
+  const reliquaryRanks = Object.values(reliquary).reduce((a, b) => a + (b || 0), 0);
+  const rivalsActive = rivals.filter((r: any) => r.state === "active" && !r.hidden).length;
+  const rivalsResolved = rivals.filter((r: any) => r.state !== "active" && !r.hidden).length;
+
+  // Hide entirely on early-game players with no trade/diplomacy/rare/rival activity.
+  if (routes === 0 && treatiesCount === 0 && raresCount === 0 && rivals.length === 0) return null;
+
+  const cells: { icon: string; label: string; value: string }[] = [];
+  if (routes > 0) cells.push({ icon: "🤝", label: "Trade routes", value: `${routes} · max rep ${Math.round(maxRep)}` });
+  if (treatiesCount > 0) cells.push({ icon: "📜", label: "Treaties", value: `${treatiesCount} active` });
+  if (raresCount > 0) cells.push({ icon: "💎", label: "Rares", value: `${raresCount} found${reliquaryRanks > 0 ? ` · ${reliquaryRanks} consumed` : ""}` });
+  if (rivals.length > 0) cells.push({ icon: "⚔️", label: "Rivals", value: `${rivalsActive} active · ${rivalsResolved} resolved` });
+
+  return (
+    <div className="mt-4 pt-3 border-t border-border/60">
+      <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1.5">
+        Your standing now
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {cells.map((c) => (
+          <div key={c.label} className="flex items-center gap-1.5 stat-card py-1.5">
+            <span className="text-sm">{c.icon}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[0.6rem] text-muted-foreground truncate">{c.label}</div>
+              <div className="text-[0.7rem] font-semibold tabular-nums truncate">{c.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
