@@ -168,6 +168,20 @@ export interface AchievementCheckCtx {
   offlineProgressUsed?: boolean;
   idleDurationSec?: number;
   pauseDurationSec?: number;
+
+  // PART-2 / UX-ROUND systems — reliquary, deep hunt, treaties, trade rep.
+  // Cumulative counters live on `achievementMeta`; derived values computed
+  // in buildAchievementCtx from live state.
+  /** Lifetime Deep Hunts launched (cumulative, across all runs). */
+  totalDeepHunts?: number;
+  /** Lifetime rares consumed into the reliquary (cumulative). */
+  totalRaresConsumed?: number;
+  /** Number of distinct rares whose reliquary rank has hit maxConsume. */
+  reliquaryRanksMaxed?: number;
+  /** Current count of active treaties (any type). */
+  treatiesSignedCount?: number;
+  /** Highest reputation reached on any single trade partner (0..100). */
+  maxTradeReputation?: number;
 }
 
 // ===========================================================================
@@ -1693,6 +1707,92 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "❌",
     check: (c) => (c.trialsAbandoned || 0) >= 5,
     bonus: { type: "production", value: 0.01 },
+  },
+
+  // ----- PART-2 / UX-ROUND SYSTEMS -----
+  // Achievements tied to the reliquary, deep hunt, treaties, + trade rep
+  // systems. Gives the recent features long-term goals + rewards engaging
+  // with the trade/diplomacy/military economy.
+  {
+    id: "milestone_reliquary_first",
+    name: "First Reliquary",
+    desc: "Consume a rare resource into the reliquary for the first time.",
+    category: "milestones",
+    icon: "🔮",
+    check: (c) => (c.totalRaresConsumed || 0) >= 1,
+    bonus: { type: "production", value: 0.01 },
+  },
+  {
+    id: "milestone_reliquary_collector",
+    name: "Reliquary Collector",
+    desc: "Consume 10 rare resources into the reliquary in total.",
+    category: "milestones",
+    icon: "⚱️",
+    check: (c) => (c.totalRaresConsumed || 0) >= 10,
+    bonus: { type: "production", value: 0.015 },
+  },
+  {
+    id: "milestone_reliquary_maxed",
+    name: "Reliquary Master",
+    desc: "Max out one rare resource's reliquary ranks.",
+    category: "milestones",
+    icon: "💠",
+    check: (c) => (c.reliquaryRanksMaxed || 0) >= 1,
+    bonus: { type: "production", value: 0.02 },
+  },
+  {
+    id: "milestone_deep_hunt_first",
+    name: "Expeditioner",
+    desc: "Launch your first Deep Hunt expedition.",
+    category: "milestones",
+    icon: "🦁",
+    check: (c) => (c.totalDeepHunts || 0) >= 1,
+    bonus: { type: "production", value: 0.005 },
+  },
+  {
+    id: "milestone_deep_hunt_veteran",
+    name: "Deep Hunter",
+    desc: "Launch 25 Deep Hunt expeditions in total.",
+    category: "milestones",
+    icon: "🏕️",
+    check: (c) => (c.totalDeepHunts || 0) >= 25,
+    bonus: { type: "production", value: 0.015 },
+  },
+  {
+    id: "milestone_diplomat_first",
+    name: "Diplomat",
+    desc: "Sign your first treaty with an NPC.",
+    category: "milestones",
+    icon: "📜",
+    check: (c) => (c.treatiesSignedCount || 0) >= 1,
+    bonus: { type: "production", value: 0.005 },
+  },
+  {
+    id: "milestone_diplomat_collector",
+    name: "Treaty Collector",
+    desc: "Hold 3 active treaties at once.",
+    category: "milestones",
+    icon: "🤝",
+    check: (c) => (c.treatiesSignedCount || 0) >= 3,
+    bonus: { type: "production", value: 0.01 },
+  },
+  {
+    id: "milestone_trade_esteemed",
+    name: "Esteemed Trader",
+    desc: "Reach Trusted reputation (40+) with a trade partner.",
+    category: "milestones",
+    icon: "⭐",
+    check: (c) => (c.maxTradeReputation || 0) >= 40,
+    bonus: { type: "production", value: 0.01 },
+  },
+  {
+    id: "milestone_trade_exalted",
+    name: "Exalted Trader",
+    desc: "Reach Exalted reputation (90+) with a trade partner.",
+    category: "milestones",
+    icon: "🌟",
+    check: (c) => (c.maxTradeReputation || 0) >= 90,
+    bonus: { type: "production", value: 0.02 },
   },
 
   // ========================================================================

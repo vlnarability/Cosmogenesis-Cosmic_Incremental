@@ -219,6 +219,19 @@ export function GameShell() {
   const activeLayerTheme = useGameStore((s) => s.activeLayerTheme);
   const activeSpecialTheme = useGameStore((s) => s.activeSpecialTheme);
 
+  // REDUCE-MOTION — toggle a class on <html> so the CSS can disable decorative
+  // animations (caravan bob, rival pulse, rare shimmer, threat pulse). The
+  // number tween reads the store directly + snaps when this is on. The OS
+  // prefers-reduced-motion is honored via the @media block too; this is the
+  // opt-in override for users who want calm without changing their OS.
+  const reduceMotion = useGameStore((s) => s.reduceMotion);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (reduceMotion) root.classList.add("reduce-motion");
+    else root.classList.remove("reduce-motion");
+    return () => { root.classList.remove("reduce-motion"); };
+  }, [reduceMotion]);
+
   // DIMENSION SYSTEM — apply the active dimension's CSS overrides.
   const activeDimension = useGameStore((s) => s.activeDimension || "mundane");
   const dimensionClass = activeDimension !== "mundane" ? `dimension-${activeDimension}` : "";

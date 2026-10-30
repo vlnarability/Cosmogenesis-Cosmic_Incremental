@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -385,6 +386,22 @@ export function SettingsModal() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* REDUCE-MOTION — accessibility toggle. Disables decorative
+                  animations (number tween, caravan bob, rival pulse, rare
+                  shimmer, threat pulse, raid shake/vignette). The OS
+                  prefers-reduced-motion is honored via CSS regardless; this
+                  is an opt-in override for users who want calm without
+                  changing their OS setting. */}
+              <div className="flex items-center justify-between gap-3 py-1">
+                <div>
+                  <div className="text-xs font-medium">Reduce Motion</div>
+                  <div className="text-[0.65rem] text-muted-foreground">
+                    Calms decorative animations (tween, caravan bob, pulses, shimmer). Honors your OS setting too.
+                  </div>
+                </div>
+                <ReduceMotionToggle />
               </div>
             </div>
 
@@ -1001,5 +1018,20 @@ function ThemeOption({
         </div>
       )}
     </button>
+  );
+}
+
+// ReduceMotionToggle — on/off switch for the reduce-motion accessibility
+// setting. Uses the shadcn Switch component. The GameShell effect applies
+// the `reduce-motion` class on <html>; the CSS disables the animations.
+function ReduceMotionToggle() {
+  const reduceMotion = useGameStore((s) => !!s.reduceMotion);
+  const setReduceMotion = useGameStore((s) => s.setReduceMotion);
+  return (
+    <Switch
+      checked={reduceMotion}
+      onCheckedChange={setReduceMotion}
+      aria-label="Reduce motion"
+    />
   );
 }

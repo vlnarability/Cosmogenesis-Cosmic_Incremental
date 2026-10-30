@@ -790,6 +790,7 @@ function initialMetaState(): Partial<GameState> {
     tutorialActive: true,
     tutorialDismissed: false,
     eventFrequency: "normal",
+    reduceMotion: false,
 
     // AUTOBUYER-SETTINGS — archetype / government targeting preferences.
     // All four slots default to null (no preference); the shop panel sets
@@ -7596,6 +7597,7 @@ export const useGameStore = create<GameStore>()(
 
       dismissTutorial: () => set({ tutorialActive: false, tutorialDismissed: true }),
       setEventFrequency: (freq) => set({ eventFrequency: freq }),
+      setReduceMotion: (v) => set({ reduceMotion: v }),
 
       // ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for
       // counter-based achievements ("Title Clicker", "Easter Egg: Hidden
@@ -8426,6 +8428,11 @@ export const useGameStore = create<GameStore>()(
           resources,
           population: Math.max(0, (s.population || 0) - popCost),
           lastDeepHuntAt: s.time || 0,
+          // F2 achievement counter — lifetime Deep Hunts launched.
+          achievementMeta: {
+            ...s.achievementMeta,
+            totalDeepHunts: ((s.achievementMeta?.totalDeepHunts as number) || 0) + 1,
+          },
         });
         get().addToLog(`Deep Hunt! Spent ${milCost} mil + ${popCost} pop. Gained ${foodGain} food, ${matGain} materials, ${orgGain} organic_matter.${rareMsg}`);
       },
@@ -8458,7 +8465,15 @@ export const useGameStore = create<GameStore>()(
         }
         const rareResources = { ...s.rareResources, [relicId]: stock - 1 };
         const reliquary = { ...s.reliquary, [relicId]: consumed + 1 };
-        set({ rareResources, reliquary });
+        set({
+          rareResources,
+          reliquary,
+          // F1 achievement counter — lifetime rares consumed into the reliquary.
+          achievementMeta: {
+            ...s.achievementMeta,
+            totalRaresConsumed: ((s.achievementMeta?.totalRaresConsumed as number) || 0) + 1,
+          },
+        });
         const newRank = consumed + 1;
         const totalBonus = newRank * def.reliquary.perRank;
         get().addToLog(`${def.icon} ${def.name} consumed for the reliquary (rank ${newRank}/${def.reliquary.maxConsume}). ${def.reliquary.label} — now +${(totalBonus * 100).toFixed(0)}% ${(RESOURCE_MAP[def.reliquary.resource]?.name) || def.reliquary.resource}.`);
@@ -8827,6 +8842,9 @@ export const useGameStore = create<GameStore>()(
         if (persisted.totalSystemsBuilt === undefined) persisted.totalSystemsBuilt = 0;
         if (persisted.totalTechResearched === undefined) persisted.totalTechResearched = 0;
         if (!persisted.eventFrequency) persisted.eventFrequency = "normal";
+        // REDUCE-MOTION — default to false on old saves (the CSS @media block
+        // still honors the OS prefers-reduced-motion; this is the opt-in override).
+        if (persisted.reduceMotion === undefined) persisted.reduceMotion = false;
         // v3: Layer 1 challenge state
         if (persisted.unlockedChallenges === undefined) persisted.unlockedChallenges = false;
         if (persisted.activeChallenge === undefined) persisted.activeChallenge = null;
@@ -9593,6 +9611,29 @@ function buildAchievementCtx(s: GameState): AchievementCheckCtx {
   const fastestGalacticClearSec = (meta.fastestGalacticClearSec as number) || 0;
   const marketTradesTotal = (meta.marketTradesTotal as number) || 0;
 
+  // PART-2 / UX-ROUND systems — reliquary, deep hunt, treaties, trade rep.
+  // Cumulative counters (incremented in the respective actions):
+  const totalDeepHunts = (meta.totalDeepHunts as number) || 0;
+  const totalRaresConsumed = (meta.totalRaresConsumed as number) || 0;
+  // Derived from live state:
+  const reliquaryRanksMaxed = (() => {
+    let n = 0;
+    for (const [rareId, rank] of Object.entries(s.reliquary || {})) {
+      const def = RARE_RESOURCE_MAP[rareId];
+      if (def?.reliquary && rank >= def.reliquary.maxConsume) n++;
+    }
+    return n;
+  })();
+  const treatiesSignedCount = Object.keys(s.treaties || {}).length;
+  const maxTradeReputation = (() => {
+    let m = 0;
+    for (const ag of Object.values(s.tradeAgreements || {})) {
+      const r = (ag as any)?.reputation || 0;
+      if (r > m) m = r;
+    }
+    return m;
+  })();
+
   return {
     galacticWins: s.galacticWins,
     totalRuns: s.totalRuns,
@@ -9651,6 +9692,12 @@ function buildAchievementCtx(s: GameState): AchievementCheckCtx {
     offlineProgressUsed,
     idleDurationSec,
     pauseDurationSec,
+    // PART-2 / UX-ROUND systems
+    totalDeepHunts,
+    totalRaresConsumed,
+    reliquaryRanksMaxed,
+    treatiesSignedCount,
+    maxTradeReputation,
   };
 }
 

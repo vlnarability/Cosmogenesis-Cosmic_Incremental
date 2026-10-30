@@ -643,6 +643,11 @@ export interface GameState {
   tutorialDismissed: boolean;
   // Settings
   eventFrequency: "off" | "normal" | "frequent";
+  /** REDUCE-MOTION — when true, disables decorative animations (number tween,
+   *  caravan bob, rival pulse, rare shimmer, threat pulse). Honors the OS
+   *  prefers-reduced-motion via the CSS @media block too; this toggle is an
+   *  opt-in override for users who want calm without changing their OS. */
+  reduceMotion: boolean;
 
   // Theme customization (Part 1 — Stage Theme System)
   activeStageTheme: string;          // default "stage-cell"
@@ -935,6 +940,7 @@ export interface GameStore extends GameState {
   dismissTutorial: () => void;
   resolveEvent: (eventId: string, choiceId: string) => void;
   setEventFrequency: (freq: "off" | "normal" | "frequent") => void;
+  setReduceMotion: (v: boolean) => void;
   /**
    * ACHIEVEMENT-HOOKS-CONDITIONAL-EVENTS — generic UI hook for the
    * counter/flag achievements ("Title Clicker", "Easter Egg: Hidden

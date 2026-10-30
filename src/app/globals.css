@@ -585,9 +585,32 @@
 @media (prefers-reduced-motion: reduce) {
   .caravan-bob,
   .rival-glow-critical,
-  .rare-card-shimmer::after {
+  .rare-card-shimmer::after,
+  .threat-imminent-pulse,
+  .chip-near-cap,
+  .evolve-ready {
     animation: none !important;
   }
+}
+
+/* REDUCE-MOTION opt-in toggle — fires when the user enables the setting
+   (applied as a class on <html>). Mirrors the prefers-reduced-motion block
+   so users who DON'T have the OS flag can still calm the UI. The number
+   tween is disabled in the hook itself (reads the store), not here. */
+.reduce-motion .caravan-bob,
+.reduce-motion .rival-glow-critical,
+.reduce-motion .rare-card-shimmer::after,
+.reduce-motion .threat-imminent-pulse,
+.reduce-motion .chip-near-cap,
+.reduce-motion .evolve-ready {
+  animation: none !important;
+}
+/* Also calm the raid shake + vignette + shipment arrival float — these are
+   situational but a reduce-motion user wants them gone too. */
+.reduce-motion .raid-shake,
+.reduce-motion .raid-vignette,
+.reduce-motion .shipment-float {
+  animation: none !important;
 }
 
 /* ============================================================
