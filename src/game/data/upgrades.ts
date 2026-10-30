@@ -149,7 +149,7 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: "archetype_insight",
     name: "Archetype Insight",
-    desc: (l) => l ? "Rare archetypes (Lithoid, Necroid, Toxoid, Extremophile) unlock from your first Galactic win" : "Unlocks rare archetypes after first Galactic win",
+    desc: (l) => l ? "Rare archetypes (16 total — Lithoid, Necroid, Toxoid, Extremophile + the 12 nucleus-pool rares) unlock from your first Galactic win" : "Unlocks rare archetypes after first Galactic win",
     baseCost: 8,
     maxLevel: 1,
     costGrowth: 1.0,

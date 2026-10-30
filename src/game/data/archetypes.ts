@@ -408,6 +408,317 @@ export const ARCHETYPES: ArchetypeDef[] = [
       immuneToEvents: ["all"],
     },
   },
+
+  // ============================================================
+  // ROUND B — 12 NEW RARE ARCHETYPES (the nucleus-pool expansion)
+  // All rarity: "rare", unlock: "first_win" (gated by the first Galactic win,
+  // flavored via the archetype_insight shop upgrade). Each has a unique
+  // thematic bonus using the existing applied-effect fields so the tick
+  // consumes them with no new wiring. Drift systems (cell-stage organelles
+  // with grantsAffinity) are added in systems.ts so each is reachable.
+  // ============================================================
+
+  // --- NUCLEOID REGION pool (Prokaryotes) ---
+
+  // 14. Plasmold — pure energy beings (rarest of the Prokaryotes, 0.2%)
+  {
+    id: "plasmold",
+    name: "Plasmold",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#c4a6e0",
+    glyph: "◈",
+    blurb: "Pure energy bound by magnetic fields. No body, no hunger, no brevity.",
+    bonus: {
+      label: "Energy being: +30% energy prod, +20% data, pop grows without food",
+      desc: "What is formless persists.",
+      buffs: [
+        "+30% energy production",
+        "+20% data production",
+        "Population grows without food (magnetic sustenance)",
+      ],
+      debuff: "-50% population growth (energy beings rarely coalesce)",
+      productionMult: { energy: 0.30, data: 0.20 },
+      populationGrowthMult: -0.50,
+      popGrowsWithoutFood: true,
+    },
+  },
+
+  // 15. Crystal — sentient computing arrays (0.8%)
+  {
+    id: "crystal",
+    name: "Crystal",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#a8d8e8",
+    glyph: "◇",
+    blurb: "Living quartz that thinks at the speed of light refraction.",
+    bonus: {
+      label: "Computing: +35% data, +20% science, +30% cap",
+      desc: "Patience computed in geological clock cycles.",
+      buffs: [
+        "+35% data production",
+        "+20% science production",
+        "+30% resource capacity",
+      ],
+      debuff: "-40% population growth (crystals grow in geological time)",
+      productionMult: { data: 0.35, science: 0.20 },
+      capMult: 0.30,
+      populationGrowthMult: -0.40,
+    },
+  },
+
+  // 16. Radiotrophic — feed on star radiation (1.0%)
+  {
+    id: "radiotrophic",
+    name: "Radiotrophic",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#e8c44a",
+    glyph: "☉",
+    blurb: "Civilizations that treat solar flares like a buffet.",
+    bonus: {
+      label: "Stellar-fed: +25% energy, pop grows without food, +15% warm-stage prod",
+      desc: "Why eat when the star provides?",
+      buffs: [
+        "+25% energy production",
+        "Population grows without food (radiation-fed)",
+        "+15% production in warm stages (Tribal+)",
+      ],
+      debuff: "-10% happiness (the glow is unsettling)",
+      productionMult: { energy: 0.25 },
+      popGrowsWithoutFood: true,
+      productionInWarmStagesMult: 0.15,
+      happinessPerTick: -0.03,
+    },
+  },
+
+  // 17. Aerosol — living gas clouds (0.5%)
+  {
+    id: "aerosol",
+    name: "Aerosol",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#b8d4c8",
+    glyph: "◌",
+    blurb: "Breathing vapor that communicates via chemical change.",
+    bonus: {
+      label: "Diffuse: +15% all prod, +20% trade value",
+      desc: "Spread thin, but everywhere at once.",
+      buffs: [
+        "+15% all production (diffuse reach)",
+        "+20% trade value (chemical commerce)",
+        "+10% resource capacity",
+      ],
+      debuff: "-20% population growth (gas disperses before it concentrates)",
+      allProductionMult: 0.15,
+      tradeValueMult: 0.20,
+      capMult: 0.10,
+      populationGrowthMult: -0.20,
+    },
+  },
+
+  // --- NUCLEOMORPH pool (Endosymbionts / Synthetics) ---
+
+  // 18. Mechanoid — synthetic ascension (0.4%)
+  {
+    id: "mechanoid",
+    name: "Mechanoid",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#9aa8b8",
+    glyph: "⚙",
+    blurb: "Carbon-silicon hybrids who chose the machine over the meat.",
+    bonus: {
+      label: "Synthetic: +20% all prod, +10% military, immune to disasters",
+      desc: "Flesh was a prototype.",
+      buffs: [
+        "+20% all production (machine efficiency)",
+        "+10% military power",
+        "Immune to disasters",
+      ],
+      debuff: "-40% population growth (no organic reproduction)",
+      allProductionMult: 0.20,
+      militaryPowerMult: 0.10,
+      immuneToEvents: ["disaster"],
+      populationGrowthMult: -0.40,
+    },
+  },
+
+  // 19. Symbiote — mind parasites (0.1%)
+  {
+    id: "symbiote",
+    name: "Symbiote",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#7ab88a",
+    glyph: "§",
+    blurb: "Parasites that merge with host brains to rule empires.",
+    bonus: {
+      label: "Parasitic: +30% pop growth, +20% military",
+      desc: "Why build when you can borrow?",
+      buffs: [
+        "+30% population growth (hijack hosts)",
+        "+20% military power (host soldiers)",
+        "+10% all production (host labor)",
+      ],
+      debuff: "-15% happiness (the hosts sense the parasite)",
+      populationGrowthMult: 0.30,
+      militaryPowerMult: 0.20,
+      allProductionMult: 0.10,
+      happinessPerTick: -0.04,
+    },
+  },
+
+  // 20. Voidborn — born in deep void (0.05%, rarest in the game)
+  {
+    id: "voidborn",
+    name: "Voidborn",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#5a6a8a",
+    glyph: "∅",
+    blurb: "Star-traveling entities born in the anomalies between suns.",
+    bonus: {
+      label: "Void-hardened: immune to disasters, +25% trade, +15% cap",
+      desc: "The void is home. Planets are the anomaly.",
+      buffs: [
+        "Immune to disasters",
+        "+25% trade value (star-faring merchants)",
+        "+15% resource capacity",
+      ],
+      debuff: "-50% population growth (voidborn rarely reproduce)",
+      immuneToEvents: ["disaster"],
+      tradeValueMult: 0.25,
+      capMult: 0.15,
+      populationGrowthMult: -0.50,
+    },
+  },
+
+  // --- NUCLEAR BODY pool (Viral / Compartmentalized) ---
+
+  // 21. Viruloid — sentient plagues (1.8%, most common of the new rare)
+  {
+    id: "viruloid",
+    name: "Viruloid",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#9ace44",
+    glyph: "ψ",
+    blurb: "Biological plagues that achieved intelligence by hijacking minds.",
+    bonus: {
+      label: "Plague: +35% pop growth, +15% military, immune to plague",
+      desc: "The infection learned to think. Now it conquers.",
+      buffs: [
+        "+35% population growth (spread by infection)",
+        "+15% military power (toxic attacks)",
+        "Immune to plague events (they ARE the plague)",
+      ],
+      debuff: "-15% happiness (the population senses the infection)",
+      populationGrowthMult: 0.35,
+      militaryPowerMult: 0.15,
+      immuneToEvents: ["plague"],
+      happinessPerTick: -0.04,
+    },
+  },
+
+  // 22. Photonic — living light (0.05%)
+  {
+    id: "photonic",
+    name: "Photonic",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#f0e8a0",
+    glyph: "✦",
+    blurb: "Structured light waves anchored to geometric focal points.",
+    bonus: {
+      label: "Light being: +25% energy, +20% data, pop grows without food",
+      desc: "Illumination that learned to think.",
+      buffs: [
+        "+25% energy production",
+        "+20% data production",
+        "Population grows without food (light sustains itself)",
+      ],
+      debuff: "-25% resource capacity (light diffuses without containment)",
+      productionMult: { energy: 0.25, data: 0.20 },
+      popGrowsWithoutFood: true,
+      capMult: -0.25,
+    },
+  },
+
+  // 23. Myceloid — planet-spanning root networks (0.7%)
+  {
+    id: "myceloid",
+    name: "Myceloid",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#b8a888",
+    glyph: "⌘",
+    blurb: "Subterranean root networks acting as organic supercomputers.",
+    bonus: {
+      label: "Networked: +8% all prod per system, +20% cap",
+      desc: "One mind, many roots, vast reach.",
+      buffs: [
+        "+8% all production per owned system (network effect)",
+        "+20% resource capacity",
+        "+10% science production",
+      ],
+      debuff: "-15% military power (root networks don't fight)",
+      productionPerSystemAllMult: 0.08,
+      capMult: 0.20,
+      productionMult: { science: 0.10 },
+      militaryPowerMult: -0.15,
+    },
+  },
+
+  // 24. Prionoid — sentient protein chains (0.15%)
+  {
+    id: "prionoid",
+    name: "Prionoid",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#c8b8d8",
+    glyph: "π",
+    blurb: "Protein chains that reshape local matter through geometric alignment.",
+    bonus: {
+      label: "Reshaper: +25% materials, +20% alloys, +10% all prod",
+      desc: "Matter bends to the pattern.",
+      buffs: [
+        "+25% materials production",
+        "+20% alloys production",
+        "+10% all production (matter reshaping)",
+      ],
+      debuff: "+10% system cost (prionoid structures are complex)",
+      productionMult: { materials: 0.25, alloys: 0.20 },
+      allProductionMult: 0.10,
+      systemCostMult: 0.10,
+    },
+  },
+
+  // 25. Gelatinous — colossal amoebic blobs (0.3%)
+  {
+    id: "gelatinous",
+    name: "Gelatinous",
+    rarity: "rare",
+    unlock: "first_win",
+    color: "#a8d8a0",
+    glyph: "◯",
+    blurb: "Amoebic blobs that expand their minds by absorbing planetary matter.",
+    bonus: {
+      label: "Absorber: +40% cap, +15% pop growth",
+      desc: "Eat the world. Become the world.",
+      buffs: [
+        "+40% resource capacity (absorbed matter)",
+        "+15% population growth (absorption)",
+        "Immune to plague (blob immunity)",
+      ],
+      debuff: "-15% all production (inefficient bulk)",
+      capMult: 0.40,
+      populationGrowthMult: 0.15,
+      immuneToEvents: ["plague"],
+      allProductionMult: -0.15,
+    },
+  },
 ];
 
 export const ARCHETYPE_MAP: Record<string, ArchetypeDef> = Object.fromEntries(
