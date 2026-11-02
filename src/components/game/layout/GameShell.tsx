@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
@@ -422,6 +422,9 @@ export function GameShell() {
             `activeInfoModal`. Renders the same tab component that the
             main panel would render — just wrapped in a Dialog. */}
         <InfoModal />
+        {/* S4 — Resource replacement transition banner. Shows briefly when
+            a stage transition introduces a resource replacement. */}
+        <ResourceTransitionBanner />
         {offlineSummary && (
           <OfflineSummary
             elapsed={offlineSummary.elapsed}
@@ -439,6 +442,43 @@ function ModalLoadingFallback() {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none" aria-hidden>
       <div className="animate-spin text-3xl select-none opacity-70">⏳</div>
+    </div>
+  );
+}
+
+// S4 — ResourceTransitionBanner. A transient banner that slides in from the
+// top when a resource replacement fires (stored in the log). It watches the
+// log for the "📦 Resource transition:" prefix + shows the label for 4s.
+function ResourceTransitionBanner() {
+  const log = useGameStore((s) => s.log || []);
+  const [banner, setBanner] = useState<string | null>(null);
+  const seenRef = useRef<string>("");
+
+  useEffect(() => {
+    const entry = log.find((l) => l.includes("📦 Resource transition:") && l !== seenRef.current);
+    if (entry) {
+      seenRef.current = entry;
+      const match = entry.match(/transition: (.*?) Old/);
+      const label = match ? match[1] : "Resource transition";
+      queueMicrotask(() => {
+        setBanner(label);
+        setTimeout(() => setBanner(null), 4000);
+      });
+    }
+  }, [log]);
+
+  if (!banner) return null;
+  return (
+    <div className="resource-transition-banner fixed top-14 left-1/2 -translate-x-1/2 z-40 max-w-md">
+      <div className="glass-strong rounded-lg border border-amber-500/40 px-4 py-2 shadow-2xl">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-amber-400 text-lg">📦</span>
+          <span className="font-semibold text-amber-300">{banner}</span>
+        </div>
+        <p className="text-[0.6rem] text-muted-foreground mt-0.5">
+          Old systems can be converted to the new resource for 25% cost.
+        </p>
+      </div>
     </div>
   );
 }

@@ -137,8 +137,26 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
                           {info.layerName}
                         </div>
                       )}
+                      {/* S3 — Mini stage-progress bar (7 segments: Cell→Galactic) */}
+                      <div className="flex gap-0.5 mt-1">
+                        {["Cell", "Creature", "Tribal", "Civ", "Empire", "Solar", "Galactic"].map((s, si) => {
+                          const stages = ["Cell", "Creature", "Tribal", "Civilization", "Empire", "Solar", "Galactic"];
+                          const saveStageIdx = stages.indexOf(info.stageName);
+                          const filled = si <= saveStageIdx;
+                          const isCurrent = si === saveStageIdx;
+                          return (
+                            <div
+                              key={s}
+                              className={`h-1 flex-1 rounded-full transition-all ${
+                                filled ? "bg-[#7dd3fc]/60" : "bg-[#e8e2d4]/10"
+                              } ${isCurrent ? "ring-1 ring-[#7dd3fc]/40" : ""}`}
+                              title={s}
+                            />
+                          );
+                        })}
+                      </div>
                       {info.totalRuns > 0 && (
-                        <div className="text-[0.55rem] text-[#e8e2d4]/30">
+                        <div className="text-[0.55rem] text-[#e8e2d4]/30 mt-0.5">
                           {info.totalRuns} run{info.totalRuns === 1 ? "" : "s"}
                         </div>
                       )}

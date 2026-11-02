@@ -1234,30 +1234,48 @@ function CaravanAssignment({ partnerId, caravanCount }: { partnerId: string; car
   const available = caravanCount - totalAssigned + assigned; // available for THIS route
 
   return (
-    <div className="mb-2 flex items-center justify-between text-[0.6rem]">
-      <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-        🐪 Caravans
-      </span>
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => setCaravanAssignment(partnerId, Math.max(0, assigned - 1))}
-          className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
-          disabled={assigned <= 0}
-          aria-label="Decrease caravan assignment"
-        >
-          −
-        </button>
-        <span className="font-semibold tabular-nums text-foreground min-w-[40px] text-center">
-          {assigned}/{caravanCount}
+    <div className="mb-2 space-y-1">
+      <div className="flex items-center justify-between text-[0.6rem]">
+        <span className="text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          🐪 Caravans
         </span>
-        <button
-          onClick={() => setCaravanAssignment(partnerId, assigned + 1)}
-          className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
-          disabled={available <= assigned}
-          aria-label="Increase caravan assignment"
-        >
-          +
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setCaravanAssignment(partnerId, Math.max(0, assigned - 1))}
+            className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
+            disabled={assigned <= 0}
+            aria-label="Decrease caravan assignment"
+          >
+            −
+          </button>
+          <span className="font-semibold tabular-nums text-foreground min-w-[40px] text-center">
+            {assigned}/{caravanCount}
+          </span>
+          <button
+            onClick={() => setCaravanAssignment(partnerId, assigned + 1)}
+            className="w-5 h-5 rounded border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 text-xs leading-none"
+            disabled={available <= assigned}
+            aria-label="Increase caravan assignment"
+          >
+            +
+          </button>
+        </div>
+      </div>
+      {/* S6 — Visual caravan route map. Shows assigned caravans as filled
+          dots traveling along a route line, unassigned as empty dots. */}
+      <div className="flex items-center gap-0.5">
+        {Array.from({ length: Math.max(caravanCount, 1) }).map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "text-[0.5rem] transition-all",
+              i < assigned ? "opacity-100" : "opacity-25"
+            )}
+            title={i < assigned ? "Assigned to this route" : "Unassigned (spread across all routes)"}
+          >
+            {i < assigned ? "🐪" : "·"}
+          </span>
+        ))}
       </div>
     </div>
   );

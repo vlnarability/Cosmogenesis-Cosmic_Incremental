@@ -645,6 +645,18 @@
 .reduce-motion .rep-tier-up-pulse,
 .reduce-motion .rep-tier-up-float { animation: none !important; }
 
+/* S4 — Resource replacement transition banner */
+.resource-transition-banner {
+  animation: resourceTransitionSlide 4s ease-out forwards;
+}
+@keyframes resourceTransitionSlide {
+  0%   { opacity: 0; transform: translateY(-20px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+.reduce-motion .resource-transition-banner { animation: none !important; opacity: 0.9; }
+
 @media (prefers-reduced-motion: reduce) {
   .caravan-bob,
   .rival-glow-critical,

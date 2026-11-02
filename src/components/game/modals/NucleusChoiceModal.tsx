@@ -20,6 +20,7 @@
 import { useGameStore } from "@/game/state/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Dna, ArrowRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { NUCLEUS_POOLS } from "@/game/data/nucleusPools";
 import { ARCHETYPE_MAP } from "@/game/data/archetypes";
 
@@ -75,28 +76,61 @@ export function NucleusChoiceModal() {
               <p className="text-[0.7rem] text-muted-foreground leading-relaxed mb-2">
                 {pool.description}
               </p>
-              {/* Archetype roster — show all archetypes in the pool, marking
-                  the ones that don't have defs yet (Round B) with a lock. */}
-              <div className="flex flex-wrap gap-1 mb-2">
-                {pool.archetypes.map((archId) => {
-                  const def = ARCHETYPE_MAP[archId];
-                  const isNew = !def; // Round B archetypes don't have defs yet
-                  return (
-                    <span
-                      key={archId}
-                      className="text-[0.55rem] px-1.5 py-0.5 rounded-full border font-medium"
-                      style={{
-                        borderColor: isNew ? `${pool.color}20` : `${pool.color}40`,
-                        color: isNew ? "var(--muted-foreground)" : pool.color,
-                        background: isNew ? "transparent" : `${pool.color}08`,
-                        opacity: isNew ? 0.5 : 1,
-                      }}
-                      title={def ? def.name : `${archId} (unlocks in a future expansion)`}
-                    >
-                      {def ? def.name : `${archId} 🔒`}
-                    </span>
-                  );
-                })}
+              {/* S2 — Archetype pool preview: glyphs arranged in a circular
+                  layout with the flagship highlighted. Each archetype shows
+                  its glyph + color; the flagship gets a ring + larger size. */}
+              <div className="flex items-center gap-3 mb-2">
+                {/* Circular glyph arrangement */}
+                <div className="relative w-20 h-20 shrink-0" aria-hidden>
+                  {pool.archetypes.map((archId, i) => {
+                    const def = ARCHETYPE_MAP[archId];
+                    const isFlagship = archId === pool.flagship;
+                    const angle = (i / pool.archetypes.length) * Math.PI * 2 - Math.PI / 2;
+                    const radius = isFlagship ? 0 : 28;
+                    const x = 40 + Math.cos(angle) * radius;
+                    const y = 40 + Math.sin(angle) * radius;
+                    return (
+                      <span
+                        key={archId}
+                        className="absolute flex items-center justify-center rounded-full transition-transform"
+                        style={{
+                          left: `${x}px`,
+                          top: `${y}px`,
+                          transform: "translate(-50%, -50%)",
+                          width: isFlagship ? "24px" : "18px",
+                          height: isFlagship ? "24px" : "18px",
+                          fontSize: isFlagship ? "14px" : "10px",
+                          color: def?.color || pool.color,
+                          background: isFlagship ? `${pool.color}20` : `${pool.color}08`,
+                          border: isFlagship ? `1.5px solid ${pool.color}` : `1px solid ${pool.color}40`,
+                          opacity: def ? 1 : 0.4,
+                        }}
+                        title={def ? `${def.name} — ${def.blurb}` : `${archId} (unlocks later)`}
+                      >
+                        {def?.glyph || "?"}
+                      </span>
+                    );
+                  })}
+                </div>
+                {/* Archetype name list (compact, 2 columns) */}
+                <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                  {pool.archetypes.map((archId) => {
+                    const def = ARCHETYPE_MAP[archId];
+                    const isFlagship = archId === pool.flagship;
+                    return (
+                      <span
+                        key={archId}
+                        className="text-[0.55rem] flex items-center gap-1"
+                        style={{ color: def ? def.color : "var(--muted-foreground)", opacity: def ? 1 : 0.5 }}
+                        title={def ? def.name : archId}
+                      >
+                        <span className="text-[0.7rem]">{def?.glyph || "?"}</span>
+                        <span className={cn("truncate", isFlagship && "font-bold")}>{def?.name || archId}</span>
+                        {isFlagship && <span className="text-amber-400 text-[0.5rem]">★</span>}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
               {/* Flagship + effects summary */}
               <div className="space-y-0.5">
