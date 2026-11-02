@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Lock, GitBranch, History, Layers, Network } from "lucide-react";
+import { CheckCircle2, Lock, GitBranch, History, Layers, Network, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import type { TechDef } from "@/game/state/types";
@@ -114,7 +114,12 @@ export function TechTab() {
       <PurchaseErrorBanner />
       {/* ROUND E — hardmode research progress banner. Shows the currently-
           researching tech + a progress bar. Only in hard mode. */}
-      {difficultyMode === "hard" && researchingTech && (
+      {difficultyMode === "hard" && researchingTech && (() => {
+        const tech = TECH_MAP[researchingTech.id];
+        const totalTime = tech ? tech.tier * 15 : 15;
+        const remaining = Math.max(0, Math.ceil(totalTime * (1 - researchingTech.progress)));
+        const isFinal5 = remaining <= 5;
+        return (
         <Card className="glass-panel border-amber-500/30">
           <CardContent className="py-3">
             <div className="flex items-center justify-between text-xs mb-1.5">
@@ -122,13 +127,13 @@ export function TechTab() {
                 <span className="animate-pulse">🔬</span>
                 Researching: {TECH_MAP[researchingTech.id]?.name || researchingTech.id}
               </span>
-              <span className="text-muted-foreground tabular-nums">
-                {Math.round(researchingTech.progress * 100)}%
+              <span className={cn("tabular-nums font-semibold", isFinal5 ? "text-rose-400 animate-pulse" : "text-amber-300")}>
+                {Math.round(researchingTech.progress * 100)}% · {remaining}s
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
               <div
-                className="h-full rounded-full bg-amber-500/80 transition-[width] duration-300"
+                className={cn("h-full rounded-full transition-[width] duration-300", isFinal5 ? "bg-rose-500/80" : "bg-amber-500/80")}
                 style={{ width: `${researchingTech.progress * 100}%` }}
               />
             </div>
@@ -137,7 +142,8 @@ export function TechTab() {
             </p>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -416,28 +422,65 @@ function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
   const rareResources = useGameStore((s) => s.rareResources || {});
   const reliquary = useGameStore((s) => s.reliquary || {});
+  // F9 — search query for filtering techs in the tree.
+  const [searchQuery, setSearchQuery] = useState("");
 
   // For each tree stage, compute the visible techs (same filter as list view).
+  // F9 — when a search query is active, also include techs that DON'T match the
+  // normal visibility filter (so the player can find techs they haven't unlocked
+  // yet). Non-matching techs are dimmed in the UI.
+  const sq = searchQuery.trim().toLowerCase();
   const stageColumns = useMemo(() => {
     return TREE_STAGES.map((stageId) => {
       const stageIdx = STAGE_IDS.indexOf(stageId as any);
       const stageDef = STAGES[stageIdx];
-      const techs = techsForStage(stageId).filter((t) => {
-        if (t.hiddenFromTechTab) return false;
-        if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
-        if (t.requiresRareResource && ((rareResources[t.requiresRareResource] || 0) + (reliquary[t.requiresRareResource] || 0)) <= 0) return false;
-        const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);
-        if (!prereqMet && !technologies[t.id]) return false;
-        return true;
-      });
+      const allTechs = techsForStage(stageId);
+      const techs = sq
+        ? allTechs.filter((t) =>
+            t.name.toLowerCase().includes(sq) ||
+            t.branch.toLowerCase().includes(sq) ||
+            t.desc.toLowerCase().includes(sq) ||
+            t.effects.toLowerCase().includes(sq)
+          )
+        : allTechs.filter((t) => {
+            if (t.hiddenFromTechTab) return false;
+            if (t.requiredArchetype && lockedArchetype !== t.requiredArchetype) return false;
+            if (t.requiresRareResource && ((rareResources[t.requiresRareResource] || 0) + (reliquary[t.requiresRareResource] || 0)) <= 0) return false;
+            const prereqMet = !t.requires || t.requires.every((r) => technologies[r]);
+            if (!prereqMet && !technologies[t.id]) return false;
+            return true;
+          });
       const branches = groupByBranch(techs);
       const researched = techs.filter((t) => technologies[t.id]).length;
       return { stageId, stageIdx, stageDef, branches, total: techs.length, researched };
     });
-  }, [technologies, lockedArchetype, rareResources, reliquary]);
+  }, [technologies, lockedArchetype, rareResources, reliquary, sq]);
 
   return (
-    <div className="overflow-x-auto custom-scroll pb-2">
+    <div className="space-y-2">
+      {/* F9 — Search box for the tree canvas. Filters techs by name, branch,
+          desc, or effects. When active, reveals hidden techs (dimmed). */}
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search tech tree…"
+          className="w-full h-7 pl-7 pr-3 text-xs rounded-md bg-muted/30 border border-border/60 focus:border-primary/50 focus:outline-none placeholder:text-muted-foreground/60"
+          aria-label="Search tech tree"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+            aria-label="Clear search"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto custom-scroll pb-2">
       <div className="flex gap-3 min-w-max">
         {stageColumns.map(({ stageId, stageIdx, stageDef, branches, total, researched }) => {
           const isCurrent = stageIdx === stageIndex;
@@ -478,25 +521,55 @@ function TechTreeCanvas({ stageIndex }: { stageIndex: number }) {
               {Object.keys(branches).length === 0 ? (
                 <p className="text-[0.6rem] text-muted-foreground/50 italic text-center py-2">No techs visible.</p>
               ) : (
-                Object.entries(branches).map(([branch, techs]) => (
-                  <div key={branch} className="space-y-1">
-                    <div className="text-[0.55rem] font-semibold uppercase tracking-wide text-muted-foreground/80 border-b border-border/20 pb-0.5">
-                      {branch}
+                Object.entries(branches).map(([branch, techs]) => {
+                  const sorted = [...techs].sort((a, b) => a.tier - b.tier);
+                  return (
+                    <div key={branch} className="space-y-0">
+                      <div className="text-[0.55rem] font-semibold uppercase tracking-wide text-muted-foreground/80 border-b border-border/20 pb-0.5 mb-1">
+                        {branch}
+                      </div>
+                      {sorted.map((tech, idx) => {
+                        // S1 — PREREQ CONNECTOR. Draw a vertical line between
+                        // this tech and its prerequisite when the prereq is the
+                        // tech directly above it in the same branch. The line
+                        // is green if the prereq is met, amber if not.
+                        const prevTech = idx > 0 ? sorted[idx - 1] : null;
+                        const hasPrereqAbove = prevTech && tech.requires?.includes(prevTech.id);
+                        const prereqMet = !tech.requires || tech.requires.every((r) => technologies[r]);
+                        return (
+                          <div key={tech.id} className="relative">
+                            {/* S1 — vertical connector line */}
+                            {hasPrereqAbove && (
+                              <div
+                                className={cn(
+                                  "absolute left-[10px] -top-[2px] w-[2px] h-[4px] rounded-full",
+                                  prereqMet ? "bg-emerald-500/60" : "bg-amber-500/40"
+                                )}
+                                aria-hidden
+                              />
+                            )}
+                            {/* S1 — cross-column prereq arrow */}
+                            {!hasPrereqAbove && tech.requires && tech.requires.length > 0 && !prereqMet && (
+                              <div className="absolute left-0 -top-[2px] text-[0.5rem] text-amber-400/50 leading-none" aria-hidden>
+                                ←
+                              </div>
+                            )}
+                            <TreeTechNode
+                              tech={tech}
+                              isFutureStage={isLocked}
+                              futureStageName={isLocked ? stageDef.name : undefined}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
-                    {techs.sort((a, b) => a.tier - b.tier).map((tech) => (
-                      <TreeTechNode
-                        key={tech.id}
-                        tech={tech}
-                        isFutureStage={isLocked}
-                        futureStageName={isLocked ? stageDef.name : undefined}
-                      />
-                    ))}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

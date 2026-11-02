@@ -116,6 +116,14 @@ export function SystemsTab() {
   const hasLegacy = legacyStages.length > 0;
   const hasMiddle = middleStages.length > 0;
 
+  // F10 — Resource obsolescence warning. If any systems are marked legacy
+  // (their upgrade successor has been built), show a banner prompting conversion.
+  const legacySystemsState = useGameStore((s) => s.legacySystems || {});
+  const convertLegacySystem = useGameStore((s) => s.convertLegacySystem);
+  const legacyCount = Object.entries(legacySystemsState)
+    .filter(([id, isLegacy]) => isLegacy && (ownedSystems[id] || 0) > 0)
+    .reduce((sum, [, ]) => sum + 1, 0);
+
   // SYSTEMS-ORGANIZATION — split into Core (economy) + Lineage (drift organelles)
   const coreSystems = currentSystems.filter((sys) => sys.category !== "Drift");
   const driftSystems = currentSystems.filter((sys) => sys.category === "Drift");
@@ -126,6 +134,33 @@ export function SystemsTab() {
     <div className="space-y-4">
       {/* P7 — Inline purchase error banner (auto-fades after 2s). */}
       <PurchaseErrorBanner />
+      {/* F10 — Resource obsolescence warning. Shows when legacy systems exist. */}
+      {legacyCount > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-3">
+          <span className="text-amber-400 text-lg shrink-0">⚠️</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-semibold text-amber-300">
+              {legacyCount} legacy system{legacyCount === 1 ? "" : "s"} need upgrading
+            </span>
+            <p className="text-[0.65rem] text-muted-foreground/80">
+              These systems still produce but are outdated. Convert them to their upgrade successors for 25% of the build cost.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              for (const [id, isLegacy] of Object.entries(legacySystemsState)) {
+                if (isLegacy && (ownedSystems[id] || 0) > 0) {
+                  convertLegacySystem(id);
+                  break;
+                }
+              }
+            }}
+            className="text-xs px-2 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition-colors shrink-0"
+          >
+            Convert →
+          </button>
+        </div>
+      )}
       <Card className="glass-panel">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">

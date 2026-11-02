@@ -9160,12 +9160,28 @@ export const useGameStore = create<GameStore>()(
           partnerName = rival.name;
         }
 
+        // F8 — RIVAL ARCHETYPE INTERACTION. Same-pool rivals (same nucleus as
+        // the player) are easier to ally with (-10 threshold). Cross-pool rivals
+        // are more hostile (+10 threshold). This makes the nucleus choice feel
+        // meaningful for diplomacy beyond just the player's own drift.
+        let thresholdAdj = 0;
+        if (rival?.archetype && s.nucleusChoice) {
+          const pool = poolArchetypesFor(s.nucleusChoice);
+          if (pool) {
+            if (pool.includes(rival.archetype)) {
+              thresholdAdj = -10; // same pool — easier to ally
+            } else {
+              thresholdAdj = 10; // cross-pool — harder to ally
+            }
+          }
+        }
+
         // Check relation threshold per treaty type.
         const thresholds: Record<string, number> = {
-          trade_agreement: 0,
-          non_aggression: 25,
-          mutual_defense: 50,
-          research_pact: 25,
+          trade_agreement: Math.max(0, 0 + thresholdAdj),
+          non_aggression: Math.max(0, 25 + thresholdAdj),
+          mutual_defense: Math.max(0, 50 + thresholdAdj),
+          research_pact: Math.max(0, 25 + thresholdAdj),
         };
         const threshold = thresholds[type] || 0;
         if (relation < threshold) {
