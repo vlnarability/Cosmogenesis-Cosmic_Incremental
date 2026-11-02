@@ -891,6 +891,22 @@ function initialMetaState(): Partial<GameState> {
     difficultyMode: "normal" as "normal" | "hard",
     researchingTech: null as { id: string; progress: number } | null,
 
+    // C4 — Drill-down navigation state (transient; NOT persisted). Tracks
+    // where the player is in the cosmos + war drill families so breadcrumbs
+    // and back-buttons route correctly. The drill state resets whenever the
+    // user opens a layer modal fresh (see openLayerModal/resetDrillForLayer).
+    drillNav: {
+      cosmos: {
+        level: "universe" as "universe" | "galaxy" | "system",
+        galaxyId: null as string | null,
+        systemId: null as string | null,
+      },
+      war: {
+        level: "outpost" as "outpost" | "alliance" | "oldgods",
+        godId: null as string | null,
+      },
+    },
+
     // AUTOBUYER-SETTINGS — archetype / government targeting preferences.
     // All four slots default to null (no preference); the shop panel sets
     // them via the setAutoBuyerSystemTarget / setAutoBuyerTechTarget /
@@ -5455,6 +5471,25 @@ export const useGameStore = create<GameStore>()(
         if (layerTabId) {
           (patch as Record<string, unknown>).currentTab = layerTabId;
         }
+        // C4 — Reset drillNav to the appropriate top-level for the layer
+        // being opened. This ensures that opening L6 Singularity fresh
+        // always starts at the universe level (no stale drill-down from a
+        // previous session), and opening L7 Omnipotence starts at outpost.
+        // Drill-down actions (drillIntoCosmosGalaxy etc.) update drillNav
+        // AFTER openLayerModal runs, so they override this default.
+        const prev = get().drillNav;
+        const cosmosReset =
+          layerId === "singularity" || layerId === "genesis"
+            ? { level: "universe" as const, galaxyId: null as string | null, systemId: null as string | null }
+            : prev?.cosmos ?? { level: "universe" as const, galaxyId: null as string | null, systemId: null as string | null };
+        const warReset =
+          layerId === "omnipotence" || layerId === "divinity" || layerId === "infinity"
+            ? { level: "outpost" as const, godId: null as string | null }
+            : prev?.war ?? { level: "outpost" as const, godId: null as string | null };
+        (patch as Record<string, unknown>).drillNav = {
+          cosmos: cosmosReset,
+          war: warReset,
+        };
         set(patch);
       },
       closeLayerModal: () =>
@@ -5470,7 +5505,163 @@ export const useGameStore = create<GameStore>()(
           showDivinityLayer: false,
           showInfinity: false,
           showEternity: false,
+          // C4 — also reset drillNav when any layer modal closes, so stale
+          // drill state doesn't carry over to the next layer open.
+          drillNav: {
+            cosmos: { level: "universe", galaxyId: null, systemId: null },
+            war: { level: "outpost", godId: null },
+          },
         }),
+
+      // =========================================================================
+      // C4 — DRILL-DOWN ACTIONS (transient nav state for the cosmos + war
+      // drill families). These power the breadcrumb navigation between
+      // related layer modals.
+      //
+      // COSMOS FAMILY (Universe → Galaxy → Star System):
+      //   Universe  = L6 Singularity modal (50-galaxy universal map)
+      //   Galaxy    = L4 Genesis modal for the starter galaxy (50 named systems
+      //               with real per-system bonuses), OR a synthesized hex map
+      //               rendered inside the L6 modal for any other galaxy.
+      //   Star System = per-system detail panel (rendered inside whichever
+      //                 modal the galaxy view lives in).
+      //
+      // WAR FAMILY (Outpost → Alliance → Old Gods):
+      //   Outpost   = L7 Omnipotence modal (skirmish arena / outpost raids)
+      //   Alliance  = L8 Divinity Layer modal (minor-god alliances)
+      //   Old Gods  = L9 Infinity modal (Old God boss battles)
+      //
+      // Each drill action updates `drillNav` and calls `openLayerModal` to
+      // route the user to the destination modal.
+      // =========================================================================
+
+      // ---- Cosmos family ----
+
+      // Drill into a specific galaxy from the Universe (L6) view. The starter
+      // galaxy ("galaxy_starter") opens the L4 Genesis modal (it owns the real
+      // 50-system claim map). Other galaxies stay inside the L6 modal and
+      // render a synthesized hex grid for that galaxy's systemsClaimed/count.
+      drillIntoCosmosGalaxy: (galaxyId) => {
+        const targetGalaxy = UNIVERSAL_GALAXY_MAP?.[galaxyId];
+        const isStarter = galaxyId === "galaxy_starter" || (targetGalaxy && targetGalaxy.ownerId === "player" && !targetGalaxy.isNewL6);
+        set({
+          drillNav: {
+            cosmos: { level: "galaxy", galaxyId, systemId: null },
+            war: { level: "outpost", godId: null },
+          },
+        });
+        if (isStarter) {
+          // Route to L4 Genesis (the real per-system claim map for the
+          // starter galaxy). openLayerModal also resets currentTab.
+          get().openLayerModal("genesis");
+        }
+        // Non-starter galaxies: stay in L6 — the Singularity modal reads
+        // drillNav.cosmos.level === "galaxy" and renders GalaxyDrillView inline.
+      },
+
+      // Drill into a specific star system within the current galaxy. Stays
+      // inside whichever modal the galaxy view lives in (L4 for starter, L6
+      // for others). The modal reads drillNav.cosmos.level === "system" and
+      // shows the per-system detail panel.
+      drillIntoCosmosSystem: (galaxyId, systemId) => {
+        set({
+          drillNav: {
+            cosmos: { level: "system", galaxyId, systemId },
+            war: { level: "outpost", godId: null },
+          },
+        });
+      },
+
+      // Drill back to a higher cosmos level.
+      //   "universe" → open L6 Singularity (and reset galaxy/system)
+      //   "galaxy"   → drop system drill, stay in current modal (galaxy hex map)
+      drillBackCosmos: (toLevel) => {
+        const cur = get().drillNav?.cosmos;
+        if (!cur) return;
+        if (toLevel === "universe") {
+          set({
+            drillNav: {
+              cosmos: { level: "universe", galaxyId: null, systemId: null },
+              war: get().drillNav?.war ?? { level: "outpost", godId: null },
+            },
+          });
+          get().openLayerModal("singularity");
+        } else {
+          // back to "galaxy" — keep galaxyId, clear systemId
+          set({
+            drillNav: {
+              cosmos: { level: "galaxy", galaxyId: cur.galaxyId, systemId: null },
+              war: get().drillNav?.war ?? { level: "outpost", godId: null },
+            },
+          });
+        }
+      },
+
+      drillResetCosmos: () => {
+        set({
+          drillNav: {
+            cosmos: { level: "universe", galaxyId: null, systemId: null },
+            war: get().drillNav?.war ?? { level: "outpost", godId: null },
+          },
+        });
+      },
+
+      // ---- War family ----
+
+      // Drill forward in the war family — open the Alliance Council (L8).
+      drillIntoWarAlliance: () => {
+        set({
+          drillNav: {
+            cosmos: get().drillNav?.cosmos ?? { level: "universe", galaxyId: null, systemId: null },
+            war: { level: "alliance", godId: null },
+          },
+        });
+        get().openLayerModal("divinity");
+      },
+
+      // Drill forward in the war family — open the Old Gods (L9). Optionally
+      // pre-select an Old God for an immediate battle (drillNav.war.godId).
+      drillIntoWarOldGods: (godId = null) => {
+        set({
+          drillNav: {
+            cosmos: get().drillNav?.cosmos ?? { level: "universe", galaxyId: null, systemId: null },
+            war: { level: "oldgods", godId: godId ?? null },
+          },
+        });
+        get().openLayerModal("infinity");
+      },
+
+      // Drill back to a higher war level.
+      //   "outpost"  → open L7 Omnipotence
+      //   "alliance" → open L8 Divinity Layer
+      drillBackWar: (toLevel) => {
+        if (toLevel === "outpost") {
+          set({
+            drillNav: {
+              cosmos: get().drillNav?.cosmos ?? { level: "universe", galaxyId: null, systemId: null },
+              war: { level: "outpost", godId: null },
+            },
+          });
+          get().openLayerModal("omnipotence");
+        } else {
+          set({
+            drillNav: {
+              cosmos: get().drillNav?.cosmos ?? { level: "universe", galaxyId: null, systemId: null },
+              war: { level: "alliance", godId: null },
+            },
+          });
+          get().openLayerModal("divinity");
+        }
+      },
+
+      drillResetWar: () => {
+        set({
+          drillNav: {
+            cosmos: get().drillNav?.cosmos ?? { level: "universe", galaxyId: null, systemId: null },
+            war: { level: "outpost", godId: null },
+          },
+        });
+      },
 
       // ---- P7: Error states ----
       // notifyPurchaseError(message) sets the latest purchase-failure message.
@@ -9317,7 +9508,7 @@ export const useGameStore = create<GameStore>()(
         // ROUND F2 — use the slot-aware adapter so saves go to the correct slot.
         return slotLocalStorage;
       }),
-      version: 26,
+      version: 27,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -9331,6 +9522,9 @@ export const useGameStore = create<GameStore>()(
           researchingTech, // ROUND E — transient (research progress doesn't persist across reload)
           activeRaid, activeStoryPopup, activeInfoModal,
           lastRaidOutcome,
+          // C4 — drill-down nav state is transient; reopening the game always
+          // starts the player at the top level of whichever modal they open.
+          drillNav,
           // These are runtime-only and should never persist:
           _lastAchCheck, pendingLogs,
           ...persisted
@@ -10043,6 +10237,20 @@ export const useGameStore = create<GameStore>()(
         // back to the global caravan mult, preserving old behavior).
         if (version < 26) {
           if (!persisted.caravanAssignments) persisted.caravanAssignments = {};
+        }
+
+        // V27-MIGRATION — C4 drill-down nav state. drillNav is transient
+        // (excluded from partialize), so the persisted record never carries
+        // it. We default it here defensively in case an older save slipped
+        // a stale value in. The store's initial state provides the real
+        // fresh default.
+        if (version < 27) {
+          if (!persisted.drillNav) {
+            persisted.drillNav = {
+              cosmos: { level: "universe", galaxyId: null, systemId: null },
+              war: { level: "outpost", godId: null },
+            };
+          }
         }
 
         return persisted;

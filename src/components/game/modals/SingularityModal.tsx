@@ -28,10 +28,15 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Lock, CheckCircle2, Anchor, Shield, Swords, Orbit, Sparkles, Crosshair, Globe2,
+  Telescope,
 } from "lucide-react";
 import { formatNumber, formatCompact } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
+// C4 — drill-down navigation
+import { DrillBreadcrumb } from "../shared/DrillBreadcrumb";
+import { GalaxyDrillView } from "../shared/GalaxyDrillView";
+import { SystemDrillView } from "../shared/SystemDrillView";
 
 // SVG viewport for the universal map (galaxy pos is in 0-100 units).
 const MAP_SIZE = 100;
@@ -54,8 +59,21 @@ export function SingularityContent() {
   const placeRealityAnchor = useGameStore((s) => s.placeRealityAnchor);
   const attackUniversalGalaxy = useGameStore((s) => s.attackUniversalGalaxy);
 
+  // C4 — drill-down navigation state + actions.
+  const drillNav = useGameStore((s) => s.drillNav);
+  const drillIntoCosmosGalaxy = useGameStore((s) => s.drillIntoCosmosGalaxy);
+  const drillBackCosmos = useGameStore((s) => s.drillBackCosmos);
+
   // Selected galaxy (for the detail panel). null = none.
+  // C4 — when drilled into a galaxy, the selected galaxy follows the drill
+  // state so the detail panel + breadcrumb stay in sync.
   const [selectedGalaxyId, setSelectedGalaxyId] = useState<string | null>(null);
+  const cosmosDrill = drillNav?.cosmos;
+  const drilledGalaxyId = cosmosDrill?.galaxyId ?? null;
+  const drilledSystemId = cosmosDrill?.systemId ?? null;
+  const drillLevel = cosmosDrill?.level ?? "universe";
+  // Effective selected galaxy: drill target takes priority over local click.
+  const effectiveSelectedGalaxyId = drilledGalaxyId ?? selectedGalaxyId;
 
   const isUnlocked = !!unlockedLayers.singularity;
 
@@ -86,10 +104,10 @@ export function SingularityContent() {
   const nextAnchorCost = anchorPlaceCost(anchorsPlaced);
   const l6Complete = isUniversalMapComplete(riftsClosed, anchorsPlaced);
 
-  const selectedGalaxy = selectedGalaxyId ? UNIVERSAL_GALAXY_MAP[selectedGalaxyId] : null;
-  const selectedState = selectedGalaxyId ? stateById[selectedGalaxyId] : null;
-  const selectedRifts = selectedGalaxyId ? (riftsByGalaxyId[selectedGalaxyId] || []) : [];
-  const selectedAnchored = selectedGalaxyId ? isGalaxyAnchored(selectedGalaxyId, anchorGalaxyIds) : false;
+  const selectedGalaxy = effectiveSelectedGalaxyId ? UNIVERSAL_GALAXY_MAP[effectiveSelectedGalaxyId] : null;
+  const selectedState = effectiveSelectedGalaxyId ? stateById[effectiveSelectedGalaxyId] : null;
+  const selectedRifts = effectiveSelectedGalaxyId ? (riftsByGalaxyId[effectiveSelectedGalaxyId] || []) : [];
+  const selectedAnchored = effectiveSelectedGalaxyId ? isGalaxyAnchored(effectiveSelectedGalaxyId, anchorGalaxyIds) : false;
   const selectedIsNewL6 = !!selectedGalaxy?.isNewL6;
   const selectedAttackCost = selectedIsNewL6
     ? newGalaxyAttackCost(newSystemsClaimed)
@@ -145,9 +163,29 @@ export function SingularityContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
+            {/* C4 — Drill breadcrumb. Shows Universe › Galaxy › System when
+                drilled. Hidden when at the top universe level (no need to
+                show a single-item "Universe" crumb). */}
+            {drillLevel !== "universe" && drilledGalaxyId && (
+              <div className="lg:col-span-2">
+                <DrillBreadcrumb
+                  tone="cosmos"
+                  items={buildCosmosBreadcrumb({
+                    level: drillLevel,
+                    galaxyId: drilledGalaxyId,
+                    systemId: drilledSystemId,
+                    galaxyMap: UNIVERSAL_GALAXY_MAP,
+                    systemIdx: drilledSystemId?.match(/#(\d+)$/)?.[1],
+                    onBackUniverse: () => drillBackCosmos("universe"),
+                    onBackGalaxy: () => drillBackCosmos("galaxy"),
+                  })}
+                />
+              </div>
+            )}
+
             {/* P7 — Empty state banner: shown when player hasn't closed any
                 rifts yet, to point them at the rift-closing mechanic. */}
-            {riftsClosed === 0 && (
+            {riftsClosed === 0 && drillLevel === "universe" && (
               <div className="lg:col-span-2">
                 <EmptyState
                   compact
@@ -157,7 +195,19 @@ export function SingularityContent() {
                 />
               </div>
             )}
-            {/* ===== UNIVERSAL MAP (SVG) ===== */}
+
+            {/* ===== C4 DRILL VIEW (galaxy/system) ===== */}
+            {drillLevel !== "universe" && drilledGalaxyId && (
+              <section className="space-y-3 drill-view-enter">
+                <GalaxyDrillView galaxyId={drilledGalaxyId} />
+                {drillLevel === "system" && drilledSystemId && (
+                  <SystemDrillView galaxyId={drilledGalaxyId} systemId={drilledSystemId} />
+                )}
+              </section>
+            )}
+
+            {/* ===== UNIVERSAL MAP (SVG) — only at universe drill level ===== */}
+            {drillLevel === "universe" && (
             <section className="stat-card p-2">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[0.7rem] uppercase tracking-wide text-cyan-300/80 flex items-center gap-1">
@@ -196,11 +246,23 @@ export function SingularityContent() {
                     const owned = (st?.ownerId || g.ownerId) === "player";
                     const radius = owned ? 1.8 : 1.3;
                     const fill = galaxyColor(g);
-                    const isSelected = selectedGalaxyId === g.id;
+                    const isSelected = effectiveSelectedGalaxyId === g.id;
                     return (
                       <g
                         key={g.id}
-                        onClick={() => setSelectedGalaxyId(g.id)}
+                        onClick={() => {
+                          // C4 — single click selects for the detail panel;
+                          // double-click drills into the galaxy. We use a
+                          // simple heuristic: if the galaxy is already the
+                          // selected one, the next click drills in. This
+                          // matches the "click-to-select, click-again-to-open"
+                          // pattern used in most file explorers.
+                          if (effectiveSelectedGalaxyId === g.id) {
+                            drillIntoCosmosGalaxy(g.id);
+                          } else {
+                            setSelectedGalaxyId(g.id);
+                          }
+                        }}
                         style={{ cursor: "pointer" }}
                       >
                         {/* Selection highlight */}
@@ -413,6 +475,23 @@ export function SingularityContent() {
                       <CheckCircle2 className="w-2.5 h-2.5" /> Galaxy fully claimed (+{(selectedGalaxy.systemCount * WORLDS_PER_NEW_SYSTEM_L6).toLocaleString()} worlds total).
                     </div>
                   )}
+
+                  {/* C4 — Drill-into-galaxy button. Routes the user to the
+                      galaxy's star-system hex map (L4 Genesis for the starter
+                      galaxy, or a synthesized inline view for other galaxies). */}
+                  <div className="pt-1.5 border-t border-cyan-400/20">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-full text-[0.65rem] border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/10"
+                      onClick={() => drillIntoCosmosGalaxy(selectedGalaxy.id)}
+                      title={`Drill into ${selectedGalaxy.name} — view its star systems`}
+                    >
+                      <Telescope className="w-3 h-3 mr-1" />
+                      Drill into galaxy
+                      <span className="ml-1 opacity-60">›</span>
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-2 rounded-md border border-cyan-400/10 bg-cyan-950/10 p-2 text-[0.65rem] text-muted-foreground text-center">
@@ -420,6 +499,7 @@ export function SingularityContent() {
                 </div>
               )}
             </section>
+            )}
 
             {/* ===== SIDEBAR ===== */}
             <aside className="space-y-3">
@@ -522,4 +602,75 @@ export function SingularityContent() {
         </div>
     </>
   );
+}
+
+// ===========================================================================
+// C4 — buildCosmosBreadcrumb
+//
+// Builds the breadcrumb items for the cosmos drill family based on the
+// current drill level. The last item is always the current location
+// (no onClick); higher items call the back actions.
+//
+// Levels:
+//   universe → "Universe"
+//   galaxy   → "Universe" › "Galaxy: {name}"
+//   system   → "Universe" › "Galaxy: {name}" › "System #{idx+1}"
+// ===========================================================================
+function buildCosmosBreadcrumb({
+  level,
+  galaxyId,
+  systemId,
+  galaxyMap,
+  systemIdx,
+  onBackUniverse,
+  onBackGalaxy,
+}: {
+  level: "universe" | "galaxy" | "system";
+  galaxyId: string | null;
+  systemId: string | null;
+  galaxyMap: Record<string, { name: string }>;
+  systemIdx?: string | null;
+  onBackUniverse: () => void;
+  onBackGalaxy: () => void;
+}): import("../shared/DrillBreadcrumb").BreadcrumbItem[] {
+  const items: import("../shared/DrillBreadcrumb").BreadcrumbItem[] = [];
+  // Always show Universe as the root crumb (clickable when drilled past it).
+  items.push({
+    id: "universe",
+    label: "Universe",
+    icon: <Globe2 className="w-3 h-3" />,
+    onClick: level === "universe" ? undefined : onBackUniverse,
+    isCurrent: level === "universe",
+    title: "Back to the universal galaxy map (L6)",
+  });
+  if (level === "galaxy" || level === "system") {
+    const gname = galaxyId ? (galaxyMap[galaxyId]?.name ?? galaxyId) : "—";
+    items.push({
+      id: "galaxy",
+      label: `Galaxy: ${gname}`,
+      icon: <Orbit className="w-3 h-3" />,
+      onClick: level === "galaxy" ? undefined : onBackGalaxy,
+      isCurrent: level === "galaxy",
+      title: "Back to this galaxy's star-system map",
+    });
+  }
+  if (level === "system" && systemId) {
+    let label: string;
+    if (systemId.startsWith("sys_")) {
+      // Real L4 system — show its number.
+      label = `System #${systemId.replace("sys_", "")}`;
+    } else if (systemIdx) {
+      // Synthesized id `${galaxyId}#${i}` — parse the index.
+      label = `System #${parseInt(systemIdx, 10) + 1}`;
+    } else {
+      label = "System";
+    }
+    items.push({
+      id: "system",
+      label,
+      icon: <Telescope className="w-3 h-3" />,
+      isCurrent: true,
+    });
+  }
+  return items;
 }

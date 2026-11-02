@@ -1788,3 +1788,61 @@ h1, h2, h3 {
   --input: oklch(0.18 0.04 200);
   --ring: oklch(0.62 0.20 195);
 }
+
+/* ============================================================
+   C4 — DRILL-DOWN NAV (breadcrumb bar + drill transitions)
+   ============================================================ */
+
+/* The breadcrumb bar that sits at the top of a drilled modal. Subtle
+   backdrop-blur + thin border keeps it readable above dense content. */
+.drill-breadcrumb-bar {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* The current (last) breadcrumb item — a small "you are here" pill with a
+   faint accent glow matching the family tone (cyan for cosmos, rose for
+   war). Set inline via the DrillBreadcrumb component's toneCurrent class. */
+.drill-breadcrumb-bar button[aria-current="page"] {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 12px -4px currentColor;
+}
+
+/* Drill-in slide animation — when a drill-down view replaces the parent view
+   (e.g. GalaxyDrillView replaces the universal map), it slides in from the
+   right with a subtle fade. Applied via the .drill-view-enter class on the
+   wrapper element. */
+@keyframes drill-view-slide-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.drill-view-enter {
+  animation: drill-view-slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Per-system detail panel inside a drilled galaxy — gentle slide-up + glow
+   ring so the player notices the detail panel appearing. */
+@keyframes drill-system-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.drill-system-detail {
+  animation: drill-system-pop 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.08), 0 0 24px -10px rgba(34, 211, 238, 0.25);
+}
+
+/* Honors the OS prefers-reduced-motion + the in-game reduceMotion toggle
+   (the latter sets the .reduce-motion class on the root). */
+@media (prefers-reduced-motion: reduce) {
+  .drill-view-enter,
+  .drill-system-detail {
+    animation: none;
+  }
+}
+.reduce-motion .drill-view-enter,
+.reduce-motion .drill-system-detail {
+  animation: none;
+}
+
+/* ============================================================
+   End C4 — drill-down nav styles
+   ============================================================ */

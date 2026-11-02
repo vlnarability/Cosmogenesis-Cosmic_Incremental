@@ -23,11 +23,15 @@ import {
   Gauge,
   Package,
   Users,
+  Globe2,
+  Orbit,
 } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
 import { HexMap, generateHexMap, type HexCell } from "../shared/HexMap";
+// C4 — drill-down navigation
+import { DrillBreadcrumb, type BreadcrumbItem } from "../shared/DrillBreadcrumb";
 
 // Star radius (SVG units). 4 keeps the 50-star map readable inside a
 // 520-ish-wide viewBox while still fitting on narrow phone screens (the
@@ -63,6 +67,18 @@ export function GenesisContent() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // C4 — drill-down navigation. When GenesisModal is opened via drill from
+  // L6 Singularity, drillNav.cosmos.galaxyId is set. We render a breadcrumb
+  // at the top so the player can route back to the universe map.
+  const drillNav = useGameStore((s) => s.drillNav);
+  const drillBackCosmos = useGameStore((s) => s.drillBackCosmos);
+  const drillIntoCosmosSystem = useGameStore((s) => s.drillIntoCosmosSystem);
+  const cosmosDrill = drillNav?.cosmos;
+  const drilledSystemId = cosmosDrill?.systemId ?? null;
+  // The selected system follows the drill state when set; otherwise falls
+  // back to the local click selection.
+  const effectiveSelectedId = drilledSystemId ?? selectedId;
+
   const isUnlocked = !!unlockedLayers.genesis;
 
   // C3 — Generate a stable hex map (50 hexes) + map the galaxy systems onto it.
@@ -97,8 +113,38 @@ export function GenesisContent() {
   const canScan = debugFreeBuy || divinity >= GALAXY_SCAN_COST;
   const canClaim = debugFreeBuy || divinity >= nextClaimCost;
 
-  const selectedSys = selectedId ? GALAXY_SYSTEMS.find((s) => s.id === selectedId) : null;
-  const selectedState = selectedId ? galaxySystems.find((g) => g.id === selectedId) : null;
+  const selectedSys = effectiveSelectedId ? GALAXY_SYSTEMS.find((s) => s.id === effectiveSelectedId) : null;
+  const selectedState = effectiveSelectedId ? galaxySystems.find((g) => g.id === effectiveSelectedId) : null;
+
+  // C4 — build the cosmos breadcrumb. GenesisModal always sits at the
+  // "galaxy" level of the cosmos drill family (it represents the player's
+  // starter galaxy). When a system is drilled in, a third crumb appears.
+  const cosmosBreadcrumbItems: BreadcrumbItem[] = useMemo(() => {
+    const items: BreadcrumbItem[] = [{
+      id: "universe",
+      label: "Universe",
+      icon: <Globe2 className="w-3 h-3" />,
+      onClick: () => drillBackCosmos("universe"),
+      title: "Back to the universal galaxy map (L6 Singularity)",
+    }];
+    items.push({
+      id: "galaxy",
+      label: "Galaxy: Starter Galaxy",
+      icon: <Orbit className="w-3 h-3" />,
+      onClick: drilledSystemId ? () => drillBackCosmos("galaxy") : undefined,
+      isCurrent: !drilledSystemId,
+      title: drilledSystemId ? "Back to the starter galaxy's star map" : undefined,
+    });
+    if (drilledSystemId && selectedSys) {
+      items.push({
+        id: "system",
+        label: selectedSys.name,
+        icon: <Telescope className="w-3 h-3" />,
+        isCurrent: true,
+      });
+    }
+    return items;
+  }, [drilledSystemId, selectedSys, drillBackCosmos]);
 
   return (
     <>
@@ -120,6 +166,16 @@ export function GenesisContent() {
           </Badge>
         </p>
       </div>
+
+      {/* C4 — Cosmos drill breadcrumb. Always shown so players can route
+          back to the Universe (L6) view from inside the starter galaxy. */}
+      {isUnlocked && (
+        <DrillBreadcrumb
+          tone="cosmos"
+          items={cosmosBreadcrumbItems}
+          className="mb-3"
+        />
+      )}
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -146,9 +202,14 @@ export function GenesisContent() {
               <HexMap
                 cells={hexCells}
                 hexRadius={28}
-                selectedId={selectedId}
+                selectedId={effectiveSelectedId}
                 onHexClick={(id) => {
+                  // C4 — clicking a hex selects it locally AND drills into
+                  // the per-system detail view (breadcrumb updates to show
+                  // the system as the current location). The existing
+                  // scan/claim-on-click behavior is preserved.
                   setSelectedId(id);
+                  drillIntoCosmosSystem("galaxy_starter", id);
                   const sys = GALAXY_SYSTEMS.find((s) => s.id === id);
                   const state = galaxySystems.find((g) => g.id === id);
                   if (sys && !state?.explored) scanGalaxySystem(id);

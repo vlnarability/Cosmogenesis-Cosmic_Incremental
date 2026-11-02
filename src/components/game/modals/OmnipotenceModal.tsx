@@ -28,9 +28,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles, Swords, Zap, Target } from "lucide-react";
+import { Lock, Dna, CheckCircle2, AlertTriangle, Trash2, Plus, Sparkles, Swords, Zap, Target, Handshake, Crosshair, ChevronRight } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
+// C4 — drill-down navigation (war family: Outpost → Alliance → Old Gods)
+import { DrillBreadcrumb, type BreadcrumbItem } from "../shared/DrillBreadcrumb";
 
 export function OmnipotenceContent() {
   const unlockedLayers = useGameStore((s) => s.unlockedLayers);
@@ -66,7 +68,47 @@ export function OmnipotenceContent() {
   const attackOutpost = useGameStore((s) => s.attackOutpost);
   const setActiveOutpostRaid = useGameStore((s) => s.setActiveOutpostRaid);
 
+  // C4 — War-family drill-down actions.
+  const drillIntoWarAlliance = useGameStore((s) => s.drillIntoWarAlliance);
+  const drillIntoWarOldGods = useGameStore((s) => s.drillIntoWarOldGods);
+
   const isUnlocked = !!unlockedLayers.omnipotence;
+  const isDivinityUnlocked = !!unlockedLayers.divinity;
+  const isInfinityUnlocked = !!unlockedLayers.infinity;
+
+  // C4 — War breadcrumb items. Omnipotence (L7) is the "outpost" level
+  // (skirmish arena / outpost raids). When the player has unlocked further
+  // war-family layers, the breadcrumb shows them as forward targets.
+  const warBreadcrumbItems: BreadcrumbItem[] = [
+    {
+      id: "outpost",
+      label: "Outpost Raids",
+      icon: <Swords className="w-3 h-3" />,
+      isCurrent: true, // L7 is the "outpost" level — current location
+    },
+    {
+      id: "alliance",
+      label: "Alliance Council",
+      icon: <Handshake className="w-3 h-3" />,
+      onClick: isDivinityUnlocked
+        ? () => drillIntoWarAlliance()
+        : undefined,
+      title: isDivinityUnlocked
+        ? "Open Layer 8 — Divine Alliance (form alliances with minor gods)"
+        : `Locked — repel ${OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock`,
+    },
+    {
+      id: "oldgods",
+      label: "Old Gods",
+      icon: <Crosshair className="w-3 h-3" />,
+      onClick: isInfinityUnlocked
+        ? () => drillIntoWarOldGods(null)
+        : undefined,
+      title: isInfinityUnlocked
+        ? "Open Layer 9 — Infinity (battle the Old Gods)"
+        : "Locked — form 2+ alliances (L8) to unlock",
+    },
+  ];
   const lb = legionBonus(creatures, legions, activeStance);
   const rate = effectiveInstabilityRate(creatures, legions, activeStance);
   const stanceRateMult = instabilityRateMult(activeStance);
@@ -120,6 +162,16 @@ export function OmnipotenceContent() {
           </div>
         </div>
       </div>
+
+      {/* C4 — War-family breadcrumb. Always shown when unlocked so the
+          player can see + navigate the Outpost → Alliance → Old Gods chain. */}
+      {isUnlocked && (
+        <DrillBreadcrumb
+          tone="war"
+          items={warBreadcrumbItems}
+          className="mb-3"
+        />
+      )}
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -591,6 +643,45 @@ export function OmnipotenceContent() {
           <AlertTriangle className="w-3 h-3" />
           Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Layer 8 (Divine Alliance). At 100 instability, creatures go rogue and raid YOUR galaxies.
         </div>
+
+        {/* C4 — War-family drill-forward buttons. Visible only when this
+            layer is unlocked. Each button routes the player to the next
+            layer in the Outpost → Alliance → Old Gods progression. */}
+        {isUnlocked && (
+          <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-border/30">
+            {isDivinityUnlocked ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
+                onClick={() => drillIntoWarAlliance()}
+                title="Open Layer 8 — Divine Alliance (form alliances with minor gods)"
+              >
+                <Handshake className="w-3 h-3 mr-1" />
+                March on the Alliance Council
+                <ChevronRight className="w-3 h-3 ml-1" />
+              </Button>
+            ) : (
+              <div className="text-[0.6rem] text-muted-foreground/70 flex items-center gap-1 px-2 py-1 rounded border border-dashed border-border/40">
+                <Lock className="w-3 h-3" />
+                Repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock the Alliance Council
+              </div>
+            )}
+            {isInfinityUnlocked && (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 text-[0.65rem] bg-rose-700/70 hover:bg-rose-700"
+                onClick={() => drillIntoWarOldGods(null)}
+                title="Open Layer 9 — Infinity (battle the Old Gods)"
+              >
+                <Crosshair className="w-3 h-3 mr-1" />
+                March on the Old Gods
+                <ChevronRight className="w-3 h-3 ml-1" />
+              </Button>
+            )}
+          </div>
+        )}
     </>
   );
 }

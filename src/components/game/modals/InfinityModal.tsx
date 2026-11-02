@@ -12,8 +12,10 @@ import { CREATURE_BODY_TYPE_MAP, legionPower } from "@/game/data/omnipotence";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Swords, CheckCircle2, Crosshair, Users, Clock, Sparkles } from "lucide-react";
+import { Lock, Swords, CheckCircle2, Crosshair, Users, Clock, Sparkles, Handshake, ChevronRight } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
+// C4 — drill-down navigation (war family: Outpost → Alliance → Old Gods)
+import { DrillBreadcrumb, type BreadcrumbItem } from "../shared/DrillBreadcrumb";
 
 const PHASE_LABELS: Record<string, string> = {
   skirmish: "Skirmish",
@@ -43,6 +45,33 @@ export function InfinityContent() {
   const alliedGods = minorGods.filter((g) => alliances[g.id]);
   const totalDefeated = OLD_GODS.filter((g) => oldGodBattles[g.id]?.status === "won").length;
 
+  // C4 — War-family drill-back actions. Infinity (L9) is the "oldgods" level,
+  // the deepest in the war family. Breadcrumb shows the full chain with
+  // clickable back-targets to L7 and L8.
+  const drillBackWar = useGameStore((s) => s.drillBackWar);
+  const warBreadcrumbItems: BreadcrumbItem[] = [
+    {
+      id: "outpost",
+      label: "Outpost Raids",
+      icon: <Swords className="w-3 h-3" />,
+      onClick: () => drillBackWar("outpost"),
+      title: "Back to Layer 7 — Omnipotence (outpost raids)",
+    },
+    {
+      id: "alliance",
+      label: "Alliance Council",
+      icon: <Handshake className="w-3 h-3" />,
+      onClick: () => drillBackWar("alliance"),
+      title: "Back to Layer 8 — Divinity (Divine Alliance)",
+    },
+    {
+      id: "oldgods",
+      label: "Old Gods",
+      icon: <Crosshair className="w-3 h-3" />,
+      isCurrent: true, // L9 is the "oldgods" level — current location
+    },
+  ];
+
   return (
     <>
       {/* LAYER-AS-TAB — was <DialogHeader>/<DialogTitle>/<DialogDescription>
@@ -63,6 +92,16 @@ export function InfinityContent() {
           </Badge>
         </p>
       </div>
+
+      {/* C4 — War-family breadcrumb. Always shown when unlocked so the
+          player can route back to L7 (Outpost) or L8 (Alliance Council). */}
+      {isUnlocked && (
+        <DrillBreadcrumb
+          tone="war"
+          items={warBreadcrumbItems}
+          className="mb-3"
+        />
+      )}
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -313,6 +352,33 @@ export function InfinityContent() {
           <Swords className="w-3 h-3" />
           Defeat all 3 Old Gods to unlock Layer 10 (Ascension). Each victory grants a permanent Divine Fragment bonus.
         </div>
+
+        {/* C4 — War-family drill-back buttons. Routes back to L8 (Alliance
+            Council) or L7 (Outpost Raids). */}
+        {isUnlocked && (
+          <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-border/30">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
+              onClick={() => drillBackWar("alliance")}
+              title="Back to Layer 8 — Divinity (Divine Alliance)"
+            >
+              <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
+              Back to Alliance Council
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-[0.65rem] text-muted-foreground"
+              onClick={() => drillBackWar("outpost")}
+              title="Back to Layer 7 — Omnipotence (outpost raids)"
+            >
+              <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
+              Back to Outpost Raids
+            </Button>
+          </div>
+        )}
     </>
   );
 }

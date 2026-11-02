@@ -708,6 +708,39 @@ export interface GameState {
    *  tech at a time in hard mode. */
   researchingTech: { id: string; progress: number } | null;
 
+  // ===========================================================================
+  // C4 — DRILL-DOWN LAYER NESTING (transient, NOT persisted)
+  //
+  // Two drill families connect related layers with breadcrumb navigation:
+  //
+  //  Cosmos family (geographic zoom-in):
+  //    Universe (L6 Singularity) → Galaxy (L4 Genesis or synthesized view)
+  //    → Star System (per-system detail)
+  //
+  //  War family (progression zoom-in):
+  //    Outpost Raids (L7 Omnipotence) → Alliance Council (L8 Divinity Layer)
+  //    → Old Gods (L9 Infinity)
+  //
+  // The drillNav field tracks which galaxy/system/god the player has drilled
+  // into so breadcrumbs + back-buttons can route correctly. The state is
+  // transient (excluded from partialize) — reopening the game always starts
+  // at the top level of whichever layer modal the player opens.
+  // ===========================================================================
+  drillNav: {
+    cosmos: {
+      level: "universe" | "galaxy" | "system";
+      /** Galaxy id the player drilled into (matches UniversalGalaxy.id or "galaxy_starter"). */
+      galaxyId: string | null;
+      /** Star-system id drilled into within that galaxy (L4 GALAXY_SYSTEMS id, or a synthesized id for non-starter galaxies). */
+      systemId: string | null;
+    };
+    war: {
+      level: "outpost" | "alliance" | "oldgods";
+      /** Old-god id drilled into within the war family (for back-routing from the Old Gods view). */
+      godId: string | null;
+    };
+  };
+
   // Theme customization (Part 1 — Stage Theme System)
   activeStageTheme: string;          // default "stage-cell"
   activeLayerTheme: string | null;   // null = no overlay
@@ -992,6 +1025,44 @@ export interface GameStore extends GameState {
   openLayerModal: (layerId: string) => void;
   /** Closes the shared LayerModal. Clears `activeLayerModal` AND all legacy `show*` flags. */
   closeLayerModal: () => void;
+
+  // ===========================================================================
+  // C4 — DRILL-DOWN ACTIONS (transient nav state for the cosmos + war families)
+  //
+  // These actions mutate the transient `drillNav` state. They DO NOT persist.
+  // The modals read `drillNav` to decide which breadcrumb to render + which
+  // sub-view to show. Drill actions also flip the active layer modal so the
+  // user is visually transported to the drilled-in layer.
+  // ===========================================================================
+
+  /** Drill into a specific galaxy from the Universe (L6) view. Updates
+   *  drillNav.cosmos to { level: "galaxy", galaxyId } and routes to the
+   *  appropriate galaxy view (L4 Genesis for the starter galaxy, or stays
+   *  inside L6 with a synthesized hex map for other galaxies). */
+  drillIntoCosmosGalaxy: (galaxyId: string) => void;
+  /** Drill into a specific star system within the current galaxy. Updates
+   *  drillNav.cosmos to { level: "system", systemId } and shows the per-system
+   *  detail view (still inside whichever modal the galaxy view lives in). */
+  drillIntoCosmosSystem: (galaxyId: string, systemId: string) => void;
+  /** Drill back to a higher level in the cosmos family. Routing:
+   *    "universe" → opens L6 Singularity modal (or resets to universe view if already there)
+   *    "galaxy"   → returns to the current galaxy's hex map from a system detail view */
+  drillBackCosmos: (toLevel: "universe" | "galaxy") => void;
+  /** Reset the cosmos drill state entirely (used when the player closes a
+   *  modal or navigates to an unrelated layer). */
+  drillResetCosmos: () => void;
+
+  /** Drill forward in the war family — opens the Alliance Council (L8). */
+  drillIntoWarAlliance: () => void;
+  /** Drill forward in the war family — opens the Old Gods (L9). Optionally
+   *  pre-selects an Old God for an immediate battle. */
+  drillIntoWarOldGods: (godId?: string | null) => void;
+  /** Drill back to a higher level in the war family. Routing:
+   *    "outpost"   → opens L7 Omnipotence
+   *    "alliance"  → opens L8 Divinity Layer */
+  drillBackWar: (toLevel: "outpost" | "alliance") => void;
+  /** Reset the war drill state entirely. */
+  drillResetWar: () => void;
   /**
    * P7 — Sets the latest purchase-error message. Called by buySystem /
    * buyTech / buyUpgrade / buyUniversalUpgrade when the player can't afford

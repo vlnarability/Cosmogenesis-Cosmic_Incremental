@@ -15,11 +15,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Lock, Handshake, CheckCircle2, Sparkles, Radio } from "lucide-react";
+import { Lock, Handshake, CheckCircle2, Sparkles, Radio, Swords, Crosshair, ChevronRight } from "lucide-react";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { formatNumber } from "../shared/format";
 import { OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 import { DivinePantheonPanel } from "../pantheon/DivinePantheonPanel";
+// C4 — drill-down navigation (war family: Outpost → Alliance → Old Gods)
+import { DrillBreadcrumb, type BreadcrumbItem } from "../shared/DrillBreadcrumb";
 
 const PERSONALITY_COLORS: Record<string, string> = {
   warm: "text-amber-300 border-amber-400/40",
@@ -55,6 +57,39 @@ export function DivinityLayerContent() {
   const bonus = allianceBonus(alliances, minorGods);
   const alliedCount = bonus.allianceCount;
 
+  // C4 — War-family drill actions + unlock flags.
+  const drillBackWar = useGameStore((s) => s.drillBackWar);
+  const drillIntoWarOldGods = useGameStore((s) => s.drillIntoWarOldGods);
+  const isInfinityUnlocked = !!unlockedLayers.infinity;
+
+  // C4 — War breadcrumb items. DivinityLayer (L8) is the "alliance" level.
+  const warBreadcrumbItems: BreadcrumbItem[] = [
+    {
+      id: "outpost",
+      label: "Outpost Raids",
+      icon: <Swords className="w-3 h-3" />,
+      onClick: () => drillBackWar("outpost"),
+      title: "Back to Layer 7 — Omnipotence (outpost raids)",
+    },
+    {
+      id: "alliance",
+      label: "Alliance Council",
+      icon: <Handshake className="w-3 h-3" />,
+      isCurrent: true, // L8 is the "alliance" level — current location
+    },
+    {
+      id: "oldgods",
+      label: "Old Gods",
+      icon: <Crosshair className="w-3 h-3" />,
+      onClick: isInfinityUnlocked
+        ? () => drillIntoWarOldGods(null)
+        : undefined,
+      title: isInfinityUnlocked
+        ? "Open Layer 9 — Infinity (battle the Old Gods)"
+        : "Locked — form 2+ alliances to unlock",
+    },
+  ];
+
   const getResourceAmount = (res: string): number => {
     if (res === "divinity") return divinity;
     if (res === "faith") return faith;
@@ -81,6 +116,16 @@ export function DivinityLayerContent() {
             </Badge>
         </p>
       </div>
+
+      {/* C4 — War-family breadcrumb. Always shown when unlocked so the
+          player can route back to L7 or forward to L9 from L8. */}
+      {isUnlocked && (
+        <DrillBreadcrumb
+          tone="war"
+          items={warBreadcrumbItems}
+          className="mb-3"
+        />
+      )}
 
         {!isUnlocked ? (
           <div className="text-center text-muted-foreground py-10">
@@ -241,6 +286,40 @@ export function DivinityLayerContent() {
           <Sparkles className="w-3 h-3" />
           Form 2+ alliances to unlock Layer 9 (Divine War). Allied gods grant passive bonuses and can be called into battle against the Old Gods.
         </div>
+
+        {/* C4 — War-family drill-forward button. Routes to L9 when unlocked. */}
+        {isUnlocked && (
+          <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-border/30">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
+              onClick={() => drillBackWar("outpost")}
+              title="Back to Layer 7 — Omnipotence (outpost raids)"
+            >
+              <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
+              Back to Outpost Raids
+            </Button>
+            {isInfinityUnlocked ? (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 text-[0.65rem] bg-rose-700/70 hover:bg-rose-700"
+                onClick={() => drillIntoWarOldGods(null)}
+                title="Open Layer 9 — Infinity (battle the Old Gods)"
+              >
+                <Crosshair className="w-3 h-3 mr-1" />
+                March on the Old Gods
+                <ChevronRight className="w-3 h-3 ml-1" />
+              </Button>
+            ) : (
+              <div className="text-[0.6rem] text-muted-foreground/70 flex items-center gap-1 px-2 py-1 rounded border border-dashed border-border/40">
+                <Lock className="w-3 h-3" />
+                Form 2+ alliances (current: {alliedCount}) to unlock the Old Gods
+              </div>
+            )}
+          </div>
+        )}
     </>
   );
 }
