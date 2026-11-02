@@ -27,6 +27,7 @@ import {
 import { formatNumber } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { EmptyState } from "../shared/EmptyState";
+import { HexMap, generateHexMap, type HexCell } from "../shared/HexMap";
 
 // Star radius (SVG units). 4 keeps the 50-star map readable inside a
 // 520-ish-wide viewBox while still fitting on narrow phone screens (the
@@ -60,32 +61,33 @@ export function GenesisContent() {
   const scanGalaxySystem = useGameStore((s) => s.scanGalaxySystem);
   const claimGalaxySystem = useGameStore((s) => s.claimGalaxySystem);
 
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const isUnlocked = !!unlockedLayers.genesis;
 
-  // Pre-compute pixel positions + viewBox for the SVG. GALAXY_SYSTEMS is
-  // static, but we depend on `galaxySystems` so the per-system state
-  // (claimed/explored) is fresh on every interaction.
-  const layout = useMemo(() => {
-    const pts = GALAXY_SYSTEMS.map((sys) => {
+  // C3 — Generate a stable hex map (50 hexes) + map the galaxy systems onto it.
+  const hexCoords = useMemo(() => generateHexMap(50), []);
+  const hexCells: HexCell[] = useMemo(() => {
+    return hexCoords.map((hc, i) => {
+      const sys = GALAXY_SYSTEMS[i];
+      if (!sys) return { id: hc.id, q: hc.q, r: hc.r, dimmed: true };
       const state = galaxySystems.find((g) => g.id === sys.id);
-      const px = { x: sys.pos.x, y: sys.pos.y };
-      return { sys, state, x: px.x, y: px.y };
+      const claimed = state?.claimed;
+      const explored = state?.explored;
+      const isOrigin = i === 0;
+      return {
+        id: sys.id,
+        q: hc.q,
+        r: hc.r,
+        fill: claimed ? "rgba(34,211,238,0.2)" : explored ? "rgba(30,41,59,0.8)" : "rgba(15,23,42,0.9)",
+        stroke: claimed ? "#22d3ee" : explored ? "#475569" : "#334155",
+        strokeWidth: claimed ? 2 : 1,
+        label: claimed ? "★" : explored ? "·" : "?",
+        glow: isOrigin && claimed,
+        dimmed: !explored && !claimed,
+      };
     });
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y);
-      maxY = Math.max(maxY, p.y);
-    }
-    const pad = STAR_SIZE * 3;
-    return {
-      pts,
-      viewBox: `${(minX - pad).toFixed(2)} ${(minY - pad).toFixed(2)} ${((maxX - minX) + pad * 2).toFixed(2)} ${((maxY - minY) + pad * 2).toFixed(2)}`,
-    };
-  }, [galaxySystems]);
+  }, [hexCoords, galaxySystems]);
 
   const summary = useMemo(() => summarizeGalaxyBonuses(galaxySystems), [galaxySystems]);
   const claimedCount = summary.claimedCount;
@@ -95,43 +97,8 @@ export function GenesisContent() {
   const canScan = debugFreeBuy || divinity >= GALAXY_SCAN_COST;
   const canClaim = debugFreeBuy || divinity >= nextClaimCost;
 
-  // Connection lines between adjacent claimed systems (deduped: A→B and B→A
-  // are the same line).
-  const connectionLines = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number; key: string }[] = [];
-    const seen = new Set<string>();
-    const claimedPts = layout.pts.filter((p) => p.state?.claimed);
-    for (const p of claimedPts) {
-      const neighbors = getGalaxySystemNeighbors(p.sys.id);
-      for (const n of neighbors) {
-        const np = layout.pts.find((pp) => pp.sys.id === n.id);
-        if (!np || !np.state?.claimed) continue;
-        const key = [p.sys.id, np.sys.id].sort().join("|");
-        if (seen.has(key)) continue;
-        seen.add(key);
-        lines.push({ x1: p.x, y1: p.y, x2: np.x, y2: np.y, key });
-      }
-    }
-    return lines;
-  }, [layout]);
-
-  // Neighbor set for hover highlight.
-  const hoveredNeighborIds = useMemo(() => {
-    if (!hoveredId) return new Set<string>();
-    return new Set(getGalaxySystemNeighbors(hoveredId).map((n) => n.id));
-  }, [hoveredId]);
-
-  // Quick lookup for "claimed neighbor count" per system (used for the ★ synergy
-  // marker — claimed systems adjacent to 2+ other claimed systems).
-  const claimedNeighborCount = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const sys of GALAXY_SYSTEMS) {
-      const neighbors = getGalaxySystemNeighbors(sys.id);
-      const c = neighbors.filter((n) => galaxySystems.find((g) => g.id === n.id)?.claimed).length;
-      map.set(sys.id, c);
-    }
-    return map;
-  }, [galaxySystems]);
+  const selectedSys = selectedId ? GALAXY_SYSTEMS.find((s) => s.id === selectedId) : null;
+  const selectedState = selectedId ? galaxySystems.find((g) => g.id === selectedId) : null;
 
   return (
     <>
@@ -174,182 +141,48 @@ export function GenesisContent() {
                 />
               </div>
             )}
-            {/* Hex map */}
+            {/* C3 — Hex map (replaces the old SVG circle star map) */}
             <div className="stat-card">
-              <svg
-                viewBox={layout.viewBox}
-                preserveAspectRatio="xMidYMid meet"
-                className="w-full h-auto"
-                style={{ maxHeight: "60vh" }}
-                role="img"
-                aria-label="Galaxy star map"
-              >
-                {/* Connection lines (under stars) */}
-                <g>
-                  {connectionLines.map((l) => (
-                    <line
-                      key={l.key}
-                      x1={l.x1}
-                      y1={l.y1}
-                      x2={l.x2}
-                      y2={l.y2}
-                      stroke="rgba(56, 189, 248, 0.55)"
-                      strokeWidth={1.5}
-                    />
-                  ))}
-                </g>
-
-                {/* Hexes */}
-                {layout.pts.map((p) => {
-                  const sys = p.sys;
-                  const state = p.state;
-                  const claimed = !!state?.claimed;
-                  const explored = !!state?.explored;
-                  const isHovered = hoveredId === sys.id;
-                  const isHoverNeighbor = hoveredNeighborIds.has(sys.id);
-                  const synergyCount = claimedNeighborCount.get(sys.id) || 0;
-                  const hasSynergy = claimed && synergyCount >= 2;
-
-                  const fill = claimed
-                    ? "rgba(56, 189, 248, 0.32)"
-                    : explored
-                      ? "rgba(148, 163, 184, 0.16)"
-                      : "rgba(15, 23, 42, 0.55)";
-                  const stroke = claimed
-                    ? "rgba(56, 189, 248, 0.95)"
-                    : explored
-                      ? "rgba(148, 163, 184, 0.55)"
-                      : "rgba(100, 116, 139, 0.55)";
-                  const strokeW = isHovered ? 2.6 : isHoverNeighbor ? 1.8 : 1;
-
-                  const shortName = sys.name.length > 9 ? `${sys.name.slice(0, 8)}…` : sys.name;
-
-                  return (
-                    <Tooltip key={sys.id}>
-                      <TooltipTrigger asChild>
-                        <g
-                          transform={`translate(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`}
-                          className="cursor-pointer"
-                          onMouseEnter={() => setHoveredId(sys.id)}
-                          onMouseLeave={() => setHoveredId((cur) => (cur === sys.id ? null : cur))}
-                          onClick={() => {
-                            if (!explored) scanGalaxySystem(sys.id);
-                            else if (!claimed) claimGalaxySystem(sys.id);
-                          }}
-                        >
-                          <circle
-                            r={STAR_SIZE}
-                            fill={fill}
-                            stroke={isHovered ? "#fde047" : stroke}
-                            strokeWidth={strokeW}
-                          />
-                          {claimed ? (
-                            <>
-                              <text
-                                textAnchor="middle"
-                                y={-3}
-                                fontSize={11}
-                                fill="#bae6fd"
-                                style={{ pointerEvents: "none" }}
-                              >
-                                {BONUS_ICON[sys.bonus.type]}
-                              </text>
-                              <text
-                                textAnchor="middle"
-                                y={8}
-                                fontSize={6.5}
-                                fill="#cbd5e1"
-                                style={{ pointerEvents: "none" }}
-                              >
-                                {shortName}
-                              </text>
-                              {hasSynergy && (
-                                <text
-                                  textAnchor="middle"
-                                  y={-12}
-                                  fontSize={10}
-                                  fill="#fde047"
-                                  style={{ pointerEvents: "none" }}
-                                >
-                                  ★
-                                </text>
-                              )}
-                            </>
-                          ) : explored ? (
-                            <>
-                              <text
-                                textAnchor="middle"
-                                y={-2}
-                                fontSize={11}
-                                fill="#fbbf24"
-                                style={{ pointerEvents: "none" }}
-                              >
-                                {BONUS_ICON[sys.bonus.type]}
-                              </text>
-                              <text
-                                textAnchor="middle"
-                                y={8}
-                                fontSize={6.5}
-                                fill="#94a3b8"
-                                style={{ pointerEvents: "none" }}
-                              >
-                                {bonusPct(sys.bonus.value)}
-                              </text>
-                            </>
-                          ) : (
-                            <text
-                              textAnchor="middle"
-                              y={4}
-                              fontSize={14}
-                              fill="#64748b"
-                              style={{ pointerEvents: "none" }}
-                            >
-                              ?
-                            </text>
-                          )}
-                        </g>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <div className="text-[0.7rem] space-y-0.5">
-                          <div className="font-semibold text-cyan-200">{sys.name}</div>
-                          <div className="text-muted-foreground">Position ({sys.pos.x.toFixed(1)}, {sys.pos.y.toFixed(1)})</div>
-                          {explored ? (
-                            <>
-                              <div>
-                                {BONUS_LABEL[sys.bonus.type]}: {bonusPct(sys.bonus.value)}
-                              </div>
-                              {sys.hasVoidShards && (
-                                <div className="text-amber-300">
-                                  Rare: Void Shards
-                                </div>
-                              )}
-                              <div className={claimed ? "text-cyan-300" : "text-emerald-300"}>
-                                {claimed
-                                  ? "✓ Claimed"
-                                  : `Claim cost: ${nextClaimCost} Divinity`}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-violet-300">
-                              Unexplored — Scan for {GALAXY_SCAN_COST} Divinity
-                            </div>
-                          )}
-                          <div className="text-muted-foreground">
-                            {synergyCount} claimed neighbor{synergyCount === 1 ? "" : "s"}
-                          </div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-              </svg>
-              <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed">
-                Hover to highlight neighbors. Click an unexplored star to{" "}
+              <HexMap
+                cells={hexCells}
+                hexRadius={28}
+                selectedId={selectedId}
+                onHexClick={(id) => {
+                  setSelectedId(id);
+                  const sys = GALAXY_SYSTEMS.find((s) => s.id === id);
+                  const state = galaxySystems.find((g) => g.id === id);
+                  if (sys && !state?.explored) scanGalaxySystem(id);
+                  else if (sys && state?.explored && !state?.claimed) claimGalaxySystem(id);
+                }}
+                title="Star System Map"
+                subtitle={`${claimedCount}/${GALAXY_TOTAL_SYSTEMS} claimed · ${exploredCount} explored`}
+              />
+              <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed text-center">
+                Click an unexplored hex to{" "}
                 <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Divinity) or an
-                explored unclaimed star to{" "}
-                <span className="text-emerald-300">claim</span> ({nextClaimCost} Divinity).{" "}
-                <span className="text-amber-300">★</span> = synergy (2+ claimed neighbors, +50% bonus).
+                explored hex to{" "}
+                <span className="text-emerald-300">claim</span> ({nextClaimCost} Divinity).
               </div>
+              {selectedSys && selectedState && (
+                <div className="mt-2 p-2 rounded-md bg-muted/20 border border-border/40 text-xs space-y-1">
+                  <div className="font-semibold text-cyan-200">{selectedSys.name}</div>
+                  {selectedState.explored ? (
+                    <>
+                      <div className="text-muted-foreground">
+                        {BONUS_LABEL[selectedSys.bonus.type]}: {bonusPct(selectedSys.bonus.value)}
+                      </div>
+                      {selectedSys.hasVoidShards && (
+                        <div className="text-amber-300">Rare: Void Shards</div>
+                      )}
+                      <div className={selectedState.claimed ? "text-cyan-300" : "text-emerald-300"}>
+                        {selectedState.claimed ? "✓ Claimed" : `Claim: ${nextClaimCost} Divinity`}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-violet-300">Unexplored — Scan for {GALAXY_SCAN_COST} Divinity</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Sidebar */}
