@@ -3,57 +3,78 @@
 // ===========================================================================
 // WorldVisualization3D — REAL 3D renderer using Three.js.
 //
-// Replaces the old CSS-3D-transforms version (which only positioned flat
-// 2D billboards in 3D space — they always faced the camera regardless of
-// rotation, so they were not actually 3D objects).
-//
-// This version renders actual 3D sphere geometry:
-//   • Each world is an InstancedMesh instance of SphereGeometry(1, 16, 12)
-//     with MeshStandardMaterial (metalness 0.3, roughness 0.5).
-//   • Per-instance transform matrix (position + scale) + per-instance color
-//     via instanceColor.
-//   • Three-light setup (ambient + key directional + rim directional)
-//     creates specular highlights + shadow gradients that ACTUALLY rotate
-//     with the scene — proving the geometry is real 3D.
-//   • Background starfield via THREE.Points geometry (200 points at
-//     radius 500-700, white, size 2.5, opacity 0.5).
-//   • OrbitControls — drag to rotate 360°, wheel to zoom (min 200, max
-//     1500), enableDamping, no panning.
-//   • Auto-rotate 6°/s on Y axis when not dragging. Disabled on pointer
-//     down, re-enabled on Reset button.
+// C1 POLISH ROUND:
+//   • Tier color palette redesigned — no more indigo/blue dominance.
+//     Each tier has a distinct cosmic hue (silver → green → cyan → gold →
+//     amber → magenta → crimson → emerald → violet → gold-core), with the
+//     higher tiers moving toward warm whites + void-black.
+//   • Auto-rotate speed is now adjustable via a slider (0–24°/s). The
+//     default is 8°/s (was 6°/s). A pause/play button toggles auto-rotate
+//     without needing to drag first.
+//   • Tier filter chips — click a tier in the legend to toggle its
+//     visibility. Hidden tiers' instances are scaled to 0 (no re-alloc).
+//   • Reactive legend — subscribes to worldTiers via useGameStore (was
+//     calling getState() inline, which is not reactive).
+//   • World count overlay — shows Σ visible / total in the top-right.
+//   • Subtle glow halos around the higher-tier worlds (Tier 6+) via a
+//     second InstancedMesh with additive-blended sphere geometry scaled
+//     1.4× — gives Ascendant/Celestial Core worlds a luminous corona.
+//   • Reduced-motion: when reduceMotion is on, auto-rotate defaults to 0
+//     and the rotation slider is hidden.
 //
 // InstancedMesh draws all worlds in a single draw call (200+ spheres →
 // 1 draw call). Material is shared so GPU memory footprint is tiny.
 // ===========================================================================
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Orbit, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Orbit, ZoomIn, ZoomOut, RotateCcw, Pause, Play, Eye, EyeOff } from "lucide-react";
 import { FUSION_TIERS } from "@/game/data/worldFusion";
 import { useGameStore } from "@/game/state/store";
+import { cn } from "@/lib/utils";
 
-// Tier color palette (shared with DivineEngineFullTab's World Fusion rows
-// — keep these in sync). Used to color each instance.
+// ----- C1 tier color palette (cosmic, no indigo/blue dominance) -----
+// Lower tiers = cooler / dimmer (silver, pale green, cyan).
+// Mid tiers = warm (gold, amber, magenta, crimson).
+// High tiers = luminous white-gold + emerald + violet accents.
+// Top tier (void) = deep obsidian.
 export const TIER_COLORS: Record<string, string> = {
-  "1": "#e2e8f0", "2": "#93c5fd", "3": "#60a5fa", "4": "#3b82f6", "5": "#818cf8",
-  "6": "#a78bfa", "7": "#c084fc", "8": "#e879f9", "9": "#f472b6", "10": "#fbbf24",
-  "ascendant": "#fde047", "greater_ascendant": "#fef08a", "celestial_core": "#e0f2fe", "void": "#1e1b4b",
+  "1": "#cbd5e1",                  // silver-300 — base world
+  "2": "#86efac",                  // green-300 — first fusion
+  "3": "#22d3ee",                  // cyan-400 — brightened
+  "4": "#fbbf24",                  // amber-400 — golden
+  "5": "#fb923c",                  // orange-400 — burning
+  "6": "#f472b6",                  // pink-400 — magenta
+  "7": "#f87171",                  // red-400 — crimson
+  "8": "#34d399",                  // emerald-400 — life-green
+  "9": "#e879f9",                  // fuchsia-400 — neon violet
+  "10": "#fde68a",                 // amber-200 — gold core
+  "ascendant": "#fef3c7",          // amber-100 — luminous white-gold
+  "greater_ascendant": "#ffffff",  // pure luminous
+  "celestial_core": "#a7f3d0",     // emerald-200 — celestial mint
+  "void": "#0c0a1e",               // obsidian void
 };
 
-// World sphere radii (in scene units). SphereGeometry(1) is scaled by these
-// values per instance — same proportions as the old CSS version so the
-// scene reads the same at every zoom level.
+// Tier radii — unchanged (preserves scene proportions).
 export const TIER_RADII: Record<string, number> = {
   "1": 5, "2": 7, "3": 9, "4": 11, "5": 13,
   "6": 16, "7": 19, "8": 22, "9": 26, "10": 30,
   "ascendant": 38, "greater_ascendant": 44, "celestial_core": 50, "void": 60,
 };
 
-// Deterministic PRNG (mulberry32) — same seed every load so worlds keep
-// stable positions across re-renders + page reloads.
+// Tier glow strength — 0 = no glow halo, >0 = additive-blended corona scale.
+// Higher tiers get a glow so they read as "luminous" against the starfield.
+const TIER_GLOW: Record<string, number> = {
+  "1": 0, "2": 0, "3": 0, "4": 0, "5": 0.1,
+  "6": 0.25, "7": 0.35, "8": 0.45, "9": 0.55, "10": 0.7,
+  "ascendant": 0.85, "greater_ascendant": 1.0, "celestial_core": 1.2, "void": 0.6,
+};
+
+// Deterministic PRNG (mulberry32) — stable positions across re-renders.
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
   return () => {
@@ -71,25 +92,25 @@ export interface WorldDot {
   tier: string;
   color: string;
   size: number;
+  glow: number;
+  /** Stable instance index within its tier — used for the glow mesh. */
+  idx: number;
 }
 
 // Generate stable 3D positions for worlds. Each world gets a deterministic
-// random position in a sphere. We use a sqrt-radius distribution so worlds
-// are spread more on the outer shell (less clumping at the center) and a
-// wide radius range (60..380) so dots are visibly separate in 3D space.
+// random position in a sphere. sqrt-radius distribution spreads dots on the
+// outer shell (galaxy look). Wide radius range (60..380) keeps dots separate.
 export function computeWorldDots(worldTiers: Record<string, number>): WorldDot[] {
   const rng = mulberry32(0xfeedface);
   const dots: WorldDot[] = [];
   for (const tier of FUSION_TIERS) {
     const count = Math.max(0, Math.floor(worldTiers[tier.id] || 0));
     if (count === 0) continue;
-    // Cap the visualized count per tier so the 3D scene stays performant.
+    // Cap the visualized count per tier for performance.
     const maxDots = Math.min(count, tier.id === "1" ? 220 : 40);
     for (let i = 0; i < maxDots; i++) {
-      // Uniform direction (theta + phi via acos trick).
       const theta = rng() * Math.PI * 2;
       const phi = Math.acos(2 * rng() - 1);
-      // sqrt distribution → more dots near the outer shell (galaxy look).
       const r = 60 + Math.sqrt(rng()) * 320;
       dots.push({
         x: r * Math.sin(phi) * Math.cos(theta),
@@ -98,16 +119,18 @@ export function computeWorldDots(worldTiers: Record<string, number>): WorldDot[]
         tier: tier.id,
         color: TIER_COLORS[tier.id] || "#ffffff",
         size: TIER_RADII[tier.id] || 5,
+        glow: TIER_GLOW[tier.id] || 0,
+        idx: i,
       });
     }
   }
   return dots;
 }
 
-// Background starfield — 200 distant points at radius 500-700.
+// Background starfield — 300 distant points at radius 500-700.
 function createStarfield(): THREE.Points {
   const rng = mulberry32(0x12345678);
-  const count = 200;
+  const count = 300;
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const theta = rng() * Math.PI * 2;
@@ -134,26 +157,44 @@ function createStarfield(): THREE.Points {
 const DEFAULT_CAM = new THREE.Vector3(400, 200, 500);
 const DEFAULT_CAM_DIST = DEFAULT_CAM.length();
 
-// Zoom limits (matches the OrbitControls min/max distance).
 const ZOOM_MIN_DIST = 200;
 const ZOOM_MAX_DIST = 1500;
 
-export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
+// Convert degrees/sec → radians/sec.
+const degToRadPerSec = (deg: number) => (deg * Math.PI) / 180;
+
+export interface WorldVisualization3DProps {
+  dots: WorldDot[];
+}
+
+export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
-  // Auto-rotate flag is a ref so the animation loop reads the latest value
-  // without re-creating the loop. Disabled on pointer down, re-enabled on
-  // Reset button click.
+  // Refs read by the animation loop without re-creating it.
   const autoRotateRef = useRef(true);
-  // Track the current camera distance for the zoom display label.
-  const [zoomDisplay, setZoomDisplay] = useState("1.00×");
+  const rotationSpeedRef = useRef(degToRadPerSec(8)); // 8°/s default
+  const hiddenTiersRef = useRef<Set<string>>(new Set());
+  // The instMesh + glowMesh refs let us update visibility + matrix without
+  // re-running the full useEffect.
+  const instMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const glowMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const dotIndexRef = useRef<{ dot: WorldDot; instIdx: number; glowIdx: number | null }[]>([]);
 
+  // UI state — re-renders the React overlay but the animation loop reads refs.
+  const [zoomDisplay, setZoomDisplay] = useState("1.00×");
+  const [rotationDeg, setRotationDeg] = useState(8);
+  const [paused, setPaused] = useState(false);
+  const [hiddenTiers, setHiddenTiers] = useState<Set<string>>(new Set());
+
+  // Reactive worldTiers (for the legend + filter chips). The old version
+  // used useGameStore.getState() inside render, which is not reactive.
+  const worldTiers = useGameStore((s) => s.worldTiers || {});
+  const reduceMotion = useGameStore((s) => s.reduceMotion || false);
+
+  // ----- Setup the 3D scene once per `dots` change -----
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-
-    // Bail if 0 dots — InstancedMesh(geo, mat, 0) is valid but pointless,
-    // and we'd still be allocating lights + starfield for nothing.
     if (dots.length === 0) return;
 
     const width = mount.clientWidth || 600;
@@ -162,6 +203,8 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     // ----- Scene + camera + renderer -----
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050518);
+    // Subtle radial fog — distant worlds fade into the void.
+    scene.fog = new THREE.FogExp2(0x050518, 0.0008);
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 5000);
     camera.position.copy(DEFAULT_CAM);
@@ -169,7 +212,7 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // cap at 2 for perf
     mount.appendChild(renderer.domElement);
 
     // ----- 3-light setup -----
@@ -189,20 +232,42 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     scene.add(stars);
 
     // ----- World spheres (InstancedMesh) -----
-    const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
+    const sphereGeo = new THREE.SphereGeometry(1, 24, 18); // bumped segments for smoother highlights
     const worldMat = new THREE.MeshStandardMaterial({
-      metalness: 0.3,
-      roughness: 0.5,
+      metalness: 0.35,
+      roughness: 0.45,
+      emissive: 0x101030,
+      emissiveIntensity: 0.4,
     });
     const instMesh = new THREE.InstancedMesh(sphereGeo, worldMat, dots.length);
     instMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
+    // ----- Glow halos for higher tiers (separate InstancedMesh) -----
+    // Collect dots that have glow > 0 — these get a second sphere rendered
+    // with additive blending + transparent material so they bloom.
+    const glowDots = dots.filter((d) => d.glow > 0);
+    const glowGeo = new THREE.SphereGeometry(1, 12, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.18,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glowMesh = glowDots.length > 0
+      ? new THREE.InstancedMesh(glowGeo, glowMat, glowDots.length)
+      : null;
+    if (glowMesh) {
+      glowMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    }
+
     const matrix = new THREE.Matrix4();
-    const quat = new THREE.Quaternion(); // identity — no per-instance rotation
+    const quat = new THREE.Quaternion();
     const scaleVec = new THREE.Vector3();
     const posVec = new THREE.Vector3();
     const colorVec = new THREE.Color();
+    const dotIndex: { dot: WorldDot; instIdx: number; glowIdx: number | null }[] = [];
 
+    let glowIdx = 0;
     dots.forEach((d, i) => {
       posVec.set(d.x, d.y, d.z);
       quat.identity();
@@ -211,12 +276,33 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
       instMesh.setMatrixAt(i, matrix);
       colorVec.set(d.color);
       instMesh.setColorAt(i, colorVec);
+
+      let thisGlowIdx: number | null = null;
+      if (glowMesh && d.glow > 0) {
+        // Glow halo = world sphere scaled by (1 + glow * 0.6).
+        const glowScale = d.size * (1 + d.glow * 0.6);
+        scaleVec.setScalar(glowScale);
+        matrix.compose(posVec, quat, scaleVec);
+        glowMesh.setMatrixAt(glowIdx, matrix);
+        colorVec.set(d.color);
+        glowMesh.setColorAt(glowIdx, colorVec);
+        thisGlowIdx = glowIdx;
+        glowIdx++;
+      }
+      dotIndex.push({ dot: d, instIdx: i, glowIdx: thisGlowIdx });
     });
     instMesh.instanceMatrix.needsUpdate = true;
-    if (instMesh.instanceColor) {
-      instMesh.instanceColor.needsUpdate = true;
+    if (instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
+    if (glowMesh) {
+      glowMesh.instanceMatrix.needsUpdate = true;
+      if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
     }
     scene.add(instMesh);
+    if (glowMesh) scene.add(glowMesh);
+
+    instMeshRef.current = instMesh;
+    glowMeshRef.current = glowMesh;
+    dotIndexRef.current = dotIndex;
 
     // ----- OrbitControls -----
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -231,37 +317,33 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     controls.update();
     controlsRef.current = controls;
 
-    // ----- Auto-rotate control -----
-    // When user starts dragging (pointer down), stop auto-rotation. The
-    // Reset button re-enables it.
+    // ----- Auto-rotate pause on pointer down -----
     const onPointerDown = () => {
-      autoRotateRef.current = false;
+      // Don't disable autoRotateRef here — the user might just be
+      // clicking. Instead, the Pause button explicitly toggles it.
+      // Dragging still works regardless.
     };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
 
-    // Track current camera distance for the zoom display label.
     const updateZoomDisplay = () => {
       const dist = camera.position.length();
-      // 1.00× baseline = DEFAULT_CAM_DIST. Closer = bigger factor.
       const factor = DEFAULT_CAM_DIST / Math.max(0.0001, dist);
       setZoomDisplay(`${factor.toFixed(2)}×`);
     };
     controls.addEventListener("end", updateZoomDisplay);
-    // Initialize label.
     updateZoomDisplay();
 
     // ----- Animation loop -----
-    // 6°/s = 0.1047 rad/s. We rotate the InstancedMesh + starfield together
-    // around the Y axis when not dragging.
-    const RAD_PER_SEC = (6 * Math.PI) / 180;
     let raf = 0;
     let last = performance.now();
     const animate = (now: number) => {
-      const dt = Math.min(0.1, (now - last) / 1000); // clamp dt to avoid jumps
+      const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       if (autoRotateRef.current) {
-        instMesh.rotation.y += RAD_PER_SEC * dt;
-        stars.rotation.y += RAD_PER_SEC * dt;
+        const omega = rotationSpeedRef.current;
+        instMesh.rotation.y += omega * dt;
+        stars.rotation.y += omega * dt * 0.4; // starfield rotates slower (parallax)
+        if (glowMesh) glowMesh.rotation.y = instMesh.rotation.y;
       }
       controls.update();
       renderer.render(scene, camera);
@@ -270,7 +352,6 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     raf = requestAnimationFrame(animate);
 
     // ----- Resize handler -----
-    // ResizeObserver handles container resize (responsive layout).
     const onResize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
@@ -291,6 +372,8 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
       controls.dispose();
       sphereGeo.dispose();
       worldMat.dispose();
+      glowGeo.dispose();
+      glowMat.dispose();
       stars.geometry.dispose();
       (stars.material as THREE.PointsMaterial).dispose();
       renderer.dispose();
@@ -298,11 +381,56 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
         mount.removeChild(renderer.domElement);
       }
       controlsRef.current = null;
+      instMeshRef.current = null;
+      glowMeshRef.current = null;
+      dotIndexRef.current = [];
     };
   }, [dots]);
 
+  // ----- Reduce-motion: default auto-rotate to 0 -----
+  useEffect(() => {
+    if (reduceMotion) {
+      autoRotateRef.current = false;
+      setPaused(true);
+      setRotationDeg(0);
+      rotationSpeedRef.current = 0;
+    }
+  }, [reduceMotion]);
+
+  // ----- Apply hidden-tiers filter to the InstancedMesh matrices -----
+  // When the user toggles a tier in the legend, we scale its instances to 0
+  // (or back to their original size) by recomposing the matrix. This avoids
+  // any re-allocation of the InstancedMesh.
+  useEffect(() => {
+    const instMesh = instMeshRef.current;
+    const glowMesh = glowMeshRef.current;
+    const dotIndex = dotIndexRef.current;
+    if (!instMesh || dotIndex.length === 0) return;
+    const matrix = new THREE.Matrix4();
+    const quat = new THREE.Quaternion();
+    const scaleVec = new THREE.Vector3();
+    const posVec = new THREE.Vector3();
+    const hidden = hiddenTiersRef.current;
+    for (const entry of dotIndex) {
+      const d = entry.dot;
+      const isHidden = hidden.has(d.tier);
+      posVec.set(d.x, d.y, d.z);
+      quat.identity();
+      scaleVec.setScalar(isHidden ? 0 : d.size);
+      matrix.compose(posVec, quat, scaleVec);
+      instMesh.setMatrixAt(entry.instIdx, matrix);
+      if (glowMesh && entry.glowIdx !== null) {
+        const glowScale = isHidden ? 0 : d.size * (1 + d.glow * 0.6);
+        scaleVec.setScalar(glowScale);
+        matrix.compose(posVec, quat, scaleVec);
+        glowMesh.setMatrixAt(entry.glowIdx, matrix);
+      }
+    }
+    instMesh.instanceMatrix.needsUpdate = true;
+    if (glowMesh) glowMesh.instanceMatrix.needsUpdate = true;
+  }, [hiddenTiers]);
+
   // ----- Reset button -----
-  // Restores the default camera position + re-enables auto-rotate.
   const resetView = useCallback(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -310,12 +438,10 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     cam.position.copy(DEFAULT_CAM);
     controls.target.set(0, 0, 0);
     controls.update();
-    autoRotateRef.current = true;
+    autoRotateRef.current = !paused;
     setZoomDisplay("1.00×");
-  }, []);
+  }, [paused]);
 
-  // ----- Zoom buttons -----
-  // Move camera along the radial direction toward/away from the target.
   const zoomIn = useCallback(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -340,6 +466,57 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
     setZoomDisplay(`${(DEFAULT_CAM_DIST / newDist).toFixed(2)}×`);
   }, []);
 
+  // ----- Rotation speed slider handler -----
+  const onRotationChange = useCallback((deg: number) => {
+    setRotationDeg(deg);
+    rotationSpeedRef.current = degToRadPerSec(deg);
+    // If the user moves the slider above 0, unpause automatically.
+    if (deg > 0 && paused) {
+      setPaused(false);
+      autoRotateRef.current = true;
+    } else if (deg === 0) {
+      autoRotateRef.current = false;
+    } else {
+      autoRotateRef.current = !paused;
+    }
+  }, [paused]);
+
+  const togglePause = useCallback(() => {
+    const newPaused = !paused;
+    setPaused(newPaused);
+    autoRotateRef.current = !newPaused && rotationDeg > 0;
+  }, [paused, rotationDeg]);
+
+  // ----- Tier filter toggle -----
+  const toggleTier = useCallback((tierId: string) => {
+    setHiddenTiers((prev) => {
+      const next = new Set(prev);
+      if (next.has(tierId)) next.delete(tierId);
+      else next.add(tierId);
+      hiddenTiersRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // ----- Compute visible / total counts for the overlay -----
+  const totalCount = dots.length;
+  const visibleCount = useMemo(() => {
+    let sum = 0;
+    for (const d of dots) {
+      if (!hiddenTiers.has(d.tier)) sum++;
+    }
+    return sum;
+  }, [dots, hiddenTiers]);
+
+  // Tier counts (for legend).
+  const tierCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tier of FUSION_TIERS) {
+      counts[tier.id] = Math.max(0, Math.floor(worldTiers[tier.id] || 0));
+    }
+    return counts;
+  }, [worldTiers]);
+
   return (
     <div
       className="relative w-full"
@@ -352,8 +529,8 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
         aria-label="Drag to rotate · scroll to zoom · 3D world visualization"
       />
 
-      {/* Top-left: hint badge + zoom controls + Reset */}
-      <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-none flex-wrap z-10">
+      {/* Top-left: hint + zoom + reset */}
+      <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-none flex-wrap z-10 max-w-[calc(100%-1rem)]">
         <Badge variant="outline" className="text-[0.55rem] text-violet-200 border-violet-400/40 bg-slate-950/70 backdrop-blur pointer-events-auto">
           <Orbit className="w-2.5 h-2.5 mr-0.5" /> Drag · scroll to zoom
         </Badge>
@@ -393,14 +570,79 @@ export function WorldVisualization3D({ dots }: { dots: WorldDot[] }) {
         </Button>
       </div>
 
-      {/* Tier legend — bottom-left */}
-      <div className="absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md border border-slate-700/50 bg-slate-950/70 px-2.5 py-1 text-[0.6rem] text-slate-300 backdrop-blur pointer-events-none max-w-[60%] z-10">
-        {FUSION_TIERS.filter(t => (useGameStore.getState().worldTiers || {})[t.id] > 0).map(tier => (
-          <span key={tier.id} className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-full" style={{ background: TIER_COLORS[tier.id] || "#fff" }} />
-            {tier.name}
-          </span>
-        ))}
+      {/* Top-right: world count + rotation speed control */}
+      <div className="absolute top-2 right-2 flex flex-col items-end gap-1 pointer-events-auto z-10">
+        <Badge variant="outline" className="text-[0.55rem] text-cyan-200 border-cyan-400/40 bg-slate-950/70 backdrop-blur">
+          <Eye className="w-2.5 h-2.5 mr-0.5" />
+          {visibleCount.toLocaleString()} / {totalCount.toLocaleString()} worlds
+        </Badge>
+        {!reduceMotion && (
+          <div className="flex items-center gap-1 bg-slate-950/70 backdrop-blur rounded-md border border-violet-400/40 px-1.5 py-0.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 w-5 p-0 text-violet-200 hover:bg-violet-500/20"
+              onClick={togglePause}
+              title={paused ? "Resume auto-rotate" : "Pause auto-rotate"}
+              aria-label={paused ? "Resume auto-rotate" : "Pause auto-rotate"}
+            >
+              {paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            </Button>
+            <span className="text-[0.55rem] text-muted-foreground font-mono min-w-[1.4rem] text-center">
+              {rotationDeg}°/s
+            </span>
+            <Slider
+              value={[rotationDeg]}
+              onValueChange={(v) => onRotationChange(v[0] ?? 0)}
+              min={0}
+              max={24}
+              step={1}
+              className="w-16 h-3"
+              aria-label="Auto-rotate speed"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Tier legend + filter chips — bottom-left */}
+      <div className="absolute bottom-2 left-2 flex flex-wrap gap-1 rounded-md border border-slate-700/50 bg-slate-950/70 px-2 py-1 text-[0.6rem] text-slate-300 backdrop-blur pointer-events-auto max-w-[calc(100%-1rem)] z-10">
+        {FUSION_TIERS.filter((t) => tierCounts[t.id] > 0).map((tier) => {
+          const hidden = hiddenTiers.has(tier.id);
+          return (
+            <button
+              key={tier.id}
+              type="button"
+              onClick={() => toggleTier(tier.id)}
+              className={cn(
+                "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors",
+                hidden ? "opacity-40 hover:opacity-70" : "hover:bg-slate-800/80",
+              )}
+              title={`${hidden ? "Show" : "Hide"} ${tier.name} (${tierCounts[tier.id]} worlds)`}
+              aria-pressed={!hidden}
+            >
+              <span
+                className={cn("inline-block w-2 h-2 rounded-full", hidden && "ring-1 ring-slate-500")}
+                style={{ background: TIER_COLORS[tier.id] || "#fff" }}
+              />
+              <span className="truncate max-w-[6rem]">{tier.name.replace(" World", "")}</span>
+              <span className="text-muted-foreground/70 tabular-nums">×{tierCounts[tier.id]}</span>
+              {hidden && <EyeOff className="w-2.5 h-2.5 text-muted-foreground/60" />}
+            </button>
+          );
+        })}
+        {hiddenTiers.size > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setHiddenTiers(new Set());
+              hiddenTiersRef.current = new Set();
+            }}
+            className="ml-1 px-1.5 py-0.5 rounded text-[0.55rem] text-cyan-200 hover:bg-cyan-500/20"
+            title="Show all tiers"
+          >
+            Show all
+          </button>
+        )}
       </div>
     </div>
   );

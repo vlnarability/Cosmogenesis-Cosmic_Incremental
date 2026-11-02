@@ -31,24 +31,15 @@ import { WorldVisualization3D, computeWorldDots, type WorldDot } from "./WorldVi
 //   • Quick access buttons to L2/L3/L4 tabs
 // ===========================================================================
 
-// Tier color palette — kept in this file so other consumers (e.g. World
-// Fusion row accents) can reference it. The actual color mapping used by
-// the 3D visualization lives in WorldVisualization3D.tsx where it is also
-// exported. The two definitions are kept in sync manually.
-const TIER_COLORS: Record<string, string> = {
-  "1": "#e2e8f0", "2": "#93c5fd", "3": "#60a5fa", "4": "#3b82f6", "5": "#818cf8",
-  "6": "#a78bfa", "7": "#c084fc", "8": "#e879f9", "9": "#f472b6", "10": "#fbbf24",
-  "ascendant": "#fde047", "greater_ascendant": "#fef08a", "celestial_core": "#e0f2fe", "void": "#1e1b4b",
-};
+// Tier color palette — re-exported from WorldVisualization3D so there's a
+// single source of truth. C1 polish round replaced the old indigo/blue
+// dominant palette with a cosmic one (silver → green → cyan → gold →
+// amber → magenta → crimson → emerald → violet → gold-core).
+export { TIER_COLORS } from "./WorldVisualization3D";
 
 // Re-export so external consumers that import from DivineEngineFullTab can
 // still reach the WorldDot type without changing their import path.
-export type { WorldDot };
-// Mark TIER_COLORS as intentionally retained for future use (e.g. accent
-// colors on the World Fusion rows once that styling lands). Without this
-// the no-unused-vars rule (currently off) would still not complain, but
-// the explicit annotation documents intent for future maintainers.
-void TIER_COLORS;
+export type { WorldDot } from "./WorldVisualization3D";
 
 // ===========================================================================
 // Main DivineEngineFullTab component

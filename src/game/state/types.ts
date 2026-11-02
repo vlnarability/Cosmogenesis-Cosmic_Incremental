@@ -457,6 +457,18 @@ export interface GameState {
   totalActions: number; // manual actions clicked across all runs
   totalSystemsBuilt: number; // systems built across all runs
   totalTechResearched: number; // techs researched across all runs
+  // F11 — Per-stage breakdown (lifetime, across all runs).
+  //   stageTimeTotals: seconds spent in each stage (accumulates in tick).
+  //   stageSystemsBuilt: systems built while in each stage (increments in buySystem).
+  //   stageTechsResearched: techs researched while in each stage (increments in buyTech).
+  //   stageRunTimes: per-stage time for the CURRENT run only (reset on prestige /
+  //     new run). Used for the "this run" column in the per-stage breakdown.
+  // All four records are keyed by StageId. The current stage is determined
+  // by `stageIndex` (STAGES[stageIndex].id).
+  stageTimeTotals: Record<StageId, number>;
+  stageSystemsBuilt: Record<StageId, number>;
+  stageTechsResearched: Record<StageId, number>;
+  stageRunTimes: Record<StageId, number>;
   upgrades: Record<string, number>;
   storyUnlocked: Record<string, boolean>;
   storyAcknowledged: Record<string, boolean>;

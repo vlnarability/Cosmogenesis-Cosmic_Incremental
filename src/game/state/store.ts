@@ -705,6 +705,12 @@ function initialMetaState(): Partial<GameState> {
     galacticWins: 0,
     stageClearCounts: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
     fastestCellClear: 0,
+    // F11 — per-stage breakdown records (all lifetime, except stageRunTimes
+    // which is per-current-run and resets on prestige). All keyed by StageId.
+    stageTimeTotals: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+    stageSystemsBuilt: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+    stageTechsResearched: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
+    stageRunTimes: Object.fromEntries(STAGE_IDS.map((s) => [s, 0])) as Record<StageId, number>,
     totalEventsResolved: 0,
     totalPlayTime: 0,
     totalActions: 0,
@@ -3840,6 +3846,18 @@ export const useGameStore = create<GameStore>()(
           rareResources: (s as any).rareResources,
           treaties: s.treaties,
           totalPlayTime: (s.totalPlayTime || 0) + realDt,
+          // F11 — accumulate per-stage time (lifetime + current-run).
+          // The current stage is determined by stageIndex. We add realDt
+          // to BOTH the lifetime stageTimeTotals[curStageId] and the
+          // per-run stageRunTimes[curStageId].
+          stageTimeTotals: {
+            ...(s.stageTimeTotals || {}),
+            [STAGES[s.stageIndex].id]: ((s.stageTimeTotals?.[STAGES[s.stageIndex].id] as number) || 0) + realDt,
+          },
+          stageRunTimes: {
+            ...(s.stageRunTimes || {}),
+            [STAGES[s.stageIndex].id]: ((s.stageRunTimes?.[STAGES[s.stageIndex].id] as number) || 0) + realDt,
+          },
           // Layer 2-6 currency + state
           divinity,
           faith,
@@ -4221,6 +4239,11 @@ export const useGameStore = create<GameStore>()(
           storyUnlocked: newStory,
           activeStoryPopup: activePopup,
           totalSystemsBuilt: (s.totalSystemsBuilt || 0) + bought,
+          // F11 — increment the current stage's lifetime systems-built counter.
+          stageSystemsBuilt: {
+            ...(s.stageSystemsBuilt || {}),
+            [STAGES[s.stageIndex].id]: ((s.stageSystemsBuilt?.[STAGES[s.stageIndex].id] as number) || 0) + bought,
+          },
           ...(nucleusChoiceUpdate || {}),
           ...(legacySystemsUpdate || {}),
         });
@@ -4437,6 +4460,11 @@ export const useGameStore = create<GameStore>()(
           technologies,
           archetypeAffinity,
           totalTechResearched: (s.totalTechResearched || 0) + 1,
+          // F11 — increment the current stage's lifetime techs-researched counter.
+          stageTechsResearched: {
+            ...(s.stageTechsResearched || {}),
+            [STAGES[s.stageIndex].id]: ((s.stageTechsResearched?.[STAGES[s.stageIndex].id] as number) || 0) + 1,
+          },
           achievementMeta: {
             ...s.achievementMeta,
             ...( _isCrossStage ? { crossStageTechsResearched: ((s.achievementMeta?.crossStageTechsResearched as number) || 0) + 1 } : {}),
@@ -5154,6 +5182,12 @@ export const useGameStore = create<GameStore>()(
           totalActions: s.totalActions,
           totalSystemsBuilt: s.totalSystemsBuilt,
           totalTechResearched: s.totalTechResearched,
+          // F11 — lifetime per-stage counters persist across prestiges;
+          // per-run stageRunTimes resets to all-zeros for the new run.
+          stageTimeTotals: s.stageTimeTotals || Object.fromEntries(STAGE_IDS.map((id) => [id, 0])),
+          stageSystemsBuilt: s.stageSystemsBuilt || Object.fromEntries(STAGE_IDS.map((id) => [id, 0])),
+          stageTechsResearched: s.stageTechsResearched || Object.fromEntries(STAGE_IDS.map((id) => [id, 0])),
+          stageRunTimes: Object.fromEntries(STAGE_IDS.map((id) => [id, 0])) as Record<StageId, number>,
           achievements: s.achievements,
           newAchievements: s.newAchievements,
           // Layer 1 — Challenges
@@ -9508,7 +9542,7 @@ export const useGameStore = create<GameStore>()(
         // ROUND F2 — use the slot-aware adapter so saves go to the correct slot.
         return slotLocalStorage;
       }),
-      version: 27,
+      version: 28,
       // PARTIALIZE-FILTER — only persist the fields that need to survive a
       // page reload. Transient fields (modal visibility, active raid, story
       // popup) are excluded — they should NOT reopen on reload. This reduces
@@ -10251,6 +10285,18 @@ export const useGameStore = create<GameStore>()(
               war: { level: "outpost", godId: null },
             };
           }
+        }
+
+        // V28-MIGRATION — F11 per-stage breakdown. Old saves (v27) don't
+        // have the four per-stage records. Default all to zero-keyed maps.
+        // The tick + buySystem + buyTech handlers start accumulating into
+        // them immediately on next play.
+        if (version < 28) {
+          const emptyStageMap = () => Object.fromEntries(STAGE_IDS.map((id) => [id, 0]));
+          if (!persisted.stageTimeTotals) persisted.stageTimeTotals = emptyStageMap();
+          if (!persisted.stageSystemsBuilt) persisted.stageSystemsBuilt = emptyStageMap();
+          if (!persisted.stageTechsResearched) persisted.stageTechsResearched = emptyStageMap();
+          if (!persisted.stageRunTimes) persisted.stageRunTimes = emptyStageMap();
         }
 
         return persisted;
