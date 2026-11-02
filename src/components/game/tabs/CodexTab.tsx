@@ -1,16 +1,17 @@
 "use client";
 
 import { useGameStore } from "@/game/state/store";
-import { STAGES } from "@/game/data/stages";
+import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { SYSTEMS } from "@/game/data/systems";
 import { TECHS } from "@/game/data/techs";
 import { UPGRADES } from "@/game/data/upgrades";
 import { ACHIEVEMENTS } from "@/game/data/achievements";
+import { RESOURCE_PROGRESSION } from "@/game/data/resourceProgression";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ScrollText, CheckCircle2, Lock, BarChart3 } from "lucide-react";
-import { formatTime, formatNumber } from "../shared/format";
+import { ScrollText, CheckCircle2, Lock, BarChart3, Layers, Check } from "lucide-react";
+import { formatTime, formatNumber, resourceName } from "../shared/format";
 
 export function CodexTab() {
   const stageClearCounts = useGameStore((s) => s.stageClearCounts);
@@ -29,6 +30,8 @@ export function CodexTab() {
   const totalEventsResolved = useGameStore((s) => s.totalEventsResolved || 0);
   const fastestCellClear = useGameStore((s) => s.fastestCellClear || 0);
   const archivedArchetypes = useGameStore((s) => s.archivedArchetypes || []);
+  const stageIndex = useGameStore((s) => s.stageIndex);
+  const stageIds = STAGE_IDS.slice(0, stageIndex + 1);
 
   const totalSystemsOwned = Object.values(ownedSystems).filter((c) => c > 0).length;
   const totalTechOwned = Object.keys(technologies).filter((k) => technologies[k]).length;
@@ -56,6 +59,34 @@ export function CodexTab() {
             <CodexStat label="Tech Researched (lifetime)" value={totalTechResearched} icon="🔬" />
             <CodexStat label="Shop Upgrades" value={`${totalUpgradesOwned}/${UPGRADES.length}`} icon="🛒" />
             <CodexStat label="Stages Cleared" value={Object.values(stageClearCounts).reduce((a, b) => a + b, 0)} icon="⏫" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* D4 — Resource Progression panel. Documents how resources replace
+          each other across stages (Wood→Production→Materials→Alloys). */}
+      <Card className="glass-panel">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Layers className="w-4 h-4 text-amber-400" />
+            Resource Progression
+          </CardTitle>
+          <CardDescription>How building materials evolve across stages. Old systems can be converted to produce the new resource for 25% cost.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {RESOURCE_PROGRESSION.map((link) => {
+              const reached = stageIds.includes(link.newStage as any);
+              return (
+                <div key={`${link.old}-${link.new}`} className={`flex items-center gap-2 text-xs ${reached ? "" : "opacity-40"}`}>
+                  <span className="font-mono text-muted-foreground">{resourceName(link.old)}</span>
+                  <span className="text-amber-400">→</span>
+                  <span className="font-mono font-semibold text-foreground">{resourceName(link.new)}</span>
+                  <span className="text-muted-foreground/60 ml-auto">{link.label}</span>
+                  {reached && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

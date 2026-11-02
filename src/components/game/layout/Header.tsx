@@ -1,6 +1,6 @@
 "use client";
 
-import { useGameStore } from "@/game/state/store";
+import { useGameStore, getCurrentSlot } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { useActiveLayer, layerName } from "@/game/state/layerHelpers";
 import { useActiveDimension } from "@/game/state/useDimension";
@@ -315,6 +315,15 @@ export function Header() {
               )}
             </button>
           )}
+          {/* F2 — Save slot indicator. Small badge so the player knows which
+              slot they're in during gameplay. Reads getCurrentSlot() once on
+              mount (the slot doesn't change mid-session). */}
+          <span
+            className="text-[0.55rem] font-mono uppercase tracking-wide text-muted-foreground/50 px-1.5 py-0.5 rounded border border-border/30 hidden sm:inline"
+            title={`Save Slot ${getCurrentSlot()}`}
+          >
+            S{getCurrentSlot()}
+          </span>
           {/* Pause toggle */}
           <Button
             variant="ghost"

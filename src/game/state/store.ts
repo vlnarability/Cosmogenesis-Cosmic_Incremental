@@ -4264,7 +4264,10 @@ export const useGameStore = create<GameStore>()(
         if (ownedSystems[oldSystemId] <= 0) delete legacySystems[oldSystemId];
         // Enable the new system (in case it was disabled).
         const systemEnabled = { ...s.systemEnabled, [newSys.id]: true };
-        set({ resources, ownedSystems, legacySystems, systemEnabled });
+        set({
+          resources, ownedSystems, legacySystems, systemEnabled,
+          achievementMeta: { ...s.achievementMeta, legacyConversions: ((s.achievementMeta?.legacyConversions as number) || 0) + convertQty },
+        });
         get().addToLog(`Converted ${convertQty}× ${oldSys.name} → ${newSys.name} (25% cost).`);
       },
 
@@ -4409,11 +4412,19 @@ export const useGameStore = create<GameStore>()(
           archetypeAffinity[tech.grantsAffinity.archetype] =
             (archetypeAffinity[tech.grantsAffinity.archetype] || 0) + tech.grantsAffinity.amount;
         }
+        // ROUND D3-F — increment crossStageTechsResearched if the tech is from
+        // a stage AHEAD of the current stage (drives the "Tree Explorer" ach).
+        const _techStageIdx = STAGE_IDS.indexOf(tech.stage as any);
+        const _isCrossStage = _techStageIdx > s.stageIndex;
         set({
           resources: res,
           technologies,
           archetypeAffinity,
           totalTechResearched: (s.totalTechResearched || 0) + 1,
+          achievementMeta: {
+            ...s.achievementMeta,
+            ...( _isCrossStage ? { crossStageTechsResearched: ((s.achievementMeta?.crossStageTechsResearched as number) || 0) + 1 } : {}),
+          },
         });
         get().addToLog(`Researched ${tech.name}.`);
         // PART-1 — choice modal triggers. When the player researches one of
@@ -10256,6 +10267,11 @@ function buildAchievementCtx(s: GameState): AchievementCheckCtx {
     reliquaryRanksMaxed,
     treatiesSignedCount,
     maxTradeReputation,
+    // ROUND D-F — new achievement ctx fields.
+    crossStageTechsResearched: (meta.crossStageTechsResearched as number) || 0,
+    legacyConversions: (meta.legacyConversions as number) || 0,
+    caravanRoutesAssigned: Object.keys(s.caravanAssignments || {}).filter((k) => (s.caravanAssignments as any)[k] > 0).length,
+    alliedRivals: (s.rivals || []).filter((r: any) => r.state === "allied" && !r.hidden).length,
   };
 }
 

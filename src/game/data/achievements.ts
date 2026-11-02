@@ -201,6 +201,15 @@ export interface AchievementCheckCtx {
   treatiesSignedCount?: number;
   /** Highest reputation reached on any single trade partner (0..100). */
   maxTradeReputation?: number;
+  // ROUND D-F — new achievement ctx fields.
+  /** Lifetime count of techs researched from a stage AHEAD of the current stage. */
+  crossStageTechsResearched?: number;
+  /** Lifetime count of legacy system conversions (via convertLegacySystem). */
+  legacyConversions?: number;
+  /** Current count of trade routes with caravans assigned. */
+  caravanRoutesAssigned?: number;
+  /** Current count of allied rivals (paying tribute). */
+  alliedRivals?: number;
 }
 
 // ===========================================================================
@@ -1821,6 +1830,44 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     check: (c) => (c.maxTradeReputation || 0) >= 90,
     bonus: { type: "production", value: 0.02 },
     progress: (c) => ({ current: Math.min(c.maxTradeReputation || 0, 90), max: 90 }),
+  },
+  // ROUND D-F — achievements for the new tech tree + upgrade + caravan systems.
+  {
+    id: "milestone_tree_explorer",
+    name: "Tree Explorer",
+    desc: "Research a tech from a stage AHEAD of your current stage (via the tech tree).",
+    category: "milestones",
+    icon: "🌳",
+    check: (c) => (c.crossStageTechsResearched || 0) >= 1,
+    bonus: { type: "production", value: 0.01 },
+  },
+  {
+    id: "milestone_upgrade_master",
+    name: "Upgrade Master",
+    desc: "Convert 10 legacy systems to their upgrade successors.",
+    category: "milestones",
+    icon: "⬆️",
+    check: (c) => (c.legacyConversions || 0) >= 10,
+    bonus: { type: "production", value: 0.015 },
+    progress: (c) => ({ current: Math.min(c.legacyConversions || 0, 10), max: 10 }),
+  },
+  {
+    id: "milestone_caravan_baron",
+    name: "Caravan Baron",
+    desc: "Assign caravans to 3 different trade routes simultaneously.",
+    category: "milestones",
+    icon: "🐪",
+    check: (c) => (c.caravanRoutesAssigned || 0) >= 3,
+    bonus: { type: "production", value: 0.01 },
+  },
+  {
+    id: "milestone_tribute_collector",
+    name: "Tribute Collector",
+    desc: "Have 3 allied rivals paying tribute simultaneously.",
+    category: "milestones",
+    icon: "🤝",
+    check: (c) => (c.alliedRivals || 0) >= 3,
+    bonus: { type: "production", value: 0.01 },
   },
 
   // ========================================================================
