@@ -17,9 +17,13 @@ import {
   NEW_CONSTELLATION_PENALTY,
   CATEGORY_LABEL,
   CATEGORY_ACCENT,
+  CLUSTER_BOUNDS,
+  HEMISPHERE_CONSTELLATION_IDS,
+  HEMISPHERE_LABEL,
   type ConstellationState,
   type ConstellationCategory,
   type ConstellationDef,
+  type Hemisphere,
 } from "@/game/data/constellations";
 import {
   FORESIGHT_ROUTES,
@@ -291,6 +295,34 @@ export function EnlightenmentContent() {
     []
   );
 
+  // C2 — per-hemisphere completion counts + completion-ring geometry.
+  // HEMISPHERE_CONSTELLATION_IDS is a static map (north / south / ecliptic),
+  // so we count completed constellations per hemisphere from the runtime
+  // `constellationsCompleted` record. The completion ring draws an SVG arc
+  // proportional to `completedCount / CONSTELLATIONS_REQUIRED_FOR_LAYER_3`.
+  const hemisphereCounts = useMemo(() => {
+    const out: Record<Hemisphere, { completed: number; total: number }> = {
+      north: { completed: 0, total: 0 },
+      south: { completed: 0, total: 0 },
+      ecliptic: { completed: 0, total: 0 },
+    };
+    for (const hemi of ["north", "south", "ecliptic"] as Hemisphere[]) {
+      const ids = HEMISPHERE_CONSTELLATION_IDS[hemi];
+      out[hemi].total = ids.length;
+      out[hemi].completed = ids.filter((id) => constellationsCompleted[id]).length;
+    }
+    return out;
+  }, [constellationsCompleted]);
+
+  // Completion ring geometry — a 36×36 SVG with a 16-radius circle.
+  // circumference = 2 * PI * 16 ≈ 100.5 — close enough to 100 to read as
+  // "percent" directly. The arc is drawn via stroke-dasharray on a circle
+  // rotated -90° (so it starts at the top).
+  const ringRadius = 16;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringPct = Math.min(1, completedCount / CONSTELLATIONS_REQUIRED_FOR_LAYER_3);
+  const ringDash = ringCircumference * ringPct;
+
   // Foresight discount level (shop upgrade)
   const fdLvl = (upgrades?.foresight_discount as number) || 0;
   const foresightDiscountMult = Math.pow(0.80, fdLvl);
@@ -455,6 +487,122 @@ export function EnlightenmentContent() {
             backgroundSize: "100% 100%",
           }}
         />
+        {/* C2 — Hemisphere tint overlay. The top half is slightly cyan-tinted
+            (northern sky), the bottom half slightly purple-tinted (southern
+            sky). The ecliptic (zodiac + equatorial) straddles the equator and
+            shows the warm amber/emerald mix already in the cluster lines. The
+            tint is subtle (opacity ~0.06) so it doesn't compete with the
+            constellation colors. */}
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div
+            className="absolute left-0 right-0 top-0 h-1/2"
+            style={{
+              background: "linear-gradient(to bottom, rgba(34,211,238,0.07), rgba(34,211,238,0))",
+            }}
+          />
+          <div
+            className="absolute left-0 right-0 bottom-0 h-1/2"
+            style={{
+              background: "linear-gradient(to top, rgba(168,85,247,0.07), rgba(168,85,247,0))",
+            }}
+          />
+        </div>
+        {/* C2 — Equator line at y=50% + hemisphere labels (N/S). The equator
+            is a thin dashed cyan line spanning the full sky width. Hemisphere
+            labels are large monospace letters at the left edge of each
+            instance so they appear once per infinite-scroll copy. */}
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{ top: "50%", height: "1px" }}
+          aria-hidden
+        >
+          <div
+            className="w-full h-px"
+            style={{
+              background:
+                "repeating-linear-gradient(to right, rgba(34,211,238,0.45) 0, rgba(34,211,238,0.45) 8px, transparent 8px, transparent 16px)",
+            }}
+          />
+        </div>
+        {/* Hemisphere N / S labels — large monospace, very low opacity,
+            positioned at the left edge of each sky instance. */}
+        <span
+          className="absolute left-3 top-2 text-[2.5rem] font-mono font-bold text-cyan-400/15 select-none pointer-events-none leading-none"
+          aria-hidden
+        >
+          N
+        </span>
+        <span
+          className="absolute left-3 bottom-2 text-[2.5rem] font-mono font-bold text-violet-400/15 select-none pointer-events-none leading-none"
+          aria-hidden
+        >
+          S
+        </span>
+        {/* C2 — Cluster grouping: dashed bounding rect per category + the
+            category label at the cluster's center-top. Drawn as an SVG layer
+            (separate from the constellation connection lines below) so it
+            sits BEHIND the stars but ABOVE the hemisphere tint. */}
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width="100%"
+          height="100%"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden
+        >
+          {CLUSTER_BOUNDS.map((cb) => {
+            const accent = CATEGORY_ACCENT[cb.category];
+            const pad = 1.5;
+            const x = cb.minX - pad;
+            const y = cb.minY - pad;
+            const w = cb.maxX - cb.minX + pad * 2;
+            const h = cb.maxY - cb.minY + pad * 2;
+            return (
+              <g key={`${offset}-cluster-${cb.category}`}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={w}
+                  height={h}
+                  rx={1.5}
+                  ry={1.5}
+                  fill="none"
+                  stroke={accent}
+                  strokeWidth={0.12}
+                  strokeDasharray="0.8 1.2"
+                  opacity={0.35}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          })}
+        </svg>
+        {/* C2 — Cluster labels (HTML, not SVG — easier to style + stay readable
+            at any zoom). Positioned at the top-center of each cluster's
+            bounding box. Hidden when the cluster is small (width < 8%) to
+            avoid label crowding. */}
+        {CLUSTER_BOUNDS.map((cb) => {
+          const width = cb.maxX - cb.minX;
+          if (width < 8) return null;
+          const accent = CATEGORY_ACCENT[cb.category];
+          return (
+            <span
+              key={`${offset}-cluster-label-${cb.category}`}
+              className="absolute text-[0.6rem] font-mono uppercase tracking-[0.2em] select-none pointer-events-none whitespace-nowrap"
+              style={{
+                left: `${cb.cx}%`,
+                top: `${cb.minY - 2}%`,
+                transform: "translateX(-50%)",
+                color: accent,
+                opacity: 0.55,
+                textShadow: "0 0 6px rgba(0,0,0,0.8)",
+              }}
+              aria-hidden
+            >
+              {CATEGORY_LABEL[cb.category]}
+            </span>
+          );
+        })}
         {/* CONSTELLATION-REDESIGN-NOIRLAB — NOIRLab outline overlay.
             For each constellation that is COMPLETED (all stars lit), render
             the NOIRLab outline SVG as a subtle (opacity 0.25) overlay
@@ -508,7 +656,15 @@ export function EnlightenmentContent() {
             a normalized 0-100 viewBox so lines scale to any height.
             CONSTELLATION-REDESIGN-NOIRLAB: thicker stroke (0.30 completed /
             0.15 dim) and more opaque (1.0 / 0.45) so the constellation
-            pattern is clearly visible. */}
+            pattern is clearly visible.
+            C2 UPGRADE — three distinct line styles based on constellation
+            state:
+              • Completed: solid accent line + glow filter + endpoint dots.
+              • Started (in progress): dashed accent line (stroke-dasharray).
+              • Unstarted/dim: very faint slate line (just visible enough to
+                hint at the pattern).
+            Plus a glow filter on completed constellations so they read as
+            "illuminated" against the dark sky. */}
         <svg
           className="absolute inset-0 pointer-events-none"
           width="100%"
@@ -517,29 +673,76 @@ export function EnlightenmentContent() {
           preserveAspectRatio="none"
           aria-hidden
         >
+          <defs>
+            {/* Glow filter — applied only to completed constellation lines
+                + endpoint dots. The filter is defined per-instance (each
+                sky copy gets its own) so SVG filter regions don't bleed
+                across the infinite-scroll instances. */}
+            <filter id={`c2-glow-${offset}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="0.6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
           {FLAT_CONNS.map((conn, i) => {
             const isCompleted = !!constellationsCompleted[conn.cId];
             const isStarted = !!constellationsStarted[conn.cId];
             const isRevealed = !!constellationRevealed[conn.cId];
-            const dim = !isStarted && !isRevealed;
-            const stroke = isCompleted
-              ? CATEGORY_ACCENT[conn.category]
-              : isStarted
-                ? `${CATEGORY_ACCENT[conn.category]}80`
-                : "#1e293b";
+            const accent = CATEGORY_ACCENT[conn.category];
+            // C2 — three distinct styles
+            let stroke: string;
+            let strokeWidth: number;
+            let strokeDasharray: string | undefined;
+            let opacity: number;
+            let filter: string | undefined;
+            if (isCompleted) {
+              stroke = accent;
+              strokeWidth = 0.35;
+              opacity = 1.0;
+              filter = `url(#c2-glow-${offset})`;
+            } else if (isStarted) {
+              stroke = `${accent}cc`;
+              strokeWidth = 0.25;
+              strokeDasharray = "1.2 0.8";
+              opacity = 0.95;
+            } else if (isRevealed) {
+              stroke = `${accent}99`;
+              strokeWidth = 0.18;
+              strokeDasharray = "0.6 1.0";
+              opacity = 0.7;
+            } else {
+              stroke = "#1e293b";
+              strokeWidth = 0.12;
+              opacity = 0.4;
+            }
             return (
-              <line
-                key={`${offset}-${conn.cId}-${conn.aId}-${conn.bId}-${i}`}
-                x1={conn.ax}
-                y1={conn.ay}
-                x2={conn.bx}
-                y2={conn.by}
-                stroke={stroke}
-                strokeWidth={isCompleted ? 0.3 : 0.15}
-                strokeLinecap="round"
-                opacity={dim ? 0.45 : 1.0}
-                vectorEffect="non-scaling-stroke"
-              />
+              <g key={`${offset}-${conn.cId}-${conn.aId}-${conn.bId}-${i}`}>
+                <line
+                  x1={conn.ax}
+                  y1={conn.ay}
+                  x2={conn.bx}
+                  y2={conn.by}
+                  stroke={stroke}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeLinecap="round"
+                  opacity={opacity}
+                  filter={filter}
+                  vectorEffect="non-scaling-stroke"
+                />
+                {/* C2 — endpoint dots on completed + started lines so the
+                    constellation pattern reads as a "star figure" rather
+                    than a sparse line mesh. Small accent-colored circles
+                    at both endpoints. */}
+                {(isCompleted || isStarted) && (
+                  <>
+                    <circle cx={conn.ax} cy={conn.ay} r={isCompleted ? 0.35 : 0.22} fill={accent} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
+                    <circle cx={conn.bx} cy={conn.by} r={isCompleted ? 0.35 : 0.22} fill={accent} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
+                  </>
+                )}
+              </g>
             );
           })}
         </svg>
@@ -1168,6 +1371,48 @@ export function EnlightenmentContent() {
                 ))}
               </div>
 
+              {/* C2 — Completion ring (top-right corner). A circular SVG arc
+                  showing % of CONSTELLATIONS_REQUIRED_FOR_LAYER_3 completed.
+                  Hidden on very narrow viewports (< 480px) to avoid
+                  overlapping the drag hint. */}
+              <div className="absolute top-2 right-24 hidden sm:flex items-center gap-2 rounded-md border border-violet-500/30 bg-slate-950/70 px-2 py-1 backdrop-blur pointer-events-none">
+                <svg width="36" height="36" viewBox="0 0 36 36" className="shrink-0">
+                  {/* Track */}
+                  <circle
+                    cx="18" cy="18" r={ringRadius}
+                    fill="none"
+                    stroke="rgba(148,163,184,0.2)"
+                    strokeWidth="3"
+                  />
+                  {/* Progress arc — rotate -90° so the start is at the top. */}
+                  <circle
+                    cx="18" cy="18" r={ringRadius}
+                    fill="none"
+                    stroke={ringPct >= 1 ? "#10b981" : "#a855f7"}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={`${ringDash} ${ringCircumference}`}
+                    transform="rotate(-90 18 18)"
+                    style={{ transition: "stroke-dasharray 0.4s ease-out" }}
+                  />
+                  {/* Center percentage text */}
+                  <text
+                    x="18" y="18"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize="9"
+                    fill={ringPct >= 1 ? "#10b981" : "#e2e8f0"}
+                    className="font-mono font-bold tabular-nums"
+                  >
+                    {Math.round(ringPct * 100)}%
+                  </text>
+                </svg>
+                <div className="text-[0.55rem] text-violet-200/80 leading-tight">
+                  <div>{completedCount}/{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</div>
+                  <div className="text-muted-foreground">to L3</div>
+                </div>
+              </div>
+
               {/* Drag hint (top-right) */}
               <div className="absolute top-2 right-12 rounded-md border border-violet-500/30 bg-slate-950/70 px-2 py-1 text-[0.6rem] text-violet-200/80 backdrop-blur pointer-events-none">
                 drag ◀ ▶ to pan
@@ -1222,6 +1467,39 @@ export function EnlightenmentContent() {
                   ? "Transcendence unlocked!"
                   : `${CONSTELLATIONS_REQUIRED_FOR_LAYER_3 - completedCount} more constellation(s) to advance`}
               </Badge>
+
+              {/* C2 — Per-hemisphere completion bars. Three mini progress bars
+                  (north / ecliptic / south) showing how many of each
+                  hemisphere's constellations are completed. The accent colors
+                  match the hemisphere tint on the map (cyan=north,
+                  amber/emerald=ecliptic, purple=south). */}
+              <div className="mt-3 pt-2 border-t border-border/40 space-y-1.5">
+                <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Hemisphere completion
+                </div>
+                {(["north", "ecliptic", "south"] as Hemisphere[]).map((hemi) => {
+                  const { completed, total } = hemisphereCounts[hemi];
+                  const pct = total > 0 ? (completed / total) * 100 : 0;
+                  const accent =
+                    hemi === "north" ? "#22d3ee" : hemi === "south" ? "#a855f7" : "#f59e0b";
+                  return (
+                    <div key={hemi} className="flex items-center gap-2 text-[0.65rem]">
+                      <span className="w-20 shrink-0 text-muted-foreground truncate">
+                        {HEMISPHERE_LABEL[hemi].replace(" Hemisphere", "").replace("Ecliptic (Zodiac + Equatorial)", "Ecliptic")}
+                      </span>
+                      <div className="flex-1 h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                        <div
+                          className="h-full transition-all"
+                          style={{ width: `${pct}%`, background: accent }}
+                        />
+                      </div>
+                      <span className="font-mono tabular-nums text-muted-foreground w-12 text-right">
+                        {completed}/{total}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* ===== STAR PURCHASE POPUP =====

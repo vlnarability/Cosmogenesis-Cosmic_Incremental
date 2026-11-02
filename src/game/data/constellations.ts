@@ -2240,3 +2240,88 @@ export const CATEGORY_ACCENT: Record<ConstellationCategory, string> = {
   southern: "#a855f7",   // purple
   equatorial: "#10b981",  // emerald
 };
+
+// ---------------------------------------------------------------------------
+// C2 — HEMISPHERE + CLUSTER HELPERS
+//
+// The sky is conceptually split into a northern hemisphere (top half, y < 50)
+// + southern hemisphere (bottom half, y > 50). Constellations are categorized
+// by `category` (zodiac/northern/equatorial/southern) which roughly maps to
+// their IAU sky region. We precompute:
+//
+//   • HEMISPHERE_FOR_CATEGORY — which hemisphere each category belongs to
+//     ("north" | "south" | "ecliptic" for zodiac which straddles the equator).
+//
+//   • CLUSTER_BOUNDS — a single bounding box per category covering ALL of
+//     that category's constellations. Used to draw the dashed cluster outline
+//     on the star map + position the category label.
+//
+//   • HEMISPHERE_CONSTELLATION_IDS — list of constellation ids per hemisphere
+//     for the per-hemisphere completion progress bars.
+// ---------------------------------------------------------------------------
+
+export type Hemisphere = "north" | "south" | "ecliptic";
+
+export const HEMISPHERE_FOR_CATEGORY: Record<ConstellationCategory, Hemisphere> = {
+  northern: "north",
+  southern: "south",
+  equatorial: "ecliptic",
+  zodiac: "ecliptic", // zodiac straddles the ecliptic (roughly the equator)
+};
+
+export interface ClusterBounds {
+  category: ConstellationCategory;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  /** Center coordinates (used for the cluster label position). */
+  cx: number;
+  cy: number;
+  /** Number of constellations in this cluster. */
+  count: number;
+}
+
+function computeClusterBounds(): ClusterBounds[] {
+  const out: ClusterBounds[] = [];
+  const cats: ConstellationCategory[] = ["zodiac", "northern", "equatorial", "southern"];
+  for (const cat of cats) {
+    const stars: ConstellationStar[] = [];
+    let count = 0;
+    for (const c of CONSTELLATIONS) {
+      if (c.category !== cat) continue;
+      count++;
+      stars.push(...c.stars);
+    }
+    if (stars.length === 0) continue;
+    const xs = stars.map((s) => s.x);
+    const ys = stars.map((s) => s.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    out.push({
+      category: cat,
+      minX, maxX, minY, maxY,
+      cx: (minX + maxX) / 2,
+      cy: (minY + maxY) / 2,
+      count,
+    });
+  }
+  return out;
+}
+
+export const CLUSTER_BOUNDS: ClusterBounds[] = computeClusterBounds();
+
+/** Constellation ids grouped by hemisphere (north / south / ecliptic). */
+export const HEMISPHERE_CONSTELLATION_IDS: Record<Hemisphere, string[]> = {
+  north: CONSTELLATIONS.filter((c) => HEMISPHERE_FOR_CATEGORY[c.category] === "north").map((c) => c.id),
+  south: CONSTELLATIONS.filter((c) => HEMISPHERE_FOR_CATEGORY[c.category] === "south").map((c) => c.id),
+  ecliptic: CONSTELLATIONS.filter((c) => HEMISPHERE_FOR_CATEGORY[c.category] === "ecliptic").map((c) => c.id),
+};
+
+export const HEMISPHERE_LABEL: Record<Hemisphere, string> = {
+  north: "Northern Hemisphere",
+  south: "Southern Hemisphere",
+  ecliptic: "Ecliptic (Zodiac + Equatorial)",
+};

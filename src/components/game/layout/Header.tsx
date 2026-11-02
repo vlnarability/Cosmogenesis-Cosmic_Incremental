@@ -47,6 +47,7 @@ import {
   BookOpen,
   AlertTriangle,
   BarChart3,
+  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
@@ -550,6 +551,15 @@ export function Header() {
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 <span>Statistics</span>
+              </DropdownMenuItem>
+              {/* F12 — Hardmode leaderboard. Local-storage-based fastest
+                  clear records per stage. Online sync is a planned follow-up. */}
+              <DropdownMenuItem
+                onClick={() => openInfoModal("leaderboard")}
+                className="cursor-pointer text-xs"
+              >
+                <Timer className="w-3.5 h-3.5" />
+                <span>Leaderboard</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {/* Settings */}

@@ -23,9 +23,10 @@ import { AchievementsTab } from "../tabs/AchievementsTab";
 import { ArchiveTab } from "../tabs/ArchiveTab";
 import { LogTab } from "../tabs/LogTab";
 import { StatsTab } from "../tabs/StatsTab";
+import { LeaderboardTab } from "../tabs/LeaderboardTab";
 import { PrestigeTab } from "../tabs/PrestigeTab";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ListTree, Archive as ArchiveIcon, ScrollText, Trophy, BarChart3 } from "lucide-react";
+import { ListTree, Archive as ArchiveIcon, ScrollText, Trophy, BarChart3, Timer } from "lucide-react";
 
 // LAZY-LOAD modals — these are only rendered when their `show*` flag is true.
 // This dramatically reduces initial bundle size + memory usage (the OOM killer
@@ -112,7 +113,7 @@ import { cn } from "@/lib/utils";
 // gear dropdown.
 // ============================================================
 const INFO_MODAL_META: Record<
-  "log" | "archive" | "codex" | "achievements" | "stats",
+  "log" | "archive" | "codex" | "achievements" | "stats" | "leaderboard",
   { title: string; description: string; icon: React.ReactNode }
 > = {
   log: {
@@ -139,6 +140,11 @@ const INFO_MODAL_META: Record<
     title: "Statistics",
     description: "Run + lifetime progress overview.",
     icon: <BarChart3 className="w-4 h-4" />,
+  },
+  leaderboard: {
+    title: "Hardmode Leaderboard",
+    description: "Fastest stage clears across your hardmode runs.",
+    icon: <Timer className="w-4 h-4" />,
   },
 };
 
@@ -179,6 +185,7 @@ function InfoModal() {
           {activeInfoModal === "codex" && <CodexTab />}
           {activeInfoModal === "achievements" && <AchievementsTab />}
           {activeInfoModal === "stats" && <StatsTab />}
+          {activeInfoModal === "leaderboard" && <LeaderboardTab />}
         </div>
       </DialogContent>
     </Dialog>

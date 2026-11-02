@@ -5,6 +5,10 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type { GameState, GameStore, StageId, TabId } from "./types";
 import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES } from "../data/resources";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
+import {
+  addHardmodeClearRecord,
+  configureLeaderboardSlotLookup,
+} from "../data/hardmodeLeaderboard";
 import { ACTION_MAP } from "../data/actions";
 import { SYSTEMS, SYSTEM_MAP, systemCost, systemsForStage } from "../data/systems";
 import { TECH_MAP, TECHS, techsForStage } from "../data/techs";
@@ -340,6 +344,12 @@ export function setCurrentSlot(slot: number): void {
   if (slot < 1 || slot > NUM_SLOTS) return;
   window.localStorage.setItem(SLOT_KEY, String(slot));
 }
+
+// F12 — wire the hardmode leaderboard's slot lookup so it reads from the
+// same slot-tracking key as the main persist storage. This is called once
+// at module init (safe to call repeatedly — it just overwrites the
+// function reference).
+configureLeaderboardSlotLookup(getCurrentSlot);
 
 /** Read save info (stage name + layer) for a slot, or null if empty. */
 export function readSlotInfo(slot: number): { stageName: string; layerName: string | null; totalRuns: number } | null {
@@ -4770,6 +4780,34 @@ export const useGameStore = create<GameStore>()(
         }
 
         const stageClearCounts = { ...s.stageClearCounts, [stage.id]: (s.stageClearCounts[stage.id] || 0) + 1 };
+
+        // F12 — Record this stage clear to the hardmode leaderboard IF the
+        // run is in hardmode. We capture the per-stage run-time from
+        // `stageRunTimes[stage.id]` (the in-game seconds spent in this stage
+        // this run, accumulated by the tick). Real-time is approximated via
+        // Date.now() diff from the run start — the store doesn't track wall-
+        // clock run start precisely, so we fall back to clearTimeSec.
+        if (s.difficultyMode === "hard") {
+          try {
+            const stageRunTime = (s.stageRunTimes?.[stage.id] as number) || s.time || 0;
+            addHardmodeClearRecord({
+              stageId: stage.id,
+              stageName: stage.name,
+              clearTimeSec: stageRunTime,
+              realTimeSec: stageRunTime, // no separate wall-clock tracker; same as game-time
+              runTimestamp: Date.now(),
+              runNumber: (s.totalRuns || 0) + 1,
+              nucleusChoice: s.nucleusChoice ?? null,
+              ascensionPath: s.ascensionChoice ?? null,
+              government: s.activeGovernment ?? null,
+              totalSystemsBuilt: s.totalSystemsBuilt || 0,
+              totalTechsResearched: s.totalTechResearched || 0,
+            });
+          } catch {
+            // Leaderboard is non-critical — never let a storage failure
+            // break the evolve flow.
+          }
+        }
 
         // Auto-switch active stage theme if the player was on the previous stage's theme.
         // (Respects player's manual selection if they had a different theme active.)
