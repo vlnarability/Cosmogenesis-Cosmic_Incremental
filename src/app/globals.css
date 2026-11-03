@@ -2086,3 +2086,35 @@ h1, h2, h3 {
   .action-pulse { animation: none; display: none; }
 }
 .reduce-motion .action-pulse { animation: none; display: none; }
+
+/* ============================================================
+   STYLING — Tooltip design consistency + system card hierarchy
+   ============================================================ */
+
+/* Unified tooltip content — applies to all HoverCard/Popover content.
+   Shared border + background + shadow so tooltips feel consistent
+   across resource chips, system cards, and tech cards. */
+.cosmo-tooltip {
+  border: 1px solid oklch(0.30 0.02 260 / 0.5);
+  background: oklch(0.12 0.02 260 / 0.95);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: 0.5rem;
+}
+
+/* System card visual hierarchy — subtle accent on the icon container.
+   NOT a drop-shadow glow (that feels generic AI). Instead, a faint
+   inner ring on the icon box + slightly larger icon size. The effect
+   is "stamped" rather than "glowing" — matching the project's
+   restrained cosmic aesthetic. */
+.system-card-icon {
+  position: relative;
+}
+.system-card-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px oklch(0.35 0.02 260 / 0.3);
+  pointer-events: none;
+}

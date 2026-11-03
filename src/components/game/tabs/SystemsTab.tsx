@@ -493,7 +493,7 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2 min-w-0">
-            <div className="text-2xl shrink-0">{sys.icon}</div>
+            <div className="system-card-icon text-2xl shrink-0 w-10 h-10 flex items-center justify-center rounded-md">{sys.icon}</div>
             <div className="min-w-0">
               <CardTitle className="text-sm leading-tight">{sys.name}</CardTitle>
               <CardDescription className="text-xs mt-0.5 leading-snug">{sys.desc}</CardDescription>

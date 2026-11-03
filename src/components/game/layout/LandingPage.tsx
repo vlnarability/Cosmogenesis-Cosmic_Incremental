@@ -26,12 +26,36 @@
 
 import { useEffect, useState } from "react";
 import { STORAGE_KEY, useGameStore, getCurrentSlot, setCurrentSlot, readSlotInfo, NUM_SLOTS } from "@/game/state/store";
+import { Pencil, Check, X } from "lucide-react";
+
+// Slot names are stored separately in localStorage (not in the save data)
+// so renaming doesn't trigger a save re-serialization.
+const SLOT_NAMES_KEY = "cosmogenesis_slot_names";
+
+function readSlotNames(): Record<number, string> {
+  try {
+    if (typeof window === "undefined") return {};
+    const raw = localStorage.getItem(SLOT_NAMES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function writeSlotName(slot: number, name: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const names = readSlotNames();
+    if (name.trim()) names[slot] = name.trim().slice(0, 24);
+    else delete names[slot];
+    localStorage.setItem(SLOT_NAMES_KEY, JSON.stringify(names));
+  } catch { /* ignore */ }
+}
 
 export function LandingPage({ onDescend }: { onDescend: () => void }) {
-  // ROUND F2 — save slot picker. 3 slots, each showing save info or "Empty".
   const [selectedSlot, setSelectedSlot] = useState(1);
   const [slotInfos, setSlotInfos] = useState<(ReturnType<typeof readSlotInfo> | null)[]>([null, null, null]);
-  // ROUND E — hardmode toggle (only for fresh/empty slots).
+  const [slotNames, setSlotNames] = useState<Record<number, string>>({});
+  const [renamingSlot, setRenamingSlot] = useState<number | null>(null);
+  const [renameText, setRenameText] = useState("");
   const difficultyMode = useGameStore((s) => s.difficultyMode);
   const setDifficultyMode = useGameStore((s) => s.setDifficultyMode);
 
@@ -42,6 +66,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
       setSelectedSlot(current);
       const infos = Array.from({ length: NUM_SLOTS }, (_, i) => readSlotInfo(i + 1));
       setSlotInfos(infos);
+      setSlotNames(readSlotNames());
     });
   }, []);
 
@@ -52,6 +77,23 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const handleDescend = () => {
     setCurrentSlot(selectedSlot);
     onDescend();
+  };
+
+  const startRename = (slot: number) => {
+    setRenamingSlot(slot);
+    setRenameText(slotNames[slot] || "");
+  };
+  const confirmRename = () => {
+    if (renamingSlot !== null) {
+      writeSlotName(renamingSlot, renameText);
+      setSlotNames(readSlotNames());
+    }
+    setRenamingSlot(null);
+    setRenameText("");
+  };
+  const cancelRename = () => {
+    setRenamingSlot(null);
+    setRenameText("");
   };
 
   return (
@@ -122,11 +164,13 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
             {slotInfos.map((info, i) => {
               const slotNum = i + 1;
               const isSelected = selectedSlot === slotNum;
+              const slotName = slotNames[slotNum];
+              const isRenaming = renamingSlot === slotNum;
               return (
-                <button
+                <div
                   key={slotNum}
-                  onClick={() => setSelectedSlot(slotNum)}
-                  className={`text-left p-2 rounded border transition-all min-w-[100px] ${
+                  onClick={() => !isRenaming && setSelectedSlot(slotNum)}
+                  className={`text-left p-2 rounded border transition-all min-w-[120px] cursor-pointer relative ${
                     isSelected
                       ? "border-[#7dd3fc]/50 bg-[#7dd3fc]/5"
                       : "border-[#e8e2d4]/10 hover:border-[#e8e2d4]/25"
@@ -135,7 +179,53 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
                   <div className={`font-mono text-[0.55rem] uppercase tracking-wide ${isSelected ? "text-[#7dd3fc]" : "text-[#e8e2d4]/30"}`}>
                     Slot {slotNum}
                   </div>
-                  {info ? (
+                  {/* Custom slot name (if set) + rename UI */}
+                  {isRenaming ? (
+                    <div className="mt-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={renameText}
+                        onChange={(e) => setRenameText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") confirmRename();
+                          if (e.key === "Escape") cancelRename();
+                        }}
+                        autoFocus
+                        maxLength={24}
+                        placeholder="Name this slot…"
+                        className="flex-1 min-w-0 bg-[#060814] border border-[#7dd3fc]/40 rounded px-1.5 py-0.5 text-[0.65rem] text-[#e8e2d4] placeholder:text-[#e8e2d4]/30 focus:outline-none focus:border-[#7dd3fc]"
+                      />
+                      <button onClick={confirmRename} className="text-[#7dd3fc] hover:text-white shrink-0" title="Confirm">
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button onClick={cancelRename} className="text-[#e8e2d4]/40 hover:text-white shrink-0" title="Cancel">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {slotName && (
+                        <div className="text-[0.7rem] font-semibold text-[#e8e2d4]/80 mt-0.5 truncate">
+                          {slotName}
+                        </div>
+                      )}
+                      {info && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startRename(slotNum); }}
+                          className="absolute top-1 right-1 text-[#e8e2d4]/20 hover:text-[#7dd3fc] transition-colors"
+                          title="Rename slot"
+                          aria-label={`Rename slot ${slotNum}`}
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {!info ? (
+                    <div className="text-[0.65rem] text-[#e8e2d4]/25 italic mt-0.5">
+                      Empty
+                    </div>
+                  ) : !isRenaming ? (
                     <div className="mt-0.5">
                       <div className="text-xs text-[#e8e2d4]/70">
                         {info.stageName}
@@ -169,12 +259,8 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="text-[0.65rem] text-[#e8e2d4]/25 italic mt-0.5">
-                      Empty
-                    </div>
-                  )}
-                </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -229,7 +315,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           </span>
           {selectedHasSave ? (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/45">
-              {selectedInfo?.layerName || selectedInfo?.stageName || "· continue"}
+              {slotNames[selectedSlot] || selectedInfo?.layerName || selectedInfo?.stageName || "· continue"}
             </span>
           ) : (
             <span className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-[#e8e2d4]/30">

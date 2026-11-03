@@ -193,17 +193,17 @@ export function TabNav() {
         className="mobile-only sticky-footer glass-strong border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="flex items-center gap-1 py-1.5 px-1 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-0.5 py-2 px-1 overflow-x-auto no-scrollbar">
           {visibleMainTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setTab(tab.id)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-md text-[0.6rem] font-medium transition-colors min-w-[44px] min-h-[44px] justify-center shrink-0",
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-[0.65rem] font-medium transition-colors min-w-[56px] min-h-[52px] justify-center shrink-0",
                 currentTab === tab.id ? "text-foreground bg-muted/40" : "text-muted-foreground"
               )}
             >
-              <span className="w-5 h-5 flex items-center justify-center">
+              <span className="w-6 h-6 flex items-center justify-center">
                 {tab.icon}
               </span>
               {tab.label}
@@ -216,14 +216,14 @@ export function TabNav() {
               key={tab.id}
               onClick={() => openLayerModal(tab.layerId)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-md text-[0.6rem] font-medium transition-colors min-w-[44px] min-h-[44px] justify-center shrink-0",
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-[0.65rem] font-medium transition-colors min-w-[56px] min-h-[52px] justify-center shrink-0",
                 (currentTab === tab.id || activeLayerModal === tab.layerId)
                   ? "text-foreground bg-muted/40"
                   : "text-amber-400"
               )}
               title={tab.label}
             >
-              <span className="w-5 h-5 flex items-center justify-center">
+              <span className="w-6 h-6 flex items-center justify-center">
                 {tab.icon}
               </span>
               {tab.label}
