@@ -13,10 +13,6 @@ export function ActionsTab() {
   const stageIndex = useGameStore((s) => s.stageIndex);
   const stage = STAGES[stageIndex];
   const actions = actionsForStage(stage.id);
-  // GAME-FLOW — Action chain combo. Reads the combo counter from the store.
-  // Numbers are primitives, so Zustand compares by value (no infinite loop).
-  const combo = useGameStore((s) => s.actionCombo || 0);
-  const comboBonus = Math.min(50, combo * 2);
 
   return (
     <div className="space-y-4">
@@ -33,35 +29,11 @@ export function ActionsTab() {
       </Card>
 
       <Card className="glass-panel">
-        <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-sm">Manual Actions</CardTitle>
-            <CardDescription>
-              Click to gather. Chain clicks for a combo bonus.
-            </CardDescription>
-          </div>
-          {/* GAME-FLOW — Action chain combo indicator. Shows when combo > 0.
-              Displays the combo count + bonus %. The glow intensifies with
-              the combo level (amber at low, cyan at high). */}
-          {combo > 0 && (
-            <div className="flex items-center gap-2 shrink-0">
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-mono tabular-nums transition-all",
-                  combo >= 15
-                    ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-200"
-                    : combo >= 8
-                      ? "border-amber-400/50 bg-amber-500/15 text-amber-200"
-                      : "border-orange-400/40 bg-orange-500/10 text-orange-200"
-                )}
-                title={`Chain combo: ${combo} clicks in a row. Each level adds +2% production (max +50%). Resets after 1.5s of inactivity.`}
-              >
-                <span className="text-sm">⚡</span>
-                <span>×{combo}</span>
-                <span className="text-[0.6rem] opacity-70">+{comboBonus}%</span>
-              </div>
-            </div>
-          )}
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Manual Actions</CardTitle>
+          <CardDescription>
+            Click to gather. Actions that would only overflow a capped resource are disabled — no waste.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -311,7 +283,6 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
   const capacities = useGameStore((s) => s.capacities);
   const performAction = useGameStore((s) => s.performAction);
   const [floats, setFloats] = useState<FloatNum[]>([]);
-  const [pulseKey, setPulseKey] = useState(0);
   const floatId = useRef(0);
 
   const canAfford = !action.cost || Object.entries(action.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
@@ -321,7 +292,6 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
   const handleClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    setPulseKey((k) => k + 1);
     const newFloats: FloatNum[] = Object.entries(action.produces).map(([r, v], i) => {
       const id = floatId.current++;
       return {
@@ -343,19 +313,9 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
     <button
       onClick={handleClick}
       disabled={disabled}
-      className={cn("action-btn relative overflow-hidden", capped && "opacity-40")}
+      className={cn("action-btn relative overflow-visible", capped && "opacity-40")}
       title={capped ? "Output resource is at capacity — no waste" : action.desc}
     >
-      {/* Click-feedback radial sweep — plays once on each click. A
-          conic-gradient ring expands from center + fades, giving
-          organic click feedback (like a pulse from a star core). */}
-      {pulseKey > 0 && (
-        <span
-          key={pulseKey}
-          className="action-pulse"
-          aria-hidden
-        />
-      )}
       {/* Floating numbers */}
       {floats.map((f) => (
         <span

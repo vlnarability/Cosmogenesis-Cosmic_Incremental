@@ -674,13 +674,6 @@ export interface GameState {
   resourceRateHistory: Record<string, number[]>;
   /** F5 — Accumulator for the 1s rate-history sampling in the tick. */
   _rateSampleTimer: number;
-  /** GAME-FLOW — Action chain combo counter. Increments on each manual
-   *  action click (if within 1.5s of the previous). Each combo level gives
-   *  +2% production bonus (capped at +50% = 25 combo). Resets when 1.5s
-   *  passes without a click. Transient — not persisted. */
-  actionCombo: number;
-  /** GAME-FLOW — Accumulator for the combo decay timer in the tick. */
-  _comboDecayTimer: number;
   /** Resource alert thresholds — per-resource percentage (0-100) below
    *  which an alert fires. 0 = no alert. Stored per-resource-id.
    *  Persists across reloads (player preference, like autoBuyerSettings). */

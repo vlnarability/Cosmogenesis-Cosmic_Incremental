@@ -1247,13 +1247,13 @@ export const SYSTEMS: SystemDef[] = [
   {
     id: "hunting_lodge",
     name: "Hunting Lodge",
-    desc: "Where the pack stages hunts and butchers kills.",
+    desc: "Where the pack stages hunts and butchers kills. Hunters also defend the pack.",
     stage: "creature",
     icon: "🏹",
     category: "Food",
     baseCost: { food: 12, materials: 5 },
     costGrowth: 1.22,
-    produces: { food: 0.8, organic_matter: 0.3 },
+    produces: { food: 0.8, organic_matter: 0.3, military_power: 0.1 },
   },
   {
     id: "nest",

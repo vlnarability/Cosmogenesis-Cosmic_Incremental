@@ -23,7 +23,6 @@ export function StagePanel() {
   const ownedSystems = useGameStore((s) => s.ownedSystems);
   const technologies = useGameStore((s) => s.technologies);
   const setShowEvolve = useGameStore((s) => s.setShowEvolve);
-  const evolveStage = useGameStore((s) => s.evolveStage);
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
@@ -409,17 +408,6 @@ export function StagePanel() {
           <p className="text-xs text-emerald-400 mt-1 text-center font-semibold animate-pulse">
             ✓ Ready to evolve
           </p>
-          {/* Auto-evolve shortcut — one-click evolve without opening the
-              confirmation modal. For players who know what they're doing
-              and want to evolve quickly. */}
-          <button
-            type="button"
-            onClick={() => evolveStage()}
-            className="block mx-auto mt-1 text-[0.65rem] text-muted-foreground hover:text-emerald-300 underline decoration-dotted underline-offset-2 transition-colors"
-            title="Evolve immediately (skip confirmation)"
-          >
-            or evolve now →
-          </button>
           {/* Stage preview — shows what the next stage offers. Compact:
               icon + name + tagline + counts of new systems/techs. */}
           {stageIndex < STAGES.length - 1 && (() => {

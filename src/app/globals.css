@@ -2047,45 +2047,7 @@ h1, h2, h3 {
    Organic to the cosmic theme (like a pulse from a star core).
    ============================================================ */
 
-@keyframes action-pulse-sweep {
-  0% {
-    opacity: 0.6;
-    transform: scale(0.3);
-  }
-  60% {
-    opacity: 0.3;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.4);
-  }
-}
-
-.action-pulse {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 120%;
-  height: 120%;
-  transform: translate(-50%, -50%) scale(0.3);
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(34, 211, 238, 0.25) 90deg,
-    transparent 180deg,
-    rgba(34, 211, 238, 0.15) 270deg,
-    transparent 360deg
-  );
-  pointer-events: none;
-  z-index: 5;
-  animation: action-pulse-sweep 0.5s ease-out forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .action-pulse { animation: none; display: none; }
-}
-.reduce-motion .action-pulse { animation: none; display: none; }
+/* REMOVED — combo system + action pulse were removed per user request. */
 
 /* ============================================================
    STYLING — Tooltip design consistency + system card hierarchy
