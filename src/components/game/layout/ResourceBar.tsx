@@ -16,6 +16,14 @@ import {
 } from "@/components/ui/hover-card";
 import { useMemo } from "react";
 
+// F5 — Module-level stable empty array for the rate-history selector
+// fallback. Returning a new `[]` from the selector each render would
+// cause an infinite re-render loop (Zustand sees a new reference →
+// re-render → selector returns another new `[]` → crash).
+const EMPTY_ARRAY: readonly number[] = Object.freeze([]);
+// F3 — Same pattern for the activeCosmetics selector fallback.
+const EMPTY_OBJECT: Record<string, string> = Object.freeze({});
+
 // ============================================================
 // ResourceBar — streamlined (P4)
 //
@@ -204,12 +212,19 @@ function ResourceChip({ id, value, capacity, breakdown }: {
   const showRate = netPositive || netNegative;
   // F3 — Cosmetics icon overrides. Reads the active cosmetics + looks up
   // the icon override for this resource. Falls back to the default icon.
-  const activeCosmetics = useGameStore((s) => s.activeCosmetics || {});
+  // Uses a stable EMPTY_OBJECT fallback to avoid the Zustand infinite-
+  // render-loop pitfall (same as EMPTY_ARRAY above).
+  const activeCosmetics = useGameStore((s) => s.activeCosmetics ?? EMPTY_OBJECT);
   const iconOverrides = useMemo(() => getActiveIconOverrides(activeCosmetics), [activeCosmetics]);
   const icon = iconOverrides[id] || resourceIcon(id);
   // F5 — Read the rate history for the sparkline. Only render when we have
   // at least 2 samples (otherwise the sparkline is a single point = no line).
-  const rateHistory = useGameStore((s) => s.resourceRateHistory?.[id] || []);
+  // IMPORTANT: use a module-level EMPTY_ARRAY constant for the fallback so
+  // the selector returns a STABLE reference when the history doesn't have
+  // this resource yet. Returning a new `[]` each render would trigger an
+  // infinite re-render loop (Zustand sees a new reference → re-render →
+  // selector returns another new `[]` → re-render → ...).
+  const rateHistory = useGameStore((s) => s.resourceRateHistory?.[id] ?? EMPTY_ARRAY);
   const hasSparkline = rateHistory.length >= 2;
   return (
     <HoverCard openDelay={200} closeDelay={150}>
