@@ -3,12 +3,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { GameState, GameStore, StageId, TabId } from "./types";
-import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES } from "../data/resources";
+import { emptyResources, emptyCapacities, RESOURCE_MAP, RESOURCES, STAGE_RESOURCES } from "../data/resources";
+import { computeResourceBreakdown } from "./resourceBreakdown";
 import { STAGES, STAGE_IDS, nextStage } from "../data/stages";
 import {
   addHardmodeClearRecord,
   configureLeaderboardSlotLookup,
 } from "../data/hardmodeLeaderboard";
+import { COSMETIC_MAP } from "../data/cosmetics";
 import { ACTION_MAP } from "../data/actions";
 import { SYSTEMS, SYSTEM_MAP, systemCost, systemsForStage } from "../data/systems";
 import { TECH_MAP, TECHS, techsForStage } from "../data/techs";
@@ -867,6 +869,19 @@ function initialMetaState(): Partial<GameState> {
     showSettings: false,
     // F13 — Save Export/Import modal (transient — excluded from partialize).
     showSaveTransfer: false,
+    // F3 — Cosmetics system state.
+    // showCosmetics is transient; aetherShards/ownedCosmetics/activeCosmetics
+    // persist across prestiges (meta state, like upgrades).
+    showCosmetics: false,
+    aetherShards: 0,
+    ownedCosmetics: {} as Record<string, boolean>,
+    activeCosmetics: {} as Record<string, string>,
+    // F4 — Keyboard shortcuts quick-reference overlay (transient).
+    showShortcuts: false,
+    // F5 — Resource rate history for sparklines (transient). Sampled every
+    // ~1s in the tick; capped at 60 entries per resource.
+    resourceRateHistory: {} as Record<string, number[]>,
+    _rateSampleTimer: 0,
     // PART-1 — choice modals. Fired when the corresponding prerequisite
     // tech is researched. Each modal shows 3 mutually-exclusive options;
     // player picks one, the chosen tech is auto-researched, others hidden.
@@ -935,6 +950,13 @@ function initialMetaState(): Partial<GameState> {
       preferredGovernment: null,
       preferredForesightRoute: null,
     },
+    // F2 — Named autobuyer presets (persists across prestiges).
+    autoBuyerPresets: {} as Record<string, {
+      systemTarget: string | null;
+      techTarget: string | null;
+      preferredGovernment: string | null;
+      preferredForesightRoute: string | null;
+    }>,
     // EVENT-CHAINS — scheduled follow-up events awaiting their fire time.
     // Empty at fresh-start; populated by resolveEvent() when a choice has
     // a `followUpEvent` field. The tick scans for due entries and either
@@ -3870,6 +3892,38 @@ export const useGameStore = create<GameStore>()(
             ...(s.stageRunTimes || {}),
             [STAGES[s.stageIndex].id]: ((s.stageRunTimes?.[STAGES[s.stageIndex].id] as number) || 0) + realDt,
           },
+          // F5 — Sample per-resource net rates every ~1s for sparklines.
+          // We accumulate dt in _rateSampleTimer; when it crosses 1s, we
+          // compute the net rate for each visible stage resource via
+          // computeResourceBreakdown + push to the history array (capped at 60).
+          // The history is transient — not persisted, not displayed until
+          // the first sample completes.
+          ...(() => {
+            const timer = (s._rateSampleTimer || 0) + realDt;
+            if (timer < 1.0) {
+              return { _rateSampleTimer: timer, resourceRateHistory: s.resourceRateHistory || {} };
+            }
+            // Sample: reset timer + compute breakdown + push net rates.
+            const stageResources = STAGE_RESOURCES[STAGES[s.stageIndex].id] || [];
+            const breakdown = computeResourceBreakdown({
+              ownedSystems: s.ownedSystems,
+              systemEnabled: s.systemEnabled,
+              technologies: s.technologies,
+              resources: s.resources,
+              capacities: s.capacities,
+              stageIndex: s.stageIndex,
+              tradeAgreements: s.tradeAgreements,
+              treaties: s.treaties,
+            } as never);
+            const history = { ...(s.resourceRateHistory || {}) };
+            for (const resId of stageResources) {
+              const net = breakdown[resId]?.net ?? 0;
+              const arr = (history[resId] || []).slice(-59); // keep last 59 + push new = 60
+              arr.push(net);
+              history[resId] = arr;
+            }
+            return { _rateSampleTimer: 0, resourceRateHistory: history };
+          })(),
           // Layer 2-6 currency + state
           divinity,
           faith,
@@ -4783,6 +4837,11 @@ export const useGameStore = create<GameStore>()(
 
         const stageClearCounts = { ...s.stageClearCounts, [stage.id]: (s.stageClearCounts[stage.id] || 0) + 1 };
 
+        // F3 — Grant 1 Aether Shard per stage cleared (the cosmetics currency).
+        // Capped at 99999 lifetime. These persist across prestiges so the
+        // player accumulates them slowly over many runs.
+        const aetherShards = Math.min(99999, (s.aetherShards || 0) + 1);
+
         // F12 — Record this stage clear to the hardmode leaderboard IF the
         // run is in hardmode. We capture the per-stage run-time from
         // `stageRunTimes[stage.id]` (the in-game seconds spent in this stage
@@ -4947,6 +5006,8 @@ export const useGameStore = create<GameStore>()(
           storyUnlocked: newStory,
           activeStoryPopup: nextStoryPopup,
           stageClearCounts,
+          // F3 — persist the granted Aether Shard.
+          aetherShards,
           fastestCellClear,
           lockedArchetype,
           revealedLineageArchetypes,
@@ -5200,6 +5261,10 @@ export const useGameStore = create<GameStore>()(
           storyAcknowledged: s.storyAcknowledged,
           unlockedLayers: s.unlockedLayers,
           stageClearCounts: s.stageClearCounts,
+          // F3 — cosmetics state persists across prestiges (meta state).
+          aetherShards: s.aetherShards || 0,
+          ownedCosmetics: s.ownedCosmetics || {},
+          activeCosmetics: s.activeCosmetics || {},
           // AUTOBUYER-SETTINGS — preferences persist across prestiges
           // (meta state; same as upgrades). The player picks once and forgets.
           autoBuyerSettings: s.autoBuyerSettings || {
@@ -5208,6 +5273,8 @@ export const useGameStore = create<GameStore>()(
             preferredGovernment: null,
             preferredForesightRoute: null,
           },
+          // F2 — autobuyer presets persist across prestiges (meta state).
+          autoBuyerPresets: s.autoBuyerPresets || {},
           // IDEA-8 — DIVINE PANTHEON persists across prestiges. Slots +
           // Avatars + Power Levels are permanent investments paid for
           // with the meta-currency Divinity (which itself persists). This
@@ -5486,6 +5553,45 @@ export const useGameStore = create<GameStore>()(
       setShowSettings: (v) => set({ showSettings: v }),
       // F13 — Save Export/Import modal visibility setter.
       setShowSaveTransfer: (v) => set({ showSaveTransfer: v }),
+      // F3 — Cosmetics system actions.
+      setShowCosmetics: (v) => set({ showCosmetics: v }),
+      // F4 — Keyboard shortcuts overlay actions.
+      setShowShortcuts: (v) => set({ showShortcuts: v }),
+      toggleShortcuts: () => set((s) => ({ showShortcuts: !s.showShortcuts })),
+      purchaseCosmetic: (cosmeticId) => {
+        const cos = COSMETIC_MAP[cosmeticId];
+        if (!cos) return false;
+        const s = get();
+        if (s.ownedCosmetics?.[cosmeticId]) return true; // already owned
+        const shards = s.aetherShards || 0;
+        if (shards < cos.cost) {
+          get().addToLog(`Not enough Aether Shards for ${cos.name} (need ${cos.cost}, have ${shards}).`);
+          return false;
+        }
+        set({
+          aetherShards: shards - cos.cost,
+          ownedCosmetics: { ...(s.ownedCosmetics || {}), [cosmeticId]: true },
+        });
+        get().addToLog(`Purchased ${cos.name}.`);
+        // Auto-equip on purchase.
+        get().equipCosmetic(cosmeticId);
+        return true;
+      },
+      equipCosmetic: (cosmeticId) => {
+        const cos = COSMETIC_MAP[cosmeticId];
+        if (!cos) return;
+        const s = get();
+        if (!s.ownedCosmetics?.[cosmeticId]) return;
+        set({
+          activeCosmetics: { ...(s.activeCosmetics || {}), [cos.category]: cosmeticId },
+        });
+      },
+      grantAetherShards: (amount) => {
+        if (amount <= 0) return;
+        const s = get();
+        const current = s.aetherShards || 0;
+        set({ aetherShards: Math.min(99999, current + amount) });
+      },
       setShowChallenges: (v) => set({ showChallenges: v }),
       // FIX-UI-TABS — Info modal opens Log/Archive/Codex/Awards as a
       // shared Dialog (called from the gear dropdown).
@@ -5870,6 +5976,36 @@ export const useGameStore = create<GameStore>()(
           ? `Preferred foresight route set: ${routeName} (auto-applied at L2+).`
           : "Preferred foresight route cleared (auto-pick at L2+)."
         );
+      },
+
+      // F2 — Autobuyer preset actions (save / load / delete).
+      saveAutoBuyerPreset: (name) => {
+        const s = get();
+        const cur = s.autoBuyerSettings || {
+          systemTarget: null, techTarget: null,
+          preferredGovernment: null, preferredForesightRoute: null,
+        };
+        set({
+          autoBuyerPresets: {
+            ...(s.autoBuyerPresets || {}),
+            [name]: { ...cur },
+          },
+        });
+        get().addToLog(`Autobuyer preset saved: "${name}".`);
+      },
+      loadAutoBuyerPreset: (name) => {
+        const s = get();
+        const preset = s.autoBuyerPresets?.[name];
+        if (!preset) return;
+        set({ autoBuyerSettings: { ...preset } });
+        get().addToLog(`Autobuyer preset loaded: "${name}".`);
+      },
+      deleteAutoBuyerPreset: (name) => {
+        const s = get();
+        const next = { ...(s.autoBuyerPresets || {}) };
+        delete next[name];
+        set({ autoBuyerPresets: next });
+        get().addToLog(`Autobuyer preset deleted: "${name}".`);
       },
 
       // ============ LAYER 3 — TRANSCENDENCE ============
@@ -9594,6 +9730,10 @@ export const useGameStore = create<GameStore>()(
         const {
           showShop, showEvolve, showSettings,
           showSaveTransfer, // F13 — transient (modal shouldn't reopen on reload)
+          showCosmetics, // F3 — transient (modal shouldn't reopen on reload)
+          showShortcuts, // F4 — transient (overlay shouldn't reopen on reload)
+          resourceRateHistory, // F5 — transient (sparkline history rebuilds quickly)
+          _rateSampleTimer, // F5 — transient
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
           researchingTech, // ROUND E — transient (research progress doesn't persist across reload)

@@ -26,6 +26,7 @@ export function useKeyboardShortcuts() {
   const setShowShop = useGameStore((s) => s.setShowShop);
   const setShowEvolve = useGameStore((s) => s.setShowEvolve);
   const setShowSettings = useGameStore((s) => s.setShowSettings);
+  const setShowShortcuts = useGameStore((s) => s.setShowShortcuts);
   const openLayerModal = useGameStore((s) => s.openLayerModal);
   const openInfoModal = useGameStore((s) => s.openInfoModal);
   const dismissStory = useGameStore((s) => s.dismissStory);
@@ -56,6 +57,15 @@ export function useKeyboardShortcuts() {
       // Helper: returns true if `key` matches the bind for the given action.
       const matches = (actionId: string) => binds[actionId] === key;
 
+      // F4 — "?" toggles the keyboard shortcuts quick-reference overlay.
+      // Works even when modals are open (so the player can check bindings
+      // while configuring autobuyer presets, etc.). Escape closes it (below).
+      if (key === "?" || (e.shiftKey && key === "/")) {
+        e.preventDefault();
+        setShowShortcuts(true);
+        return;
+      }
+
       // === close (Escape) — handled before the modal-blocking gate ===
       // Always fires (regardless of story/event active state).
       if (matches("close")) {
@@ -66,6 +76,7 @@ export function useKeyboardShortcuts() {
         setShowShop(false);
         setShowEvolve(false);
         setShowSettings(false);
+        setShowShortcuts(false);
         return;
       }
 

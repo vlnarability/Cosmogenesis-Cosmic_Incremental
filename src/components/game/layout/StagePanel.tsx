@@ -92,6 +92,17 @@ export function StagePanel() {
 
   return (
     <div className="glass-panel rounded-xl p-4 relative overflow-hidden">
+      {/* S1 — Stage accent strip on the left edge. A thin vertical bar in
+          the stage's accent color gives the panel a distinct visual identity
+          per stage (cyan for Cell, lime for Creature, orange for Tribal, etc.)
+          without being loud. */}
+      <div
+        className="absolute top-0 left-0 bottom-0 w-1 pointer-events-none"
+        style={{
+          background: `linear-gradient(to bottom, ${stage.accent}, ${stage.accent}40)`,
+        }}
+        aria-hidden
+      />
       {/* Accent corner mark — like a stamped seal */}
       <div
         className="absolute top-0 right-0 w-16 h-16 pointer-events-none"

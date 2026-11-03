@@ -5,6 +5,7 @@ import { STAGE_RESOURCES, RESOURCE_MAP } from "@/game/data/resources";
 import { STAGES, STAGE_IDS } from "@/game/data/stages";
 import { useActiveLayer, isLayerAtLeast } from "@/game/state/layerHelpers";
 import { computeResourceBreakdown, formatRate, type ResourceSource } from "@/game/state/resourceBreakdown";
+import { getActiveIconOverrides } from "@/game/data/cosmetics";
 import { formatNumber, formatCompact, resourceColor, resourceIcon, resourceName } from "../shared/format";
 import { useTweenNumber } from "../shared/useTweenNumber";
 import { cn } from "@/lib/utils";
@@ -201,6 +202,15 @@ function ResourceChip({ id, value, capacity, breakdown }: {
   // when something is actually flowing. (The tooltip still explains
   // per-system contributions on hover.)
   const showRate = netPositive || netNegative;
+  // F3 — Cosmetics icon overrides. Reads the active cosmetics + looks up
+  // the icon override for this resource. Falls back to the default icon.
+  const activeCosmetics = useGameStore((s) => s.activeCosmetics || {});
+  const iconOverrides = useMemo(() => getActiveIconOverrides(activeCosmetics), [activeCosmetics]);
+  const icon = iconOverrides[id] || resourceIcon(id);
+  // F5 — Read the rate history for the sparkline. Only render when we have
+  // at least 2 samples (otherwise the sparkline is a single point = no line).
+  const rateHistory = useGameStore((s) => s.resourceRateHistory?.[id] || []);
+  const hasSparkline = rateHistory.length >= 2;
   return (
     <HoverCard openDelay={200} closeDelay={150}>
       <HoverCardTrigger asChild>
@@ -211,7 +221,7 @@ function ResourceChip({ id, value, capacity, breakdown }: {
             low && "ring-1 ring-red-500/60"
           )}
         >
-          <span className="text-sm leading-none">{resourceIcon(id)}</span>
+          <span className="text-sm leading-none">{icon}</span>
           <span
             className="font-semibold tabular-nums text-xs"
             style={{ color: resourceColor(id) }}
@@ -247,6 +257,26 @@ function ResourceChip({ id, value, capacity, breakdown }: {
               style={{ width: `${Math.min(100, pct)}%` }}
             />
           </div>
+          {/* F5 — Mini sparkline showing the last 60s of net rate.
+              Rendered as a tiny SVG below the chip content, above the
+              progress bar. Only shows when we have ≥2 samples. The line
+              is colored by the current net direction (emerald=positive,
+              red=negative, muted=idle). Height is 8px so it doesn't
+              bloat the chip. */}
+          {hasSparkline && (
+            <svg
+              className="absolute bottom-0.5 left-0 right-0 h-2 pointer-events-none opacity-60"
+              viewBox="0 0 60 8"
+              preserveAspectRatio="none"
+              aria-hidden
+            >
+              <SparklinePath
+                values={rateHistory}
+                netPositive={netPositive}
+                netNegative={netNegative}
+              />
+            </svg>
+          )}
         </div>
       </HoverCardTrigger>
       {hasSources && (
@@ -364,5 +394,55 @@ function MetaPill({
       <span className={cn("font-semibold text-xs tabular-nums", color)}>{display}</span>
       <span className="text-[0.6rem] text-muted-foreground uppercase">{label}</span>
     </div>
+  );
+}
+
+// ============================================================
+// F5 — SparklinePath
+//
+// Renders a mini sparkline <path> from an array of net-rate samples.
+// The path is normalized to the viewBox (0 0 60 8): x = sample index
+// scaled to 60, y = rate normalized to [0, 8] with the zero-line at y=4.
+//
+// Color is driven by the current net direction (emerald=positive,
+// red=negative, muted=idle) — matches the rate text color.
+//
+// The path uses a simple line (no smoothing) so it reads as a data
+// trace, not a decorative curve. Stroke width is 1 (non-scaling via
+// vectorEffect) so it stays crisp at any size.
+// ============================================================
+function SparklinePath({
+  values,
+  netPositive,
+  netNegative,
+}: {
+  values: number[];
+  netPositive: boolean;
+  netNegative: boolean;
+}) {
+  if (values.length < 2) return null;
+  const n = values.length;
+  // Find the max absolute value for normalization.
+  const maxAbs = Math.max(0.01, ...values.map((v) => Math.abs(v)));
+  // Build the path: x = (i / (n-1)) * 60, y = 4 - (v / maxAbs) * 3.
+  // y=0 is top, y=8 is bottom. Zero-line at y=4. Positive values go up
+  // (y < 4), negative go down (y > 4).
+  const points = values.map((v, i) => {
+    const x = (i / (n - 1)) * 60;
+    const y = 4 - (v / maxAbs) * 3;
+    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const d = points.join(" ");
+  const stroke = netPositive ? "#34d399" : netNegative ? "#f87171" : "#94a3b8";
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke={stroke}
+      strokeWidth={1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      vectorEffect="non-scaling-stroke"
+    />
   );
 }

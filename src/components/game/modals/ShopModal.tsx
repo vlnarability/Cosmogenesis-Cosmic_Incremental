@@ -23,7 +23,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { Store, Lock, CheckCircle2, Sparkles, Layers, Star, Egg, Triangle, Circle, Atom, Church, Infinity as InfinityIcon, Settings2, ChevronDown } from "lucide-react";
+import { Store, Lock, CheckCircle2, Sparkles, Layers, Star, Egg, Triangle, Circle, Atom, Church, Infinity as InfinityIcon, Settings2, ChevronDown, Save, Trash2, Upload, BookmarkPlus } from "lucide-react";
 import { formatNumber } from "../shared/format";
 import { EmptyState } from "../shared/EmptyState";
 import { PurchaseErrorBanner } from "../shared/PurchaseErrorBanner";
@@ -120,6 +120,11 @@ export function ShopModal() {
   const setAutoBuyerTechTarget = useGameStore((s) => s.setAutoBuyerTechTarget);
   const setPreferredGovernment = useGameStore((s) => s.setPreferredGovernment);
   const setPreferredForesightRoute = useGameStore((s) => s.setPreferredForesightRoute);
+  // F2 — autobuyer presets (save/load/delete).
+  const autoBuyerPresets = useGameStore((s) => s.autoBuyerPresets || {});
+  const saveAutoBuyerPreset = useGameStore((s) => s.saveAutoBuyerPreset);
+  const loadAutoBuyerPreset = useGameStore((s) => s.loadAutoBuyerPreset);
+  const deleteAutoBuyerPreset = useGameStore((s) => s.deleteAutoBuyerPreset);
   const hasAutoSystemBuyer = (upgrades["auto_system_buyer"] || 0) > 0;
   const hasAutoTechBuyer = (upgrades["auto_tech_buyer"] || 0) > 0;
   const showAutobuyerSettings =
@@ -193,6 +198,10 @@ export function ShopModal() {
               setAutoBuyerTechTarget={setAutoBuyerTechTarget}
               setPreferredGovernment={setPreferredGovernment}
               setPreferredForesightRoute={setPreferredForesightRoute}
+              autoBuyerPresets={autoBuyerPresets}
+              saveAutoBuyerPreset={saveAutoBuyerPreset}
+              loadAutoBuyerPreset={loadAutoBuyerPreset}
+              deleteAutoBuyerPreset={deleteAutoBuyerPreset}
             />
           )}
           <FlatUpgradeList
@@ -274,6 +283,10 @@ export function ShopModal() {
                 setAutoBuyerTechTarget={setAutoBuyerTechTarget}
                 setPreferredGovernment={setPreferredGovernment}
                 setPreferredForesightRoute={setPreferredForesightRoute}
+                autoBuyerPresets={autoBuyerPresets}
+                saveAutoBuyerPreset={saveAutoBuyerPreset}
+                loadAutoBuyerPreset={loadAutoBuyerPreset}
+                deleteAutoBuyerPreset={deleteAutoBuyerPreset}
               />
             )}
 
@@ -517,6 +530,10 @@ function AutobuyerSettingsPanel({
   setAutoBuyerTechTarget,
   setPreferredGovernment,
   setPreferredForesightRoute,
+  autoBuyerPresets,
+  saveAutoBuyerPreset,
+  loadAutoBuyerPreset,
+  deleteAutoBuyerPreset,
 }: {
   autoBuyerSettings: {
     systemTarget: string | null;
@@ -530,6 +547,15 @@ function AutobuyerSettingsPanel({
   setAutoBuyerTechTarget: (id: string | null) => void;
   setPreferredGovernment: (id: string | null) => void;
   setPreferredForesightRoute: (id: string | null) => void;
+  autoBuyerPresets: Record<string, {
+    systemTarget: string | null;
+    techTarget: string | null;
+    preferredGovernment: string | null;
+    preferredForesightRoute: string | null;
+  }>;
+  saveAutoBuyerPreset: (name: string) => void;
+  loadAutoBuyerPreset: (name: string) => void;
+  deleteAutoBuyerPreset: (name: string) => void;
 }) {
   // shadcn Select treats empty string as the placeholder; we map
   // null → "__none__" so we can render a real "None" option for the
@@ -601,6 +627,16 @@ function AutobuyerSettingsPanel({
             emptyHint="No foresight routes available yet."
           />
         </div>
+
+        {/* F2 — Autobuyer Presets section. Lets the player save the current
+            targeting configuration as a named preset + load/delete later.
+            Presets persist across prestiges (meta state). */}
+        <AutobuyerPresetsSection
+          presets={autoBuyerPresets}
+          onSave={saveAutoBuyerPreset}
+          onLoad={loadAutoBuyerPreset}
+          onDelete={deleteAutoBuyerPreset}
+        />
       </CollapsibleContent>
     </Collapsible>
   );
@@ -649,6 +685,127 @@ function TargetingSelect({
       </Select>
       {disabled && disabledHint && (
         <div className="text-[0.6rem] text-muted-foreground italic">{disabledHint}</div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// F2 — AutobuyerPresetsSection
+//
+// A compact save/load/delete UI for named autobuyer targeting presets.
+// Lets the player snapshot the current targeting configuration + restore
+// it later without re-selecting 4 dropdowns. Presets persist across
+// prestiges (meta state) so players can switch between "predator build",
+// "builder build", etc. configurations instantly.
+//
+// Layout:
+//   [Name input] [Save button]
+//   [Preset list with Load + Delete buttons]
+//
+// Presets are keyed by name (string). Saving with an existing name
+// overwrites it. Names are trimmed + capped at 30 chars.
+// ============================================================
+function AutobuyerPresetsSection({
+  presets,
+  onSave,
+  onLoad,
+  onDelete,
+}: {
+  presets: Record<string, {
+    systemTarget: string | null;
+    techTarget: string | null;
+    preferredGovernment: string | null;
+    preferredForesightRoute: string | null;
+  }>;
+  onSave: (name: string) => void;
+  onLoad: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const [presetName, setPresetName] = useState("");
+  const presetEntries = Object.entries(presets);
+
+  const handleSave = () => {
+    const trimmed = presetName.trim();
+    if (!trimmed) return;
+    onSave(trimmed.slice(0, 30));
+    setPresetName("");
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/40">
+      <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1">
+        <BookmarkPlus className="w-3 h-3" />
+        Presets
+      </div>
+      {/* Save row */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <input
+          type="text"
+          value={presetName}
+          onChange={(e) => setPresetName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+          placeholder="Preset name…"
+          maxLength={30}
+          className="flex-1 min-w-0 h-7 px-2 rounded-md border border-border/40 bg-muted/20 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:border-cyan-500/40"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs shrink-0 border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/10"
+          onClick={handleSave}
+          disabled={!presetName.trim()}
+          title="Save the current targeting settings as a named preset"
+        >
+          <Save className="w-3 h-3 mr-0.5" /> Save
+        </Button>
+      </div>
+      {/* Preset list */}
+      {presetEntries.length === 0 ? (
+        <div className="text-[0.6rem] text-muted-foreground/60 italic">
+          No presets saved yet. Configure your targeting above, then save it as a preset to reuse later.
+        </div>
+      ) : (
+        <div className="space-y-1 max-h-32 overflow-y-auto">
+          {presetEntries.map(([name, config]) => (
+            <div
+              key={name}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border/30 bg-muted/10 hover:bg-muted/20 transition-colors"
+            >
+              <span className="text-[0.7rem] font-medium truncate flex-1">{name}</span>
+              {/* Config summary */}
+              <span className="text-[0.55rem] text-muted-foreground/70 tabular-nums shrink-0 hidden sm:inline">
+                {[
+                  config.systemTarget?.slice(0, 4) || "—",
+                  config.techTarget?.slice(0, 4) || "—",
+                  config.preferredGovernment?.slice(0, 4) || "—",
+                ].join("/")}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 w-5 p-0 text-cyan-300 hover:bg-cyan-500/20"
+                onClick={() => onLoad(name)}
+                title={`Load "${name}" preset`}
+                aria-label={`Load ${name} preset`}
+              >
+                <Upload className="w-3 h-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 w-5 p-0 text-rose-300 hover:bg-rose-500/20"
+                onClick={() => {
+                  if (confirm(`Delete preset "${name}"?`)) onDelete(name);
+                }}
+                title={`Delete "${name}" preset`}
+                aria-label={`Delete ${name} preset`}
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

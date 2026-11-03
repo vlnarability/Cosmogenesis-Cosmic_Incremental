@@ -663,6 +663,26 @@ export interface GameState {
   /** F13 — Save Export/Import modal visibility flag. Transient (excluded
    *  from persistence). Set via the gear dropdown → "Save Transfer". */
   showSaveTransfer: boolean;
+  /** F3 — Cosmetics modal visibility flag. Transient (excluded from
+   *  persistence). Set via the gear dropdown → "Cosmetics". */
+  showCosmetics: boolean;
+  /** F4 — Keyboard shortcuts quick-reference overlay visibility flag.
+   *  Transient. Toggled by pressing "?" (or via the gear dropdown). */
+  showShortcuts: boolean;
+  /** F5 — Per-resource net rate history (last 60 samples, ~1s each).
+   *  Transient (not persisted). Used by the ResourceBar sparklines. */
+  resourceRateHistory: Record<string, number[]>;
+  /** F5 — Accumulator for the 1s rate-history sampling in the tick. */
+  _rateSampleTimer: number;
+  /** F3 — Aether Shards: the cosmetics currency. Earned by prestiging
+   *  (1 per stage cleared this run, capped at 7) + by earning achievements
+   *  (1 per achievement, capped at 50 lifetime). Persists across prestiges. */
+  aetherShards: number;
+  /** F3 — Owned cosmetic ids → true. Persists across prestiges. */
+  ownedCosmetics: Record<string, boolean>;
+  /** F3 — Active cosmetic per category (category → cosmeticId). E.g.
+   *  { theme: "theme_emerald", particle: "particle_spark" }. Persists. */
+  activeCosmetics: Record<string, string>;
   /**
    * FIX-UI-TABS — Tab restructure. Log/Archive/Codex/Awards no longer
    * live on the main tab bar; they're accessed via the gear dropdown
@@ -924,6 +944,15 @@ export interface GameState {
     preferredGovernment: string | null; // overrides auto-pick at Empire stage
     preferredForesightRoute: string | null; // auto-applied at L2+
   };
+  /** F2 — Named autobuyer presets. Key = preset name, value = a snapshot
+   *  of autoBuyerSettings at save time. Persists across prestiges (meta
+   *  state). Lets players quickly switch between configurations. */
+  autoBuyerPresets: Record<string, {
+    systemTarget: string | null;
+    techTarget: string | null;
+    preferredGovernment: string | null;
+    preferredForesightRoute: string | null;
+  }>;
 
   // ===== EVENT-CHAINS — scheduled follow-up events =====
   // When a player resolves an event choice with a `followUpEvent` field,
@@ -1021,6 +1050,20 @@ export interface GameStore extends GameState {
   setShowSettings: (v: boolean) => void;
   /** F13 — Opens/closes the Save Export/Import modal. */
   setShowSaveTransfer: (v: boolean) => void;
+  /** F3 — Opens/closes the Cosmetics modal. */
+  setShowCosmetics: (v: boolean) => void;
+  /** F4 — Opens/closes the keyboard shortcuts quick-reference overlay. */
+  setShowShortcuts: (v: boolean) => void;
+  /** F4 — Toggles the shortcuts overlay (open ↔ closed). */
+  toggleShortcuts: () => void;
+  /** F3 — Purchase a cosmetic with Aether Shards. Returns true on success.
+   *  Auto-equips on purchase. */
+  purchaseCosmetic: (cosmeticId: string) => boolean;
+  /** F3 — Equip an owned cosmetic (sets it as active for its category). */
+  equipCosmetic: (cosmeticId: string) => void;
+  /** F3 — Grant Aether Shards (called on prestige + on achievement earn).
+   *  Capped at 999 lifetime. */
+  grantAetherShards: (amount: number) => void;
   setShowChallenges: (v: boolean) => void;
   /**
    * FIX-UI-TABS — Opens a shared InfoModal showing the target tab content
@@ -1356,6 +1399,13 @@ export interface GameStore extends GameState {
   setAutoBuyerTechTarget: (archetypeId: string | null) => void;
   setPreferredGovernment: (govId: string | null) => void;
   setPreferredForesightRoute: (routeId: string | null) => void;
+  /** F2 — Save the current autoBuyerSettings as a named preset. Overwrites
+   *  if the name already exists. */
+  saveAutoBuyerPreset: (name: string) => void;
+  /** F2 — Load a named preset into autoBuyerSettings. */
+  loadAutoBuyerPreset: (name: string) => void;
+  /** F2 — Delete a named preset. */
+  deleteAutoBuyerPreset: (name: string) => void;
   // IDEA-2: Set the active world archetype (null = no archetype)
   setWorldArchetype: (archetypeId: string | null) => void;
   // IDEA-5: Set an evolution slider value

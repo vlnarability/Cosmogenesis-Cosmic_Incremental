@@ -48,6 +48,8 @@ import {
   AlertTriangle,
   BarChart3,
   Timer,
+  Gem,
+  Keyboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
@@ -100,6 +102,11 @@ export function Header() {
   const saveGame = useGameStore((s) => s.saveGame);
   const setShowShop = useGameStore((s) => s.setShowShop);
   const setShowSettings = useGameStore((s) => s.setShowSettings);
+  // F3 — Cosmetics modal.
+  const setShowCosmetics = useGameStore((s) => s.setShowCosmetics);
+  const aetherShards = useGameStore((s) => s.aetherShards || 0);
+  // F4 — Shortcuts overlay.
+  const setShowShortcuts = useGameStore((s) => s.setShowShortcuts);
   // P6 — Modal Consolidation: layer buttons now call `openLayerModal(layerId)`
   // instead of the per-layer `setShow*` setters. The store action mirrors
   // the open state into the corresponding legacy `show*` flag for any code
@@ -562,6 +569,30 @@ export function Header() {
                 <span>Leaderboard</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {/* F3 — Cosmetics. Visual customization purchased with Aether
+                  Shards (earned by prestiging + achievements). */}
+              <DropdownMenuItem
+                onClick={() => setShowCosmetics(true)}
+                className="cursor-pointer text-xs"
+              >
+                <Gem className="w-3.5 h-3.5" />
+                <span>Cosmetics</span>
+                {aetherShards > 0 && (
+                  <Badge variant="outline" className="ml-auto text-[0.6rem] text-fuchsia-300 border-fuchsia-400/40">
+                    ◈ {Math.floor(aetherShards)}
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+              {/* F4 — Keyboard shortcuts quick-reference overlay. Also
+                  triggered by pressing "?" anywhere in the game. */}
+              <DropdownMenuItem
+                onClick={() => setShowShortcuts(true)}
+                className="cursor-pointer text-xs"
+              >
+                <Keyboard className="w-3.5 h-3.5" />
+                <span>Shortcuts</span>
+                <kbd className="ml-auto text-[0.55rem] font-mono px-1 py-0.5 rounded border border-border/60 bg-muted/30 text-muted-foreground">?</kbd>
+              </DropdownMenuItem>
               {/* Settings */}
               <DropdownMenuItem
                 onClick={() => setShowSettings(true)}

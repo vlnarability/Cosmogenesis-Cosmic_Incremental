@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
 import { useGameStore } from "@/game/state/store";
 import { useGameLoop } from "@/game/hooks/useGameLoop";
 import { useKeyboardShortcuts } from "@/game/hooks/useKeyboardShortcuts";
 import { STAGES } from "@/game/data/stages";
 import { THEME_MAP } from "@/game/data/themes";
+import { COSMETIC_MAP as COSMETIC_MAP_COSMETICS } from "@/game/data/cosmetics";
 import { Header } from "./Header";
 import { StagePanel } from "./StagePanel";
 import { DivineEnginePanel } from "./DivineEnginePanel";
@@ -50,6 +51,8 @@ const RaidRecapBanner = lazy(() => import("../modals/RaidRecapBanner").then(m =>
 const StoryPopup = lazy(() => import("../modals/StoryPopup").then(m => ({ default: m.StoryPopup })));
 const AchievementToast = lazy(() => import("../modals/AchievementToast").then(m => ({ default: m.AchievementToast })));
 const SettingsModal = lazy(() => import("../modals/SettingsModal").then(m => ({ default: m.SettingsModal })));
+const CosmeticsModal = lazy(() => import("../modals/CosmeticsModal").then(m => ({ default: m.CosmeticsModal })));
+const ShortcutsOverlay = lazy(() => import("../modals/ShortcutsOverlay").then(m => ({ default: m.ShortcutsOverlay })));
 const EventModal = lazy(() => import("../modals/EventModal").then(m => ({ default: m.EventModal })));
 const StageTransition = lazy(() => import("../modals/StageTransition").then(m => ({ default: m.StageTransition })));
 const TutorialHints = lazy(() => import("./TutorialHints").then(m => ({ default: m.TutorialHints })));
@@ -274,6 +277,19 @@ export function GameShell() {
     : undefined;
   const extraClass = activeSpecialDef?.extraClass || "";
 
+  // F3 — Cosmetics theme class. When the player has equipped a cosmetic
+  // theme, its themeClass is appended to the root wrapper. The cosmetic
+  // theme coexists with the stage theme — the cosmetic overrides CSS
+  // variables that the stage theme doesn't define.
+  const activeCosmetics = useGameStore((s) => s.activeCosmetics || {});
+  const cosmeticThemeClass = useMemo(() => {
+    const themeId = activeCosmetics.theme;
+    if (!themeId) return "";
+    // Look up the cosmetic def to get its themeClass.
+    const cos = COSMETIC_MAP_COSMETICS[themeId];
+    return cos?.themeClass || "";
+  }, [activeCosmetics.theme]);
+
   const themeClass = [
     activeSpecialTheme
       ? `theme-${activeSpecialTheme}`
@@ -281,6 +297,7 @@ export function GameShell() {
     activeLayerTheme && !activeSpecialTheme ? `theme-${activeLayerTheme}` : "",
     dimensionClass,
     extraClass,
+    cosmeticThemeClass,
   ].filter(Boolean).join(" ");
 
   return (
@@ -312,6 +329,10 @@ export function GameShell() {
           <div className="lg:col-span-8 xl:col-span-9">
             <TabNav />
             <div className="mt-4 mb-20 md:mb-4">
+              {/* S5 — Clean tab transition. Keying the wrapper by currentTab
+                  makes React remount on tab switch, triggering a subtle
+                  opacity fade-in (no slide, no scale — clean, not "AI"). */}
+              <div key={currentTab} className="tab-fade-in">
               {currentTab === "actions" && <ActionsTab />}
               {currentTab === "systems" && <SystemsTab />}
               {currentTab === "production" && <ProductionTab />}
@@ -395,6 +416,7 @@ export function GameShell() {
                   {currentTab === "genesis_engine" && <EternityContent />}
                 </Suspense>
               )}
+              </div>{/* /tab-fade-in */}
             </div>
           </div>
         </div>
@@ -415,6 +437,8 @@ export function GameShell() {
         <StoryPopup />
         <AchievementToast />
         <SettingsModal />
+        <CosmeticsModal />
+        <ShortcutsOverlay />
         <EventModal />
         <StageTransition />
         {/* LAYER-AS-TAB — <LayerModal/> is no longer rendered here. The 10
