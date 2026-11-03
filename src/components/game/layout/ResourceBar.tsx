@@ -20,9 +20,9 @@ import { useMemo } from "react";
 // fallback. Returning a new `[]` from the selector each render would
 // cause an infinite re-render loop (Zustand sees a new reference →
 // re-render → selector returns another new `[]` → crash).
-const EMPTY_ARRAY: readonly number[] = Object.freeze([]);
+const EMPTY_ARRAY: number[] = [];
 // F3 — Same pattern for the activeCosmetics selector fallback.
-const EMPTY_OBJECT: Record<string, string> = Object.freeze({});
+const EMPTY_OBJECT: Record<string, string> = {};
 
 // ============================================================
 // ResourceBar — streamlined (P4)

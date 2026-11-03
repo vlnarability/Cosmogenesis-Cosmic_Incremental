@@ -8,6 +8,7 @@ import { STAGES } from "@/game/data/stages";
 import { THEME_MAP } from "@/game/data/themes";
 import { COSMETIC_MAP as COSMETIC_MAP_COSMETICS } from "@/game/data/cosmetics";
 import { Header } from "./Header";
+import { NextStepHint } from "../shared/NextStepHint";
 import { StagePanel } from "./StagePanel";
 import { DivineEnginePanel } from "./DivineEnginePanel";
 import { DivineEngineFullTab } from "./DivineEngineFullTab";
@@ -328,7 +329,11 @@ export function GameShell() {
           </div>
           <div className="lg:col-span-8 xl:col-span-9">
             <TabNav />
-            <div className="mt-4 mb-20 md:mb-4">
+            {/* GAME-FLOW — Smart "Next Step" hint banner. Analyzes the
+                current game state + suggests the next best action.
+                Dismissible per-hint-id. Hidden when no hint applies. */}
+            <NextStepHint />
+            <div className="mt-2 mb-20 md:mb-4">
               {/* S5 — Clean tab transition. Keying the wrapper by currentTab
                   makes React remount on tab switch, triggering a subtle
                   opacity fade-in (no slide, no scale — clean, not "AI"). */}
