@@ -681,6 +681,13 @@ export interface GameState {
   actionCombo: number;
   /** GAME-FLOW — Accumulator for the combo decay timer in the tick. */
   _comboDecayTimer: number;
+  /** Resource alert thresholds — per-resource percentage (0-100) below
+   *  which an alert fires. 0 = no alert. Stored per-resource-id.
+   *  Persists across reloads (player preference, like autoBuyerSettings). */
+  resourceAlertThresholds: Record<string, number>;
+  /** Tracks which resources are currently below their threshold (avoids
+   *  re-alerting every tick). Transient — resets on reload. */
+  _alertedResources: Record<string, boolean>;
   /** F3 — Aether Shards: the cosmetics currency. Earned by prestiging
    *  (1 per stage cleared this run, capped at 7) + by earning achievements
    *  (1 per achievement, capped at 50 lifetime). Persists across prestiges. */
@@ -1071,6 +1078,8 @@ export interface GameStore extends GameState {
   /** F3 — Grant Aether Shards (called on prestige + on achievement earn).
    *  Capped at 999 lifetime. */
   grantAetherShards: (amount: number) => void;
+  /** Set a resource alert threshold (percentage 0-100, 0 = clear). */
+  setResourceAlertThreshold: (resourceId: string, pct: number) => void;
   setShowChallenges: (v: boolean) => void;
   /**
    * FIX-UI-TABS — Opens a shared InfoModal showing the target tab content

@@ -885,6 +885,9 @@ function initialMetaState(): Partial<GameState> {
     // GAME-FLOW — Action chain combo (transient). Rewards active play.
     actionCombo: 0,
     _comboDecayTimer: 0,
+    // Resource alert thresholds (player preference, persists).
+    resourceAlertThresholds: {} as Record<string, number>,
+    _alertedResources: {} as Record<string, boolean>,
     // PART-1 — choice modals. Fired when the corresponding prerequisite
     // tech is researched. Each modal shows 3 mutually-exclusive options;
     // player picks one, the chosen tech is auto-researched, others hidden.
@@ -3939,6 +3942,43 @@ export const useGameStore = create<GameStore>()(
             }
             return { actionCombo: 0, _comboDecayTimer: 0 };
           })(),
+          // Resource alert thresholds — check if any resource dropped
+          // below its configured threshold. Fires a log entry on the
+          // crossing (not every tick — tracks _alertedResources to
+          // avoid spam). Clears when the resource recovers above the
+          // threshold.
+          ...(() => {
+            const thresholds = s.resourceAlertThresholds || {};
+            const alerted = { ...(s._alertedResources || {}) };
+            let changed = false;
+            const res = s.resources || {};
+            const caps = s.capacities || {};
+            for (const [resId, pct] of Object.entries(thresholds)) {
+              const val = res[resId] || 0;
+              const cap = caps[resId] || 0;
+              if (cap <= 0) continue;
+              const currentPct = (val / cap) * 100;
+              const below = currentPct < (pct as number);
+              const wasAlerted = alerted[resId];
+              if (below && !wasAlerted) {
+                // Just crossed below — fire alert.
+                alerted[resId] = true;
+                changed = true;
+                // Use setTimeout to defer the log entry (avoids calling
+                // get().addToLog inside the set() callback).
+                setTimeout(() => {
+                  get().addToLog(
+                    `⚠ ${resId} dropped below ${pct}% capacity (${Math.round(val)}/${Math.round(cap)}).`
+                  );
+                }, 0);
+              } else if (!below && wasAlerted) {
+                // Recovered above threshold — clear alert.
+                delete alerted[resId];
+                changed = true;
+              }
+            }
+            return changed ? { _alertedResources: alerted } : {};
+          })(),
           // Layer 2-6 currency + state
           divinity,
           faith,
@@ -5615,6 +5655,14 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         const current = s.aetherShards || 0;
         set({ aetherShards: Math.min(99999, current + amount) });
+      },
+      // Resource alert threshold setter.
+      setResourceAlertThreshold: (resourceId, pct) => {
+        const s = get();
+        const thresholds = { ...(s.resourceAlertThresholds || {}) };
+        if (pct <= 0) delete thresholds[resourceId];
+        else thresholds[resourceId] = Math.min(100, Math.max(1, Math.round(pct)));
+        set({ resourceAlertThresholds: thresholds });
       },
       setShowChallenges: (v) => set({ showChallenges: v }),
       // FIX-UI-TABS — Info modal opens Log/Archive/Codex/Awards as a
@@ -9760,6 +9808,7 @@ export const useGameStore = create<GameStore>()(
           _rateSampleTimer, // F5 — transient
           actionCombo, // GAME-FLOW — transient (combo resets on reload)
           _comboDecayTimer, // GAME-FLOW — transient
+          _alertedResources, // transient (alert tracking resets on reload)
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
           researchingTech, // ROUND E — transient (research progress doesn't persist across reload)
