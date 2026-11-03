@@ -283,6 +283,7 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
   const capacities = useGameStore((s) => s.capacities);
   const performAction = useGameStore((s) => s.performAction);
   const [floats, setFloats] = useState<FloatNum[]>([]);
+  const [pulseKey, setPulseKey] = useState(0);
   const floatId = useRef(0);
 
   const canAfford = !action.cost || Object.entries(action.cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
@@ -292,7 +293,7 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
   const handleClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    // Create floating numbers for each produced resource
+    setPulseKey((k) => k + 1);
     const newFloats: FloatNum[] = Object.entries(action.produces).map(([r, v], i) => {
       const id = floatId.current++;
       return {
@@ -304,7 +305,6 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
       };
     });
     setFloats((prev) => [...prev, ...newFloats]);
-    // Remove floats after animation
     setTimeout(() => {
       setFloats((prev) => prev.filter((f) => !newFloats.find((nf) => nf.id === f.id)));
     }, 800);
@@ -315,9 +315,19 @@ function ActionCard({ action }: { action: typeof import("@/game/data/actions").A
     <button
       onClick={handleClick}
       disabled={disabled}
-      className={cn("action-btn relative overflow-visible", capped && "opacity-40")}
+      className={cn("action-btn relative overflow-hidden", capped && "opacity-40")}
       title={capped ? "Output resource is at capacity — no waste" : action.desc}
     >
+      {/* Click-feedback radial sweep — plays once on each click. A
+          conic-gradient ring expands from center + fades, giving
+          organic click feedback (like a pulse from a star core). */}
+      {pulseKey > 0 && (
+        <span
+          key={pulseKey}
+          className="action-pulse"
+          aria-hidden
+        />
+      )}
       {/* Floating numbers */}
       {floats.map((f) => (
         <span

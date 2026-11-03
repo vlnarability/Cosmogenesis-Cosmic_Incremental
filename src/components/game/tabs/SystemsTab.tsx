@@ -302,6 +302,27 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
   if (systems.length === 0) {
     return <div className="text-xs text-muted-foreground py-2">No systems for this stage.</div>;
   }
+  // Compute the "recommended" system — the cheapest affordable unbuilt
+  // system that produces something. Used for the Recommended badge.
+  const recommendedId = (() => {
+    let bestId: string | null = null;
+    let bestCostSum = Infinity;
+    for (const sys of systems) {
+      const owned = ownedSystems[sys.id] || 0;
+      if (owned > 0) continue; // already built
+      if (!sys.produces || Object.keys(sys.produces).length === 0) continue; // doesn't produce
+      if (sys.requiredTech && !technologies[sys.requiredTech]) continue; // tech-locked
+      const cost = systemCost(sys, 0, costReduction);
+      const canAfford = debugFreeBuy || Object.entries(cost).every(([r, v]) => (resources[r] || 0) >= (v as number));
+      if (!canAfford) continue;
+      const costSum = Object.values(cost).reduce<number>((a, v) => a + (v as number), 0);
+      if (costSum < bestCostSum) {
+        bestCostSum = costSum;
+        bestId = sys.id;
+      }
+    }
+    return bestId;
+  })();
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {systems.map((sys) => {
@@ -312,6 +333,7 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
         const techLocked = sys.requiredTech && !technologies[sys.requiredTech];
         const enabled = systemEnabled[sys.id] !== false;
         const capped = owned > 0 && isSystemCapped(sys.id, resources, capacities);
+        const isRecommended = sys.id === recommendedId;
         return (
           <SystemCard
             key={sys.id}
@@ -324,6 +346,7 @@ function SystemsGrid({ systems }: { systems: SystemDef[] }) {
             requiredTechName={techLocked ? TECH_MAP[sys.requiredTech!]?.name : undefined}
             enabled={enabled}
             capped={capped}
+            isRecommended={isRecommended}
             onBuy={(qty) => buySystem(sys.id, qty)}
             onToggle={() => toggleSystem(sys.id)}
           />
@@ -390,11 +413,12 @@ interface SystemCardProps {
   requiredTechName?: string;
   enabled: boolean;
   capped: boolean;
+  isRecommended?: boolean;
   onBuy: (qty: number) => void;
   onToggle: () => void;
 }
 
-function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTechName, enabled, capped, onBuy, onToggle }: SystemCardProps) {
+function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTechName, enabled, capped, isRecommended, onBuy, onToggle }: SystemCardProps) {
   // qty: 1, 10, 100 for fixed amounts; -1 for "Max" (buy as many as affordable)
   const [qty, setQty] = useState<number>(1);
   const resources = useGameStore((s) => s.resources);
@@ -444,12 +468,21 @@ function SystemCard({ sys, owned, cost, canAfford, atMax, techLocked, requiredTe
     <Card className={cn(
       "glass-panel relative overflow-hidden",
       !enabled && owned > 0 && "opacity-60",
-      techLocked && "border-red-500/40"
+      techLocked && "border-red-500/40",
+      isRecommended && "ring-1 ring-cyan-500/30"
     )}>
       <div
         className="absolute top-0 left-0 right-0 h-0.5"
-        style={{ background: capped ? "#f59e0b" : techLocked ? "#ef4444" : "linear-gradient(90deg, var(--primary) 0%, transparent 100%)" }}
+        style={{ background: capped ? "#f59e0b" : techLocked ? "#ef4444" : isRecommended ? "#22d3ee" : "linear-gradient(90deg, var(--primary) 0%, transparent 100%)" }}
       />
+      {/* Recommended badge — highlights the cheapest affordable unbuilt
+          system that produces something. Subtle cyan accent + a small
+          "Recommended" pill in the top-right corner. */}
+      {isRecommended && !techLocked && (
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 text-[0.55rem] px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/40 text-cyan-300 font-medium uppercase tracking-wide">
+          ★ Recommended
+        </div>
+      )}
       {/* Tech-locked overlay badge */}
       {techLocked && (
         <div className="absolute top-2 right-2 z-10 flex items-center gap-1 text-[0.6rem] px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 font-semibold uppercase tracking-wide">

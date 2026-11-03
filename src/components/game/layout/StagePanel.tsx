@@ -4,8 +4,8 @@ import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
 import { GOVERNMENT_MAP } from "@/game/data/governments";
-import { SYSTEM_MAP } from "@/game/data/systems";
-import { TECH_MAP } from "@/game/data/techs";
+import { SYSTEM_MAP, systemsForStage } from "@/game/data/systems";
+import { TECH_MAP, techsForStage } from "@/game/data/techs";
 import { formatNumber } from "../shared/format";
 import { ArchetypeRadar } from "../shared/ArchetypeRadar";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ export function StagePanel() {
   const ownedSystems = useGameStore((s) => s.ownedSystems);
   const technologies = useGameStore((s) => s.technologies);
   const setShowEvolve = useGameStore((s) => s.setShowEvolve);
+  const evolveStage = useGameStore((s) => s.evolveStage);
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
@@ -81,6 +82,21 @@ export function StagePanel() {
   );
   const canEvolve = prereqMet && oneOfTechsMet && oneOfSystemsMet && popPct >= 100 && sysPct >= 100 && techPct >= 100;
 
+  // Overall stage progress % for the ring around the stage icon.
+  // Averages the applicable progress metrics (pop/sys/tech). Metrics
+  // that don't apply to this stage count as 100% (so they don't drag
+  // the average down). Capped at 95% until canEvolve (so the ring only
+  // fills completely when truly ready).
+  const applicableMetrics: number[] = [];
+  if (minPop > 0) applicableMetrics.push(popPct);
+  if (minSys > 0) applicableMetrics.push(sysPct);
+  if (minTech > 0) applicableMetrics.push(techPct);
+  const stageProgressPct = canEvolve
+    ? 100
+    : Math.min(95, applicableMetrics.length > 0
+      ? applicableMetrics.reduce((a, b) => a + b, 0) / applicableMetrics.length
+      : 50);
+
   // Archetype drift
   const hasAffinity = Object.values(archetypeAffinity).some((v) => v > 0);
   const domArch = dominantArchetype(archetypeAffinity);
@@ -119,7 +135,22 @@ export function StagePanel() {
       {/* Header */}
       <div className="mb-3">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-3xl leading-none">{stage.icon}</span>
+          {/* Stage icon with progress ring — an SVG ring around the icon
+              showing overall stage completion (average of pop/sys/tech %).
+              When all requirements are met, the ring fills + turns emerald. */}
+          <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 48 48">
+              <circle cx="24" cy="24" r="21" fill="none" stroke="rgba(148,163,184,0.15)" strokeWidth="2.5" />
+              <circle
+                cx="24" cy="24" r="21" fill="none"
+                stroke={canEvolve ? "#10b981" : stage.accent}
+                strokeWidth="2.5" strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 21 * stageProgressPct / 100} ${2 * Math.PI * 21}`}
+                style={{ transition: "stroke-dasharray 0.4s ease-out" }}
+              />
+            </svg>
+            <span className="text-2xl leading-none relative z-10">{stage.icon}</span>
+          </div>
           <div>
             <h2 className="text-xl font-bold tracking-tight leading-none">{stage.name}</h2>
             <p className="text-xs text-muted-foreground italic mt-0.5">{stage.tagline}</p>
@@ -374,9 +405,48 @@ export function StagePanel() {
         </p>
       )}
       {canEvolve && (
-        <p className="text-xs text-emerald-400 mt-1 text-center font-semibold animate-pulse">
-          ✓ Ready to evolve
-        </p>
+        <>
+          <p className="text-xs text-emerald-400 mt-1 text-center font-semibold animate-pulse">
+            ✓ Ready to evolve
+          </p>
+          {/* Auto-evolve shortcut — one-click evolve without opening the
+              confirmation modal. For players who know what they're doing
+              and want to evolve quickly. */}
+          <button
+            type="button"
+            onClick={() => evolveStage()}
+            className="block mx-auto mt-1 text-[0.65rem] text-muted-foreground hover:text-emerald-300 underline decoration-dotted underline-offset-2 transition-colors"
+            title="Evolve immediately (skip confirmation)"
+          >
+            or evolve now →
+          </button>
+          {/* Stage preview — shows what the next stage offers. Compact:
+              icon + name + tagline + counts of new systems/techs. */}
+          {stageIndex < STAGES.length - 1 && (() => {
+            const next = STAGES[stageIndex + 1];
+            const nextSys = systemsForStage(next.id).length;
+            const nextTech = techsForStage(next.id).length;
+            return (
+              <div className="mt-3 pt-2 border-t border-border/40">
+                <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground mb-1">
+                  Next: {next.name}
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-lg leading-none shrink-0">{next.icon}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs italic text-muted-foreground leading-snug">{next.tagline}</p>
+                    <p className="text-[0.6rem] text-muted-foreground/70 mt-1">
+                      {nextSys} new systems · {nextTech} new {(next.techLabel ?? "tech").toLowerCase()}
+                      {next.resourceReplaces && (
+                        <> · replaces {next.resourceReplaces.old} with {next.resourceReplaces.new}</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </>
       )}
     </div>
   );

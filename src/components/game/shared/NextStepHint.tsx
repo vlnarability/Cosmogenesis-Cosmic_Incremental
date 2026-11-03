@@ -9,6 +9,7 @@ import { RESOURCE_MAP, STAGE_RESOURCES } from "@/game/data/resources";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ArrowUpCircle, FlaskConical, Gem, Zap, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { TabId } from "@/game/state/types";
 
 // ============================================================
 // NextStepHint — Smart context-aware "what should I do next?" banner
@@ -49,7 +50,7 @@ export function NextStepHint() {
 
   const hint = useMemo(() => {
     return computeNextHint(s, {
-      setTab,
+      setTab: setTab as (t: string) => void,
       setShowEvolve,
       setShowCosmetics,
     });
@@ -202,7 +203,7 @@ function checkCanEvolve(s: ReturnType<typeof useGameStore.getState>): boolean {
   }
   if (reqs.requiresGovernmentChosen && !s.activeGovernment) return false;
   if (reqs.requiresHappinessThreshold && (s.resources?.happiness || 0) < reqs.requiresHappinessThreshold) return false;
-  if (reqs.requiresTradeRoutes && Object.keys(s.tradeAgreement || {}).length < reqs.requiresTradeRoutes) return false;
+  if (reqs.requiresTradeRoutes && Object.keys(s.tradeAgreements || {}).length < reqs.requiresTradeRoutes) return false;
   return true;
 }
 
@@ -222,7 +223,7 @@ function findCapacitySystem(
 ): typeof SYSTEMS[number] | null {
   const stageSystems = systemsForStage(STAGES[s.stageIndex].id);
   for (const sys of stageSystems) {
-    if (sys.capacityGains?.[resourceId] && (s.ownedSystems?.[sys.id] || 0) === 0) {
+    if (sys.capacityBoost?.[resourceId] && (s.ownedSystems?.[sys.id] || 0) === 0) {
       const cost = systemCost(sys, 0, 1);
       if (Object.entries(cost).every(([r, v]) => (s.resources?.[r] || 0) >= (v as number))) {
         return sys;
