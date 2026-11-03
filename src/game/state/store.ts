@@ -2861,6 +2861,18 @@ export const useGameStore = create<GameStore>()(
           "arch-avian",
           "arch-aquatic",
           "arch-extremophile",
+          "arch-plasmold",
+          "arch-crystal",
+          "arch-radiotrophic",
+          "arch-aerosol",
+          "arch-mechanoid",
+          "arch-symbiote",
+          "arch-voidborn",
+          "arch-viruloid",
+          "arch-photonic",
+          "arch-myceloid",
+          "arch-prionoid",
+          "arch-gelatinous",
         ];
         const ARCHETYPE_KEYS: Array<string> = [
           "humanoid",
@@ -2876,6 +2888,18 @@ export const useGameStore = create<GameStore>()(
           "avian",
           "aquatic",
           "extremophile",
+          "plasmold",
+          "crystal",
+          "radiotrophic",
+          "aerosol",
+          "mechanoid",
+          "symbiote",
+          "voidborn",
+          "viruloid",
+          "photonic",
+          "myceloid",
+          "prionoid",
+          "gelatinous",
         ];
         for (let i = 0; i < ARCHETYPE_THEME_IDS.length; i++) {
           const themeId = ARCHETYPE_THEME_IDS[i];
