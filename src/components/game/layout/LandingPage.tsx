@@ -56,6 +56,14 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
 
   return (
     <main className="min-h-screen bg-[#060814] text-[#e8e2d4] flex flex-col selection:bg-[#7dd3fc]/30 selection:text-white">
+      {/* F13 — Animated starfield background. Two fixed layers drift slowly
+          across the page (240s + 360s loops) with subtle twinkle. Opacity
+          is intentionally low so the page stays "intentionally sparse" per
+          the design rationale. The foreground content sits above via z-index. */}
+      <div className="lp-starfield" aria-hidden />
+      <div className="lp-starfield-layer-2" aria-hidden />
+
+      <div className="lp-content flex flex-col flex-1">
       {/* Manuscript-style header — tiny, monospace, upper-cased tracking.
           Gives the page a "title page" feel without competing with the title. */}
       <header className="px-6 sm:px-10 py-6 flex justify-between items-baseline">
@@ -237,6 +245,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           Illustration · Eunkyeong Jeong / Unsplash
         </span>
       </footer>
+      </div>{/* /lp-content */}
     </main>
   );
 }

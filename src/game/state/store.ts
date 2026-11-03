@@ -865,6 +865,8 @@ function initialMetaState(): Partial<GameState> {
     showShop: false,
     showEvolve: false,
     showSettings: false,
+    // F13 — Save Export/Import modal (transient — excluded from partialize).
+    showSaveTransfer: false,
     // PART-1 — choice modals. Fired when the corresponding prerequisite
     // tech is researched. Each modal shows 3 mutually-exclusive options;
     // player picks one, the chosen tech is auto-researched, others hidden.
@@ -5482,6 +5484,8 @@ export const useGameStore = create<GameStore>()(
       setShowShop: (v) => set({ showShop: v }),
       setShowEvolve: (v) => set({ showEvolve: v }),
       setShowSettings: (v) => set({ showSettings: v }),
+      // F13 — Save Export/Import modal visibility setter.
+      setShowSaveTransfer: (v) => set({ showSaveTransfer: v }),
       setShowChallenges: (v) => set({ showChallenges: v }),
       // FIX-UI-TABS — Info modal opens Log/Archive/Codex/Awards as a
       // shared Dialog (called from the gear dropdown).
@@ -9589,6 +9593,7 @@ export const useGameStore = create<GameStore>()(
         // Destructure out the transient fields we want to EXCLUDE.
         const {
           showShop, showEvolve, showSettings,
+          showSaveTransfer, // F13 — transient (modal shouldn't reopen on reload)
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
           researchingTech, // ROUND E — transient (research progress doesn't persist across reload)

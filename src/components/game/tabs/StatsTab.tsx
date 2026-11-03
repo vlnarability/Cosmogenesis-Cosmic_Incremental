@@ -2,14 +2,14 @@
 
 import { useMemo } from "react";
 import { useGameStore } from "@/game/state/store";
-import { STAGES, STAGE_IDS } from "@/game/data/stages";
+import { STAGES, STAGE_IDS, STAGE_MAP } from "@/game/data/stages";
 import { ACHIEVEMENTS } from "@/game/data/achievements";
 import { RARE_RESOURCES, RARE_RESOURCE_MAP } from "@/game/data/rareResources";
 import { SYSTEMS } from "@/game/data/systems";
 import { TECHS } from "@/game/data/techs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, Clock, Users, Sparkles, Swords, Handshake, Gem, Trophy, Layers, Compass, Cpu, ChevronRight } from "lucide-react";
+import { BarChart3, Clock, Users, Sparkles, Swords, Handshake, Gem, Trophy, Layers, Compass, Cpu, ChevronRight, GitBranch } from "lucide-react";
 import { formatNumber, formatTime } from "../shared/format";
 import { cn } from "@/lib/utils";
 
@@ -355,8 +355,187 @@ export function StatsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* F13 — Stage Progression Timeline */}
+      <Card className="glass-panel">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-primary" />
+            Stage Progression Timeline
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Visual breakdown of where your time goes this run vs across all runs.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* ===== This-run timeline ===== */}
+          <div className="mb-3">
+            <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center justify-between">
+              <span>This run</span>
+              <span className="text-cyan-300/70 tabular-nums">{formatTime(s.time || 0)}</span>
+            </div>
+            <StageTimeline
+              stageRunTimes={stageRunTimes}
+              currentStageIndex={s.stageIndex}
+              totalRunTime={s.time || 0}
+              variant="run"
+            />
+          </div>
+          {/* ===== Lifetime timeline ===== */}
+          <div className="mb-2">
+            <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center justify-between">
+              <span>Lifetime</span>
+              <span className="text-violet-300/70 tabular-nums">{formatTime(totalStageTime)}</span>
+            </div>
+            <StageTimeline
+              stageRunTimes={stageTimeTotals}
+              currentStageIndex={s.stageIndex}
+              totalRunTime={totalStageTime}
+              variant="lifetime"
+            />
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 pt-2 border-t border-border/40 text-[0.55rem] text-muted-foreground">
+            {STAGES.map((st) => (
+              <span key={st.id} className="flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: st.accent }} />
+                {st.name}
+              </span>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
+}
+
+// ===========================================================================
+// F13 — StageTimeline component
+//
+// Renders a horizontal proportional timeline of the 7 stages. Each stage's
+// segment width = (stageTime / totalRunTime) × 100%. Stages not yet reached
+// (index > currentStageIndex) are rendered as a thin gray strip at the end.
+//
+// The current stage gets a subtle pulsing dot at its left edge + a slightly
+// brighter segment. Cleared stages (index < currentStageIndex) get a check
+// mark.
+//
+// Two variants:
+//   - "run": uses stageRunTimes (this run only) — totalRunTime = s.time
+//   - "lifetime": uses stageTimeTotals (all runs) — totalRunTime = sum
+//
+// The timeline is a flexbox of segments (no SVG needed). Each segment is a
+// div with a background-color from STAGE_MAP[stageId].accent + opacity
+// scaling by share. Hover shows the stage name + time.
+// ===========================================================================
+function StageTimeline({
+  stageRunTimes,
+  currentStageIndex,
+  totalRunTime,
+  variant,
+}: {
+  stageRunTimes: Record<string, number>;
+  currentStageIndex: number;
+  totalRunTime: number;
+  variant: "run" | "lifetime";
+}) {
+  // Compute per-stage time + width %.
+  const segments = useMemo(() => {
+    return STAGES.map((st, idx) => {
+      const time = (stageRunTimes[st.id] as number) || 0;
+      const pct = totalRunTime > 0 ? (time / totalRunTime) * 100 : 0;
+      const reached = idx <= currentStageIndex;
+      const isCurrent = idx === currentStageIndex;
+      const isCleared = idx < currentStageIndex;
+      return {
+        stage: st,
+        idx,
+        time,
+        pct,
+        reached,
+        isCurrent,
+        isCleared,
+      };
+    });
+  }, [stageRunTimes, totalRunTime, currentStageIndex]);
+
+  // Minimum segment width for unreached stages so they're visible.
+  const totalReachedPct = segments.filter((s) => s.reached).reduce((a, s) => a + s.pct, 0);
+  const unreachedCount = segments.filter((s) => !s.reached).length;
+  const unreachedPct = totalReachedPct < 100 && unreachedCount > 0
+    ? (100 - totalReachedPct) / unreachedCount
+    : 0;
+
+  return (
+    <div className="space-y-1.5">
+      {/* The timeline bar — flexbox of segments */}
+      <div className="flex h-8 rounded-md overflow-hidden border border-border/40 bg-muted/10">
+        {segments.map((seg) => {
+          const width = seg.reached ? seg.pct : Math.max(2, unreachedPct);
+          if (width <= 0 && !seg.reached) return null;
+          return (
+            <div
+              key={seg.stage.id}
+              className={cn(
+                "relative flex items-center justify-center transition-all group hover:flex-[2] flex-[1]",
+                seg.reached ? "" : "opacity-30",
+              )}
+              style={{
+                flexGrow: 0,
+                flexBasis: `${Math.max(0.5, width)}%`,
+                background: seg.reached
+                  ? `${seg.stage.accent}${seg.isCurrent ? "" : "80"}`
+                  : "rgba(100,116,139,0.2)",
+                minWidth: seg.reached ? "1.5rem" : "0.5rem",
+              }}
+              title={`${seg.stage.name}: ${formatTime(seg.time)} (${pctLabel(seg.pct)}${variant === "run" ? " of run" : " of lifetime"})`}
+            >
+              {/* Stage icon — only show if segment is wide enough */}
+              {width > 6 && (
+                <span className="text-xs leading-none select-none" style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.6))" }}>
+                  {seg.stage.icon}
+                </span>
+              )}
+              {/* Current-stage pulsing dot at the left edge */}
+              {seg.isCurrent && (
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white animate-ping"
+                  aria-hidden
+                />
+              )}
+              {/* Cleared check mark */}
+              {seg.isCleared && width > 4 && (
+                <span className="absolute top-0.5 right-0.5 text-[0.5rem] text-white/80" aria-hidden>
+                  ✓
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {/* Per-stage labels row — only show for reached stages */}
+      <div className="flex text-[0.55rem] text-muted-foreground tabular-nums gap-0.5">
+        {segments.map((seg) => {
+          if (!seg.reached) return <div key={seg.stage.id} className="flex-1" />;
+          const width = seg.pct;
+          return (
+            <div
+              key={seg.stage.id}
+              className="text-center truncate"
+              style={{ flexGrow: 0, flexBasis: `${Math.max(0.5, width)}%`, minWidth: "1.5rem" }}
+            >
+              {width > 8 ? formatTime(seg.time) : ""}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function pctLabel(pct: number): string {
+  if (pct < 0.1) return "<0.1%";
+  return `${pct.toFixed(1)}%`;
 }
 
 function StatCell({

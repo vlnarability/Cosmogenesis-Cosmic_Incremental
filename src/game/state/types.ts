@@ -660,6 +660,9 @@ export interface GameState {
   showShop: boolean;
   showEvolve: boolean;
   showSettings: boolean;
+  /** F13 — Save Export/Import modal visibility flag. Transient (excluded
+   *  from persistence). Set via the gear dropdown → "Save Transfer". */
+  showSaveTransfer: boolean;
   /**
    * FIX-UI-TABS — Tab restructure. Log/Archive/Codex/Awards no longer
    * live on the main tab bar; they're accessed via the gear dropdown
@@ -1016,6 +1019,8 @@ export interface GameStore extends GameState {
   setShowShop: (v: boolean) => void;
   setShowEvolve: (v: boolean) => void;
   setShowSettings: (v: boolean) => void;
+  /** F13 — Opens/closes the Save Export/Import modal. */
+  setShowSaveTransfer: (v: boolean) => void;
   setShowChallenges: (v: boolean) => void;
   /**
    * FIX-UI-TABS — Opens a shared InfoModal showing the target tab content

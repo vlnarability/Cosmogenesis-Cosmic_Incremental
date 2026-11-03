@@ -166,7 +166,11 @@ export function AchievementToast() {
         </div>
         {/* Body */}
         <div className="p-3 flex items-start gap-3">
-          <div className="ach-icon-box w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0 bg-primary/15 border border-primary/40">
+          <div className="ach-icon-box relative w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0 bg-primary/15 border border-primary/40">
+            {/* F13 — Subtle sparkle effect behind the icon on mount. The
+                .ach-toast-sparkle class is a one-shot CSS animation
+                (radial shimmer → fade out). Renders once per toast. */}
+            <span className="ach-toast-sparkle" aria-hidden />
             {ach.icon}
           </div>
           <div className="min-w-0 flex-1">
