@@ -882,6 +882,9 @@ function initialMetaState(): Partial<GameState> {
     // ~1s in the tick; capped at 60 entries per resource.
     resourceRateHistory: {} as Record<string, number[]>,
     _rateSampleTimer: 0,
+    // GAME-FLOW — Action chain combo (transient). Rewards active play.
+    actionCombo: 0,
+    _comboDecayTimer: 0,
     // PART-1 — choice modals. Fired when the corresponding prerequisite
     // tech is researched. Each modal shows 3 mutually-exclusive options;
     // player picks one, the chosen tech is auto-researched, others hidden.
@@ -3924,6 +3927,18 @@ export const useGameStore = create<GameStore>()(
             }
             return { _rateSampleTimer: 0, resourceRateHistory: history };
           })(),
+          // GAME-FLOW — Action chain combo decay. If 1.5s passes without
+          // an action click, the combo resets to 0. The decay timer
+          // accumulates realDt; when it crosses 1.5s, reset combo + timer.
+          ...(() => {
+            const combo = s.actionCombo || 0;
+            if (combo === 0) return {};
+            const timer = (s._comboDecayTimer || 0) + realDt;
+            if (timer < 1.5) {
+              return { _comboDecayTimer: timer };
+            }
+            return { actionCombo: 0, _comboDecayTimer: 0 };
+          })(),
           // Layer 2-6 currency + state
           divinity,
           faith,
@@ -4066,7 +4081,12 @@ export const useGameStore = create<GameStore>()(
         // (quickened_hands removed; no upgrade scales manual actions now)
         const mult = 1;
         const techMult = techMultiplier(s, "manual");
-        const finalMult = mult * techMult;
+        // GAME-FLOW — Action chain combo bonus. Each combo level gives +2%
+        // production, capped at +50% (25 combo). The combo counter
+        // increments on each action click + decays after 1.5s of inactivity.
+        const comboLevel = Math.min(25, (s.actionCombo || 0) + 1);
+        const comboMult = 1 + comboLevel * 0.02;
+        const finalMult = mult * techMult * comboMult;
 
         // Archetype per-resource bonus
         const archetype = s.lockedArchetype ? ARCHETYPE_MAP[s.lockedArchetype] : null;
@@ -4085,6 +4105,10 @@ export const useGameStore = create<GameStore>()(
         set({
           resources: res,
           totalActions: (s.totalActions || 0) + 1,
+          // GAME-FLOW — increment the combo counter + reset the decay timer.
+          // The combo gives +2% per level (applied above in finalMult).
+          actionCombo: comboLevel,
+          _comboDecayTimer: 0,
           // ACHIEVEMENT-EXPANSION — mark this as a player action so the
           // tick can reset the consecutive idle counter (drives "Idle
           // Master" — 1 hour without clicking).
@@ -9734,6 +9758,8 @@ export const useGameStore = create<GameStore>()(
           showShortcuts, // F4 — transient (overlay shouldn't reopen on reload)
           resourceRateHistory, // F5 — transient (sparkline history rebuilds quickly)
           _rateSampleTimer, // F5 — transient
+          actionCombo, // GAME-FLOW — transient (combo resets on reload)
+          _comboDecayTimer, // GAME-FLOW — transient
           showFtlChoice, showAscensionChoice, showGovernmentChoice,
           showNucleusChoice, // ROUND A — transient (modal shouldn't reopen on reload)
           researchingTech, // ROUND E — transient (research progress doesn't persist across reload)

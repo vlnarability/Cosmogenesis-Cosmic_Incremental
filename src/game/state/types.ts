@@ -674,6 +674,13 @@ export interface GameState {
   resourceRateHistory: Record<string, number[]>;
   /** F5 — Accumulator for the 1s rate-history sampling in the tick. */
   _rateSampleTimer: number;
+  /** GAME-FLOW — Action chain combo counter. Increments on each manual
+   *  action click (if within 1.5s of the previous). Each combo level gives
+   *  +2% production bonus (capped at +50% = 25 combo). Resets when 1.5s
+   *  passes without a click. Transient — not persisted. */
+  actionCombo: number;
+  /** GAME-FLOW — Accumulator for the combo decay timer in the tick. */
+  _comboDecayTimer: number;
   /** F3 — Aether Shards: the cosmetics currency. Earned by prestiging
    *  (1 per stage cleared this run, capped at 7) + by earning achievements
    *  (1 per achievement, capped at 50 lifetime). Persists across prestiges. */
