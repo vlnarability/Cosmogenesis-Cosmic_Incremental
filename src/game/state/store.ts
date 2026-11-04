@@ -5220,19 +5220,33 @@ export const useGameStore = create<GameStore>()(
         if (activeChId) {
           const ch = CHALLENGE_MAP[activeChId];
           if (ch) {
-            // Check if this prestige satisfies the challenge's clearStage
-            // condition (e.g., endurance = clearStage: galactic, which
-            // means evolving past Galactic = prestiging from Galactic).
+            // Check if this prestige satisfies the challenge's completion
+            // condition. Three types can be satisfied by prestiging from
+            // Galactic:
+            //   • clearStage: galactic → evolving past Galactic = prestiging
+            //   • reachGalactic → prestige from Galactic = reached Galactic
+            //   • reachStage: galactic → prestiging from Galactic means we
+            //     were AT Galactic (stageIndex >= 6). BUGFIX: this was
+            //     missing — 9 of 10 trials use reachStage:galactic and were
+            //     never completed by prestige (only by the tick, which might
+            //     not fire in the exact frame before prestige resets the
+            //     stage to 0).
             const isClearStageGalactic =
               ch.completeWhen.type === "clearStage" &&
               ch.completeWhen.stage === "galactic" &&
               s.stageIndex >= 6;
-            // Also check reachGalactic (prestige from Galactic = reached Galactic)
             const isReachGalactic =
               ch.completeWhen.type === "reachGalactic" &&
               s.stageIndex >= 6;
+            // BUGFIX: reachStage checks were missing entirely. A trial with
+            // reachStage:galactic or reachStage:solar should be completed
+            // when the player prestiges from that stage or later (since
+            // prestiging means they reached at least that stage).
+            const isReachStage =
+              ch.completeWhen.type === "reachStage" &&
+              s.stageIndex >= STAGE_IDS.indexOf(ch.completeWhen.stage);
 
-            if (isClearStageGalactic || isReachGalactic) {
+            if (isClearStageGalactic || isReachGalactic || isReachStage) {
               // Challenge completed by this prestige!
               const completedCount = (completedChallengesOnPrestige[activeChId] || 0) + 1;
               completedChallengesOnPrestige[activeChId] = completedCount;
