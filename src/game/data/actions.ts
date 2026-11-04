@@ -125,13 +125,16 @@ export const ACTIONS: StageAction[] = [
   },
 
   // ===== CIVILIZATION =====
+  // BOOTSTRAP-FIX: commission_building is free (was 1 gold) so the player can
+  // always kickstart the civ economy. Mirrors absorb_glucose (Cell) and
+  // fell_trees (Tribal) — every stage has a free primary gather action.
   {
     id: "commission_building",
     name: "Commission Build",
     desc: "Direct a workforce to raise a new structure.",
     stage: "civilization",
     icon: "🏗️",
-    cost: { gold: 1 },
+    cost: {},
     produces: { production: 4 },
     cooldown: 0.5,
   },
