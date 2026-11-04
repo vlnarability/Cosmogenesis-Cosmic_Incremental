@@ -1171,6 +1171,10 @@ export interface GameStore extends GameState {
   saveGame: () => void;
   // Force any pending debounced save to write now. No-op if nothing queued.
   flushSave: () => void;
+  /** Clears the pending write + cancels the debounce timer. Called
+   *  before switching slots to prevent stale data from being written
+   *  to the new slot's key during the beforeunload handler. */
+  clearPendingSave: () => void;
   // PART-1 — Tribal→Civ government choice (player picks, not auto-assigned).
   // Choosing causes happiness -25 (disruption). Evolve-to-Civ gated on this.
   chooseGovernment: (govId: string) => void;

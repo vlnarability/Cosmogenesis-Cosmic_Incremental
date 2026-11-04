@@ -76,17 +76,22 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
 
   const handleDescend = () => {
     const currentSlot = getCurrentSlot();
-    // Flush any pending write to the CURRENT slot before switching.
-    useGameStore.getState().flushSave();
+    // SAVE-SLOT-FIX — the Zustand persist middleware hydrates from
+    // localStorage ONCE on page load. When the player switches slots,
+    // we must:
+    // 1. Flush any pending write to the OLD slot's key
+    // 2. Clear the pending write + cancel the debounce timer so the
+    //    beforeunload handler doesn't write stale data to the NEW slot
+    // 3. Set the new slot
+    // 4. Reload the page so the store re-hydrates from the new slot key
+    // Without steps 1-2, the game's tick (or beforeunload handler)
+    // would write the OLD slot's in-memory data to the NEW slot's key
+    // — corrupting both saves.
+    const store = useGameStore.getState();
+    store.flushSave();       // flush to old slot
+    store.clearPendingSave(); // clear timer + pending write
     setCurrentSlot(selectedSlot);
     if (selectedSlot !== currentSlot) {
-      // SAVE-SLOT-FIX — the Zustand persist middleware hydrates from
-      // localStorage ONCE on page load. When the player switches slots,
-      // we must reload the page so the store re-hydrates from the
-      // correct slot key. Without this, the in-memory store still has
-      // the old slot's data + writes it to the new slot (corrupting
-      // both). The sessionStorage flag tells the reloaded page to skip
-      // the LandingPage and go directly into the game.
       sessionStorage.setItem("cosmogenesis_descending", "1");
       window.location.reload();
       return;

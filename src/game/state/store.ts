@@ -9715,6 +9715,16 @@ export const useGameStore = create<GameStore>()(
       flushSave: () => {
         _flushPendingWrite();
       },
+      // SAVE-SLOT-FIX — clears the pending write + cancels the debounce
+      // timer. Called before switching slots to prevent the beforeunload
+      // handler from writing stale data to the new slot's key.
+      clearPendingSave: () => {
+        if (_writeTimer) {
+          clearTimeout(_writeTimer);
+          _writeTimer = null;
+        }
+        _pendingWrite = null;
+      },
 
       loadGame: () => {
         // Handled by persist middleware
