@@ -3,7 +3,7 @@
 import { useGameStore } from "@/game/state/store";
 import { STAGES } from "@/game/data/stages";
 import { ARCHETYPES, ARCHETYPE_MAP, dominantArchetype } from "@/game/data/archetypes";
-import { GOVERNMENT_MAP } from "@/game/data/governments";
+import { GOVERNMENT_MAP, GOVERNMENTS, ARCHETYPE_GOVERNMENT_MAP } from "@/game/data/governments";
 import { SYSTEM_MAP, systemsForStage } from "@/game/data/systems";
 import { TECH_MAP, techsForStage } from "@/game/data/techs";
 import { formatNumber } from "../shared/format";
@@ -26,9 +26,12 @@ export function StagePanel() {
   const upgrades = useGameStore((s) => s.upgrades);
   const archetypeAffinity = useGameStore((s) => s.archetypeAffinity);
   const lockedArchetype = useGameStore((s) => s.lockedArchetype);
-  // GOVERNMENT-SYSTEMS — populated by evolveStage when entering Empire.
-  // Null until Empire+. Drives the government panel below the lineage.
+  // GOVERNMENT-SYSTEMS — populated by evolveStage when entering Civ (stageIndex
+  // becomes 3). The Tribal-stage pendingGovernment choice is promoted to
+  // activeGovernment here, and the bonuses/penalties then apply for the rest
+  // of the run (Civ + Empire + Solar + Galactic). Null until Civ+.
   const activeGovernment = useGameStore((s) => s.activeGovernment);
+  const changeGovernment = useGameStore((s) => s.changeGovernment);
   // ARCHETYPES-REWORK — which archetypes the player has EVER locked in.
   // Persists across prestiges. Drives the ??? reveal state on the radar.
   const revealedLineageArchetypes = useGameStore((s) => s.revealedLineageArchetypes || {});
@@ -315,10 +318,12 @@ export function StagePanel() {
       </div>
 
       {/* GOVERNMENT-SYSTEMS — government panel, shown below the lineage panel
-          once the player reaches Empire stage (stageIndex >= 4). Same compact
-          format as the lineage display. */}
-      {stageIndex >= 4 && activeGovernment && (
-        <ActiveGovernmentDisplay govId={activeGovernment} />
+          once the player reaches Civilization stage (stageIndex >= 3). The
+          Tribal-stage pendingGovernment becomes activeGovernment at Civ and
+          applies for the rest of the run. Includes a "Reform Government"
+          button that costs -25 happiness (massive unrest) per change. */}
+      {stageIndex >= 3 && activeGovernment && (
+        <ActiveGovernmentDisplay govId={activeGovernment} onChangeGovernment={changeGovernment} />
       )}
 
       {/* Evolve progress */}
@@ -467,10 +472,26 @@ function LockedArchetypeDisplay({ archId }: { archId: string }) {
 }
 
 // GOVERNMENT-SYSTEMS — compact government panel. Mirrors the lineage panel's
-// shape (icon-name header + advantages / disadvantages lines).
-function ActiveGovernmentDisplay({ govId }: { govId: string }) {
+// shape (icon-name header + advantages / disadvantages lines). Includes a
+// "Reform Government" button that reopens the choice modal post-Tribal — each
+// reform costs -25 happiness (massive unrest), matching the Tribal choice.
+function ActiveGovernmentDisplay({ govId, onChangeGovernment }: { govId: string; onChangeGovernment: (id: string) => void }) {
   const gov = GOVERNMENT_MAP[govId];
+  const [showReform, setShowReform] = useState(false);
+  // Pull the list of available governments + the player's archetype (if any)
+  // so the reform picker mirrors the Tribal-stage GovernmentChoiceModal.
+  const lockedArchetype = useGameStore((s) => s.lockedArchetype);
+  const happiness = useGameStore((s) => s.resources.happiness ?? 0);
   if (!gov) return null;
+  // Build the available list: base governments + the player's archetype gov.
+  const archetypeGovId = lockedArchetype ? ARCHETYPE_GOVERNMENT_MAP[lockedArchetype] : undefined;
+  const baseGovs = GOVERNMENTS.filter((g) => g.id !== archetypeGovId);
+  const archetypeGov = archetypeGovId ? GOVERNMENTS.find((g) => g.id === archetypeGovId) : undefined;
+  const availableGovs = archetypeGov ? [...baseGovs, archetypeGov] : baseGovs;
+  // Disable reform if happiness is already < 25 — a reform would drop the
+  // player to 0 (or near), which is brutal but technically allowed. We warn
+  // in the tooltip instead of hard-blocking.
+  const reformDangerous = happiness < 25;
   return (
     <div className="stat-card mb-3 space-y-1">
       <div className="flex items-center justify-between mb-1">
@@ -478,6 +499,13 @@ function ActiveGovernmentDisplay({ govId }: { govId: string }) {
           <span className="text-sm leading-none">{gov.icon}</span>
           <span className="uppercase tracking-wide">Government</span>
         </div>
+        <button
+          onClick={() => setShowReform(true)}
+          title={reformDangerous ? "Warning: happiness already low — reform will drop it to ~0." : "Reform government (costs 25 happiness)"}
+          className="text-[0.6rem] uppercase tracking-wide px-2 py-0.5 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 hover:border-amber-400/70 transition-colors"
+        >
+          Reform
+        </button>
       </div>
       <div className="text-xs font-bold text-amber-300">
         Government: {gov.name}
@@ -492,6 +520,54 @@ function ActiveGovernmentDisplay({ govId }: { govId: string }) {
         <div className="text-[0.65rem] text-rose-300/90 leading-snug">
           <span className="text-muted-foreground">Disadvantages: </span>
           {gov.disadvantages.join(", ")}
+        </div>
+      )}
+      {showReform && (
+        <div className="mt-2 pt-2 border-t border-border/40 space-y-1.5">
+          <div className="text-[0.65rem] text-muted-foreground italic">
+            Reforming costs <span className="text-rose-300 font-semibold">25 happiness</span> (massive unrest). Pick a new framework:
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-48 overflow-y-auto pr-1">
+            {availableGovs.map((g) => {
+              const isCurrent = g.id === govId;
+              const isArchGov = g.id === archetypeGovId;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => {
+                    if (!isCurrent) onChangeGovernment(g.id);
+                    setShowReform(false);
+                  }}
+                  disabled={isCurrent}
+                  className={cn(
+                    "text-left text-[0.65rem] px-2 py-1 rounded border transition-colors",
+                    isCurrent
+                      ? "border-amber-400/40 text-amber-400/60 cursor-not-allowed bg-amber-500/5"
+                      : "border-border/60 hover:bg-muted/40 hover:border-amber-400/60"
+                  )}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{g.icon}</span>
+                    <span className="font-semibold">{g.name}</span>
+                    {isArchGov && (
+                      <span className="text-[0.5rem] px-1 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-wide">
+                        {lockedArchetype ? ARCHETYPE_MAP[lockedArchetype]?.name : "Arch"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[0.6rem] text-muted-foreground leading-tight mt-0.5">
+                    {g.advantages.join(" · ") || "—"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => setShowReform(false)}
+            className="text-[0.65rem] text-muted-foreground hover:text-foreground transition-colors w-full text-center pt-1"
+          >
+            Cancel
+          </button>
         </div>
       )}
     </div>

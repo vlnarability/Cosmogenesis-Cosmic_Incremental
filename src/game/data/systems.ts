@@ -5088,17 +5088,19 @@ export const SYSTEMS: SystemDef[] = [
 
   // ===== SOLAR =====
   // CAP-BOOSTER — cheap, repeatable, +cap to all solar-stage resources.
+  // REBALANCE: lower cost + cost growth + bigger cap boost so warp_gate
+  // is achievable in 3-5 hours of 1× play (~2-3 min at 100×).
   {
     id: "solar_cap_expansion",
     name: "Containment Field",
-    desc: "A wider containment field. +30 cap to every solar resource. Cheap, repeatable.",
+    desc: "A wider containment field. +40 cap to every solar resource. Cheap, repeatable.",
     stage: "solar",
     icon: "🛡️",
     category: "Storage",
-    baseCost: { energy: 25 },
-    costGrowth: 1.15,
+    baseCost: { energy: 15 },
+    costGrowth: 1.12,
     produces: {},
-    capacityBoost: { food: 30, water: 30, production: 30, energy: 30, alloys: 30, science: 30, culture: 30, influence: 30, happiness: 5, data: 30 },
+    capacityBoost: { food: 40, water: 40, production: 40, energy: 40, alloys: 40, science: 40, culture: 40, influence: 40, happiness: 5, data: 40 },
   },
   // PART-2-LAYER-A — Trade Caravan for solar stage.
   {
@@ -5115,6 +5117,11 @@ export const SYSTEMS: SystemDef[] = [
   },
   // PART-1 — Solar→Galactic FTL infrastructure. Build the one matching your
   // chosen FTL tech to evolve to Galactic.
+  // REBALANCE: costs roughly halved so the FTL gate is reachable in 3-5 hours
+  // of 1× play (was 8-12 hours in practice). Each path keeps its character:
+  //   warp_theory  → cheapest energy, mid alloys, mid science (the budget path)
+  //   hyperlanes   → mid energy, cheapest alloys, heaviest science (the scholar path)
+  //   jump_theory  → heaviest energy + alloys, lightest science (the brute-force path)
   {
     id: "warp_gate",
     name: "Warp Gate",
@@ -5122,7 +5129,7 @@ export const SYSTEMS: SystemDef[] = [
     stage: "solar",
     icon: "🌀",
     category: "Expansion",
-    baseCost: { energy: 1500, alloys: 1000, science: 800 },
+    baseCost: { energy: 600, alloys: 400, science: 300 },
     costGrowth: 1.0,
     produces: {},
     maxOwned: 1,
@@ -5135,7 +5142,7 @@ export const SYSTEMS: SystemDef[] = [
     stage: "solar",
     icon: "🌠",
     category: "Expansion",
-    baseCost: { energy: 1200, alloys: 800, science: 1000 },
+    baseCost: { energy: 500, alloys: 350, science: 400 },
     costGrowth: 1.0,
     produces: {},
     maxOwned: 1,
@@ -5148,12 +5155,14 @@ export const SYSTEMS: SystemDef[] = [
     stage: "solar",
     icon: "🚪",
     category: "Expansion",
-    baseCost: { energy: 2000, alloys: 1400, science: 1200 },
+    baseCost: { energy: 800, alloys: 550, science: 250 },
     costGrowth: 1.0,
     produces: {},
     maxOwned: 1,
     requiredTech: "jump_theory",
   },
+  // REBALANCE: doubled output (4 → 8 energy/s) + lowered cost + lower cost
+  // growth so a handful of arrays comfortably powers an FTL push.
   {
     id: "solar_array",
     name: "Solar Array",
@@ -5161,11 +5170,13 @@ export const SYSTEMS: SystemDef[] = [
     stage: "solar",
     icon: "🔆",
     category: "Energy",
-    baseCost: { energy: 25, alloys: 8 },
+    baseCost: { energy: 20, alloys: 5 },
     requiredTech: "orbital_industry",
-    costGrowth: 1.22,
-    produces: { energy: 4.0 },
+    costGrowth: 1.18,
+    produces: { energy: 8.0 },
   },
+  // REBALANCE: doubled output (2.5 → 4.5 alloys/s) + lowered cost + cheaper
+  // upkeep so alloy stockpiling for the FTL gate isn't the long pole.
   {
     id: "orbital_forge",
     name: "Orbital Forge",
@@ -5173,14 +5184,14 @@ export const SYSTEMS: SystemDef[] = [
     stage: "solar",
     icon: "🔥",
     category: "Industry",
-    baseCost: { energy: 25, alloys: 15 },
+    baseCost: { energy: 20, alloys: 10 },
     requiredTech: "generation_ships",
-    costGrowth: 1.24,
-    produces: { alloys: 2.5 },
+    costGrowth: 1.20,
+    produces: { alloys: 4.5 },
     // ROUND D4 — cross-resource upgrade chain: replaces the Empire Factory
     // (production → alloys). Building this marks owned factories as legacy.
     upgradeReplaces: "emp_factory",
-    upkeep: { energy: 0.4 },
+    upkeep: { energy: 0.25 },
   },
   {
     id: "colony_ship",
@@ -5239,6 +5250,8 @@ export const SYSTEMS: SystemDef[] = [
   // PART-1 — Galactic→Prestige ascension gate. Long-construction megastructure
   // that requires the player to have chosen an ascension path. Building this
   // is the final step before prestiging.
+  // REBALANCE: costs roughly halved so the ascension gate is reachable in
+  // 4-6 hours of 1× play (was 10-15 hours in practice).
   {
     id: "ascension_project",
     name: "Ascension Project",
@@ -5246,7 +5259,7 @@ export const SYSTEMS: SystemDef[] = [
     stage: "galactic",
     icon: "🌟",
     category: "Transcendent",
-    baseCost: { data: 10000, energy: 8000, science: 6000, alloys: 4000 },
+    baseCost: { data: 4000, energy: 3000, science: 2500, alloys: 1800 },
     costGrowth: 1.0,
     produces: {},
     maxOwned: 1,

@@ -1178,6 +1178,9 @@ export interface GameStore extends GameState {
   // PART-1 — Tribal→Civ government choice (player picks, not auto-assigned).
   // Choosing causes happiness -25 (disruption). Evolve-to-Civ gated on this.
   chooseGovernment: (govId: string) => void;
+  // GOV-CHANGE-POST-TRIBAL — change active government in Civ+ stages. Each
+  // change costs -25 happiness (massive unrest), matching the Tribal choice.
+  changeGovernment: (govId: string) => void;
   // PART-2-LAYER-A — establish / break trade agreements with NPC partners.
   establishTrade: (partnerId: string) => void;
   breakTrade: (partnerId: string) => void;

@@ -4971,28 +4971,31 @@ export const useGameStore = create<GameStore>()(
           }
         }
 
-        // GOVERNMENT-SYSTEMS — when entering Empire (stageIndex becomes 4),
-        // auto-assign a government based on the player's locked archetype
-        // (forced archetype government) OR, when no archetype government
-        // applies, from the most-researched Civilization-stage tech branch.
-        // The government's tick bonuses are applied in the tick below.
-        // AUTOBUYER-SETTINGS — `preferredGovernment` overrides the auto-pick
-        // when set AND the id exists in GOVERNMENT_MAP. Null = use auto-pick.
+        // GOVERNMENT-SYSTEMS — when entering Civilization (stageIndex becomes 3),
+        // promote the Tribal-stage `pendingGovernment` choice to `activeGovernment`.
+        // Per user: "If Tribal chooses a government for evolving, Empire should
+        // not auto-set. The government should be set after that point." So we
+        // activate the player's chosen pendingGovernment as soon as they enter
+        // Civ — the bonuses/penalties then apply for the rest of the run
+        // (Civ + Empire + Solar + Galactic).
+        // AUTOBUYER-SETTINGS — `preferredGovernment` only kicks in if the player
+        // somehow reached Civ without choosing (defensive fallback; shouldn't
+        // normally happen since Tribal→Civ requires a government choice).
         let activeGovernment = s.activeGovernment ?? null;
-        if (nextStageIdx === 4 && !activeGovernment) {
-          const preferredGov = s.autoBuyerSettings?.preferredGovernment || null;
-          const govId = (preferredGov && GOVERNMENT_MAP[preferredGov])
-            ? preferredGov
-            : pickGovernmentForEmpire(lockedArchetype, s.technologies);
+        if (nextStageIdx === 3 && !activeGovernment) {
+          const pendingGov = s.pendingGovernment;
+          const fallbackGov = s.autoBuyerSettings?.preferredGovernment || null;
+          const govId = (pendingGov && GOVERNMENT_MAP[pendingGov])
+            ? pendingGov
+            : (fallbackGov && GOVERNMENT_MAP[fallbackGov])
+              ? fallbackGov
+              : pickGovernmentForEmpire(lockedArchetype, s.technologies);
           if (govId && GOVERNMENT_MAP[govId]) {
             activeGovernment = govId;
             const g = GOVERNMENT_MAP[govId];
             const advMsg = g.advantages.length ? g.advantages.join(", ") : "none";
             const disMsg = g.disadvantages.length ? g.disadvantages.join(", ") : "none";
-            // Deferred log so it fires AFTER the "Evolved to Empire" line.
-            const govLine = preferredGov === govId
-              ? `Government established: ${g.name} (player-preferred). Advantages: ${advMsg}. Disadvantages: ${disMsg}.`
-              : `Government established: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
+            const govLine = `Government enacted: ${g.name}. Advantages: ${advMsg}. Disadvantages: ${disMsg}.`;
             get().addToLog(govLine);
           }
         }
@@ -9074,6 +9077,31 @@ export const useGameStore = create<GameStore>()(
           isFirstChoice
             ? `Government chosen: ${govName}. The transition disrupts society — happiness -25. Recover to ≥50 to evolve.`
             : `Government changed to: ${govName}.`
+        );
+      },
+
+      // GOV-CHANGE-POST-TRIBAL — change the active government after it's been
+      // enacted (Civ+ stages). Per user: "The government should be set after
+      // that point, but changeable with a decision that causes massive unrest
+      // just like in tribal." So every change costs -25 happiness (same hit
+      // as the initial Tribal choice) and is logged. Available in Civ/Empire/
+      // Solar/Galactic. Setting the SAME government as already active is a
+      // no-op (still costs nothing — no point double-charging).
+      changeGovernment: (govId) => {
+        const s = get();
+        if (!govId) return;
+        if (s.activeGovernment === govId) return; // same — no-op
+        const gov = GOVERNMENT_MAP[govId];
+        if (!gov) return;
+        const happiness = s.resources?.happiness ?? 50;
+        // Massive unrest: -25 happiness per change.
+        const newHappiness = Math.max(0, happiness - 25);
+        set({
+          activeGovernment: govId,
+          resources: { ...s.resources, happiness: newHappiness },
+        });
+        get().addToLog(
+          `Government reformed: ${gov.name}. Massive unrest sweeps the population — happiness -25. Recover before the penalties compound.`
         );
       },
 
