@@ -201,6 +201,16 @@ export const ACTIONS: StageAction[] = [
     produces: { alloys: 3 },
     cooldown: 0.5,
   },
+  {
+    id: "survey_system",
+    name: "Survey System",
+    desc: "Map the worlds and phenomena of this system. Knowledge flows back.",
+    stage: "solar",
+    icon: "🔭",
+    cost: {},
+    produces: { science: 3, data: 1 },
+    cooldown: 0.5,
+  },
 
   // ===== GALACTIC =====
   {
