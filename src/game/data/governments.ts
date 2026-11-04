@@ -75,6 +75,19 @@ export const ARCHETYPE_GOVERNMENT_MAP: Record<string, string> = {
   molluscoid: "mollusc_syndicate",
   humanoid: "human_republic",
   extremophile: "extremophile_regime",
+  // --- Rare-pool archetype governments (12 new) ---
+  plasmold: "plasma_conclave",
+  crystal: "crystal_matrix",
+  radiotrophic: "heliofane_theocracy",
+  aerosol: "aerosol_republic",
+  mechanoid: "gear_concordat",
+  symbiote: "host_league",
+  voidborn: "void_court",
+  viruloid: "plague_directorate",
+  photonic: "luminous_assembly",
+  myceloid: "root_pangaea",
+  prionoid: "prion_fold",
+  gelatinous: "blob_imperium",
 };
 
 export const GOVERNMENTS: GovernmentDef[] = [
@@ -302,6 +315,146 @@ export const GOVERNMENTS: GovernmentDef[] = [
     capacityMult: 0.30,
     productionMult: -0.15,
   },
+
+  // ============================================================
+  // RARE-POOL ARCHETYPE GOVERNMENTS (12) — forced when one of the 12
+  // rare-pool archetypes is locked at Empire stage. Each mirrors the
+  // archetype's theme: cost-benefit pattern of ~2 buffs vs 1 debuff.
+  // ============================================================
+
+  {
+    id: "plasma_conclave",
+    name: "Plasma Conclave",
+    icon: "◈",
+    desc: "A council of coherent light and magnetic field. No body sits the throne.",
+    advantages: ["+30% production", "+20% science", "Energy beings need no food"],
+    disadvantages: ["-50% population growth"],
+    productionMult: 0.30,
+    scienceMult: 0.20,
+    popGrowthMult: -0.50,
+  },
+  {
+    id: "crystal_matrix",
+    name: "Crystal Matrix",
+    icon: "◇",
+    desc: "Patient stone-minds in lattice communion. Decisions take centuries; they are correct.",
+    advantages: ["+35% science", "+30% capacity"],
+    disadvantages: ["-40% population growth"],
+    scienceMult: 0.35,
+    capacityMult: 0.30,
+    popGrowthMult: -0.40,
+  },
+  {
+    id: "heliofane_theocracy",
+    name: "Heliofane Theocracy",
+    icon: "☉",
+    desc: "Priests of the local star. The sun is the granary; the temple is the throne.",
+    advantages: ["+25% production", "Stellar-fed (no food needed)"],
+    disadvantages: ["-10% happiness (the glow is unsettling)"],
+    productionMult: 0.25,
+    happinessMult: -0.10,
+  },
+  {
+    id: "aerosol_republic",
+    name: "Aerosol Republic",
+    icon: "◌",
+    desc: "A diffuse federation of chemical clouds. Votes disperse, then condense.",
+    advantages: ["+15% production", "+20% trade", "+10% capacity"],
+    disadvantages: ["-20% population growth"],
+    productionMult: 0.15,
+    tradeMult: 0.20,
+    capacityMult: 0.10,
+    popGrowthMult: -0.20,
+  },
+  {
+    id: "gear_concordat",
+    name: "Gear Concordat",
+    icon: "⚙",
+    desc: "Synthetic minds in meshed consensus. The state runs on schedule; flesh is optional.",
+    advantages: ["+20% production", "+10% military", "Immune to disasters"],
+    disadvantages: ["-40% population growth"],
+    productionMult: 0.20,
+    militaryMult: 0.10,
+    popGrowthMult: -0.40,
+  },
+  {
+    id: "host_league",
+    name: "Host League",
+    icon: "§",
+    desc: "Parasite and host bound as one citizen-body. The state wears many minds.",
+    advantages: ["+30% population growth", "+20% military", "+10% production"],
+    disadvantages: ["-15% happiness (the hosts sense the parasite)"],
+    popGrowthMult: 0.30,
+    militaryMult: 0.20,
+    productionMult: 0.10,
+    happinessMult: -0.15,
+  },
+  {
+    id: "void_court",
+    name: "Void Court",
+    icon: "∅",
+    desc: "A throne in the dark between suns. Subjects orbit, silent, lit only by the court.",
+    advantages: ["+25% trade", "+15% capacity", "Immune to disasters"],
+    disadvantages: ["-50% population growth"],
+    tradeMult: 0.25,
+    capacityMult: 0.15,
+    popGrowthMult: -0.50,
+  },
+  {
+    id: "plague_directorate",
+    name: "Plague Directorate",
+    icon: "ψ",
+    desc: "The infection that learned to rule. Quarantine is for the conquered.",
+    advantages: ["+35% population growth", "+15% military", "Immune to plague"],
+    disadvantages: ["-15% happiness (the population senses the infection)"],
+    popGrowthMult: 0.35,
+    militaryMult: 0.15,
+    happinessMult: -0.15,
+  },
+  {
+    id: "luminous_assembly",
+    name: "Luminous Assembly",
+    icon: "✦",
+    desc: "Citizens of structured light. The throne is a focal point; the chamber is a prism.",
+    advantages: ["+25% production", "+20% science", "Light-fed (no food needed)"],
+    disadvantages: ["-25% capacity (light diffuses without containment)"],
+    productionMult: 0.25,
+    scienceMult: 0.20,
+    capacityMult: -0.25,
+  },
+  {
+    id: "root_pangaea",
+    name: "Root Pangaea",
+    icon: "⌘",
+    desc: "One mind across the planet's mycelial web. The crown is everywhere and nowhere.",
+    advantages: ["+20% capacity", "+10% science"],
+    disadvantages: ["-15% military (root networks don't fight)"],
+    capacityMult: 0.20,
+    scienceMult: 0.10,
+    militaryMult: -0.15,
+  },
+  {
+    id: "prion_fold",
+    name: "Prion Fold",
+    icon: "π",
+    desc: "A geometry of protein that reshapes state and citizen into one folded pattern.",
+    advantages: ["+25% production", "+20% capacity"],
+    disadvantages: ["-10% population growth (complex structures take time)"],
+    productionMult: 0.25,
+    capacityMult: 0.20,
+    popGrowthMult: -0.10,
+  },
+  {
+    id: "blob_imperium",
+    name: "Blob Imperium",
+    icon: "◯",
+    desc: "One colossal amoeba absorbing the realm. Borders are membranes; enemies are nutrients.",
+    advantages: ["+40% capacity", "+15% population growth", "Immune to plague"],
+    disadvantages: ["-15% production (inefficient bulk)"],
+    capacityMult: 0.40,
+    popGrowthMult: 0.15,
+    productionMult: -0.15,
+  },
 ];
 
 export const GOVERNMENT_MAP: Record<string, GovernmentDef> = Object.fromEntries(
@@ -375,6 +528,32 @@ export const ARCHETYPE_GOV_CONDITIONS: Record<string, ArchetypeGovCondition> = {
   aquatic:     { military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
   // Extremophile → ALL branches exactly equal (perfect tie, all ≥ 2) → Extremophile Regime
   extremophile:{ military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null, requireBalance: true },
+
+  // ---- Rare-pool archetypes (12) — each with a unique tech-branch recipe ----
+  // Plasmold → high Science + low Military → Plasma Conclave
+  plasmold:    { military: 0, science: 4, culture: 0, economics: 0, dominantBranch: "science", weakestBranch: "military" },
+  // Crystal → high Science + low Culture → Crystal Matrix
+  crystal:     { military: 0, science: 4, culture: 0, economics: 0, dominantBranch: "science", weakestBranch: "culture" },
+  // Radiotrophic → high Science + high Economics (both ≥ 3) → Heliofane Theocracy
+  radiotrophic:{ military: 0, science: 3, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Aerosol → high Culture + high Economics (both ≥ 3) → Aerosol Republic
+  aerosol:     { military: 0, science: 0, culture: 3, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Mechanoid → high Military + high Science (both ≥ 3) → Gear Concordat
+  mechanoid:   { military: 3, science: 3, culture: 0, economics: 0, dominantBranch: null, weakestBranch: null },
+  // Symbiote → high Military + high Economics (both ≥ 3) → Host League
+  symbiote:    { military: 3, science: 0, culture: 0, economics: 3, dominantBranch: null, weakestBranch: null },
+  // Voidborn → high Military + high Culture (both ≥ 3) → Void Court
+  voidborn:    { military: 3, science: 0, culture: 3, economics: 0, dominantBranch: null, weakestBranch: null },
+  // Viruloid → high Military + low Science → Plague Directorate
+  viruloid:    { military: 4, science: 0, culture: 0, economics: 0, dominantBranch: "military", weakestBranch: "science" },
+  // Photonic → high Science + high Culture (both ≥ 3) → Luminous Assembly
+  photonic:    { military: 0, science: 3, culture: 3, economics: 0, dominantBranch: null, weakestBranch: null },
+  // Myceloid → high Science + low Economics → Root Pangaea
+  myceloid:    { military: 0, science: 4, culture: 0, economics: 0, dominantBranch: "science", weakestBranch: "economics" },
+  // Prionoid → high Economics + low Science → Prion Fold
+  prionoid:    { military: 0, science: 0, culture: 0, economics: 4, dominantBranch: "economics", weakestBranch: "science" },
+  // Gelatinous → ALL branches exactly equal (perfect tie, all ≥ 2) → Blob Imperium
+  gelatinous:  { military: 2, science: 2, culture: 2, economics: 2, dominantBranch: null, weakestBranch: null, requireBalance: true },
 };
 
 /**
