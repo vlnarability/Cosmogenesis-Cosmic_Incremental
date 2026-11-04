@@ -75,7 +75,22 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const buttonVerb = selectedInfo?.layerName ? "Return" : "Descend";
 
   const handleDescend = () => {
+    const currentSlot = getCurrentSlot();
+    // Flush any pending write to the CURRENT slot before switching.
+    useGameStore.getState().flushSave();
     setCurrentSlot(selectedSlot);
+    if (selectedSlot !== currentSlot) {
+      // SAVE-SLOT-FIX — the Zustand persist middleware hydrates from
+      // localStorage ONCE on page load. When the player switches slots,
+      // we must reload the page so the store re-hydrates from the
+      // correct slot key. Without this, the in-memory store still has
+      // the old slot's data + writes it to the new slot (corrupting
+      // both). The sessionStorage flag tells the reloaded page to skip
+      // the LandingPage and go directly into the game.
+      sessionStorage.setItem("cosmogenesis_descending", "1");
+      window.location.reload();
+      return;
+    }
     onDescend();
   };
 
@@ -110,7 +125,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
           Gives the page a "title page" feel without competing with the title. */}
       <header className="px-6 sm:px-10 py-6 flex justify-between items-baseline">
         <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-[#e8e2d4]/40">
-          Cosmogenesis · v0.2
+          Cosmogenesis · v0.9
         </span>
         <span className="font-mono text-[0.65rem] uppercase tracking-[0.3em] text-[#e8e2d4]/40 hidden sm:inline">
           An incremental game
