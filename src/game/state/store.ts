@@ -5539,6 +5539,14 @@ export const useGameStore = create<GameStore>()(
         set({
           ...fresh,
           ...metaState,
+          // PRESTIGE-RESET — these per-run choices must reset so the player
+          // can pick a different nucleus pool / FTL path / ascension path
+          // on the next run. They're NOT in initialRunState() or metaState,
+          // so without this they'd persist forever (bug: prevented testing
+          // alternative paths across prestiges).
+          nucleusChoice: null,
+          ftlChoice: null,
+          ascensionChoice: null,
           // PRESERVE player's current tab + pause/speed state across prestiges.
           // (Old behavior reset to "actions" tab + paused=false + speed=1, which was jarring.)
           currentTab: s.currentTab,
