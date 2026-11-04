@@ -5223,8 +5223,9 @@ export const SYSTEMS: SystemDef[] = [
   // ===== GALACTIC =====
   // CAP-BOOSTER — cheap, repeatable, +cap to all galactic-stage resources.
   // REBALANCE: lower cost + lower cost growth so the ascension_project gate
-  // is reachable (was stuck at ~32 expansions due to 1.15 growth outpacing
-  // the energy cap).
+  // is reachable. The 1.10 growth still deadlocked at ~54 expansions because
+  // the cost (energy) competes with the cap it's trying to raise. Dropping to
+  // 1.07 growth + baseCost 15 keeps it affordable through 80+ expansions.
   {
     id: "galactic_cap_expansion",
     name: "Stellar Resonator",
@@ -5232,8 +5233,8 @@ export const SYSTEMS: SystemDef[] = [
     stage: "galactic",
     icon: "🌌",
     category: "Storage",
-    baseCost: { energy: 20 },
-    costGrowth: 1.10,
+    baseCost: { energy: 15 },
+    costGrowth: 1.07,
     produces: {},
     capacityBoost: { food: 40, production: 40, energy: 40, alloys: 40, science: 40, data: 40, culture: 40, influence: 40, happiness: 5, military_power: 40 },
   },
