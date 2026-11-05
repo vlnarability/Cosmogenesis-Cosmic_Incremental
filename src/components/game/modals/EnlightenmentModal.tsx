@@ -664,8 +664,13 @@ export function EnlightenmentContent() {
                 height: `${outlineHeight}%`,
                 // NOIRLab — increased from 0.25 → 0.55 so the completed
                 // constellation artwork is clearly visible as a reward.
-                opacity: 0.55,
+                // UI-FIX: increased to 0.7 + added brightness filter so the
+                // thin line-art (0.55px strokes) is visible against dark bg.
+                opacity: 0.7,
                 objectFit: "contain",
+                // UI-FIX: brightness + drop-shadow filter makes the thin
+                // white/gray SVG strokes glow against the dark background.
+                filter: "brightness(1.6) drop-shadow(0 0 4px rgba(251,191,36,0.15))",
                 // UI-FIX: zIndex 5 so outlines paint ABOVE SVG connection
                 // lines (zIndex 0) but BELOW stars (zIndex 10+).
                 zIndex: 5,
@@ -713,11 +718,11 @@ export function EnlightenmentContent() {
             const isCompleted = !!constellationsCompleted[conn.cId];
             const isStarted = !!constellationsStarted[conn.cId];
             const isRevealed = !!constellationRevealed[conn.cId];
-            // NOIRLab — all constellation connection lines are a uniform
-            // thin green (#22c55e), matching the NOIRLab constellation
-            // charts where every figure is drawn in the same green ink
-            // regardless of category.
-            const lineColor = "#22c55e";
+            // UI-THEME: changed from green (#22c55e) to amber/gold (#fbbf24)
+            // to match the game's divinity/Divine Engine theme. Golden threads
+            // connecting stars evokes "threads of fate" — thematically fitting
+            // for the L2 Enlightenment layer where divinity is the currency.
+            const lineColor = "#fbbf24";
             // C2 — three distinct styles
             let stroke: string;
             let strokeWidth: number;
@@ -761,8 +766,8 @@ export function EnlightenmentContent() {
                 />
                 {/* C2 — endpoint dots on completed + started lines so the
                     constellation pattern reads as a "star figure" rather
-                    than a sparse line mesh. Small green circles at both
-                    endpoints (NOIRLab green to match the lines). */}
+                    than a sparse line mesh. Small amber dots at both
+                    endpoints (matching the golden line color). */}
                 {(isCompleted || isStarted) && (
                   <>
                     <circle cx={conn.ax} cy={conn.ay} r={isCompleted ? 0.35 : 0.22} fill={lineColor} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
@@ -1363,7 +1368,7 @@ export function EnlightenmentContent() {
           <p className="text-sm">Enlightenment is sealed.</p>
           <p className="text-xs mt-1">Master 3 distinct Layer 1 trials to unlock the constellation map.</p>
         </div>
-      ) : (
+      ) : !expanded ? (
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3 min-h-0">
           {/* ===== WIDE SCROLLABLE SKY + PROGRESS SUMMARY ===== */}
           <div className="flex flex-col gap-2 min-h-0">
@@ -1371,7 +1376,7 @@ export function EnlightenmentContent() {
                 STAR-MAP-FIX: using clamp() so the map grows to fill the
                 modal on tall viewports. */}
             <div
-              className="relative w-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] touch-none select-none"
+              className="relative w-full overflow-hidden rounded-lg border border-amber-500/20 bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] constellation-sky-bg touch-none select-none"
               style={{
                 // CONSTELLATION-REDESIGN-NOIRLAB: taller clamp so stars at
                 // y=4 (top) and y=96 (bottom) are always within the visible
@@ -1680,9 +1685,11 @@ export function EnlightenmentContent() {
             </ScrollArea>
           </div>
         </div>
-      )}
+      ) : null}
 
-      <Separator className="my-2" />
+      {!expanded && (
+        <>
+        <Separator className="my-2" />
       {/* UI-FIX: moved tutorial text from tiny 0.65rem muted to a more visible
           0.75rem panel with background + border. Added an info icon for
           discoverability. Key actions are highlighted with color. */}
@@ -1692,6 +1699,8 @@ export function EnlightenmentContent() {
           Click a <span className="text-slate-300">star</span> to inspect it, then press <span className="text-violet-300 font-semibold">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per lit star in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per started constellation. Complete <span className="text-emerald-300 font-semibold">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> to advance to Layer 3.
         </span>
       </div>
+        </>
+      )}
 
       {/* ===========================================================================
           CONSTELLATION-REDESIGN-NOIRLAB — FULL-SCREEN EXPANDED OVERLAY
@@ -1722,21 +1731,23 @@ export function EnlightenmentContent() {
             }
           }}
         >
-          {/* Top bar with title + Divinity + Exit + X */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-violet-500/30 bg-[#080812]/95 backdrop-blur">
+          {/* Top bar with title + Divinity + Exit + X
+              UI-FIX: made exit controls brighter and larger for visibility.
+              Added amber accent to match the golden constellation theme. */}
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-amber-500/30 bg-[#080812]/95 backdrop-blur">
             <div className="flex items-center gap-2 min-w-0">
-              <Eye className="w-5 h-5 text-violet-300 shrink-0" />
+              <Eye className="w-5 h-5 text-amber-300 shrink-0" />
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-violet-100 truncate">Constellation Sky — Full Screen</div>
-                <div className="text-[0.65rem] text-muted-foreground truncate">{completedCount} / {CONSTELLATIONS_REQUIRED_FOR_LAYER_3} for L3 · {litStarsCount} / {totalStars} stars lit</div>
+                <div className="text-sm font-semibold text-amber-100 truncate">Constellation Sky — Full Screen</div>
+                <div className="text-[0.65rem] text-slate-400 truncate">{completedCount} / {CONSTELLATIONS_REQUIRED_FOR_LAYER_3} for L3 · {litStarsCount} / {totalStars} stars lit</div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className="text-violet-300 border-violet-400/40">{formatNumber(divinity, 0)} Divinity</Badge>
+              <Badge variant="outline" className="text-amber-300 border-amber-400/40">{formatNumber(divinity, 0)} Divinity</Badge>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-3 gap-1 border-violet-500/40 text-violet-100 hover:bg-violet-500/10"
+                className="h-9 px-4 gap-1.5 border-amber-500/50 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400/70 font-medium"
                 onClick={() => {
                   setSelectedStar(null);
                   setSelectedConstellation(null);
@@ -1745,21 +1756,21 @@ export function EnlightenmentContent() {
                 title="Exit full-screen (Esc)"
                 aria-label="Exit full-screen"
               >
-                <Minimize2 className="w-3.5 h-3.5" />
+                <Minimize2 className="w-4 h-4" />
                 Exit
-                <kbd className="ml-1 text-[0.6rem] px-1 py-0.5 rounded bg-violet-500/20 border border-violet-500/30 text-violet-300">Esc</kbd>
+                <kbd className="ml-1 text-[0.6rem] px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono">Esc</kbd>
               </Button>
-              {/* X close button — top-right corner, always visible */}
+              {/* X close button — top-right corner, always visible, enlarged */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/40 hover:scale-110 transition-all"
+                className="h-10 w-10 text-amber-200 hover:text-white hover:bg-amber-500/20 hover:scale-110 transition-all border border-amber-500/30"
                 onClick={() => {
                   setSelectedStar(null);
                   setSelectedConstellation(null);
                   setExpanded(false);
                 }}
-                title="Close (×)"
+                title="Close (× or Esc)"
                 aria-label="Close full-screen map"
               >
                 <X className="w-4 h-4" />
@@ -1769,7 +1780,7 @@ export function EnlightenmentContent() {
 
           {/* Full-screen sky viewport — same drag/pan semantics as standard */}
           <div
-            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] touch-none select-none"
+            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] constellation-sky-bg touch-none select-none"
             style={{ cursor: dragging ? "grabbing" : "grab" }}
             onPointerDown={(e) => onPointerDown(e, true)}
             onPointerMove={(e) => onPointerMove(e, true)}
