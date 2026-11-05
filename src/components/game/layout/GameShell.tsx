@@ -333,8 +333,12 @@ export function GameShell() {
             <TabNav />
             {/* GAME-FLOW — Smart "Next Step" hint banner. Analyzes the
                 current game state + suggests the next best action.
-                Dismissible per-hint-id. Hidden when no hint applies. */}
-            <NextStepHint />
+                Dismissible per-hint-id. Hidden when no hint applies.
+                UI-FIX: suppressed when on constellation/layer tabs to avoid
+                overlapping the star map UI. */}
+            {currentTab !== "constellations" && currentTab !== "market" && currentTab !== "galaxy" && currentTab !== "conquest" && currentTab !== "universe" && currentTab !== "lab" && currentTab !== "diplomacy" && currentTab !== "war" && currentTab !== "genesis_engine" && currentTab !== "trials" && (
+              <NextStepHint />
+            )}
             <div className="mt-2 mb-20 md:mb-4">
               {/* S5 — Clean tab transition. Keying the wrapper by currentTab
                   makes React remount on tab switch, triggering a subtle

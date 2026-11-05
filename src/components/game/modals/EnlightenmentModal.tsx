@@ -85,13 +85,15 @@ import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 // ===========================================================================
 
 // Sky dimensions — the wide panorama.
-// CONSTELLATION-REDESIGN-NOIRLAB: SKY_W widened from 3000 → 5000 so the 88
-// constellations have more breathing room (stars are no longer clustered).
-const SKY_W = 5000;
+// UI-FIX: widened from 5000 → 10000 so each of the 88 constellations has
+// ~114px of horizontal space on average. This dramatically reduces clutter
+// and gives each constellation its own breathing room.
+const SKY_W = 10000;
 const SKY_H = 500;
 
 // Full-screen overlay uses an even wider sky so panning feels roomier.
-const EXPANDED_SKY_W = 8000;
+// UI-FIX: widened from 8000 → 15000 for even more space in expanded mode.
+const EXPANDED_SKY_W = 15000;
 // EXPANDED_SKY_H is purely documentary — the expanded viewport renders
 // height: 100% of its flex-1 parent. The constant documents the conceptual
 // height that vertical percentage coordinates are calibrated against.
@@ -824,7 +826,7 @@ export function EnlightenmentContent() {
                 }}
                 // UI-FIX: add title tooltip showing star name + constellation + lit status
                 title={`${designation} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
-                className="block rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60"
+                className="block rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60 constellation-star"
                 style={{
                   // NOIRLab — size now varies by Bayer designation.
                   width: `${starSize}px`,
@@ -833,18 +835,18 @@ export function EnlightenmentContent() {
                   // (slate-600 → slate-400) so unlit stars are clearly visible
                   // against the dark background. Hollow ring style for unlit.
                   // Hover adds a bright glow via boxShadow.
-                  // UI-FIX: unlit stars now have a very dim fill instead of
-                  // fully transparent — reads as a "dim star" rather than
-                  // an empty ring placeholder.
-                  background: lit ? accent : started ? "#7889a0" : "#1a2030",
+                  // UI-FIX: unlit stars now have a dim fill (#2a3548) and
+                  // bright border (#c8d4e6) for strong contrast against the
+                  // dark background. Reads as a "dim star" not a placeholder.
+                  background: lit ? accent : started ? "#7889a0" : "#2a3548",
                   boxShadow: lit
                     ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
-                    : "0 0 6px 2px #94a3b844",
+                    : "0 0 8px 2px #94a3b866",
                   border: isSelected
                     ? "2px solid #fff"
                     : lit
                       ? `1.5px solid ${accent}`
-                      : "2px solid #b0c0d0",
+                      : "2px solid #c8d4e6",
                   cursor: "pointer",
                 }}
                 aria-label={`${designation} in ${fs.cI18nName} constellation${lit ? " (lit)" : " (unlit)"}`}
@@ -1387,8 +1389,8 @@ export function EnlightenmentContent() {
                 // area (was clamp(380px, 56vh, 700px)).
                 height: "clamp(500px, 64vh, 900px)",
                 cursor: dragging ? "grabbing" : "grab",
-                // UI-FIX: padding so edge stars aren't clipped
-                padding: "12px",
+                // UI-FIX: padding so edge stars aren't clipped (increased 12→24)
+                padding: "24px",
               }}
               onPointerDown={(e) => onPointerDown(e, false)}
               onPointerMove={(e) => onPointerMove(e, false)}
@@ -1451,11 +1453,9 @@ export function EnlightenmentContent() {
                 ))}
               </div>
 
-              {/* C2 — Completion ring (top-right corner). A circular SVG arc
-                  showing % of CONSTELLATIONS_REQUIRED_FOR_LAYER_3 completed.
-                  Hidden on very narrow viewports (< 480px) to avoid
-                  overlapping the drag hint. */}
-              <div className="absolute top-2 right-24 hidden sm:flex items-center gap-2 rounded-md border border-violet-500/30 bg-slate-950/70 px-2 py-1 backdrop-blur pointer-events-none">
+              {/* C2 — Completion ring (moved to bottom-right to avoid
+                  overlapping stars. UI-FIX: repositioned from top-right.) */}
+              <div className="absolute bottom-3 right-16 hidden sm:flex items-center gap-2 rounded-md border border-amber-500/30 bg-slate-950/70 px-2 py-1 backdrop-blur pointer-events-none z-20">
                 <svg width="36" height="36" viewBox="0 0 36 36" className="shrink-0">
                   {/* Track */}
                   <circle
@@ -1624,7 +1624,10 @@ export function EnlightenmentContent() {
                   </div>
                   {/* UI-FIX: increased max-h from 72 to 96 so more constellations
                       are visible. Added custom scrollbar styling. */}
-                  <div className="space-y-0.5 max-h-96 overflow-y-auto pr-1 constellation-list-scroll">
+                  {/* UI-FIX: increased max-h to flex-1 for proper scroll, added
+                      fade gradient at bottom to indicate more content. */}
+                  <div className="space-y-0.5 max-h-[60vh] overflow-y-auto pr-1 constellation-list-scroll"
+                    style={{ maskImage: "linear-gradient(to bottom, black 85%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, black 85%, transparent 100%)" }}>
                     {CONSTELLATIONS.map((c) => {
                       const prog = constellationProgress[c.id] || 0;
                       const total = c.stars.length;
