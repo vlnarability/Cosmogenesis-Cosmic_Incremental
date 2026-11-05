@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   CONSTELLATIONS,
@@ -84,15 +84,14 @@ import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 // ===========================================================================
 
 // Sky dimensions — the wide panorama.
-// UI-FIX: widened from 5000 → 10000 so each of the 88 constellations has
-// ~114px of horizontal space on average. This dramatically reduces clutter
-// and gives each constellation its own breathing room.
-const SKY_W = 10000;
+// UI-FIX: SKY_W tuned from 10000 → 6000 for balance: wide enough to
+// reduce clutter (each constellation gets ~68px average), narrow enough
+// that content is visible without excessive panning.
+const SKY_W = 6000;
 const SKY_H = 500;
 
-// Full-screen overlay uses an even wider sky so panning feels roomier.
-// UI-FIX: widened from 8000 → 15000 for even more space in expanded mode.
-const EXPANDED_SKY_W = 15000;
+// Full-screen overlay uses a wider sky for more breathing room.
+const EXPANDED_SKY_W = 9000;
 // EXPANDED_SKY_H is purely documentary — the expanded viewport renders
 // height: 100% of its flex-1 parent. The constant documents the conceptual
 // height that vertical percentage coordinates are calibrated against.
@@ -275,8 +274,10 @@ export function EnlightenmentContent() {
   // opens a popup showing the constellation's progress + two buttons:
   // "Purchase Next Star" and "Purchase Max Stars".
   const [selectedConstellation, setSelectedConstellation] = useState<string | null>(null);
-  const [scrollX, setScrollX] = useState(0);
-  const [expandedScrollX, setExpandedScrollX] = useState(0);
+  // UI-FIX: initial scrollX set to ~400 so the first constellations
+  // (starting at x≈12% = 720px at SKY_W=6000) are visible without panning.
+  const [scrollX, setScrollX] = useState(-400);
+  const [expandedScrollX, setExpandedScrollX] = useState(-400);
   const [expanded, setExpanded] = useState(false);
   const [dragging, setDragging] = useState(false);
   const isDragging = useRef(false);
@@ -287,9 +288,16 @@ export function EnlightenmentContent() {
   // drag.
   const dragDistance = useRef(0);
 
-  // UI-FIX: Escape key closes the expanded/full-screen view.
-  // Uses a ref-based handler attached to the overlay div via onKeyDown
-  // (avoids useEffect to prevent potential lazy-load issues with large files).
+  // UI-FIX: When expanded overlay is active, add body class to hide the
+  // game header so the overlay is truly full-screen.
+  useEffect(() => {
+    if (expanded) {
+      document.body.classList.add('constellation-fullscreen');
+    } else {
+      document.body.classList.remove('constellation-fullscreen');
+    }
+    return () => document.body.classList.remove('constellation-fullscreen');
+  }, [expanded]);
 
   const constellationState: ConstellationState = useMemo(
     () => ({
