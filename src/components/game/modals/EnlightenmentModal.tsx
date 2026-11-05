@@ -197,6 +197,16 @@ const GREEK: Record<string, string> = {
   tau: "τ", upsilon: "υ", phi: "φ", chi: "χ", psi: "ψ", omega: "ω",
 };
 
+// NOIRLab — star size varies by Bayer designation so the brightest stars
+// (alpha = largest) read as the anchor of each constellation figure, exactly
+// like on the NOIRLab constellation charts. Faint stars (iota+ ) shrink to
+// a small dot so they don't compete with the brighter anchors.
+const STAR_SIZE_MAP: Record<string, number> = {
+  alpha: 22, beta: 20, gamma: 18, delta: 18,
+  epsilon: 16, eps: 16, zeta: 16, eta: 16,
+};
+const STAR_SIZE_DEFAULT = 14;
+
 // Convert a star id like "aries_alpha" or "taurus_eps" or "orion_pi3" into a
 // readable designation like "α Arietis". Falls back to the raw id if parsing
 // fails (no constellation ever uses an unknown suffix pattern, but be safe).
@@ -647,7 +657,9 @@ export function EnlightenmentContent() {
                 // star buttons).
                 top: `${minY - padY}%`,
                 height: `${height + padY * 2}%`,
-                opacity: 0.25,
+                // NOIRLab — increased from 0.25 → 0.55 so the completed
+                // constellation artwork is clearly visible as a reward.
+                opacity: 0.55,
                 objectFit: "contain",
                 zIndex: 1,
               }}
@@ -694,7 +706,11 @@ export function EnlightenmentContent() {
             const isCompleted = !!constellationsCompleted[conn.cId];
             const isStarted = !!constellationsStarted[conn.cId];
             const isRevealed = !!constellationRevealed[conn.cId];
-            const accent = CATEGORY_ACCENT[conn.category];
+            // NOIRLab — all constellation connection lines are a uniform
+            // thin green (#22c55e), matching the NOIRLab constellation
+            // charts where every figure is drawn in the same green ink
+            // regardless of category.
+            const lineColor = "#22c55e";
             // C2 — three distinct styles
             let stroke: string;
             let strokeWidth: number;
@@ -702,23 +718,23 @@ export function EnlightenmentContent() {
             let opacity: number;
             let filter: string | undefined;
             if (isCompleted) {
-              stroke = accent;
-              strokeWidth = 0.35;
+              stroke = lineColor;
+              strokeWidth = 1.5;
               opacity = 1.0;
               filter = `url(#c2-glow-${offset})`;
             } else if (isStarted) {
-              stroke = `${accent}cc`;
-              strokeWidth = 0.25;
+              stroke = `${lineColor}cc`;
+              strokeWidth = 1.25;
               strokeDasharray = "1.2 0.8";
               opacity = 0.95;
             } else if (isRevealed) {
-              stroke = `${accent}99`;
-              strokeWidth = 0.18;
+              stroke = `${lineColor}99`;
+              strokeWidth = 1.0;
               strokeDasharray = "0.6 1.0";
               opacity = 0.7;
             } else {
               stroke = "#1e293b";
-              strokeWidth = 0.12;
+              strokeWidth = 0.6;
               opacity = 0.4;
             }
             return (
@@ -738,12 +754,12 @@ export function EnlightenmentContent() {
                 />
                 {/* C2 — endpoint dots on completed + started lines so the
                     constellation pattern reads as a "star figure" rather
-                    than a sparse line mesh. Small accent-colored circles
-                    at both endpoints. */}
+                    than a sparse line mesh. Small green circles at both
+                    endpoints (NOIRLab green to match the lines). */}
                 {(isCompleted || isStarted) && (
                   <>
-                    <circle cx={conn.ax} cy={conn.ay} r={isCompleted ? 0.35 : 0.22} fill={accent} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
-                    <circle cx={conn.bx} cy={conn.by} r={isCompleted ? 0.35 : 0.22} fill={accent} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
+                    <circle cx={conn.ax} cy={conn.ay} r={isCompleted ? 0.35 : 0.22} fill={lineColor} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
+                    <circle cx={conn.bx} cy={conn.by} r={isCompleted ? 0.35 : 0.22} fill={lineColor} opacity={isCompleted ? 0.9 : 0.55} filter={filter} />
                   </>
                 )}
               </g>
@@ -752,54 +768,82 @@ export function EnlightenmentContent() {
         </svg>
         {/* Stars as clickable buttons positioned using PERCENTAGE
             coordinates so they always scale with the parent's height.
-            CONSTELLATION-REDESIGN-NOIRLAB: stars are now 18px grey circles
-            with a subtle glow (was 14px tiny dots). The unlit-but-started
-            variant uses a lighter grey (#64748b) so the player can tell at a
-            glance which constellations they've begun. */}
+            NOIRLab — star SIZE now varies by Bayer designation (alpha = 22px,
+            beta = 20px, gamma/delta = 18px, epsilon+ = 16px, others = 14px)
+            so the brightest stars read as the anchor of each figure, exactly
+            like on the NOIRLab constellation charts. A small proper-name
+            label appears beside the star on hover (NOIRLab-style on-chart
+            labels) instead of relying solely on the native title tooltip.
+            Unlit-but-started stars use a lighter grey so the player can tell
+            at a glance which constellations they've begun. */}
         {FLAT_STARS.map((fs) => {
           const lit = !!constellationStars[fs.starId];
           const started = !!constellationsStarted[fs.cId];
           const accent = CATEGORY_ACCENT[fs.category];
           const isSelected = selectedStar?.starId === fs.starId;
+          // NOIRLab — derive star size from the Bayer designation suffix.
+          // starId format is "{constellation}_{greek}" (e.g. "aries_alpha",
+          // "taurus_eps"); splitting on "_" and taking the last part yields
+          // the greek letter, which we map to a pixel size.
+          const greekLetter = fs.starId.split("_").pop()?.replace(/\d/g, "") || "";
+          const starSize = STAR_SIZE_MAP[greekLetter] ?? STAR_SIZE_DEFAULT;
+          const designation = starDesignation(fs.starId, fs.cI18nName);
           return (
-            <button
+            <div
               key={`${offset}-${fs.starId}`}
-              type="button"
-              onPointerDown={(e) => {
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                if (dragDistance.current > 5) return;
-                e.stopPropagation();
-                setSelectedStar({ constellationId: fs.cId, starId: fs.starId });
-              }}
-              // UI-FIX: add title tooltip showing star name + constellation + lit status
-              title={`${starDesignation(fs.starId, fs.cI18nName)} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
-              className="absolute rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60 hover:z-30"
+              className="absolute group"
               style={{
                 left: `${fs.x}%`,
                 top: `${fs.y}%`,
                 transform: "translate(-50%, -50%)",
-                width: "18px",
-                height: "18px",
-                // UI-FIX: increased unlit star contrast from #475569 → #94a3b8
-                // (slate-600 → slate-400) so unlit stars are clearly visible
-                // against the dark background. Hollow ring style for unlit.
-                // Hover adds a bright glow via boxShadow.
-                background: lit ? accent : started ? "#7889a0" : "transparent",
-                boxShadow: lit
-                  ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
-                  : "0 0 6px 2px #94a3b844",
-                border: isSelected
-                  ? "2px solid #fff"
-                  : lit
-                    ? `1.5px solid ${accent}`
-                    : "2px solid #b0c0d0",
-                cursor: "pointer",
                 zIndex: isSelected ? 20 : 10,
               }}
-              aria-label={`${starDesignation(fs.starId, fs.cI18nName)} in ${fs.cI18nName} constellation${lit ? " (lit)" : " (unlit)"}`}
-            />
+            >
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  if (dragDistance.current > 5) return;
+                  e.stopPropagation();
+                  setSelectedStar({ constellationId: fs.cId, starId: fs.starId });
+                }}
+                // UI-FIX: add title tooltip showing star name + constellation + lit status
+                title={`${designation} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
+                className="block rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60"
+                style={{
+                  // NOIRLab — size now varies by Bayer designation.
+                  width: `${starSize}px`,
+                  height: `${starSize}px`,
+                  // UI-FIX: increased unlit star contrast from #475569 → #94a3b8
+                  // (slate-600 → slate-400) so unlit stars are clearly visible
+                  // against the dark background. Hollow ring style for unlit.
+                  // Hover adds a bright glow via boxShadow.
+                  background: lit ? accent : started ? "#7889a0" : "transparent",
+                  boxShadow: lit
+                    ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
+                    : "0 0 6px 2px #94a3b844",
+                  border: isSelected
+                    ? "2px solid #fff"
+                    : lit
+                      ? `1.5px solid ${accent}`
+                      : "2px solid #b0c0d0",
+                  cursor: "pointer",
+                }}
+                aria-label={`${designation} in ${fs.cI18nName} constellation${lit ? " (lit)" : " (unlit)"}`}
+              />
+              {/* NOIRLab — proper-name label shown beside the star on hover.
+                  Positioned to the right of the star so it doesn't overlap
+                  the connection lines or the star itself. */}
+              <span
+                className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-[0.6rem] font-mono whitespace-nowrap pointer-events-none text-slate-100 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-700/50"
+                style={{ textShadow: "0 0 4px rgba(0,0,0,0.9)" }}
+                aria-hidden
+              >
+                {designation}
+              </span>
+            </div>
           );
         })}
         {/* Constellation name labels — percentage positioning.
@@ -1277,7 +1321,7 @@ export function EnlightenmentContent() {
         </h2>
         <div className="text-sm text-slate-300 flex items-center justify-between flex-wrap gap-2">
           <span className="text-slate-300">
-            Click a <span className="text-violet-300 font-medium">star</span> to inspect & illuminate · Drag or use ◀ ▶ to pan
+            Click a <span className="text-violet-300 font-medium">star</span> to inspect & illuminate
           </span>
           <div className="flex items-center gap-2 ml-auto">
             {isUnlocked && (
@@ -1286,6 +1330,11 @@ export function EnlightenmentContent() {
                 variant="outline"
                 size="sm"
                 className="h-7 px-2 text-xs gap-1 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                // FIX — stop the pointer-down event from bubbling so the
+                // Expand button's onClick fires reliably (it is not inside
+                // the sky viewport, but stopPropagation guarantees no
+                // ancestor handler can intercept the click chain).
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => setExpanded(true)}
                 title="Open full-screen star map"
                 aria-label="Open full-screen star map"
@@ -1315,7 +1364,7 @@ export function EnlightenmentContent() {
                 STAR-MAP-FIX: using clamp() so the map grows to fill the
                 modal on tall viewports. */}
             <div
-              className="relative w-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
+              className="relative w-full overflow-hidden rounded-lg border border-violet-500/20 bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] touch-none select-none"
               style={{
                 // CONSTELLATION-REDESIGN-NOIRLAB: taller clamp so stars at
                 // y=4 (top) and y=96 (bottom) are always within the visible
@@ -1426,10 +1475,11 @@ export function EnlightenmentContent() {
                 </div>
               </div>
 
-              {/* Drag hint (top-right) */}
-              <div className="absolute top-2 right-12 rounded-md border border-violet-500/30 bg-slate-950/70 px-2 py-1 text-[0.6rem] text-violet-200/80 backdrop-blur pointer-events-none">
-                drag ◀ ▶ to pan
-              </div>
+              {/* NOIRLab — removed the duplicate "drag ◀ ▶ to pan" hint from
+                  the standard sky viewport (the header text + visible arrow
+                  buttons already communicate panning; the bottom tutorial
+                  panel covers the rest). Kept the expanded-mode hint since
+                  that context is less familiar. */}
             </div>
 
             {/* Below-sky: progress summary + bonus badges */}
@@ -1653,7 +1703,7 @@ export function EnlightenmentContent() {
           =========================================================================== */}
       {expanded && isUnlocked && (
         <div
-          className="fixed inset-0 z-[100] flex flex-col bg-[#020417] outline-none"
+          className="fixed inset-0 z-[100] flex flex-col bg-[#030308] outline-none"
           tabIndex={-1}
           autoFocus
           onKeyDown={(e) => {
@@ -1666,7 +1716,7 @@ export function EnlightenmentContent() {
           }}
         >
           {/* Top bar with title + Divinity + Exit + X */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-violet-500/30 bg-[#050518]/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-violet-500/30 bg-[#080812]/95 backdrop-blur">
             <div className="flex items-center gap-2 min-w-0">
               <Eye className="w-5 h-5 text-violet-300 shrink-0" />
               <div className="min-w-0">
@@ -1712,7 +1762,7 @@ export function EnlightenmentContent() {
 
           {/* Full-screen sky viewport — same drag/pan semantics as standard */}
           <div
-            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#020817] via-[#0a0a23] to-[#050518] touch-none select-none"
+            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] touch-none select-none"
             style={{ cursor: dragging ? "grabbing" : "grab" }}
             onPointerDown={(e) => onPointerDown(e, true)}
             onPointerMove={(e) => onPointerMove(e, true)}
@@ -1774,9 +1824,9 @@ export function EnlightenmentContent() {
               ))}
             </div>
 
-            {/* Drag hint (top-right) */}
+            {/* Drag hint (top-right) — concise, only shown in expanded mode */}
             <div className="absolute top-3 right-16 rounded-md border border-violet-500/30 bg-slate-950/70 px-2.5 py-1 text-[0.65rem] text-violet-200/80 backdrop-blur pointer-events-none">
-              drag ◀ ▶ to pan · press Exit to close
+              drag to pan · Esc to close
             </div>
           </div>
 
