@@ -1726,7 +1726,7 @@ export function EnlightenmentContent() {
           Exit button: closes the overlay and clears the per-star selection
           so the player doesn't end up with a stray popup after exit.
           =========================================================================== */}
-      {expanded && isUnlocked && createPortal(
+      {expanded && isUnlocked && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex flex-col bg-[#030308] outline-none constellation-sky-bg"
           tabIndex={-1}
