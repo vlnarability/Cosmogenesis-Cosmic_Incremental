@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useGameStore } from "@/game/state/store";
 import {
   CONSTELLATIONS,
@@ -1717,9 +1718,9 @@ export function EnlightenmentContent() {
           Exit button: closes the overlay and clears the per-star selection
           so the player doesn't end up with a stray popup after exit.
           =========================================================================== */}
-      {expanded && isUnlocked && (
+      {expanded && isUnlocked && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex flex-col bg-[#030308] outline-none"
+          className="fixed inset-0 z-[9999] flex flex-col bg-[#030308] outline-none constellation-sky-bg"
           tabIndex={-1}
           autoFocus
           onKeyDown={(e) => {
@@ -1856,7 +1857,8 @@ export function EnlightenmentContent() {
               expanded overlay's stacking context (z-[100] parent creates a
               new context; the popup's z-[80] is the highest child). */}
           {expanded && renderConstellationPopup()}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
