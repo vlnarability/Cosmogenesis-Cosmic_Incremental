@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   CONSTELLATIONS,
@@ -274,6 +274,21 @@ export function EnlightenmentContent() {
   // star button's onClick). Otherwise we'd swallow click events after every
   // drag.
   const dragDistance = useRef(0);
+
+  // UI-FIX: Escape key closes the expanded/full-screen view.
+  useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedStar(null);
+        setSelectedConstellation(null);
+        setExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [expanded]);
 
   const constellationState: ConstellationState = useMemo(
     () => ({
@@ -771,7 +786,7 @@ export function EnlightenmentContent() {
               }}
               // UI-FIX: add title tooltip showing star name + constellation + lit status
               title={`${starDesignation(fs.starId, fs.i18nName)} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
-              className="absolute rounded-full transition-transform hover:scale-125 focus:outline-none focus:ring-2 focus:ring-white/60"
+              className="absolute rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60 hover:z-30"
               style={{
                 left: `${fs.x}%`,
                 top: `${fs.y}%`,
@@ -781,15 +796,16 @@ export function EnlightenmentContent() {
                 // UI-FIX: increased unlit star contrast from #475569 → #94a3b8
                 // (slate-600 → slate-400) so unlit stars are clearly visible
                 // against the dark background. Hollow ring style for unlit.
+                // Hover adds a bright glow via boxShadow.
                 background: lit ? accent : started ? "#7889a0" : "transparent",
                 boxShadow: lit
                   ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
-                  : "0 0 6px 2px #94a3b833",
+                  : "0 0 6px 2px #94a3b844",
                 border: isSelected
                   ? "2px solid #fff"
                   : lit
                     ? `1.5px solid ${accent}`
-                    : "2px solid #94a3b8",
+                    : "2px solid #b0c0d0",
                 cursor: "pointer",
                 zIndex: isSelected ? 20 : 10,
               }}
@@ -1270,9 +1286,9 @@ export function EnlightenmentContent() {
           Layer 2 — Enlightenment (Constellation Sky)
           <BackgroundLayerBadge layerId="enlightenment" />
         </h2>
-        <div className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
-          <span>
-            Drag the wide sky or use ◀ ▶ to pan. Click a star to inspect it and illuminate.
+        <div className="text-sm text-slate-300 flex items-center justify-between flex-wrap gap-2">
+          <span className="text-slate-300">
+            Click a <span className="text-violet-300 font-medium">star</span> to inspect & illuminate · Drag or use ◀ ▶ to pan
           </span>
           <div className="flex items-center gap-2 ml-auto">
             {isUnlocked && (
@@ -1549,7 +1565,9 @@ export function EnlightenmentContent() {
                   <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1.5">
                     Constellations ({CONSTELLATIONS.length}) — click to pan
                   </div>
-                  <div className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
+                  {/* UI-FIX: increased max-h from 72 to 96 so more constellations
+                      are visible. Added custom scrollbar styling. */}
+                  <div className="space-y-0.5 max-h-96 overflow-y-auto pr-1 constellation-list-scroll">
                     {CONSTELLATIONS.map((c) => {
                       const prog = constellationProgress[c.id] || 0;
                       const total = c.stars.length;
@@ -1559,12 +1577,12 @@ export function EnlightenmentContent() {
                         <button
                           key={c.id}
                           onClick={() => panToConstellation(c.id, false)}
-                          className="w-full text-left px-2 py-1 rounded text-[0.65rem] flex items-center justify-between gap-1 transition-colors hover:bg-muted/30 border border-transparent"
+                          className="w-full text-left px-2 py-1 rounded text-[0.7rem] flex items-center justify-between gap-1 transition-colors hover:bg-muted/40 hover:border-violet-500/30 border border-transparent"
                           aria-label={`Pan to ${c.i18nName} constellation`}
                         >
                           <span className="flex items-center gap-1.5 min-w-0">
                             <span
-                              className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                              className="inline-block w-2 h-2 rounded-full shrink-0"
                               style={{
                                 background: completed
                                   ? CATEGORY_ACCENT[c.category]
@@ -1574,12 +1592,12 @@ export function EnlightenmentContent() {
                               }}
                             />
                             <span
-                              className={`truncate ${completed ? "text-amber-300" : started ? "text-slate-200" : "text-muted-foreground"}`}
+                              className={`truncate ${completed ? "text-amber-300 font-medium" : started ? "text-slate-200" : "text-slate-400"}`}
                             >
                               {c.i18nName}
                             </span>
                           </span>
-                          <span className="text-[0.55rem] text-muted-foreground font-mono shrink-0">
+                          <span className="text-[0.6rem] text-muted-foreground font-mono shrink-0">
                             {prog}/{total}
                           </span>
                         </button>
@@ -1666,17 +1684,18 @@ export function EnlightenmentContent() {
                   setSelectedConstellation(null);
                   setExpanded(false);
                 }}
-                title="Exit full-screen"
+                title="Exit full-screen (Esc)"
                 aria-label="Exit full-screen"
               >
                 <Minimize2 className="w-3.5 h-3.5" />
                 Exit
+                <kbd className="ml-1 text-[0.6rem] px-1 py-0.5 rounded bg-violet-500/20 border border-violet-500/30 text-violet-300">Esc</kbd>
               </Button>
               {/* X close button — top-right corner, always visible */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/40 hover:scale-110 transition-all"
                 onClick={() => {
                   setSelectedStar(null);
                   setSelectedConstellation(null);
