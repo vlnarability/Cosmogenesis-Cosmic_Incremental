@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useGameStore } from "@/game/state/store";
 import {
   CONSTELLATIONS,
@@ -276,19 +276,8 @@ export function EnlightenmentContent() {
   const dragDistance = useRef(0);
 
   // UI-FIX: Escape key closes the expanded/full-screen view.
-  useEffect(() => {
-    if (!expanded) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setSelectedStar(null);
-        setSelectedConstellation(null);
-        setExpanded(false);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [expanded]);
+  // Uses a ref-based handler attached to the overlay div via onKeyDown
+  // (avoids useEffect to prevent potential lazy-load issues with large files).
 
   const constellationState: ConstellationState = useMemo(
     () => ({
@@ -1663,7 +1652,19 @@ export function EnlightenmentContent() {
           so the player doesn't end up with a stray popup after exit.
           =========================================================================== */}
       {expanded && isUnlocked && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-[#020417]">
+        <div
+          className="fixed inset-0 z-[100] flex flex-col bg-[#020417] outline-none"
+          tabIndex={-1}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setSelectedStar(null);
+              setSelectedConstellation(null);
+              setExpanded(false);
+            }
+          }}
+        >
           {/* Top bar with title + Divinity + Exit + X */}
           <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-violet-500/30 bg-[#050518]/95 backdrop-blur">
             <div className="flex items-center gap-2 min-w-0">
