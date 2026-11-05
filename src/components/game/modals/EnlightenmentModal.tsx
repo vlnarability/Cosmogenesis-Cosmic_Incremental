@@ -833,7 +833,10 @@ export function EnlightenmentContent() {
                   // (slate-600 → slate-400) so unlit stars are clearly visible
                   // against the dark background. Hollow ring style for unlit.
                   // Hover adds a bright glow via boxShadow.
-                  background: lit ? accent : started ? "#7889a0" : "transparent",
+                  // UI-FIX: unlit stars now have a very dim fill instead of
+                  // fully transparent — reads as a "dim star" rather than
+                  // an empty ring placeholder.
+                  background: lit ? accent : started ? "#7889a0" : "#1a2030",
                   boxShadow: lit
                     ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
                     : "0 0 6px 2px #94a3b844",
@@ -1384,6 +1387,8 @@ export function EnlightenmentContent() {
                 // area (was clamp(380px, 56vh, 700px)).
                 height: "clamp(500px, 64vh, 900px)",
                 cursor: dragging ? "grabbing" : "grab",
+                // UI-FIX: padding so edge stars aren't clipped
+                padding: "12px",
               }}
               onPointerDown={(e) => onPointerDown(e, false)}
               onPointerMove={(e) => onPointerMove(e, false)}
