@@ -29,3 +29,4 @@ export default function Home() {
   if (!started) return <LandingPage onDescend={() => setStarted(true)} />;
   return <GameShell />;
 }
+// Build trigger Thu Nov  5 18:31:31 UTC 2026
