@@ -769,6 +769,8 @@ export function EnlightenmentContent() {
                 e.stopPropagation();
                 setSelectedStar({ constellationId: fs.cId, starId: fs.starId });
               }}
+              // UI-FIX: add title tooltip showing star name + constellation + lit status
+              title={`${starDesignation(fs.starId, fs.i18nName)} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
               className="absolute rounded-full transition-transform hover:scale-125 focus:outline-none focus:ring-2 focus:ring-white/60"
               style={{
                 left: `${fs.x}%`,
@@ -776,15 +778,18 @@ export function EnlightenmentContent() {
                 transform: "translate(-50%, -50%)",
                 width: "18px",
                 height: "18px",
-                background: lit ? accent : started ? "#64748b" : "#475569",
+                // UI-FIX: increased unlit star contrast from #475569 → #94a3b8
+                // (slate-600 → slate-400) so unlit stars are clearly visible
+                // against the dark background. Hollow ring style for unlit.
+                background: lit ? accent : started ? "#7889a0" : "transparent",
                 boxShadow: lit
                   ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
-                  : "0 0 4px 1px #94a3b855",
+                  : "0 0 6px 2px #94a3b833",
                 border: isSelected
                   ? "2px solid #fff"
                   : lit
                     ? `1.5px solid ${accent}`
-                    : "1.5px solid #64748b",
+                    : "2px solid #94a3b8",
                 cursor: "pointer",
                 zIndex: isSelected ? 20 : 10,
               }}
@@ -807,16 +812,19 @@ export function EnlightenmentContent() {
           return (
             <span
               key={`${offset}-label-${la.cId}`}
-              className="absolute text-[10px] italic font-serif select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline"
+              // UI-FIX: increased label font 10px → 11px, brightened unstarted
+              // color, increased opacity 0.45 → 0.7 so labels are readable.
+              className="absolute text-[11px] italic font-serif select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline hover:text-white"
               style={{
                 left: `${la.left}%`,
                 top: `${la.top}%`,
                 color: isCompleted
                   ? CATEGORY_ACCENT[cdef.category]
                   : isStarted
-                    ? "#cbd5e1"
-                    : "#475569",
-                opacity: dim ? 0.45 : 0.95,
+                    ? "#e2e8f0"
+                    : "#7b8da4",
+                opacity: dim ? 0.7 : 1,
+                textShadow: "0 1px 3px rgba(0,0,0,0.8)",
               }}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -1561,8 +1569,8 @@ export function EnlightenmentContent() {
                                 background: completed
                                   ? CATEGORY_ACCENT[c.category]
                                   : started
-                                    ? "#64748b"
-                                    : "#334155",
+                                    ? "#7889a0"
+                                    : "#475569",
                               }}
                             />
                             <span
@@ -1611,8 +1619,14 @@ export function EnlightenmentContent() {
       )}
 
       <Separator className="my-2" />
-      <div className="text-[0.65rem] text-muted-foreground px-1">
-        Click any star to inspect it; then press <span className="text-violet-300">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per star already lit in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per other started constellation. Complete <span className="text-emerald-300">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> constellations to advance to Layer 3.
+      {/* UI-FIX: moved tutorial text from tiny 0.65rem muted to a more visible
+          0.75rem panel with background + border. Added an info icon for
+          discoverability. Key actions are highlighted with color. */}
+      <div className="text-[0.75rem] text-muted-foreground px-2 py-1.5 rounded bg-muted/40 border border-border/40 flex items-start gap-1.5">
+        <span className="text-cyan-400 mt-0.5">ⓘ</span>
+        <span>
+          Click a <span className="text-slate-300">star</span> to inspect it, then press <span className="text-violet-300 font-semibold">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per lit star in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per started constellation. Complete <span className="text-emerald-300 font-semibold">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> to advance to Layer 3.
+        </span>
       </div>
 
       {/* ===========================================================================
