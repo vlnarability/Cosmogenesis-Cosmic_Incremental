@@ -237,7 +237,7 @@ export function TranscendenceContent() {
         <div className="text-center text-muted-foreground py-10">
           <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">Transcendence is sealed.</p>
-          <p className="text-xs mt-1">Complete 10 constellations (Layer 2) to unlock Transcendence.</p>
+          <p className="text-xs mt-1">Complete 20 constellations (Layer 2) to unlock Transcendence.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -343,6 +343,18 @@ export function TranscendenceContent() {
                 const check = canFuse(worldTiers, tier.id, unlockedLayers || {});
                 const isLocked = !!tier.requiresLayer && !unlockedLayers?.[tier.requiresLayer];
                 const canFuseNow = check.ok;
+                // UI-FIX: Collapse tiers with 0 owned AND 0 source AND not fusable
+                // into a compact single-line row to reduce dead space.
+                const isEmpty = count === 0 && sourceCount === 0 && !canFuseNow && !isLocked;
+                if (isEmpty) {
+                  return (
+                    <div key={tier.id} className="rounded-md border border-muted-foreground/20 bg-muted/5 px-2 py-1 flex items-center gap-2 opacity-40">
+                      <span className="text-sm shrink-0">{tier.icon}</span>
+                      <span className="text-[0.65rem] text-muted-foreground flex-1">{tier.name}</span>
+                      <span className="text-[0.55rem] text-muted-foreground font-mono">0 / {tier.sourceCount}</span>
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={tier.id}

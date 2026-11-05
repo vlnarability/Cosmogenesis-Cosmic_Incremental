@@ -893,10 +893,13 @@ export function EnlightenmentContent() {
               key={`${offset}-label-${la.cId}`}
               // UI-FIX: increased label font 10px → 11px, brightened unstarted
               // color, increased opacity 0.45 → 0.7 so labels are readable.
-              className="absolute text-[11px] italic font-serif select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline hover:text-white"
+              // UI-FIX: added max-width + overflow-hidden + text-overflow
+              // to prevent labels from clipping at viewport edges.
+              className="absolute text-[11px] italic font-serif select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline hover:text-white overflow-hidden text-ellipsis"
               style={{
                 left: `${la.left}%`,
                 top: `${la.top}%`,
+                maxWidth: "120px",
                 color: isCompleted
                   ? CATEGORY_ACCENT[cdef.category]
                   : isStarted
@@ -1402,7 +1405,7 @@ export function EnlightenmentContent() {
                 height: "clamp(500px, 64vh, 900px)",
                 cursor: dragging ? "grabbing" : "grab",
                 // UI-FIX: padding so edge stars aren't clipped (increased 12→24)
-                padding: "24px",
+                padding: "40px",
               }}
               onPointerDown={(e) => onPointerDown(e, false)}
               onPointerMove={(e) => onPointerMove(e, false)}
@@ -1543,7 +1546,10 @@ export function EnlightenmentContent() {
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(cb.productionMult * 100).toFixed(1)}% prod</Badge>
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(cb.capMult * 100).toFixed(1)}% cap</Badge>
+                {/* UI-FIX: hide cap badge when value is 0 */}
+                {cb.capMult > 0 && (
+                  <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(cb.capMult * 100).toFixed(1)}% cap</Badge>
+                )}
                 {/* EP + pop badges removed — EP merged with Divinity, pop is irrelevant at L2+ */}
                 {cb.costMult < 0 && (
                   <Badge variant="outline" className="text-pink-300 border-pink-400/40">{(cb.costMult * 100).toFixed(1)}% cost</Badge>
@@ -1800,7 +1806,7 @@ export function EnlightenmentContent() {
 
           {/* Full-screen sky viewport — same drag/pan semantics as standard */}
           <div
-            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] constellation-sky-bg touch-none select-none"
+            className="relative flex-1 overflow-hidden bg-gradient-to-b from-[#050510] via-[#080812] to-[#030308] constellation-sky-bg constellation-sky-bg-dense touch-none select-none"
             style={{ cursor: dragging ? "grabbing" : "grab" }}
             onPointerDown={(e) => onPointerDown(e, true)}
             onPointerMove={(e) => onPointerMove(e, true)}

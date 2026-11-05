@@ -2688,7 +2688,7 @@ export const useGameStore = create<GameStore>()(
         const geneticInstability = instability; // alias
 
         // ---- Layer unlock chain (Layers 3-6) ----
-        // Layer 3 (Transcendence): 10+ constellations COMPLETED (new L2 design).
+        // Layer 3 (Transcendence): 20 constellations COMPLETED (new L2 design).
         if (unlockedLayers.enlightenment && !unlockedLayers.transcendence) {
           if (canAdvanceToTranscendence(constellationState)) {
             unlockedLayers = { ...unlockedLayers, transcendence: true };
@@ -6315,7 +6315,10 @@ export const useGameStore = create<GameStore>()(
         const s = get();
         if (!s.unlockedLayers?.transcendence) return;
         const forged = s.worldsForged || 0;
-        const cost = Math.ceil(50 * Math.pow(1.5, forged));
+        // BUGFIX: Apply forge_cost_reduction upgrade (repurposed from ritual_extension)
+        const forgeEffLvl = (s.upgrades?.["ritual_extension"] as number) || 0;
+        const forgeCostMult = Math.max(0.5, 1 - forgeEffLvl * 0.05); // min 50% cost
+        const cost = Math.ceil(50 * Math.pow(1.5, forged) * forgeCostMult);
         if (!s.debugFreeBuy && (s.divinity || 0) < cost) {
           get().notifyPurchaseError(`Not enough Divinity (need ${cost.toLocaleString()})`);
           return;

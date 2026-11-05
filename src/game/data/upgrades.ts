@@ -556,17 +556,19 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "constellation_boost", value: 0.25 },
   },
 
-  // ---- L3 — Transcendence (Divine Market + Rituals) ----
+  // ---- L3 — Transcendence (Divine Market) ----
+  // BUGFIX: ritual_extension was inert (Rituals removed from L3 UI in redesign).
+  // Repurposed as "World Forge Efficiency" — reduces world forge cost by 5% per level.
   {
     id: "ritual_extension",
-    name: "Ritual Extension",
-    desc: (l) => `Temporary ritual duration +${l * 20}% per level (max 5).`,
+    name: "Forge Efficiency",
+    desc: (l) => `World Forge cost -${l * 5}% per level (max 5). Reduces the Divinity cost of forging new worlds.`,
     baseCost: 12,
     maxLevel: 5,
     costGrowth: 1.7,
     requiresLayer: "transcendence",
     category: "layer",
-    effect: { type: "ritual_extension", value: 0.20 },
+    effect: { type: "forge_cost_reduction", value: 0.05 },
   },
   {
     id: "market_savvy",
