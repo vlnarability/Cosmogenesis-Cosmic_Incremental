@@ -836,8 +836,10 @@ export function EnlightenmentContent() {
                 className="block rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60 constellation-star"
                 style={{
                   // NOIRLab — size now varies by Bayer designation.
-                  width: `${starSize}px`,
-                  height: `${starSize}px`,
+                  // UI-FIX: unlit stars are 70% size of lit stars so they
+                  // don't dominate the visual hierarchy.
+                  width: `${lit ? starSize : Math.round(starSize * 0.7)}px`,
+                  height: `${lit ? starSize : Math.round(starSize * 0.7)}px`,
                   // UI-FIX: increased unlit star contrast from #475569 → #94a3b8
                   // (slate-600 → slate-400) so unlit stars are clearly visible
                   // against the dark background. Hollow ring style for unlit.
@@ -845,7 +847,10 @@ export function EnlightenmentContent() {
                   // UI-FIX: unlit stars now have a dim fill (#2a3548) and
                   // bright border (#c8d4e6) for strong contrast against the
                   // dark background. Reads as a "dim star" not a placeholder.
-                  background: lit ? accent : started ? "#7889a0" : "#2a3548",
+                  // UI-FIX: unlit stars dimmed (#1a2030 fill, opacity 0.7)
+                  // so they read as faint background stars, not bubbles.
+                  background: lit ? accent : started ? "#586575" : "#1a2030",
+                  opacity: lit ? 1 : started ? 0.8 : 0.6,
                   boxShadow: lit
                     ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
                     : "0 0 4px 1px #64748b88",
