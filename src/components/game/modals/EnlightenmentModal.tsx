@@ -1625,8 +1625,7 @@ export function EnlightenmentContent() {
                       are visible. Added custom scrollbar styling. */}
                   {/* UI-FIX: increased max-h to flex-1 for proper scroll, added
                       fade gradient at bottom to indicate more content. */}
-                  <div className="space-y-0.5 max-h-[60vh] overflow-y-auto pr-1 constellation-list-scroll"
-                    style={{ maskImage: "linear-gradient(to bottom, black 85%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, black 85%, transparent 100%)" }}>
+                  <div className="space-y-0.5 max-h-[60vh] overflow-y-auto pr-1 constellation-list-scroll">
                     {CONSTELLATIONS.map((c) => {
                       const prog = constellationProgress[c.id] || 0;
                       const total = c.stars.length;
