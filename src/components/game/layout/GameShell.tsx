@@ -66,9 +66,11 @@ const OfflineSummary = lazy(() => import("../modals/OfflineSummary").then(m => (
 const ChallengeContent = lazy(() =>
   import("../modals/ChallengeModal").then((m) => ({ default: m.ChallengeContent as React.ComponentType }))
 );
-const EnlightenmentContent = lazy(() =>
-  import("../modals/EnlightenmentModal").then((m) => ({ default: m.EnlightenmentContent as React.ComponentType }))
-);
+// UI-FIX: EnlightenmentContent imported directly (not lazy) to fix Suspense
+// loading issue. The lazy chunk was failing to load after store.ts changes
+// added constellationBonus() calls. Direct import includes it in the main
+// bundle, eliminating the lazy-loading failure.
+import { EnlightenmentContent } from "../modals/EnlightenmentModal";
 const TranscendenceContent = lazy(() =>
   import("../modals/TranscendenceModal").then((m) => ({ default: m.TranscendenceContent as React.ComponentType }))
 );
