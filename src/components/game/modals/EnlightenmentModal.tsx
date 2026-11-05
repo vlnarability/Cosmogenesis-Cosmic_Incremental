@@ -848,12 +848,12 @@ export function EnlightenmentContent() {
                   background: lit ? accent : started ? "#7889a0" : "#2a3548",
                   boxShadow: lit
                     ? `0 0 10px 3px ${accent}66, 0 0 4px 1px ${accent}`
-                    : "0 0 8px 2px #94a3b866",
+                    : "0 0 4px 1px #64748b88",
                   border: isSelected
                     ? "2px solid #fff"
                     : lit
                       ? `1.5px solid ${accent}`
-                      : "2px solid #c8d4e6",
+                      : "1px solid #64748b",
                   cursor: "pointer",
                 }}
                 aria-label={`${designation} in ${fs.cI18nName} constellation${lit ? " (lit)" : " (unlit)"}`}
