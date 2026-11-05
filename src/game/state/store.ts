@@ -3650,11 +3650,14 @@ export const useGameStore = create<GameStore>()(
           };
           const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
           const foresightDiscountMult = Math.pow(0.80, fdLvl);
+          // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+          // reduce star illumination costs (the primary L2 Divine Engine sink).
+          const constB = constellationBonus(cs);
           let best: { cId: string; sId: string; cost: number } | null = null;
           for (const c of CONSTELLATIONS) {
             for (const st of c.stars) {
               if (cs.constellationStars[st.id]) continue; // already lit
-              const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+              const cost = starCost(c.id, cs, st.id, { foresightDiscountMult, constellationCostMult: constB.costMult });
               if (cost <= (divinity) && (!best || cost < best.cost)) {
                 best = { cId: c.id, sId: st.id, cost };
               }
@@ -4631,7 +4634,21 @@ export const useGameStore = create<GameStore>()(
         }
         const owned = s.upgrades[upgradeId] || 0;
         if (owned >= up.maxLevel) return;
-        const cost = upgradeCost(up, owned);
+        // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+        // also reduce shop upgrade costs. This keeps the costMult bonus
+        // relevant past L3 (when the player stops buying stars and starts
+        // buying upgrades across all layers).
+        const constCs: ConstellationState = {
+          constellationStars: s.constellationStars || {},
+          constellationProgress: s.constellationProgress || {},
+          constellationsStarted: s.constellationsStarted || {},
+          constellationsCompleted: s.constellationsCompleted || {},
+        };
+        const constB = constellationBonus(constCs);
+        const rawCost = upgradeCost(up, owned);
+        const cost = constB.costMult < 0
+          ? Math.ceil(rawCost * (1 + constB.costMult))
+          : rawCost;
         // CURRENCY-UNIFICATION — shop upgrades now cost Divinity (was EP).
         // `evolutionPoints` is kept on GameState for back-compat but is no
         // longer spent here. `debugFreeBuy` still bypasses affordability.
@@ -6576,11 +6593,14 @@ export const useGameStore = create<GameStore>()(
         };
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
         const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+        // reduce star illumination costs.
+        const constB = constellationBonus(cs);
         // Find the cheapest unlit star in this constellation.
         let best: { starId: string; cost: number } | null = null;
         for (const st of cdef.stars) {
           if (cs.constellationStars[st.id]) continue;
-          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult });
+          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult, constellationCostMult: constB.costMult });
           if (!best || cost < best.cost) best = { starId: st.id, cost };
         }
         if (!best) {
@@ -6614,11 +6634,14 @@ export const useGameStore = create<GameStore>()(
         };
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
         const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+        // reduce star illumination costs.
+        const constB = constellationBonus(cs);
         // Build a sorted list of unlit stars by ascending cost.
         const unlit: Array<{ starId: string; cost: number }> = [];
         for (const st of cdef.stars) {
           if (cs.constellationStars[st.id]) continue;
-          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult });
+          const cost = starCost(constellationId, cs, st.id, { foresightDiscountMult, constellationCostMult: constB.costMult });
           unlit.push({ starId: st.id, cost });
         }
         if (unlit.length === 0) {
@@ -6647,7 +6670,8 @@ export const useGameStore = create<GameStore>()(
             constellationsStarted: cur.constellationsStarted || {},
             constellationsCompleted: cur.constellationsCompleted || {},
           };
-          const cost = starCost(constellationId, curCs, candidate.starId, { foresightDiscountMult });
+          const constB = constellationBonus(curCs);
+          const cost = starCost(constellationId, curCs, candidate.starId, { foresightDiscountMult, constellationCostMult: constB.costMult });
           if (!cur.debugFreeBuy && (cur.divinity || 0) < cost) {
             // Can't afford this one — stop.
             break;
@@ -6993,7 +7017,10 @@ export const useGameStore = create<GameStore>()(
         // LAYER UPGRADE — foresight_discount: multiplicative -20% per level (max 5)
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
         const foresightDiscountMult = Math.pow(0.80, fdLvl);
-        const cost = starCost(constellationId, cs, starId, { foresightDiscountMult });
+        // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+        // reduce star illumination costs.
+        const constB = constellationBonus(cs);
+        const cost = starCost(constellationId, cs, starId, { foresightDiscountMult, constellationCostMult: constB.costMult });
         // DEBUG-FREE-BUY — bypass cost check when free-buy is enabled
         if (!s.debugFreeBuy && (s.divinity || 0) < cost) return;
         // LAYER UPGRADE — constellation_boost: +25% PP per node illuminated per level (max 4)
@@ -7178,11 +7205,14 @@ export const useGameStore = create<GameStore>()(
         };
         const fdLvl = (s.upgrades?.foresight_discount as number) || 0;
         const foresightDiscountMult = Math.pow(0.80, fdLvl);
+        // CONSTELLATION-COSTMULT — completed cost-reduction constellations
+        // reduce star illumination costs.
+        const constB = constellationBonus(cs);
         let best: { cId: string; sId: string; cost: number } | null = null;
         for (const c of CONSTELLATIONS) {
           for (const st of c.stars) {
             if (cs.constellationStars[st.id]) continue;
-            const cost = starCost(c.id, cs, st.id, { foresightDiscountMult });
+            const cost = starCost(c.id, cs, st.id, { foresightDiscountMult, constellationCostMult: constB.costMult });
             if (cost <= (s.divinity || 0) && (!best || cost < best.cost)) {
               best = { cId: c.id, sId: st.id, cost };
             }

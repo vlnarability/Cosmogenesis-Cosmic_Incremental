@@ -96,8 +96,12 @@ export interface ConstellationDef {
 // ---------------------------------------------------------------------------
 export const CONSTELLATION_BASE_COST = 10;
 export const WITHIN_CONSTELLATION_GROWTH = 1.5;
-export const COST_GROWTH_PER_STARTED = 2.0;
-export const NEW_CONSTELLATION_PENALTY = 2.0;
+// REBALANCE: lowered from 2.0 → 1.5 so all 88 constellations are achievable.
+// At 2.0, the 20th constellation's first star cost 10×2^19 ≈ 5.2M Divinity,
+// making completion impossible without debugFreeBuy. At 1.5, the 20th costs
+// 10×1.5^19 ≈ 2.2K — steep but earnable through prestige + divinity farming.
+export const COST_GROWTH_PER_STARTED = 1.5;
+export const NEW_CONSTELLATION_PENALTY = 1.5;
 
 // Number of constellations the player must COMPLETE to advance to Layer 3.
 // 88 constellations total — completing 20 (~23%) unlocks Transcendence.
@@ -2128,14 +2132,14 @@ export function starCost(
   constellationId: string,
   state: ConstellationState,
   starId?: string,
-  opts?: { baseCost?: number; foresightDiscountMult?: number }
+  opts?: { baseCost?: number; foresightDiscountMult?: number; constellationCostMult?: number }
 ): number {
   const baseCost = opts?.baseCost ?? CONSTELLATION_BASE_COST;
   const litInThis = state.constellationProgress?.[constellationId] || 0;
   // N = number of OTHER started constellations (exclude the current one if
   // already started). This is the "new constellation penalty" — it sticks
   // for every star within a started constellation, so switching to B before
-  // finishing A makes EVERY B star cost 2× more, not just the first.
+  // finishing A makes EVERY B star cost 1.5× more, not just the first.
   const startedCount = Object.keys(state.constellationsStarted || {}).filter(
     (k) => state.constellationsStarted[k]
   ).length;
@@ -2148,6 +2152,15 @@ export function starCost(
   // LAYER UPGRADE — foresight_discount: multiplicative -20% per level (max 5).
   if (opts?.foresightDiscountMult && opts.foresightDiscountMult < 1) {
     cost *= opts.foresightDiscountMult;
+  }
+  // CONSTELLATION costMult BONUS — completed cost-reduction constellations
+  // (libra, draco, sextans, etc.) reduce star illumination costs. This is
+  // the primary L2 Divine Engine sink, so the bonus is applied here where
+  // it matters — not in the Cosmos loop (system/tech costs) which the
+  // player has outgrown by L2. costMult is negative (e.g. -0.05 for libra),
+  // so (1 + costMult) < 1 → discount.
+  if (opts?.constellationCostMult && opts.constellationCostMult < 0) {
+    cost *= (1 + opts.constellationCostMult);
   }
   return Math.ceil(cost);
 }
