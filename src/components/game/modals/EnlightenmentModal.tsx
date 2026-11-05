@@ -640,8 +640,13 @@ export function EnlightenmentContent() {
           // Padding around the bounding box so the outline extends a bit
           // beyond the star cluster (NOIRLab outlines bleed outside the star
           // positions, not the other way around).
-          const padX = width * 0.3;
-          const padY = height * 0.3;
+          // UI-FIX: increased padding from 0.3 → 0.5 and enforced minimum
+          // sizes so small constellations (Sagitta, Equuleus) still show
+          // visible artwork.
+          const padX = Math.max(width * 0.5, 3);
+          const padY = Math.max(height * 0.5, 3);
+          const outlineWidth = Math.max((width + padX * 2) * (skyW / 100), 200);
+          const outlineHeight = Math.max(height + padY * 2, 8);
           return (
             <img
               key={`${offset}-outline-${la.cId}`}
@@ -651,17 +656,19 @@ export function EnlightenmentContent() {
                 // Horizontal positioning in PIXELS (multiplied by skyW/100
                 // because star coords are 0-100 normalized on the X axis).
                 left: `${(minX - padX) * (skyW / 100)}px`,
-                width: `${(width + padX * 2) * (skyW / 100)}px`,
+                width: `${outlineWidth}px`,
                 // Vertical positioning in PERCENTAGE so the overlay scales
                 // with the viewport's rendered height (same scheme as the
                 // star buttons).
                 top: `${minY - padY}%`,
-                height: `${height + padY * 2}%`,
+                height: `${outlineHeight}%`,
                 // NOIRLab — increased from 0.25 → 0.55 so the completed
                 // constellation artwork is clearly visible as a reward.
                 opacity: 0.55,
                 objectFit: "contain",
-                zIndex: 1,
+                // UI-FIX: zIndex 5 so outlines paint ABOVE SVG connection
+                // lines (zIndex 0) but BELOW stars (zIndex 10+).
+                zIndex: 5,
               }}
               alt=""
               aria-hidden
