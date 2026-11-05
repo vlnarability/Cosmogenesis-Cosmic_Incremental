@@ -774,7 +774,7 @@ export function EnlightenmentContent() {
                 setSelectedStar({ constellationId: fs.cId, starId: fs.starId });
               }}
               // UI-FIX: add title tooltip showing star name + constellation + lit status
-              title={`${starDesignation(fs.starId, fs.i18nName)} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
+              title={`${starDesignation(fs.starId, fs.cI18nName)} — ${lit ? "Lit" : "Unlit"}${!lit ? ` (click to illuminate)` : ""}`}
               className="absolute rounded-full transition-all duration-150 hover:scale-150 focus:outline-none focus:ring-2 focus:ring-white/60 hover:z-30"
               style={{
                 left: `${fs.x}%`,
