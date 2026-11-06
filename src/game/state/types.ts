@@ -1266,11 +1266,10 @@ export interface GameStore extends GameState {
   illuminateStar: (constellationId: string, starId: string) => void;
 
   // Layer 3 — Transcendence
+  // LEGACY — performOffering/performRitual/toggleScript/performBloodPact
+  // actions were removed when the Offerings/Rituals/Scripts/BloodPacts UIs
+  // were removed. The state fields remain for save migration compat.
   setShowTranscendence: (v: boolean) => void;
-  performOffering: (offeringId: string) => void;
-  performRitual: (ritualId: string) => void;
-  toggleScript: (scriptId: string) => void;
-  performBloodPact: (tierId: string) => void;
 
   // Layer 4 — Genesis
   setShowGenesis: (v: boolean) => void;

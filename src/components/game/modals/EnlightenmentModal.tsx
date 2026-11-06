@@ -25,10 +25,6 @@ import {
   type ConstellationDef,
   type Hemisphere,
 } from "@/game/data/constellations";
-import {
-  FORESIGHT_ROUTES,
-  routeBonus,
-} from "@/game/data/foresight";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -248,13 +244,11 @@ export function EnlightenmentContent() {
   const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
   const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
   const constellationRevealed = useGameStore((s) => s.constellationRevealed || {});
-  const activeRoute = useGameStore((s) => s.activeForesightRoute);
   // Layer shop upgrades
   const upgrades = useGameStore((s) => s.upgrades || {});
 
   // Actions
   const illuminateStar = useGameStore((s) => s.illuminateStar);
-  const setForesightRoute = useGameStore((s) => s.setForesightRoute);
   // L3-REDESIGN — constellation bulk purchase actions.
   const purchaseNextStar = useGameStore((s) => s.purchaseNextStar);
   const purchaseMaxStars = useGameStore((s) => s.purchaseMaxStars);
@@ -309,7 +303,6 @@ export function EnlightenmentContent() {
     [constellationStars, constellationProgress, constellationsStarted, constellationsCompleted]
   );
 
-  const rb = routeBonus(activeRoute);
   const cb = constellationBonus(constellationState);
   const completedCount = countCompletedConstellations(constellationState);
   const litStarsCount = countLitStars(constellationState);
@@ -1682,31 +1675,6 @@ export function EnlightenmentContent() {
                     })}
                   </div>
                 </div>
-
-                {/* Route picker (preserved from classic foresight) */}
-                <details className="stat-card">
-                  <summary className="text-[0.7rem] uppercase tracking-wide text-muted-foreground cursor-pointer">
-                    Route (cosmetic bonus layer)
-                  </summary>
-                  <div className="grid grid-cols-2 gap-1 mt-2">
-                    {FORESIGHT_ROUTES.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setForesightRoute(activeRoute === r.id ? null : r.id)}
-                        className={`stat-card text-left p-1.5 ${activeRoute === r.id ? "border-amber-400/60 bg-amber-500/10" : ""}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm">{r.icon}</span>
-                          <span className="text-[0.65rem] font-medium">{r.name}</span>
-                        </div>
-                        <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-snug">{r.blurb}</div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[0.6rem] text-amber-300/80 mt-1">
-                    Route bonus: +{(rb.productionMult * 100).toFixed(0)}% prod, +{(rb.capMult * 100).toFixed(0)}% cap, +{(rb.epMult * 100).toFixed(0)}% Divinity
-                  </div>
-                </details>
               </div>
             </ScrollArea>
           </div>

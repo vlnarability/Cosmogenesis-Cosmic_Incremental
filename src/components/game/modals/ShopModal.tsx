@@ -6,7 +6,6 @@ import { UPGRADES, upgradeCost } from "@/game/data/upgrades";
 import type { UpgradeDef } from "@/game/state/types";
 import { ARCHETYPES } from "@/game/data/archetypes";
 import { GOVERNMENTS } from "@/game/data/governments";
-import { FORESIGHT_ROUTES } from "@/game/data/foresight";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -570,7 +569,6 @@ function AutobuyerSettingsPanel({
   };
   const archOptions = ARCHETYPES;
   const govOptions = GOVERNMENTS;
-  const routeOptions = FORESIGHT_ROUTES; // currently empty (legacy shim)
   // Disable the targeting selectors for autobuyers the player doesn't own.
   const disableSystem = !hasAutoSystemBuyer;
   const disableTech = !hasAutoTechBuyer;
@@ -617,14 +615,6 @@ function AutobuyerSettingsPanel({
             value={toValue(settings.preferredGovernment)}
             onValueChange={(v) => setPreferredGovernment(v === NONE ? null : v)}
             options={govOptions.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` }))}
-          />
-          {/* Preferred foresight route (auto-applied at L2+) */}
-          <TargetingSelect
-            label="Preferred foresight route"
-            value={toValue(settings.preferredForesightRoute)}
-            onValueChange={(v) => setPreferredForesightRoute(v === NONE ? null : v)}
-            options={routeOptions.map((r) => ({ value: r.id, label: r.name }))}
-            emptyHint="No foresight routes available yet."
           />
         </div>
 

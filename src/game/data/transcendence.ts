@@ -11,7 +11,6 @@
 //   • World Templates — choose how simulations run (mode selection)
 //   • Genesis Seeds — plant permanent Divinity generators (4 tiers, unlock L4)
 //   • Eternal Flame — dump infinite Divinity for a growing multiplier
-//   • Astral Resonance — align all worlds to a constellation category
 //   • World Fusion — merge worlds into higher tiers (see worldFusion.ts)
 //   • Investment Portfolios — allocate worlds for risk/reward dividends (kept)
 // ===========================================================================
@@ -253,60 +252,6 @@ export function matureSeedDivinityPerSec(plantedSeeds: Record<string, { planted:
   return total;
 }
 
-// ----- Astral Resonance -----
-// Align ALL worlds to a constellation category. One active at a time.
-export interface ResonanceAlignment {
-  id: string;
-  name: string;
-  desc: string;
-  icon: string;
-  divinityMult: number; // × multiplier on Divinity/s from worlds
-  faithCostPerTick?: number; // Faith drain per tick to maintain
-  crashChance?: number; // chance per tick a world collapses
-}
-
-export const RESONANCE_ALIGNMENTS: ResonanceAlignment[] = [
-  {
-    id: "zodiac",
-    name: "Zodiac Alignment",
-    desc: "+10% Divinity/s. No downside.",
-    icon: "♈",
-    divinityMult: 1.10,
-  },
-  {
-    id: "northern",
-    name: "Northern Alignment",
-    desc: "+15% Divinity/s from worlds. Penalty: -10% peak production rate (the engine runs cooler but each world produces more efficiently).",
-    icon: "🐻",
-    divinityMult: 1.15,
-  },
-  {
-    id: "equatorial",
-    name: "Equatorial Alignment",
-    desc: "+20% Divinity/s, costs 1 Faith/tick to maintain.",
-    icon: "🌍",
-    divinityMult: 1.20,
-    faithCostPerTick: 1,
-  },
-  {
-    id: "southern",
-    name: "Southern Alignment",
-    desc: "+25% Divinity/s, but 2% chance/tick a world collapses.",
-    icon: "⛵",
-    divinityMult: 1.25,
-    crashChance: 0.02,
-  },
-];
-
-export const RESONANCE_MAP: Record<string, ResonanceAlignment> = Object.fromEntries(
-  RESONANCE_ALIGNMENTS.map((a) => [a.id, a])
-);
-
-export function resonanceBonus(alignmentId: string | null): ResonanceAlignment | null {
-  if (!alignmentId) return null;
-  return RESONANCE_MAP[alignmentId] || null;
-}
-
 // ----- World Forge -----
 // Cost formula: base × 1.5^worldsForged
 export const WORLD_FORGE_BASE_COST = 50;
@@ -322,13 +267,12 @@ export function worldForgeCost(worldsForged: number): number {
 export { eternalFlameMultiplier } from "./worldFusion";
 
 // ----- Legacy stubs (kept for save-compat, no longer used in UI) -----
-// These are kept so old saves with offeringsUsed / purchasedRituals /
-// activeScripts / bloodPactsUsed don't break on load. The tick logic
-// for these has been removed — they're inert.
+// These are kept so old saves with offeringsUsed / activeScripts /
+// bloodPactsUsed don't break on load. The tick logic for these has been
+// removed — they're inert.
 export const LEGACY_OFFERINGS_COUNT = 6;
 export const LEGACY_RITUALS_COUNT = 7;
 export const LEGACY_SCRIPTS_COUNT = 5;
-export const LEGACY_BLOOD_PACTS_COUNT = 4;
 
 // ===== ALIASES for the subagent's expected export names =====
 // The store.ts was written by a subagent that used different naming
@@ -336,8 +280,6 @@ export const LEGACY_BLOOD_PACTS_COUNT = 4;
 export const CONVERGENCE_CATALYST_MAP = CATALYST_MAP;
 export const WORLD_TEMPLATE_MAP = TEMPLATE_MAP;
 export const GENESIS_SEED_MAP = SEED_MAP;
-export const ASTRAL_CATEGORIES = RESONANCE_ALIGNMENTS;
-export const ASTRAL_CATEGORY_MAP = RESONANCE_MAP;
 
 export function allGenesisSeedsPlanted(
   plantedSeeds: Record<string, { planted: boolean; plantedAtTime: number }>
@@ -353,16 +295,12 @@ export function plantedSeedsDivinityPerSec(
 }
 
 // ===== LEGACY EXPORTS (kept for save-compat, store still imports them) =====
-// These are no-ops / empty arrays — the old Offerings/Rituals/Scripts/BloodPacts
+// These are no-ops / empty arrays — the old Offerings/Scripts/BloodPacts
 // systems have been removed from the UI. The store still imports them for
 // legacy tick logic that references them (harmless no-ops).
 export const OFFERINGS: any[] = [];
 export const OFFERING_MAP: Record<string, any> = {};
-export const RITUALS: any[] = [];
-export const RITUAL_MAP: Record<string, any> = {};
-export const SCRIPTS: any[] = [];
 export const SCRIPT_MAP: Record<string, any> = {};
-export const BLOOD_PACTS: any[] = [];
 export const BLOOD_PACT_MAP: Record<string, any> = {};
 
 export function offeringDivinityAtRepeat(..._args: any[]): number { return 0; }

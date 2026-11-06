@@ -67,8 +67,7 @@ import { cn } from "@/lib/utils";
 //   5. Convergence Catalysts — 5 catalysts, purchase buttons.
 //   6. World Templates — 5 templates, active indicator, switch button.
 //   7. Genesis Seeds — 4 seeds, plant buttons, maturity progress.
-//   8. Astral Resonance — 4 categories, active indicator, set button.
-//   9. Investment Portfolios — existing portfolio system (kept as-is).
+//   8. Investment Portfolios — existing portfolio system (kept as-is).
 //
 // The Investment Portfolios system already works with the Divine Engine and
 // is kept unchanged. See `marketPortfolios.ts` for PORTFOLIOS / PORTFOLIO_MAP.
@@ -162,7 +161,7 @@ export function TranscendenceContent() {
   })();
   const canBuyCheapestStar = !!cheapestStar && divinity >= cheapestStar.cost;
 
-  // L3 subtabs — split the 8 stacked sections into 3 nav targets:
+  // L3 subtabs — split the 7 stacked sections into 3 nav targets:
   //   worlds (Overview + Fusion + Forge), boosts (Flame + Catalysts +
   //   Templates + Seeds), investments (Portfolios).
   const [subtab, setSubtab] = useState<"worlds" | "boosts" | "investments">("worlds");
@@ -878,10 +877,6 @@ export function TranscendenceContent() {
         <div>
           <span className="text-amber-300">Genesis Seeds</span> — plant all 4 to unlock L4 (Genesis).
           Each seed matures into a permanent Divinity/s generator.
-        </div>
-        <div>
-          <span className="text-amber-300">Astral Resonance</span> — align ALL worlds to a constellation
-          category (Zodiac / Northern / Equatorial / Southern) for a Div/s bonus with a tradeoff.
         </div>
         <div>
           <span className="text-amber-300">Investment Portfolios</span> — allocate background worlds

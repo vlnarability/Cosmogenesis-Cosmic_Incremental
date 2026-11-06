@@ -67,6 +67,9 @@ export const PRESTIGE_LAYERS: PrestigeLayer[] = [
     story:
       "Bodies, then ships, then stars — and now form itself. Transcendence is the layer where " +
       "the ascended god sheds the last of its clay and learns to walk between thoughts.",
+    // NOTE: The actual unlock check is constellation completion ≥ 20
+    // (see CONSTELLATIONS_REQUIRED_FOR_LAYER_3). The galacticWins value
+    // below is a legacy hint, not the real gate.
     unlockCondition: { type: "galacticWins", value: 3 },
     currencyName: "Transcendence",
   },
@@ -115,6 +118,9 @@ export const PRESTIGE_LAYERS: PrestigeLayer[] = [
     story:
       "To shape a single life was the first wonder. To shape a single universe is the seventh. " +
       "Genesis is the layer where the player plants a fresh cosmos and watches it bloom.",
+    // NOTE: The actual unlock check is all genesis seeds planted
+    // (see allSeedsPlanted in transcendence.ts). The totalRuns value
+    // below is a legacy hint, not the real gate.
     unlockCondition: { type: "totalRuns", value: 20 },
     currencyName: "Genesis Seeds",
   },

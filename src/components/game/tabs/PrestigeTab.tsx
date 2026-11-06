@@ -16,7 +16,6 @@ import {
   countLitStars,
   type ConstellationState,
 } from "@/game/data/constellations";
-import { BLOOD_PACTS } from "@/game/data/transcendence";
 import { DIVINE_LAWS } from "@/game/data/apotheosis";
 import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES, OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
@@ -106,9 +105,6 @@ export function PrestigeTab() {
   const constellationProgress = useGameStore((s) => s.constellationProgress || {});
   const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
   const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
-  const activeForesightRoute = useGameStore((s) => s.activeForesightRoute);
-
-  const bloodPactsUsed = useGameStore((s) => s.bloodPactsUsed || {});
 
   const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
 
@@ -199,7 +195,6 @@ export function PrestigeTab() {
   const constellationsCompletedCount = countCompletedConstellations(constellationState);
   const litStarsCount = countLitStars(constellationState);
   const constellationsStartedCount = Object.values(constellationsStarted).filter(Boolean).length;
-  const pactsUsedCount = BLOOD_PACTS.filter((p) => bloodPactsUsed[p.id]).length;
   const lawsEnactedCount = DIVINE_LAWS.filter((l) => enactedDivineLaws[l.id]).length;
   // L6 Universal Map progress counts (rifts closed + anchors placed — both
   // lifetime counters that persist across prestiges). Used by the L6→L7
@@ -355,9 +350,6 @@ export function PrestigeTab() {
             <ProgressRow label="Constellations completed" value={constellationsCompletedCount} max={CONSTELLATIONS_REQUIRED_FOR_LAYER_3} />
             <ProgressRow label="Stars illuminated" value={litStarsCount} max={CONSTELLATIONS.reduce((a, c) => a + c.stars.length, 0)} />
             <ProgressRow label="Constellations started" value={constellationsStartedCount} max={CONSTELLATIONS.length} />
-            <div className="text-[0.6rem] text-amber-300/80 mt-1">
-              Route: {activeForesightRoute || "none chosen"}
-            </div>
             <LayerNextProgress
               progress={{
                 currentLayerName: "Enlightenment",
@@ -381,28 +373,15 @@ export function PrestigeTab() {
             tagline={dim.layerTagline("transcendence", "Form becomes optional")}
             icon="🔺"
             unlocked={!!unlockedLayers.transcendence}
-            unlockText="10 Foresight nodes purchased"
+            unlockText="20 constellations completed"
             currencyName={`Divinity: ${formatNumber(divinity, 0)}`}
             onView={() => openLayerModal("transcendence")}
             viewLabel="View Sacrifice"
             viewIcon={<Triangle className="w-3 h-3 mr-1" />}
           >
-            <ProgressRow label="Blood Pacts used (toward Genesis)" value={pactsUsedCount} max={BLOOD_PACTS.length} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Offerings + rituals + scripts + blood pacts available.
+              Forge, fuse, and amplify background worlds. Plant all 4 Genesis Seeds to unlock Genesis (L4).
             </div>
-            <LayerNextProgress
-              progress={{
-                currentLayerName: "Transcendence",
-                nextLayerName: "Genesis",
-                nextLayerKey: "genesis",
-                current: pactsUsedCount,
-                max: BLOOD_PACTS.length,
-                metricLabel: "Blood pacts performed",
-              }}
-              currentLayerUnlocked={!!unlockedLayers?.transcendence}
-              nextLayerUnlocked={!!unlockedLayers?.genesis}
-            />
           </LayerCard>
           )}
 
@@ -414,7 +393,7 @@ export function PrestigeTab() {
             tagline={dim.layerTagline("genesis", "A new universe, seeded")}
             icon="🥚"
             unlocked={!!unlockedLayers.genesis}
-            unlockText="All 4 Blood Pacts performed"
+            unlockText="All 4 Genesis Seeds planted"
             currencyName="Divinity"
             onView={() => openLayerModal("genesis")}
             viewLabel="View Genesis"

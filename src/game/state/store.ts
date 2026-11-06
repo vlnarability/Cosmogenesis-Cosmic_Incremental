@@ -70,20 +70,11 @@ import {
   type CosmicBridgeLink,
 } from "../data/constellations";
 import {
-  OFFERINGS,
-  OFFERING_MAP,
-  RITUALS,
-  RITUAL_MAP,
-  SCRIPTS,
-  BLOOD_PACTS,
-  BLOOD_PACT_MAP,
-  offeringDivinityAtRepeat,
-  activeRitualProductionBonus,
-  activeRitualCapBonus,
+  // LEGACY — kept for save migration compat. The old Offerings/Rituals/
+  // Scripts/BloodPacts systems have been removed from the UI; the state
+  // fields + migration code remain so old saves still load. The only
+  // legacy function still called is `activeRitualEpBonus` (returns 0).
   activeRitualEpBonus,
-  activeRitualPopBonus,
-  transcendenceDivinityPerSecond,
-  allBloodPactsUsed,
   // L3-REDESIGN — new systems replacing Offerings/Rituals/Scripts/BloodPacts.
   CONVERGENCE_CATALYSTS,
   CONVERGENCE_CATALYST_MAP,
@@ -777,6 +768,11 @@ function initialMetaState(): Partial<GameState> {
     stargazeRecommendedActive: false,
 
     // Layer 3 — Transcendence
+    // LEGACY — these state fields are no longer mutated by the tick or any
+    // action (the Offerings/Rituals/Scripts/BloodPacts UIs were removed).
+    // They remain in the initial state + save migration so old saves still
+    // load cleanly. `activeRitualEpBonus` (returns 0) is still called from
+    // the prestige EP calc and reads `purchasedRituals`/`activeTemporaryRituals`.
     transcendenceOfferingsUsed: {},
     purchasedRituals: {},
     activeTemporaryRituals: {},
@@ -1233,9 +1229,6 @@ export const useGameStore = create<GameStore>()(
         // Legacy foresight field returns all-zeros on new saves; kept for legacy callers.
         const foresight = foresightBonus(s.foresightNodes || {});
         const route = routeBonus(s.activeForesightRoute);
-        const ritualProd = activeRitualProductionBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
-        const ritualCap = activeRitualCapBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
-        const ritualPop = activeRitualPopBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
         // LAYER UPGRADE — world_blueprint: +50% per level (max 4) to all authored-world bonuses
         const wbLvl = (s.upgrades?.world_blueprint as number) || 0;
         const wbMult = 1 + 0.50 * wbLvl;
@@ -1280,7 +1273,7 @@ export const useGameStore = create<GameStore>()(
 
         const layerProdBonus =
           constB.productionMult +
-          foresight.productionMult + route.productionMult + ritualProd +
+          foresight.productionMult + route.productionMult +
           wProd + dLaw.productionMult + wMode.productionMult + hResp +
           hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
@@ -1289,14 +1282,14 @@ export const useGameStore = create<GameStore>()(
           horizontalTransferBonus;       // FIX-ARCHETYPE-LOCKED — +5% prod per system
         const layerCapBonus =
           constB.capMult +
-          foresight.capMult + route.capMult + ritualCap + wCap +
+          foresight.capMult + route.capMult + wCap +
           dLaw.capMult +
           hybrids.capMult + allianceB.capMult +
           fragmentB.capMult +
           0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
-          foresight.popGrowthMult + route.popGrowthMult + ritualPop + wPop +
+          foresight.popGrowthMult + route.popGrowthMult + wPop +
           dLaw.popGrowthMult +
           hybrids.popGrowthMult + allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
@@ -2376,36 +2369,19 @@ export const useGameStore = create<GameStore>()(
         // grid with one heretic seeded. The per-galaxy L5 tick block below
         // consumes this so the surge is applied on the same tick it fires.
         let pendingSurgeGrid: Array<{ state: string; type: string }> | null = null;
-        let activeTemporaryRituals = s.activeTemporaryRituals || {};
         let miracleTimers = s.miracleTimers || {};
-        const activeScripts = s.activeScripts || {};
-        let scriptTimers = s.scriptTimers || {};
-        let bloodPactsUsed = s.bloodPactsUsed || {};
         const activeHeresyResponse = s.activeHeresyResponse || "hr_ignore";
 
         // L3-REDESIGN — new mutable state vars for the World Fusion system +
-        // Catalysts + Templates + Genesis Seeds + Astral Resonance + Eternal
-        // Flame. We read the persisted values from `s` and mutate the locals
-        // so the tail set() persists the updated state.
+        // Catalysts + Templates + Genesis Seeds + Eternal Flame. We read the
+        // persisted values from `s` and mutate the locals so the tail set()
+        // persists the updated state.
         let worldTiers = { ...(s.worldTiers || makeInitialWorldTiers()) };
         // Defensive: ensure every fusion tier key exists on the local copy.
         for (const t of FUSION_TIERS) {
           if (typeof worldTiers[t.id] !== "number") worldTiers[t.id] = 0;
         }
         let voidShards = s.voidShards || 0;
-
-        // Decay temporary ritual timers
-        if (Object.keys(activeTemporaryRituals).length > 0) {
-          activeTemporaryRituals = { ...activeTemporaryRituals };
-          for (const id of Object.keys(activeTemporaryRituals)) {
-            const remaining = activeTemporaryRituals[id] - realDt;
-            if (remaining <= 0) {
-              delete activeTemporaryRituals[id];
-            } else {
-              activeTemporaryRituals[id] = remaining;
-            }
-          }
-        }
 
         // Decay miracle timers
         if (Object.keys(miracleTimers).length > 0) {
@@ -2517,81 +2493,6 @@ export const useGameStore = create<GameStore>()(
               pendingSurgeGrid = surgeGrid;
             }
             pendingLogs.push("🔥 Heresy Surge! A heretic appears in the Aurora Galaxy flock.");
-          }
-        }
-
-        // Layer 3 — Divinity generation from active rituals + tithe script
-        if (unlockedLayers.transcendence) {
-          const titheActive = !!activeScripts["script_divinity_tithe"];
-          const divPerSec = transcendenceDivinityPerSecond(activeTemporaryRituals, titheActive);
-          if (divPerSec > 0) divinity += divPerSec * realDt;
-
-          // Divinity Tithe script: drains 1% of all resources per second
-          if (titheActive) {
-            const drained: Record<string, number> = {};
-            for (const r of Object.keys(resources)) {
-              if ((resources[r] || 0) > 1) {
-                const drain = (resources[r] || 0) * 0.01 * realDt;
-                drained[r] = drain;
-              }
-            }
-            for (const [r, v] of Object.entries(drained)) {
-              resources[r] = Math.max(0, (resources[r] || 0) - v);
-            }
-          }
-
-          // Auto-scripts (Layer 3)
-          // Auto-Libation: every 30s, perform cheapest affordable offering
-          if (activeScripts["script_auto_offering"] && newTime - (scriptTimers["script_auto_offering"] || 0) >= 30) {
-            scriptTimers = { ...scriptTimers, script_auto_offering: newTime };
-            const candidates = OFFERINGS.filter((o) => {
-              for (const [r, v] of Object.entries(o.cost)) {
-                if ((resources[r] || 0) < (v as number)) return false;
-              }
-              return true;
-            });
-            if (candidates.length > 0) {
-              const pick = candidates.reduce((a, b) => (a.divinityGain < b.divinityGain ? a : b));
-              for (const [r, v] of Object.entries(pick.cost)) {
-                resources[r] = Math.max(0, (resources[r] || 0) - (v as number));
-              }
-              const repeats = (s.transcendenceOfferingsUsed?.[pick.id] || 0);
-              divinity += offeringDivinityAtRepeat(pick, repeats);
-              pendingLogs.push(`Auto-Libation performed ${pick.name}.`);
-            }
-          }
-
-          // Auto-Ritual: every 120s, perform Silent Hour if affordable & inactive
-          if (activeScripts["script_auto_ritual"] && newTime - (scriptTimers["script_auto_ritual"] || 0) >= 120) {
-            scriptTimers = { ...scriptTimers, script_auto_ritual: newTime };
-            const r = RITUAL_MAP["ritual_silent_hour"];
-            if (r && !(s.purchasedRituals?.["ritual_silent_hour"]) && !(activeTemporaryRituals["ritual_silent_hour"] > 0) && divinity >= r.cost) {
-              divinity -= r.cost;
-              activeTemporaryRituals = { ...activeTemporaryRituals, ritual_silent_hour: r.durationSec || 0 };
-              pendingLogs.push(`Ritualist performed ${r.name}.`);
-            }
-          }
-
-          // Auto-Blood Pact: every 300s, perform cheapest unused blood pact if affordable
-          if (activeScripts["script_auto_blood_pact"] && newTime - (scriptTimers["script_auto_blood_pact"] || 0) >= 300) {
-            scriptTimers = { ...scriptTimers, script_auto_blood_pact: newTime };
-            const candidates = BLOOD_PACTS.filter((p) => !bloodPactsUsed[p.id] && population >= p.popCost);
-            if (candidates.length > 0) {
-              const pick = candidates.reduce((a, b) => (a.popCost < b.popCost ? a : b));
-              population -= pick.popCost;
-              divinity += pick.divinityGain;
-              bloodPactsUsed = { ...bloodPactsUsed, [pick.id]: true };
-              pendingLogs.push(`Crimson Ledger performed ${pick.name} (-${pick.popCost} pop, +${pick.divinityGain} Divinity).`);
-            }
-          }
-
-          // Auto-prestige: every 600s, prestige if at Galactic stage
-          if (activeScripts["script_auto_prestige"] && s.stageIndex >= STAGES.length - 1 && newTime - (scriptTimers["script_auto_prestige"] || 0) >= 600) {
-            scriptTimers = { ...scriptTimers, script_auto_prestige: newTime };
-            setTimeout(() => {
-              get().addToLog("Cycle of Becoming: auto-prestige triggered.");
-              get().triggerPrestige();
-            }, 0);
           }
         }
 
@@ -3996,11 +3897,7 @@ export const useGameStore = create<GameStore>()(
           divinity,
           faith,
           heresy,
-          activeTemporaryRituals,
           miracleTimers,
-          activeScripts,
-          scriptTimers,
-          bloodPactsUsed,
           // L8 FIX — per-god Negotiate cooldowns
           ...negotiateCooldowns,
           // Layer 7-8 state
@@ -6123,134 +6020,6 @@ export const useGameStore = create<GameStore>()(
         get().addToLog(`Autobuyer preset deleted: "${name}".`);
       },
 
-      // ============ LAYER 3 — TRANSCENDENCE ============
-      performOffering: (offeringId) => {
-        const s = get();
-        if (!s.unlockedLayers?.transcendence) return;
-        const o = OFFERING_MAP[offeringId];
-        if (!o) return;
-        const res = { ...s.resources };
-        for (const [r, v] of Object.entries(o.cost)) {
-          if ((res[r] || 0) < (v as number)) return;
-        }
-        for (const [r, v] of Object.entries(o.cost)) {
-          res[r] -= v as number;
-        }
-        const repeats = s.transcendenceOfferingsUsed?.[offeringId] || 0;
-        const gain = offeringDivinityAtRepeat(o, repeats);
-        set({
-          resources: res,
-          divinity: (s.divinity || 0) + gain,
-          transcendenceOfferingsUsed: {
-            ...(s.transcendenceOfferingsUsed || {}),
-            [offeringId]: repeats + 1,
-          },
-        });
-        get().addToLog(`Offering: ${o.name} (+${gain} Divinity).`);
-      },
-
-      performRitual: (ritualId) => {
-        const s = get();
-        if (!s.unlockedLayers?.transcendence) return;
-        const r = RITUAL_MAP[ritualId];
-        if (!r) return;
-        if (r.kind === "permanent") {
-          if (s.purchasedRituals?.[ritualId]) return;
-        } else {
-          if ((s.activeTemporaryRituals?.[ritualId] || 0) > 0) return;
-        }
-        if ((s.divinity || 0) < r.cost) return;
-
-        // QUICK WIN 3 — Ritual combo tracking: 3 different rituals within 60s grants +50% production for 30s
-        const now = s.time;
-        const sinceLast = now - (s.lastRitualTime || 0);
-        let comboCount = s.ritualComboCount || 0;
-        let comboTimer = s.ritualComboTimer || 0;
-        // Reset combo if more than 60s since last ritual, or if same ritual as last
-        if (sinceLast > 60 || s.lastRitualId === ritualId) {
-          comboCount = 0;
-        }
-        comboCount += 1;
-        // When combo hits 3 (3 different rituals within 60s), grant Divine Combo bonus
-        if (comboCount >= 3) {
-          comboTimer = 30; // +50% all production for 30s
-          comboCount = 0;
-          get().addToLog("🌟 Divine Combo! +50% all production for 30s.");
-        } else {
-          get().addToLog(`Ritual combo: ${comboCount}/3 — perform ${3 - comboCount} more different ritual(s) within ${Math.max(0, 60 - sinceLast).toFixed(0)}s for a Divine Combo.`);
-        }
-
-        if (r.kind === "permanent") {
-          set({
-            divinity: (s.divinity || 0) - r.cost,
-            purchasedRituals: { ...(s.purchasedRituals || {}), [ritualId]: true },
-            // QUICK WIN 3 — combo tracking
-            lastRitualTime: now,
-            lastRitualId: ritualId,
-            ritualComboCount: comboCount,
-            ritualComboTimer: comboTimer,
-            // QUICK WIN 5 — +1 Prestige Point for performing a ritual
-            prestigePoints: (s.prestigePoints || 0) + 1,
-          });
-          get().addToLog(`Ritual (permanent): ${r.name} enacted (-${r.cost} Divinity). (+1 PP)`);
-        } else {
-          // LAYER UPGRADE — ritual_extension: +20% duration per level (max 5)
-          const reLvl = (s.upgrades?.ritual_extension as number) || 0;
-          const durationMult = 1 + 0.20 * reLvl;
-          const extendedDuration = Math.ceil((r.durationSec || 0) * durationMult);
-          set({
-            divinity: (s.divinity || 0) - r.cost,
-            activeTemporaryRituals: {
-              ...(s.activeTemporaryRituals || {}),
-              [ritualId]: extendedDuration,
-            },
-            // QUICK WIN 3 — combo tracking
-            lastRitualTime: now,
-            lastRitualId: ritualId,
-            ritualComboCount: comboCount,
-            ritualComboTimer: comboTimer,
-            // QUICK WIN 5 — +1 Prestige Point for performing a ritual
-            prestigePoints: (s.prestigePoints || 0) + 1,
-          });
-          get().addToLog(`Ritual (temporary): ${r.name} begun for ${extendedDuration}s (-${r.cost} Divinity). (+1 PP)`);
-        }
-      },
-
-      toggleScript: (scriptId) => {
-        const s = get();
-        if (!s.unlockedLayers?.transcendence) return;
-        const script = SCRIPTS.find((x) => x.id === scriptId);
-        if (!script) return;
-        const activeScripts = { ...(s.activeScripts || {}) };
-        activeScripts[scriptId] = !activeScripts[scriptId];
-        set({ activeScripts });
-        get().addToLog(`${script.name} ${activeScripts[scriptId] ? "enabled" : "disabled"}.`);
-      },
-
-      performBloodPact: (tierId) => {
-        const s = get();
-        if (!s.unlockedLayers?.transcendence) return;
-        const pact = BLOOD_PACT_MAP[tierId];
-        if (!pact) return;
-        if (s.bloodPactsUsed?.[tierId]) {
-          get().addToLog(`${pact.name} already performed this run.`);
-          return;
-        }
-        if (s.population < pact.popCost) {
-          get().addToLog(`Not enough population for ${pact.name} (need ${pact.popCost}).`);
-          return;
-        }
-        set({
-          population: s.population - pact.popCost,
-          maxPopulation: Math.max(s.maxPopulation || 0, s.population - pact.popCost),
-          divinity: (s.divinity || 0) + pact.divinityGain,
-          bloodPactsUsed: { ...(s.bloodPactsUsed || {}), [tierId]: true },
-          // QUICK WIN 5 — +2 Prestige Points for performing a blood pact (high cost → higher reward)
-          prestigePoints: (s.prestigePoints || 0) + 2,
-        });
-        get().addToLog(`Blood Pact: ${pact.name} (-${pact.popCost} pop, +${pact.divinityGain} Divinity). (+2 PP)`);
-      },
-
       // ============ L3-REDESIGN — NEW SYSTEMS ============
       // World Fusion — merge 10 (or 100/1000/10000) worlds of a source tier
       // into 1 of the target tier. The target tier's production multiplier is
@@ -6575,10 +6344,6 @@ export const useGameStore = create<GameStore>()(
           `🌱 Seed planted: ${seed.name}.${s.debugFreeBuy ? " (DEBUG: free)" : ` (-${seed.cost.toLocaleString()} Divinity)`} Matures in ${matureIn}s (+${seed.divinityPerSec} Div/s permanently).`
         );
       },
-
-      // Set the active Astral Resonance category (zodiac/northern/equatorial/
-      // southern, or null to clear). Each category gives a Div/s bonus with a
-      // tradeoff.
 
       // Illuminate the next unlit star in a constellation (bulk purchase).
       // Respects the same cost formula as illuminateStar — finds the cheapest
