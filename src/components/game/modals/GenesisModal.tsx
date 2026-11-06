@@ -66,6 +66,9 @@ export function GenesisContent() {
   const claimGalaxySystem = useGameStore((s) => s.claimGalaxySystem);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Blocker 2 — transient success flash: highlight the hex that was just
+  // scanned or claimed for ~600ms so the player gets immediate visual feedback.
+  const [flashHexId, setFlashHexId] = useState<string | null>(null);
 
   // C4 — drill-down navigation. When GenesisModal is opened via drill from
   // L6 Singularity, drillNav.cosmos.galaxyId is set. We render a breadcrumb
@@ -115,6 +118,22 @@ export function GenesisContent() {
 
   const selectedSys = effectiveSelectedId ? GALAXY_SYSTEMS.find((s) => s.id === effectiveSelectedId) : null;
   const selectedState = effectiveSelectedId ? galaxySystems.find((g) => g.id === effectiveSelectedId) : null;
+
+  // Blocker 2 — wrap scan/claim so we can fire a transient flash overlay on
+  // the affected hex. The flash is cleared after 600ms to match the
+  // animate-ping cycle in HexMap.tsx. The conditional setter ensures that
+  // if the player triggers a second flash on a different hex before the
+  // first timeout fires, the second flash is not prematurely cleared.
+  const handleScan = (id: string) => {
+    scanGalaxySystem(id);
+    setFlashHexId(id);
+    setTimeout(() => setFlashHexId((cur) => (cur === id ? null : cur)), 600);
+  };
+  const handleClaim = (id: string) => {
+    claimGalaxySystem(id);
+    setFlashHexId(id);
+    setTimeout(() => setFlashHexId((cur) => (cur === id ? null : cur)), 600);
+  };
 
   // C4 — build the cosmos breadcrumb. GenesisModal always sits at the
   // "galaxy" level of the cosmos drill family (it represents the player's
@@ -212,8 +231,8 @@ export function GenesisContent() {
                   drillIntoCosmosSystem("galaxy_starter", id);
                   const sys = GALAXY_SYSTEMS.find((s) => s.id === id);
                   const state = galaxySystems.find((g) => g.id === id);
-                  if (sys && !state?.explored) scanGalaxySystem(id);
-                  else if (sys && state?.explored && !state?.claimed) claimGalaxySystem(id);
+                  if (sys && !state?.explored) handleScan(id);
+                  else if (sys && state?.explored && !state?.claimed) handleClaim(id);
                 }}
                 title="Star System Map"
                 subtitle={`${claimedCount}/${GALAXY_TOTAL_SYSTEMS} claimed · ${exploredCount} explored`}
@@ -226,7 +245,47 @@ export function GenesisContent() {
                   if (state?.claimed) return `${sys.name} — ✓ Claimed (${BONUS_LABEL[sys.bonus.type]}: ${bonusPct(sys.bonus.value)})${sys.hasVoidShards ? ' · Void Shards' : ''}`;
                   return `${sys.name} — ${BONUS_LABEL[sys.bonus.type]}: ${bonusPct(sys.bonus.value)} (claim: ${formatNumber(nextClaimCost, 0)} Divinity)${sys.hasVoidShards ? ' · Void Shards' : ''}`;
                 }}
+                flashId={flashHexId}
               />
+              {/* Blocker 1 — explicit Scan/Claim action row. Surfaces the
+                  selected system's name + status and gives the player a
+                  visible primary button instead of relying on implicit
+                  click-to-scan/claim behavior. */}
+              <div className="flex gap-2 items-center justify-between mt-2">
+                {effectiveSelectedId && selectedSys ? (
+                  <>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-cyan-200 truncate">{selectedSys.name}</span>
+                      <span className="text-[0.65rem] text-muted-foreground">
+                        {selectedState?.claimed ? "Claimed" : selectedState?.explored ? "Scanned" : "Unexplored"}
+                      </span>
+                    </div>
+                    {selectedState?.claimed ? (
+                      <Button variant="secondary" disabled className="opacity-70 shrink-0">
+                        ✓ Claimed
+                      </Button>
+                    ) : selectedState?.explored ? (
+                      <Button
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400/40 shrink-0"
+                        disabled={!canClaim}
+                        onClick={() => { if (effectiveSelectedId) handleClaim(effectiveSelectedId); }}
+                      >
+                        ✓ Claim — {formatNumber(nextClaimCost, 0)} Divinity
+                      </Button>
+                    ) : (
+                      <Button
+                        className="bg-violet-500 hover:bg-violet-600 text-white border-violet-400/40 shrink-0"
+                        disabled={!canScan}
+                        onClick={() => { if (effectiveSelectedId) handleScan(effectiveSelectedId); }}
+                      >
+                        🔍 Scan — {GALAXY_SCAN_COST} Divinity
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-[0.7rem] text-muted-foreground">Select a star system on the map above</span>
+                )}
+              </div>
               {/* UI-FIX: State-aware hint text that changes based on completion */}
               <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed text-center">
                 {claimedCount === GALAXY_TOTAL_SYSTEMS ? (

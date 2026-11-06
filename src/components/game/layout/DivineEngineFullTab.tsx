@@ -5,14 +5,14 @@ import { formatNumber, formatCompact } from "../shared/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FUSION_TIERS, rawWorldCount, effectiveWorldCount, eternalFlameMultiplier } from "@/game/data/worldFusion";
 import { ARCHETYPES } from "@/game/data/archetypes";
 import {
   Sparkles, Flame, Globe, TrendingUp, Layers, Eye, Triangle, Egg, Users, Gauge,
-  Hammer, Merge, ChevronsRight,
+  Hammer, Merge, ChevronsRight, Check,
 } from "lucide-react";
 import { useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { WorldVisualization3D, computeWorldDots, type WorldDot } from "./WorldVisualization3D";
 
 // ===========================================================================
@@ -190,7 +190,7 @@ export function DivineEngineFullTab() {
               — each sphere is a 3D world mesh, lit by ambient + key + rim directional lights · drag to rotate (360°)
             </span>
           </div>
-          <WorldVisualization3D dots={dots} />
+          <WorldVisualization3D dots={dots} rawCount={rawCount} />
         </div>
       )}
 
@@ -309,8 +309,10 @@ export function DivineEngineFullTab() {
                     variant="default"
                     onClick={() => fuseWorlds(tier.id)}
                     disabled={!canFuseOnce}
-                    className="h-7"
-                    title={`Fuse ${tier.sourceCount} ${sourceTier?.name} → 1 ${tier.name}`}
+                    className="h-7 disabled:opacity-40 disabled:cursor-not-allowed disabled:saturate-0"
+                    title={canFuseOnce
+                      ? `Fuse ${tier.sourceCount} ${sourceTier?.name} → 1 ${tier.name}`
+                      : `Need ${tier.sourceCount} more ${sourceTier?.name} worlds to fuse (have ${sourceAvail})`}
                   >
                     <Merge className="w-3 h-3 mr-0.5" /> ×1
                   </Button>
@@ -320,8 +322,10 @@ export function DivineEngineFullTab() {
                       variant="outline"
                       onClick={() => fuseWorldsBulk(tier.id, 10)}
                       disabled={maxFuse < 1}
-                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
-                      title={`Fuse 10× → 10 ${tier.name} (needs ${tier.sourceCount * 10} ${sourceTier?.name})`}
+                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:saturate-0"
+                      title={maxFuse >= 1
+                        ? `Fuse 10× → 10 ${tier.name} (needs ${tier.sourceCount * 10} ${sourceTier?.name})`
+                        : `Need ${tier.sourceCount * 10} ${sourceTier?.name} worlds to fuse 10× (have ${sourceAvail})`}
                     >
                       ×10
                     </Button>
@@ -332,8 +336,10 @@ export function DivineEngineFullTab() {
                       variant="outline"
                       onClick={() => fuseWorldsBulk(tier.id, 100)}
                       disabled={maxFuse < 1}
-                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
-                      title={`Fuse 100× → 100 ${tier.name} (needs ${tier.sourceCount * 100} ${sourceTier?.name})`}
+                      className="h-7 border-violet-500/40 text-violet-200 hover:bg-violet-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:saturate-0"
+                      title={maxFuse >= 1
+                        ? `Fuse 100× → 100 ${tier.name} (needs ${tier.sourceCount * 100} ${sourceTier?.name})`
+                        : `Need ${tier.sourceCount * 100} ${sourceTier?.name} worlds to fuse 100× (have ${sourceAvail})`}
                     >
                       ×100
                     </Button>
@@ -344,8 +350,10 @@ export function DivineEngineFullTab() {
                       variant="outline"
                       onClick={() => fuseWorldsBulk(tier.id, -1)}
                       disabled={maxFuse <= 0}
-                      className="h-7 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
-                      title={`Fuse as many as possible (capped at 10000). Available: ${maxFuse}`}
+                      className="h-7 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:saturate-0"
+                      title={maxFuse > 0
+                        ? `Fuse as many as possible (capped at 10000). Available: ${maxFuse}`
+                        : `Need at least ${tier.sourceCount} ${sourceTier?.name} worlds to fuse (have ${sourceAvail})`}
                     >
                       Max ({formatNumber(maxFuse, 0)})
                     </Button>
@@ -370,22 +378,10 @@ export function DivineEngineFullTab() {
           <span className="text-sm font-semibold">World Archetype</span>
           <span className="text-[0.65rem] text-muted-foreground">— choose what evolves inside your worlds (+30% Divinity/s when active)</span>
         </div>
-        <Select
-          value={activeWorldArchetype ?? "__none__"}
-          onValueChange={(v) => setWorldArchetype(v === "__none__" ? null : v)}
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="No archetype (no bonus)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">No archetype (no bonus)</SelectItem>
-            {ARCHETYPES.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.glyph} {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SelectArchetypeGrid
+          activeWorldArchetype={activeWorldArchetype}
+          setWorldArchetype={setWorldArchetype}
+        />
         {activeWorldArchetype && (
           <p className="text-[0.6rem] text-cyan-300/80 mt-1">
             Active: {ARCHETYPES.find(a => a.id === activeWorldArchetype)?.name} — +30% Divinity/s from all worlds.
@@ -473,6 +469,86 @@ export function DivineEngineFullTab() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ===== Sub-component: visual archetype picker card grid =====
+// Replaces the old shadcn <Select> dropdown with a horizontal-scrolling
+// row of cards so each archetype's glyph + bonus hint is visible at a
+// glance instead of hidden behind a dropdown.
+function SelectArchetypeGrid({
+  activeWorldArchetype,
+  setWorldArchetype,
+}: {
+  activeWorldArchetype: string | null;
+  setWorldArchetype: (id: string | null) => void;
+}) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1" role="radiogroup" aria-label="World archetype">
+      {/* "None" card — clears the archetype. */}
+      <ArchetypeCard
+        glyph="∅"
+        name="None"
+        hint="no bonus"
+        isActive={activeWorldArchetype === null}
+        onClick={() => setWorldArchetype(null)}
+        title="No archetype — no bonus"
+      />
+      {ARCHETYPES.map((a) => {
+        const isActive = activeWorldArchetype === a.id;
+        // Use the first structured buff as the hint — it's short and
+        // summarizes the archetype's playstyle at a glance. Fall back to
+        // the blurb if buffs is somehow empty.
+        const hint = (a.bonus.buffs && a.bonus.buffs[0]) || a.blurb;
+        return (
+          <ArchetypeCard
+            key={a.id}
+            glyph={a.glyph}
+            name={a.name}
+            hint={hint}
+            isActive={isActive}
+            onClick={() => setWorldArchetype(isActive ? null : a.id)}
+            title={`${a.name} — ${a.bonus.label}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// Single archetype card — used by SelectArchetypeGrid.
+function ArchetypeCard({
+  glyph, name, hint, isActive, onClick, title,
+}: {
+  glyph: string;
+  name: string;
+  hint: string;
+  isActive: boolean;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={isActive}
+      title={title}
+      className={cn(
+        "relative rounded-md border p-2 min-w-[88px] text-center cursor-pointer transition-colors shrink-0",
+        isActive
+          ? "border-amber-400/60 bg-amber-500/10"
+          : "hover:border-violet-400/40 hover:bg-violet-500/5",
+      )}
+    >
+      {isActive && (
+        <span className="absolute top-0.5 right-0.5 text-amber-300" aria-hidden="true">
+          <Check className="w-2.5 h-2.5" />
+        </span>
+      )}
+      <div className="text-xl leading-none">{glyph}</div>
+      <div className="text-[0.65rem] font-medium truncate mt-1">{name}</div>
+      <div className="text-[0.55rem] text-muted-foreground truncate">{hint}</div>
+    </button>
   );
 }
 

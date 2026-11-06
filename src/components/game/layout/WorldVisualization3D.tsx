@@ -32,7 +32,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Orbit, ZoomIn, ZoomOut, RotateCcw, Pause, Play, Eye, EyeOff } from "lucide-react";
+import { Orbit, ZoomIn, ZoomOut, RotateCcw, Pause, Play, Eye, EyeOff, Layers } from "lucide-react";
 import { FUSION_TIERS } from "@/game/data/worldFusion";
 import { useGameStore } from "@/game/state/store";
 import { cn } from "@/lib/utils";
@@ -165,9 +165,13 @@ const degToRadPerSec = (deg: number) => (deg * Math.PI) / 180;
 
 export interface WorldVisualization3DProps {
   dots: WorldDot[];
+  /** Raw (pre-cap) total world count — used by the WebGL-unavailable
+   *  fallback panel to reassure the player their worlds still produce
+   *  Divinity even though the 3D mesh can't be drawn. */
+  rawCount?: number;
 }
 
-export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
+export function WorldVisualization3D({ dots, rawCount }: WorldVisualization3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   // Refs read by the animation loop without re-creating it.
@@ -185,17 +189,46 @@ export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
   const [rotationDeg, setRotationDeg] = useState(8);
   const [paused, setPaused] = useState(false);
   const [hiddenTiers, setHiddenTiers] = useState<Set<string>>(new Set());
+  // WebGL availability: null = not yet probed, true = available, false =
+  // unavailable. When false, we render an empty-state panel instead of the
+  // canvas so a headless / WebGL-less browser doesn't crash the whole tab.
+  const [webglAvailable, setWebglAvailable] = useState<boolean | null>(null);
 
   // Reactive worldTiers (for the legend + filter chips). The old version
   // used useGameStore.getState() inside render, which is not reactive.
   const worldTiers = useGameStore((s) => s.worldTiers || {});
   const reduceMotion = useGameStore((s) => s.reduceMotion || false);
 
+  // ----- Probe WebGL support once on mount -----
+  // In a headless browser (or a browser with WebGL disabled),
+  // THREE.WebGLRenderer would throw and crash the whole DivineEngineFullTab.
+  // We probe up-front via a canvas getContext test so we can render a
+  // graceful fallback panel instead.
+  useEffect(() => {
+    function detectWebGL(): boolean {
+      try {
+        const canvas = document.createElement("canvas");
+        return !!(
+          canvas.getContext("webgl") ||
+          canvas.getContext("experimental-webgl")
+        );
+      } catch {
+        return false;
+      }
+    }
+    setWebglAvailable(detectWebGL());
+  }, []);
+
   // ----- Setup the 3D scene once per `dots` change -----
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
     if (dots.length === 0) return;
+    // If WebGL is known-unavailable, skip scene setup entirely — the
+    // fallback panel is rendered. When null (probe still pending), also
+    // skip — the probe fires immediately after mount and the resulting
+    // state change will re-trigger this effect.
+    if (!webglAvailable) return;
 
     const width = mount.clientWidth || 600;
     const height = mount.clientHeight || 400;
@@ -210,7 +243,17 @@ export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
     camera.position.copy(DEFAULT_CAM);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // The probe above is the happy path, but some browsers report WebGL
+    // support and then fail at renderer construction (driver crashes,
+    // context loss, etc.). Wrap the WebGLRenderer init in try/catch so a
+    // late failure flips us into the fallback panel instead of throwing.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch {
+      setWebglAvailable(false);
+      return;
+    }
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // cap at 2 for perf
     mount.appendChild(renderer.domElement);
@@ -385,7 +428,7 @@ export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
       glowMeshRef.current = null;
       dotIndexRef.current = [];
     };
-  }, [dots]);
+  }, [dots, webglAvailable]);
 
   // ----- Reduce-motion: default auto-rotate to 0 -----
   useEffect(() => {
@@ -516,6 +559,25 @@ export function WorldVisualization3D({ dots }: WorldVisualization3DProps) {
     }
     return counts;
   }, [worldTiers]);
+
+  // ----- WebGL-unavailable fallback panel -----
+  // Rendered instead of the canvas when WebGL is known-unavailable. Respects
+  // the parent's `{rawCount > 0 && ...}` gate in DivineEngineFullTab — i.e.
+  // this whole component is only mounted when there are worlds to show, so
+  // reaching this branch means the player has worlds but can't see the 3D
+  // mesh. The defensive `rawCount > 0` check inside is for the case where
+  // the prop wasn't passed (back-compat).
+  if (webglAvailable === false) {
+    return (
+      <div className="rounded-md border border-violet-400/20 bg-violet-500/5 p-4 text-center text-xs text-muted-foreground">
+        <Layers className="w-6 h-6 mx-auto mb-2 opacity-60" />
+        <div className="font-medium text-violet-200 mb-1">3D visualization unavailable</div>
+        <div className="text-[0.65rem] leading-snug">
+          WebGL is not available in this browser (or is disabled). The Divine Engine still works — you just can&apos;t see the 3D world mesh. {rawCount !== undefined && rawCount > 0 && <>Your {rawCount} worlds are still producing Divinity.</>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

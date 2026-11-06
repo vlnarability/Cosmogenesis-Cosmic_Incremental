@@ -482,7 +482,12 @@ export function EnlightenmentContent() {
         }}
       >
         {/* Subtle starfield background (per-instance so the gradient fills
-            each copy independently — avoids edge seams between instances). */}
+            each copy independently — avoids edge seams between instances).
+            L2-VISUAL-FIX: doubled the lower-half star density. The original
+            12-star pattern left the southern sky (y > 50%) sparse compared
+            to the northern half. Added 10 more stars positioned in the lower
+            half (y between 55% and 95%) with varied sizes (1px / 1.5px / 2px)
+            so the lower sky reads as a rich star field, not empty space. */}
         <div
           className="absolute inset-0 opacity-60 pointer-events-none"
           style={{
@@ -498,7 +503,17 @@ export function EnlightenmentContent() {
               radial-gradient(1px 1px at 70% 85%, #fff, transparent),
               radial-gradient(1px 1px at 95% 8%, #fff, transparent),
               radial-gradient(1px 1px at 18% 50%, #fff, transparent),
-              radial-gradient(1px 1px at 53% 75%, #fff, transparent)
+              radial-gradient(1px 1px at 53% 75%, #fff, transparent),
+              radial-gradient(1px 1px at 22% 62%, #cbd5e1, transparent),
+              radial-gradient(1.5px 1.5px at 40% 68%, #fff, transparent),
+              radial-gradient(1px 1px at 58% 80%, #cbd5e1, transparent),
+              radial-gradient(1px 1px at 75% 60%, #fff, transparent),
+              radial-gradient(1.5px 1.5px at 90% 92%, #fff, transparent),
+              radial-gradient(1px 1px at 15% 95%, #cbd5e1, transparent),
+              radial-gradient(2px 2px at 50% 55%, #fff, transparent),
+              radial-gradient(1px 1px at 65% 72%, #cbd5e1, transparent),
+              radial-gradient(1px 1px at 82% 78%, #fff, transparent),
+              radial-gradient(1.5px 1.5px at 5% 85%, #fff, transparent)
             `,
             backgroundRepeat: "no-repeat",
             backgroundSize: "100% 100%",
@@ -527,7 +542,11 @@ export function EnlightenmentContent() {
         {/* C2 — Equator line at y=50% + hemisphere labels (N/S). The equator
             is a thin dashed cyan line spanning the full sky width. Hemisphere
             labels are large monospace letters at the left edge of each
-            instance so they appear once per infinite-scroll copy. */}
+            instance so they appear once per infinite-scroll copy.
+            L2-VISUAL-FIX: added a "CELESTIAL EQUATOR" inline label centered
+            on the dashed line so the player can identify what the line means
+            without needing to read docs. The label sits inside a small dark
+            pill so the dashes don't bleed through the text. */}
         <div
           className="absolute left-0 right-0 pointer-events-none"
           style={{ top: "50%", height: "1px" }}
@@ -541,6 +560,16 @@ export function EnlightenmentContent() {
             }}
           />
         </div>
+        {/* L2-VISUAL-FIX — Celestial Equator label, centered horizontally on
+            the equator line. Uses a tiny dark pill so the text is legible
+            against any star/cluster background. Positioned at top: 50% with
+            translateY(-50%) to sit ON the line. */}
+        <span
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[0.55rem] font-mono uppercase tracking-[0.25em] text-cyan-300/70 select-none pointer-events-none whitespace-nowrap px-1.5 py-0.5 rounded bg-slate-950/80 border border-cyan-400/20"
+          aria-hidden
+        >
+          ✦ Celestial Equator ✦
+        </span>
         {/* Hemisphere N / S labels — large monospace, very low opacity,
             positioned at the left edge of each sky instance. */}
         <span
@@ -602,17 +631,27 @@ export function EnlightenmentContent() {
           const width = cb.maxX - cb.minX;
           if (width < 8) return null;
           const accent = CATEGORY_ACCENT[cb.category];
+          // L2-VISUAL-FIX — clamp the label's vertical position so it never
+          // gets clipped above the canvas top edge. The original `cb.minY - 2`
+          // could go negative for clusters near the top, pushing the label
+          // off-screen. Clamp to a minimum of 1.5% so the label always sits
+          // inside the viewport. Also bump the y position to top-of-cluster
+          // when the cluster is in the upper half (minY < 8) so the label
+          // reads as "above the cluster" instead of "in the cluster".
+          const labelTop = cb.minY < 8
+            ? Math.max(cb.minY + 1.5, 1.5)
+            : Math.max(cb.minY - 2, 1.5);
           return (
             <span
               key={`${offset}-cluster-label-${cb.category}`}
               className="absolute text-[0.6rem] font-mono uppercase tracking-[0.2em] select-none pointer-events-none whitespace-nowrap"
               style={{
                 left: `${cb.cx}%`,
-                top: `${cb.minY - 2}%`,
+                top: `${labelTop}%`,
                 transform: "translateX(-50%)",
                 color: accent,
                 opacity: 0.55,
-                textShadow: "0 0 6px rgba(0,0,0,0.8)",
+                textShadow: "0 0 6px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)",
               }}
               aria-hidden
             >
@@ -695,7 +734,30 @@ export function EnlightenmentContent() {
               • Unstarted/dim: very faint slate line (just visible enough to
                 hint at the pattern).
             Plus a glow filter on completed constellations so they read as
-            "illuminated" against the dark sky. */}
+            "illuminated" against the dark sky.
+            L2-VISUAL-FIX — the SVG is wrapped in a masked container so lines
+            FADE at the canvas edges (top/bottom/left/right) instead of being
+            hard-clipped by the SVG viewBox. The mask uses two stacked
+            linear-gradients (horizontal + vertical) so all four edges fade
+            symmetrically to transparent over ~6% of the canvas. This
+            eliminates the "label clipping" and "lines overflow canvas"
+            blockers from the visual review. */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            maskImage: `
+              linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%),
+              linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)
+            `,
+            WebkitMaskImage: `
+              linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%),
+              linear-gradient(to bottom, transparent 0%, black 6%, black 94%, transparent 100%)
+            `,
+            maskComposite: "intersect",
+            WebkitMaskComposite: "source-over",
+          }}
+          aria-hidden
+        >
         <svg
           className="absolute inset-0 pointer-events-none"
           width="100%"
@@ -781,6 +843,7 @@ export function EnlightenmentContent() {
             );
           })}
         </svg>
+        </div>
         {/* Stars as clickable buttons positioned using PERCENTAGE
             coordinates so they always scale with the parent's height.
             NOIRLab — star SIZE now varies by Bayer designation (alpha = 22px,
@@ -1461,6 +1524,14 @@ export function EnlightenmentContent() {
                 ))}
               </div>
 
+              {/* L2-VISUAL-FIX — Standard-mode interaction hint (top-right of
+                  the sky viewport). Mirrors the expanded-mode hint so the
+                  interaction model is obvious even in a static screenshot.
+                  pointer-events-none so it never blocks star clicks. */}
+              <div className="absolute top-2 right-12 rounded-md border border-violet-500/30 bg-slate-950/70 px-2 py-1 text-[0.6rem] text-violet-200/80 backdrop-blur pointer-events-none z-20">
+                click stars to illuminate · drag to pan · ◀ ▶ to scroll
+              </div>
+
               {/* C2 — Completion ring (moved to bottom-right to avoid
                   overlapping stars. UI-FIX: repositioned from top-right.) */}
               <div className="absolute bottom-3 right-16 hidden sm:flex items-center gap-2 rounded-md border border-amber-500/30 bg-slate-950/70 px-2 py-1 backdrop-blur pointer-events-none z-20">
@@ -1836,9 +1907,13 @@ export function EnlightenmentContent() {
               ))}
             </div>
 
-            {/* Drag hint (top-right) — concise, only shown in expanded mode */}
+            {/* Drag hint (top-right) — concise, only shown in expanded mode.
+                L2-VISUAL-FIX: extended to mention clicking stars + scroll
+                arrows so the interaction model is obvious even in a static
+                screenshot (the cursor:grab CSS alone isn't visible in
+                screenshots). */}
             <div className="absolute top-3 right-16 rounded-md border border-violet-500/30 bg-slate-950/70 px-2.5 py-1 text-[0.65rem] text-violet-200/80 backdrop-blur pointer-events-none">
-              drag to pan · Esc to close
+              click stars to illuminate · drag to pan · ◀ ▶ to scroll · Esc to close
             </div>
           </div>
 

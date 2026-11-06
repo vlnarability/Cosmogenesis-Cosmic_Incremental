@@ -48,10 +48,38 @@ import {
   TrendingUp,
   Coins,
   Layers,
+  Info,
 } from "lucide-react";
 import { formatNumber, formatCompact } from "../shared/format";
 import { BackgroundLayerBadge } from "../shared/BackgroundLayerBadge";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// ---------------------------------------------------------------------------
+// InfoDot — small ⓘ tooltip helper for section headers. Moves long glossary
+// text into a hover popup so the visible UI stays clean.
+function InfoDot({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="More info"
+          className="inline-flex items-center justify-center text-muted-foreground hover:text-amber-300 transition-colors align-middle ml-0.5"
+        >
+          <Info className="w-3 h-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[240px] text-[0.65rem] leading-snug text-balance">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 // ===========================================================================
 // LAYER 3 — TRANSCENDENCE (REDESIGNED)
@@ -222,6 +250,16 @@ export function TranscendenceContent() {
               <Badge variant="outline" className="text-amber-300 border-amber-400/40">
                 ⚡ {formatCompact(effectiveWorlds)} effective
               </Badge>
+              <Badge
+                variant="outline"
+                className={
+                  GENESIS_SEEDS.every((s) => plantedSeeds[s.id]?.planted)
+                    ? "text-emerald-300 border-emerald-400/40"
+                    : "text-rose-300 border-rose-400/40"
+                }
+              >
+                🌱 {GENESIS_SEEDS.filter((s) => plantedSeeds[s.id]?.planted).length}/{GENESIS_SEEDS.length} seeds → L4
+              </Badge>
               {cosmicFragments > 0 && (
                 <Badge variant="outline" className="text-fuchsia-300 border-fuchsia-400/40">
                   💠 {formatCompact(cosmicFragments)} Cosmic Frags
@@ -268,6 +306,7 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Globe className="w-3 h-3" /> Divine Engine Overview
+                <InfoDot text="Each world produces Divinity based on your peak production rate. Fuse 10 worlds of one tier into 1 of the next tier for 5× production per world (Ascendant tier and above are pure boosts)." />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">
                 +{formatNumber(bgDivPerSec, 2)} Div/s
@@ -292,9 +331,7 @@ export function TranscendenceContent() {
               </div>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mt-2 leading-snug">
-              Each world produces Divinity based on your peak production rate.
-              Fuse 10 worlds of one tier into 1 of the next tier for 5× production per world
-              (Ascendant tier and above are pure boosts).
+              Worlds produce Div/s from peak production.
             </div>
           </section>
           )}
@@ -305,15 +342,14 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Layers className="w-3 h-3" /> World Fusion
+                <InfoDot text="Fuse 10 worlds of a source tier into 1 of the target tier for 5× production per world. Ascendant tier is breakeven (100× = equal to merged). Greater Ascendant+ are pure boosts (10× each). Void World produces Cosmic Fragments — locked until L7+." />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
                 {FUSION_TIERS.length} tiers
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Fuse 10 worlds of a source tier into 1 of the target tier for 5× production per world.
-              Ascendant tier is breakeven (100× = equal to merged). Greater Ascendant+ are pure boosts
-              (10× each). Void World produces Cosmic Fragments — locked until L7+.
+              Fuse 10 → 1 for 5× production per world.
             </div>
             <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
               {FUSION_TIERS.map((tier) => {
@@ -407,20 +443,70 @@ export function TranscendenceContent() {
           </section>
           )}
 
+          {/* ===== 2b. CONVERGENCE CATALYSTS — SUMMARY (worlds subtab) ===== */}
+          {subtab === "worlds" && (
+          <section className="stat-card">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+              <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Convergence Catalysts
+                <InfoDot text="5 one-time permanent Divine Engine upgrades purchased with Divinity. Full details in the Boosts tab." />
+              </div>
+              <Badge variant="outline" className="text-[0.6rem] text-cyan-300 border-cyan-400/40">
+                {Object.values(purchasedCatalysts).filter(Boolean).length}/{CONVERGENCE_CATALYSTS.length} owned
+              </Badge>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {CONVERGENCE_CATALYSTS.map((c) => {
+                const owned = !!purchasedCatalysts[c.id];
+                const canAfford = divinity >= c.cost;
+                return (
+                  <Tooltip key={c.id}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!owned && canAfford) purchaseCatalyst(c.id);
+                        }}
+                        className={cn(
+                          "rounded-md border p-1.5 text-[0.65rem] flex flex-col items-center gap-0.5 min-w-[78px] transition-colors",
+                          owned
+                            ? "border-emerald-400/40 bg-emerald-500/5"
+                            : canAfford
+                              ? "border-border bg-muted/10 hover:bg-muted/20 cursor-pointer"
+                              : "border-border bg-muted/10 opacity-60 cursor-not-allowed"
+                        )}
+                      >
+                        <span className="text-base leading-none">{c.icon}</span>
+                        <span className="text-[0.6rem] font-medium text-center leading-tight">{c.name}</span>
+                        <span className={owned ? "text-emerald-300 text-[0.55rem]" : "text-amber-300/80 text-[0.55rem]"}>
+                          {owned ? "Owned ✓" : `${formatNumber(c.cost, 0)} Div`}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[200px] text-[0.65rem] leading-snug text-balance">
+                      {c.desc}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </section>
+          )}
+
           {/* ===== 3. ETERNAL FLAME ===== */}
           {subtab === "boosts" && (
           <section className="stat-card">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Flame className="w-3 h-3" /> Eternal Flame
+                <InfoDot text="Invest Divinity to grow the flame's multiplier. Formula: 1 + log10(invested + 1) × 0.5. At 100 invested = ×2.0, 1,000 = ×2.5, 10,000 = ×3.0, 1,000,000 = ×4.0. Unbounded growth." />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-rose-300 border-rose-400/40">
                 ×{flameMult.toFixed(2)} multiplier
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Invest Divinity to grow the flame's multiplier. Formula: 1 + log10(invested + 1) × 0.5.
-              At 100 invested = ×2.0, 1,000 = ×2.5, 10,000 = ×3.0, 1,000,000 = ×4.0. Unbounded growth.
+              Invest Divinity for a log multiplier.
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs mb-2">
               <div>
@@ -481,14 +567,14 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Hammer className="w-3 h-3" /> World Forge
+                <InfoDot text="Spend Divinity to create a new background world (Tier 1). Cost scales 1.5× per world already forged. Forged worlds persist across prestiges." />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40">
                 {worldsForged} forged (lifetime)
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Spend Divinity to create a new background world (Tier 1). Cost scales 1.5× per
-              world already forged. Forged worlds persist across prestiges.
+              Forge Tier 1 worlds; cost scales 1.5× each.
             </div>
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs">
@@ -571,13 +657,14 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Globe className="w-3 h-3" /> World Templates
+                <InfoDot text={'Choose the "mode" of all background worlds. Only one active at a time. Switching costs 50 Divinity.'} />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-violet-300 border-violet-400/40">
                 {activeWorldTemplate ? WORLD_TEMPLATES.find((t) => t.id === activeWorldTemplate)?.name : "none"}
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Choose the "mode" of all background worlds. Only one active at a time. Switching costs 50 Divinity.
+              Pick a world mode; switch for 50 Div.
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
               {WORLD_TEMPLATES.map((t) => {
@@ -614,6 +701,7 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <TreePine className="w-3 h-3" /> Genesis Seeds
+                <InfoDot text="Plant seeds that mature into permanent Divinity generators. All 4 planted unlocks Genesis (L4)." />
               </div>
               <Badge
                 variant="outline"
@@ -627,7 +715,7 @@ export function TranscendenceContent() {
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Plant seeds that mature into permanent Divinity generators. All 4 planted unlocks Genesis (L4).
+              Plant 4 seeds to unlock Genesis (L4).
             </div>
             <div className="space-y-1">
               {GENESIS_SEEDS.map((seed) => {
@@ -664,7 +752,7 @@ export function TranscendenceContent() {
                         <div className="mt-1 h-1 bg-muted/40 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-amber-400/70 transition-all"
-                            style={{ width: `${prog.progress * 100}%` }}
+                            style={{ width: `${Math.round(Math.min(100, Math.max(0, prog.progress * 100)) * 10) / 10}%` }}
                           />
                         </div>
                       )}
@@ -696,6 +784,7 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Coins className="w-3 h-3" /> Divine Investment Portfolios
+                <InfoDot text="Allocate background worlds across 5 portfolios. Each pays Divinity dividends = worlds × yield × peak production × 1%. Riskier portfolios crash and consume worlds." />
               </div>
               <div className="flex gap-1 flex-wrap">
                 <Badge variant="outline" className="text-[0.6rem] text-sky-300 border-sky-400/40">
@@ -712,11 +801,10 @@ export function TranscendenceContent() {
                 </Badge>
               </div>
             </div>
-            <div className="text-[0.65rem] text-muted-foreground mb-2 leading-snug">
-              Allocate background worlds across 5 portfolios. Each pays Divinity dividends = worlds ×
-              yield × peak production × 1%. Riskier portfolios crash and consume worlds.
+            <div className="text-[0.65rem] text-muted-foreground mb-2 leading-snug flex items-center gap-2 flex-wrap">
+              <span>Allocate worlds into 5 dividend portfolios.</span>
               {purchasedCatalysts?.eternal_engine && (
-                <span className="text-emerald-300"> Eternal Engine active — no crashes.</span>
+                <span className="text-emerald-300">Eternal Engine active — no crashes.</span>
               )}
             </div>
             <div className="space-y-1.5">

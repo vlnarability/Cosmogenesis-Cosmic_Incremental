@@ -142,6 +142,10 @@ export interface HexMapProps {
   /** UI-FIX: Optional tooltip renderer — returns a string for a given cell
    * that is displayed as a native HTML title tooltip on hover. */
   hexTooltip?: (cell: HexCell) => string;
+  /** Blocker 2 — transient id of a hex that should "flash" (e.g. on scan or
+   * claim success). The parent clears this after ~600ms; while set, the
+   * matching hex renders an animated cyan overlay on top of its polygon. */
+  flashId?: string | null;
 }
 
 export function HexMap({
@@ -153,6 +157,7 @@ export function HexMap({
   subtitle,
   className,
   hexTooltip,
+  flashId,
 }: HexMapProps) {
   const points = useMemo(() => hexPoints(hexRadius), [hexRadius]);
 
@@ -241,6 +246,27 @@ export function HexMap({
                     className="pointer-events-none"
                     style={{ filter: "drop-shadow(0 0 4px rgba(252,211,77,0.5))" }}
                   />
+                )}
+                {/* Blocker 2 — transient success flash overlay. Rendered when
+                    cell.id === flashId. The parent (GenesisModal) clears
+                    flashId after 600ms so this never persists. Both children
+                    are pointer-events-none so subsequent clicks pass through
+                    to the underlying hex polygon handler. The polygon tints
+                    the hex cyan (30% opacity) while the expanding circle
+                    draws the player's eye to the affected hex. */}
+                {flashId === cell.id && (
+                  <>
+                    <polygon
+                      points={points}
+                      className="fill-cyan-400/30 pointer-events-none"
+                    />
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={hexRadius * 1.5}
+                      className="animate-ping fill-cyan-400 pointer-events-none"
+                    />
+                  </>
                 )}
               </g>
             );
