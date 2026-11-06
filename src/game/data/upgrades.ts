@@ -582,18 +582,6 @@ export const UPGRADES: UpgradeDef[] = [
     effect: { type: "market_savvy", value: 0.30 },
   },
 
-  // ---- L4 — Genesis (Sacred Grid + Authored Worlds) ----
-  {
-    id: "world_blueprint",
-    name: "World Blueprint",
-    desc: (l) => `Authored world bonuses (production/cap/pop) +${l * 50}% per level (max 4).`,
-    baseCost: 15,
-    maxLevel: 4,
-    costGrowth: 1.7,
-    requiresLayer: "genesis",
-    category: "layer",
-    effect: { type: "world_blueprint", value: 0.50 },
-  },
   // BUGFIX: disaster_shield was inert (Sacred Grid removed). Repurposed as
   // "Galaxy Survey Efficiency" — reduces scan cost by 20% per level.
   {

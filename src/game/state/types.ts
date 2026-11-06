@@ -1,6 +1,5 @@
 // Core game type definitions for Cosmogenesis
 
-import type { WorldConfig } from "../data/genesis";
 import type { GalaxySystemState } from "../data/galaxyMap";
 import type { RivalSystemState } from "../data/galaxies";
 import type {
@@ -224,7 +223,6 @@ export type UpgradeEffectType =
   | "constellation_boost"
   | "ritual_extension"
   | "market_savvy"
-  | "world_blueprint"
   | "disaster_shield"
   | "prophet_inspiration"
   | "heresy_ward"
@@ -557,8 +555,6 @@ export interface GameState {
   showTranscendence: boolean;
 
   // Layer 4 — Genesis
-  authoredWorlds: WorldConfig[]; // list of authored world configs (permanent bonuses)
-  pendingWorldConfig: Partial<WorldConfig>; // current authoring selections
   showGenesis: boolean;
 
   // Layer 5 — Apotheosis
@@ -1274,8 +1270,6 @@ export interface GameStore extends GameState {
 
   // Layer 4 — Genesis
   setShowGenesis: (v: boolean) => void;
-  setPendingWorldConfig: (cfg: Partial<WorldConfig>) => void;
-  authorWorld: () => void;
   /** Scan an unexplored galaxy system (L4). Costs GALAXY_SCAN_COST Genesis Seeds; reveals bonus + rare resource. */
   scanGalaxySystem: (systemId: string) => void;
   /** Claim an explored-but-unclaimed galaxy system (L4). Cost scales 1.15× per existing claim; +10 worlds + bonuses. */

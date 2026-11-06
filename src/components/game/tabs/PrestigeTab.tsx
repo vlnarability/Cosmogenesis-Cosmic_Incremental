@@ -17,6 +17,7 @@ import {
   type ConstellationState,
 } from "@/game/data/constellations";
 import { DIVINE_LAWS } from "@/game/data/apotheosis";
+import { GALAXY_TOTAL_SYSTEMS } from "@/game/data/galaxyMap";
 import { CREATURE_BODY_TYPES, LEGION_MAX_CREATURES, OUTPOST_RAID_COUNT_FOR_L8 } from "@/game/data/omnipotence";
 import { MINOR_GODS, RELATIONSHIP_ALLIANCE_THRESHOLD } from "@/game/data/divinity_layer";
 import { OLD_GODS } from "@/game/data/infinity";
@@ -91,6 +92,10 @@ export function PrestigeTab() {
   const completedChallenges = useGameStore((s) => s.completedChallenges || {});
   const unlockedChallenges = useGameStore((s) => s.unlockedChallenges);
   const upgrades = useGameStore((s) => s.upgrades);
+  // L4 — claimed galaxy systems count (drives the Apotheosis unlock progress display).
+  const claimedGalaxyCount = useGameStore(
+    (s) => (s.galaxySystems || []).filter((g) => g.claimed).length
+  );
   // P6 — Modal Consolidation: replaced per-layer setShow* setters with the
   // single openLayerModal(layerId) action. The LayerModal component reads
   // `activeLayerModal` to decide which layer's content to render.
@@ -105,8 +110,6 @@ export function PrestigeTab() {
   const constellationProgress = useGameStore((s) => s.constellationProgress || {});
   const constellationsStarted = useGameStore((s) => s.constellationsStarted || {});
   const constellationsCompleted = useGameStore((s) => s.constellationsCompleted || {});
-
-  const authoredWorlds = useGameStore((s) => s.authoredWorlds || []);
 
   const faith = useGameStore((s) => s.faith);
   const heresy = useGameStore((s) => s.heresy);
@@ -399,18 +402,18 @@ export function PrestigeTab() {
             viewLabel="View Genesis"
             viewIcon={<Egg className="w-3 h-3 mr-1" />}
           >
-            <ProgressRow label="Authored worlds" value={authoredWorlds.length} max={99} />
+            <ProgressRow label="Galaxy systems claimed" value={claimedGalaxyCount} max={GALAXY_TOTAL_SYSTEMS} />
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Each authored world grants permanent production / capacity / Divinity / pop bonuses.
+              Claim all 50 galaxy systems to unlock Apotheosis.
             </div>
             <LayerNextProgress
               progress={{
                 currentLayerName: "Genesis",
                 nextLayerName: "Apotheosis",
                 nextLayerKey: "apotheosis",
-                current: authoredWorlds.length,
-                max: 1,
-                metricLabel: "Worlds authored (1 needed)",
+                current: claimedGalaxyCount,
+                max: GALAXY_TOTAL_SYSTEMS,
+                metricLabel: "Galaxy systems claimed",
               }}
               currentLayerUnlocked={!!unlockedLayers?.genesis}
               nextLayerUnlocked={!!unlockedLayers?.apotheosis}
@@ -426,7 +429,7 @@ export function PrestigeTab() {
             tagline="The god of gods"
             icon="👑"
             unlocked={!!unlockedLayers.apotheosis}
-            unlockText="Author 1 Genesis world"
+            unlockText="Galaxy fully claimed"
             currencyName={`Faith: ${formatNumber(faith, 0)} · Heresy: ${heresy.toFixed(0)}/75`}
             onView={() => openLayerModal("apotheosis")}
             viewLabel="View Divine"

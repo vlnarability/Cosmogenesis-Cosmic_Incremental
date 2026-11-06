@@ -106,19 +106,6 @@ import {
   totalAllocatedWorlds,
 } from "../data/marketPortfolios";
 import {
-  CRADLE_WORLDS,
-  PRIME_CONDITIONS,
-  SACRED_GEOGRAPHIES,
-  DORMANT_SEEDS,
-  DIFFICULTY_TIERS,
-  worldProductionMult,
-  worldCapMult,
-  worldEpMultiplier,
-  worldPopGrowthMult,
-  hasAuthoredWorld,
-  type WorldConfig,
-} from "../data/genesis";
-import {
   DIVINE_LAWS,
   DIVINE_LAW_MAP,
   WORSHIP_MODES,
@@ -782,8 +769,6 @@ function initialMetaState(): Partial<GameState> {
     showTranscendence: false,
 
     // Layer 4 — Genesis
-    authoredWorlds: [],
-    pendingWorldConfig: {},
     showGenesis: false,
 
     // Layer 5 — Apotheosis
@@ -1229,12 +1214,6 @@ export const useGameStore = create<GameStore>()(
         // Legacy foresight field returns all-zeros on new saves; kept for legacy callers.
         const foresight = foresightBonus(s.foresightNodes || {});
         const route = routeBonus(s.activeForesightRoute);
-        // LAYER UPGRADE — world_blueprint: +50% per level (max 4) to all authored-world bonuses
-        const wbLvl = (s.upgrades?.world_blueprint as number) || 0;
-        const wbMult = 1 + 0.50 * wbLvl;
-        const wProd = worldProductionMult(s.authoredWorlds || []) * wbMult;
-        const wCap = worldCapMult(s.authoredWorlds || []) * wbMult;
-        const wPop = worldPopGrowthMult(s.authoredWorlds || []) * wbMult;
         const dLaw = divineLawBonus(s.enactedDivineLaws || {});
         const wMode = worshipModeBonus(s.activeWorshipMode);
         const hResp = heresyResponseProductionMult(s.activeHeresyResponse);
@@ -1274,7 +1253,7 @@ export const useGameStore = create<GameStore>()(
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult +
-          wProd + dLaw.productionMult + wMode.productionMult + hResp +
+          dLaw.productionMult + wMode.productionMult + hResp +
           hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
@@ -1282,14 +1261,14 @@ export const useGameStore = create<GameStore>()(
           horizontalTransferBonus;       // FIX-ARCHETYPE-LOCKED — +5% prod per system
         const layerCapBonus =
           constB.capMult +
-          foresight.capMult + route.capMult + wCap +
+          foresight.capMult + route.capMult +
           dLaw.capMult +
           hybrids.capMult + allianceB.capMult +
           fragmentB.capMult +
           0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
-          foresight.popGrowthMult + route.popGrowthMult + wPop +
+          foresight.popGrowthMult + route.popGrowthMult +
           dLaw.popGrowthMult +
           hybrids.popGrowthMult + allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
@@ -2611,19 +2590,14 @@ export const useGameStore = create<GameStore>()(
           }
         }
         // Layer 5 (Apotheosis): L4 redesign — completing the galaxy (all 50 systems
-        // claimed) unlocks L5. The old "authored 1 world" condition is kept as a
-        // fallback for save-compat (older saves that authored a world but didn't
-        // complete the galaxy can still progress).
+        // claimed) unlocks L5.
         if (unlockedLayers.genesis && !unlockedLayers.apotheosis) {
           const galaxyDone = isGalaxyComplete(s.galaxySystems || []);
-          const authoredDone = hasAuthoredWorld(s.authoredWorlds || []);
-          if (galaxyDone || authoredDone) {
+          if (galaxyDone) {
             unlockedLayers = { ...unlockedLayers, apotheosis: true };
             setTimeout(
               () => get().addToLog(
-                galaxyDone
-                  ? "Galaxy fully claimed. Apotheosis layer unlocked."
-                  : "First world authored. Apotheosis layer unlocked."
+                "Galaxy fully claimed. Apotheosis layer unlocked."
               ),
               0
             );
@@ -5038,14 +5012,13 @@ export const useGameStore = create<GameStore>()(
         const fs = foresightBonus(s.foresightNodes || {});
         const rb = routeBonus(s.activeForesightRoute);
         const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
-        const wEp = worldEpMultiplier(s.authoredWorlds || []);
         const dl = divineLawBonus(s.enactedDivineLaws || {});
         // Layers 7-9 EP bonus
         const hybridEp = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance).epMult;
         const allianceEp = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS).epMult;
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
         const layerEpMult = 1 +
-          fs.epMult + constBp.epMult + rb.epMult + ritualEp + wEp + dl.epMult +
+          fs.epMult + constBp.epMult + rb.epMult + ritualEp + dl.epMult +
           hybridEp + allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
 
@@ -5344,9 +5317,7 @@ export const useGameStore = create<GameStore>()(
           scriptTimers: {}, // reset per-run
           showTranscendence: false,
 
-          // Layer 4 — Genesis (persist authored worlds; reset pending config)
-          authoredWorlds: s.authoredWorlds || [],
-          pendingWorldConfig: {},
+          // Layer 4 — Genesis (no per-run state to persist; galaxy systems + seeds already preserved above)
           showGenesis: false,
 
           // Layer 5 — Apotheosis (persist laws + worship mode + heresy response; reset heresy + miracle timers)
@@ -6460,43 +6431,7 @@ export const useGameStore = create<GameStore>()(
       },
 
 
-      // ============ LAYER 4 — GENESIS ============
-      setPendingWorldConfig: (cfg) => {
-        const s = get();
-        if (!s.unlockedLayers?.genesis) return;
-        set({ pendingWorldConfig: { ...(s.pendingWorldConfig || {}), ...cfg } });
-      },
-
-      authorWorld: () => {
-        const s = get();
-        if (!s.unlockedLayers?.genesis) return;
-        const p = s.pendingWorldConfig || {};
-        if (!p.cradleWorldId || !p.primeConditionId || !p.sacredGeographyId || !p.dormantSeedId || !p.difficultyTierId) {
-          get().addToLog("Select all 5 world components before authoring.");
-          return;
-        }
-        const seedCost = 1;
-        // MERGED: was genesisSeeds, now divinity
-        if (!s.debugFreeBuy && (s.divinity || 0) < seedCost) {
-          get().addToLog(`Need ${seedCost} Genesis Seed to author a world.`);
-          return;
-        }
-        const world: WorldConfig = {
-          id: `world_${Date.now()}`,
-          cradleWorldId: p.cradleWorldId!,
-          primeConditionId: p.primeConditionId!,
-          sacredGeographyId: p.sacredGeographyId!,
-          dormantSeedId: p.dormantSeedId!,
-          difficultyTierId: p.difficultyTierId!,
-          createdAt: Date.now(),
-        };
-        set({
-          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - seedCost,  // MERGED: was genesisSeeds
-          authoredWorlds: [...(s.authoredWorlds || []), world],
-          pendingWorldConfig: {},
-        });
-        get().addToLog(`World authored (${world.cradleWorldId}/${world.difficultyTierId}). Permanent bonuses applied.`);
-      },
+      // ============ LAYER 4 — GENESIS (galaxy systems only — world authoring system removed) ============
 
       // ============ LAYER 5 — APOTHEOSIS ============
       enactDivineLaw: (lawId) => {
@@ -9767,8 +9702,6 @@ export const useGameStore = create<GameStore>()(
         if (!persisted.scriptTimers) persisted.scriptTimers = {};
         if (persisted.showTranscendence === undefined) persisted.showTranscendence = false;
         // Layer 4 — Genesis
-        if (!persisted.authoredWorlds) persisted.authoredWorlds = [];
-        if (!persisted.pendingWorldConfig) persisted.pendingWorldConfig = {};
         if (persisted.showGenesis === undefined) persisted.showGenesis = false;
         // Layer 5 — Apotheosis
         if (persisted.faith === undefined) persisted.faith = 0;

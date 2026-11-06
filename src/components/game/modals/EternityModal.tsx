@@ -152,11 +152,10 @@ export function EternityContent() {
     // Layers completed count
     const unlocked = useGameStore.getState().unlockedLayers || {};
     const layersCompleted = Object.values(unlocked).filter(Boolean).length;
-    // Worlds: authored worlds + claimed galaxy systems
-    const authoredWorlds = (useGameStore.getState() as any).authoredWorlds || [];
+    // Worlds: claimed galaxy systems (authored-worlds system was removed).
     const galaxySystems = (useGameStore.getState() as any).galaxySystems || [];
     const claimedGalaxies = galaxySystems.filter((g: any) => g?.claimed).length;
-    const worldCount = authoredWorlds.length + claimedGalaxies;
+    const worldCount = claimedGalaxies;
     // Final score: weighted sum
     return Math.floor(sum * 0.01 + worldCount * 100 + layersCompleted * 500 + discoveredCount * 1000);
   }, [discoveredCount, allDiscovered]);
