@@ -8246,3 +8246,38 @@ The user shared Claude's comprehensive code review. This round addressed only th
 - **Low:** useGameStore.getState() during render (tier legend); Three.js nits; debug panel off-by-one (4 vs 5); unvalidated setters; 19 unused deps; stub data modules; 8300-line store.ts; repo hygiene (88MB .git, 61MB skills/, legacy upload/).
 
 These should be addressed in subsequent rounds — the webDevReview cron (every 15 min) will pick them up.
+
+---
+
+## Re-review after dead-code removal (continuation)
+
+### Verification of prior dead-code removal
+
+The previous session removed the `genesis.ts` module (renamed/merged into `genesisEngine.ts`) and the `WorldConfig` / `authorWorld` / `authoredWorlds` / `pendingWorldConfig` / `setPendingWorldConfig` / `worldProductionMult` / `worldCapMult` / `worldEpMultiplier` / `worldPopGrowthMult` / `hasAuthoredWorld` / `world_blueprint` / `WorldBlueprint` dead-code surface. Confirmed clean this round:
+
+- `rg "authorWorld|authoredWorlds|pendingWorldConfig|setPendingWorldConfig|worldProductionMult|worldCapMult|worldEpMultiplier|worldPopGrowthMult|hasAuthoredWorld|world_blueprint|WorldBlueprint|WorldConfig|CRADLE_WORLDS|PRIME_CONDITIONS|SACRED_GEOGRAPHIES|DORMANT_SEEDS|DIFFICULTY_TIERS" src/` → 0 matches
+- The previous broken `import { ... } from "../data/genesis"` block at store.ts:108-120 is gone (now contains the DIVINE_LAWS import from `../data/apotheosis`).
+- Only `totalAllocatedWorlds` (from `marketPortfolios`) remains in use — at store.ts:3426 and :6837 — which is the legitimate portfolio-allocation helper, unrelated to the removed `genesis.ts` world-authoring system.
+
+### Re-review gates (all green)
+
+| Gate | Result |
+|---|---|
+| `bun run lint` | **0 errors**, 10 pre-existing warnings (all in `public/sw.js`, `scripts/playtest-*.js`, `upload/logic.js` — unrelated to game code) |
+| `npx tsc --noEmit` | **0 errors** |
+| Dev server (`bun run dev`, port 3000) | Running, `GET / 200 in ~40ms` |
+| Agent Browser end-to-end | Page renders, no console errors, no page errors, core loop interactive |
+
+### Agent Browser end-to-end walkthrough
+
+1. **Landing page** — "Cosmogenesis" heading renders; 3 save slots (Slot 1/2/3, all Empty); NORMAL/HARD mode toggle; primary CTA "DESCEND · SLOT 1 · BEGIN ANEW".
+2. **Click Descend** — GameShell mounts cleanly; ResourceBar appears with stage tag "Cell Stage", POP 9, TIME 20s; stage panel renders "⚡ Cell / A single spark in the dark / ⚡ CELL · 5-60 MIN / Awaken as a single cell…".
+3. **Story popup "First Spark"** — fires once; "Continue" dismisses it.
+4. **Stray-`0` regression check** — None. The DOM contains no leaf text-node equal to `"0"` between the stage tagline and the stage-art panel. (Body text matches `0` only via legitimate resource displays like `🧬 0.00 / 150`, `SYSTEMS 0.0 / 4`, `TECH 0.0 / —`.)
+5. **Action interactivity** — Clicked "🍬 Absorb Glucose" 3× → glucose ticker went 20 → 26 (each click +2, as expected).
+6. **Mobile viewport (375×667)** — Layout reflows; tab bar (Actions/Systems/Tech/World/Build), action buttons, and tutorial hint ("Build your first system") all reachable.
+7. **Console / page errors** — None. Only HMR/Fast Refresh info logs.
+
+### Conclusion
+
+The dead-code removal landed cleanly with no regressions. The previously-reported High/Medium/Low review findings from Claude (Auto-Ascend offline-progress multi-prestige bug; unvalidated save import; tick try/catch; localStorage write-per-tick perf; Three.js scene rebuilt per frame; NaN guards; multi-tab protection; computeScore triplicate; repo hygiene, etc.) remain open as future work for the webDevReview cron to pick up.
