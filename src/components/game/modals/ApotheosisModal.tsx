@@ -160,10 +160,10 @@ export function ApotheosisContent() {
                 {formatNumber(faith, 0)} Faith
               </Badge>
               <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">
-                <Trophy className="w-3 h-3 mr-1" />{conqueredCount}/{GALAXIES_REQUIRED_FOR_L6} Conquered
+                <Trophy className="w-3 h-3 mr-1" />{conqueredCount}/{GALAXIES_REQUIRED_FOR_L6} Galaxies Conquered
               </Badge>
                 <Badge variant="outline" className="text-sky-300 border-sky-400/40">
-                  {claimedRivalSystems}/{TOTAL_RIVAL_SYSTEMS} Rival Systems
+                  {claimedRivalSystems}/{TOTAL_RIVAL_SYSTEMS} Systems Claimed
                 </Badge>
                 <Badge variant="outline" className="text-violet-300 border-violet-400/40">
                   +{formatNumber(worldBonus, 0)} Worlds
@@ -215,6 +215,17 @@ export function ApotheosisContent() {
                     return (
                       <button
                         key={g.id}
+                        // L5-CLICK-FIX — onPointerDown fires immediately on press,
+                        // before any tick-driven re-render can shift the layout.
+                        // This makes galaxy selection reliable even while the game
+                        // is unpaused (the heresy tick re-renders the grid every
+                        // second, which previously caused onClick to sometimes
+                        // not fire because the button element was reconciled
+                        // between pointerdown and pointerup).
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          setSelectedGalaxyId(g.id);
+                        }}
                         onClick={() => setSelectedGalaxyId(g.id)}
                         className={`w-full text-left p-2 rounded-md border bg-card/40 hover:bg-card/70 transition-colors ${
                           isSelected ? "ring-1 ring-amber-400/50" : ""
@@ -251,7 +262,7 @@ export function ApotheosisContent() {
                       {selectedIsStarter ? "🏠 " : selectedIsConquered ? "🏆 " : "🌌 "}
                       {selectedGalaxy.name}
                       {selectedIsConquered && (
-                        <Badge variant="outline" className="text-[0.55rem] text-emerald-300 border-emerald-400/40 ml-1">
+                        <Badge variant="outline" className="text-[0.6rem] text-emerald-300 border-emerald-400/40 ml-1">
                           Conquered
                         </Badge>
                       )}
@@ -355,19 +366,19 @@ export function ApotheosisContent() {
                     {/* Web stats */}
                     <div className="grid grid-cols-4 gap-2 mb-2">
                       <div className="rounded-md bg-emerald-500/10 border border-emerald-400/20 p-1.5">
-                        <div className="text-[0.55rem] uppercase text-emerald-300/80">Faithful</div>
+                        <div className="text-[0.6rem] uppercase text-emerald-300/80">Faithful</div>
                         <div className="text-lg font-mono text-emerald-300">{faithfulCount}</div>
                       </div>
                       <div className="rounded-md bg-rose-500/10 border border-rose-400/20 p-1.5">
-                        <div className="text-[0.55rem] uppercase text-rose-300/80">Heretical</div>
+                        <div className="text-[0.6rem] uppercase text-rose-300/80">Heretical</div>
                         <div className="text-lg font-mono text-rose-300">{hereticalCount}</div>
                       </div>
                       <div className="rounded-md bg-muted/30 border border-border p-1.5">
-                        <div className="text-[0.55rem] uppercase text-muted-foreground">Purged</div>
+                        <div className="text-[0.6rem] uppercase text-muted-foreground">Purged</div>
                         <div className="text-lg font-mono text-muted-foreground">{emptyCount}</div>
                       </div>
                       <div className={`rounded-md p-1.5 border ${webHeresyCritical ? "bg-rose-500/20 border-rose-400/60" : "bg-amber-500/10 border-amber-400/20"}`}>
-                        <div className={`text-[0.55rem] uppercase ${webHeresyCritical ? "text-rose-400" : "text-amber-300/80"}`}>Web Heresy</div>
+                        <div className={`text-[0.6rem] uppercase ${webHeresyCritical ? "text-rose-400" : "text-amber-300/80"}`}>Web Heresy</div>
                         <div className={`text-lg font-mono ${webHeresyCritical ? "text-rose-400" : "text-amber-300"}`}>{heresyPct.toFixed(0)}%</div>
                       </div>
                     </div>
@@ -413,22 +424,28 @@ export function ApotheosisContent() {
                             {isProphet && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); removeProphet(selectedGalaxy.id, i); }}
-                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500/80 text-white text-[0.55rem] flex items-center justify-center hover:bg-rose-400"
+                                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500/80 text-white text-[0.6rem] flex items-center justify-center hover:bg-rose-400"
                                 title="Remove Prophet"
                               >
                                 ✕
                               </button>
                             )}
                             {state !== "empty" && !isProphet && (
-                              <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/60 transition-opacity">
-                                <div className="flex gap-0.5">
+                              // L5-TAP-FIX — Convert/Purge buttons increased from h-5 w-5 to
+                              // h-6 w-6 (24px) for the 44px mobile touch-target guideline.
+                              // opacity-0 hover:opacity-100 kept for desktop (mouse), but a
+                              // `touch-visible` class forces opacity-100 on touch devices via
+                              // the @media (hover: none) CSS rule in globals.css.
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 touch-visible bg-black/60 transition-opacity">
+                                <div className="flex gap-1">
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     disabled={state === "faithful" || divinity < 5}
                                     onClick={(e) => { e.stopPropagation(); convertFollower(selectedGalaxy.id, i); }}
-                                    className="h-5 w-5 p-0 text-[0.5rem] text-emerald-300"
+                                    className="h-6 w-6 p-0 text-[0.6rem] text-emerald-300"
                                     title={`Convert (5 Divinity)`}
+                                    aria-label={`Convert follower in cell ${i + 1} for 5 Divinity`}
                                   >
                                     ✚
                                   </Button>
@@ -436,8 +453,9 @@ export function ApotheosisContent() {
                                     size="sm"
                                     variant="ghost"
                                     onClick={(e) => { e.stopPropagation(); purgeFollower(selectedGalaxy.id, i); }}
-                                    className="h-5 w-5 p-0 text-[0.5rem] text-rose-300"
+                                    className="h-6 w-6 p-0 text-[0.6rem] text-rose-300"
                                     title="Purge (free, removes follower)"
+                                    aria-label={`Purge follower in cell ${i + 1}`}
                                   >
                                     ✕
                                   </Button>
@@ -477,8 +495,8 @@ export function ApotheosisContent() {
               <div className="h-2 bg-rose-950/50 rounded-full overflow-hidden">
                 <div className={`h-full transition-all ${heresy >= 75 ? "bg-rose-500" : "bg-rose-400/70"}`} style={{ width: `${Math.min(75, heresy) / 75 * 100}%` }} />
               </div>
-              <div className="text-[0.6rem] text-muted-foreground mt-1">
-                Enacted {enactedCount} laws. Active bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% prod, +{(lawBonus.capMult * 100).toFixed(0)}% cap, +{(lawBonus.epMult * 100).toFixed(0)}% Div, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% pop
+              <div className="text-[0.65rem] text-muted-foreground mt-1">
+                Enacted {enactedCount} laws. Active L5 bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% Faith gen, +{(lawBonus.capMult * 100).toFixed(0)}% Faith cap, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% prophet conversion, heresy spread ×{lawBonus.heresyRateMult.toFixed(2)}
               </div>
             </div>
 
@@ -525,13 +543,13 @@ export function ApotheosisContent() {
                         <span className="text-base">{m.icon}</span>
                         <span className="text-xs font-medium">{m.name}</span>
                       </div>
-                      <div className="text-[0.6rem] text-muted-foreground mt-0.5 leading-snug">{m.desc}</div>
+                      <div className="text-[0.65rem] text-muted-foreground mt-0.5 leading-snug">{m.desc}</div>
                     </button>
                   );
                 })}
               </div>
-              <div className="text-[0.6rem] text-amber-300/80 mt-1">
-                Active: +{wMode.faithPerSec.toFixed(1)} Faith/s, +{(wMode.productionMult * 100).toFixed(0)}% prod, +{wMode.heresyPerSec.toFixed(2)} heresy/s
+              <div className="text-[0.65rem] text-amber-300/80 mt-1">
+                Active: +{wMode.faithPerSec.toFixed(1)} Faith/s, +{(wMode.productionMult * 100).toFixed(0)}% Faith bonus, +{wMode.heresyPerSec.toFixed(2)} heresy/s
               </div>
             </section>
 
@@ -547,8 +565,8 @@ export function ApotheosisContent() {
                       <span className="text-lg shrink-0">{m.icon}</span>
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-semibold">{m.name}</div>
-                        <div className="text-[0.6rem] text-muted-foreground leading-snug">{m.desc}</div>
-                        {used > 0 && <div className="text-[0.55rem] text-amber-300/80">used {used}× this run</div>}
+                        <div className="text-[0.65rem] text-muted-foreground leading-snug">{m.desc}</div>
+                        {used > 0 && <div className="text-[0.6rem] text-amber-300/80">used {used}× this run</div>}
                       </div>
                       <Button size="sm" className="h-7" disabled={!canAfford} onClick={() => performMiracle(m.id)}>
                         {m.faithCost === 0 ? "Free" : `${m.faithCost} Faith`}
@@ -569,9 +587,9 @@ export function ApotheosisContent() {
                     <button key={h.id} onClick={() => setHeresyResponse(h.id)} className={`stat-card text-left p-2 ${active ? "border-amber-400/60 bg-amber-500/10" : ""}`}>
                       <div className="flex items-center gap-1">
                         <span className="text-base">{h.icon}</span>
-                        <span className="text-[0.65rem] font-medium">{h.name}</span>
+                        <span className="text-[0.7rem] font-medium">{h.name}</span>
                       </div>
-                      <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-tight">{h.desc}</div>
+                      <div className="text-[0.6rem] text-muted-foreground mt-0.5 leading-tight">{h.desc}</div>
                     </button>
                   );
                 })}

@@ -46,6 +46,10 @@ const BONUS_ICON: Record<string, string> = {
 };
 
 const BONUS_LABEL: Record<string, string> = {
+  divinity: "Divinity",
+  cost: "Cost reduction",
+  // Legacy keys kept for back-compat with older saves that may use the old
+  // bonus type strings. The current GalaxyBonusType is "divinity" | "cost".
   production: "Production",
   capacity: "Capacity",
   ep: "Enlightenment",
@@ -53,7 +57,9 @@ const BONUS_LABEL: Record<string, string> = {
 };
 
 function bonusPct(value: number): string {
-  return `+${Math.round(value * 100)}%`;
+  // Negative values (cost reduction) render as "-X%" instead of "+-X%".
+  const pct = Math.round(value * 100);
+  return pct >= 0 ? `+${pct}%` : `${pct}%`;
 }
 
 export function GenesisContent() {

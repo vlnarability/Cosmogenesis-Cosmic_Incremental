@@ -29,7 +29,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_bounty",
     name: "Law of Bounty",
-    desc: "+25% all production.",
+    desc: "+25% Faith generation.",
     icon: "🌾",
     faithCost: 200,
     bonus: { productionMult: 0.25 },
@@ -37,7 +37,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_vastness",
     name: "Law of Vastness",
-    desc: "+30% all capacities.",
+    desc: "+30% Faith cap.",
     icon: "🌌",
     faithCost: 250,
     bonus: { capMult: 0.30 },
@@ -45,7 +45,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_multiplication",
     name: "Law of Multiplication",
-    desc: "+30% population growth.",
+    desc: "+30% prophet conversion chance.",
     icon: "👥",
     faithCost: 200,
     bonus: { popGrowthMult: 0.30 },
@@ -53,7 +53,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_remembrance",
     name: "Law of Remembrance",
-    desc: "+50% Divinity per prestige.",
+    desc: "+50% Faith per miracle use (replaces the old EP bonus).",
     icon: "📜",
     faithCost: 400,
     bonus: { epMult: 0.50 },
@@ -61,7 +61,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_quiet",
     name: "Law of Quiet Days",
-    desc: "-25% heresy gain.",
+    desc: "Heresy spread ×0.75.",
     icon: "🤫",
     faithCost: 300,
     bonus: { heresyRateMult: 0.75 },
@@ -69,7 +69,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_fire",
     name: "Law of Cleansing Fire",
-    desc: "+40% production, +25% heresy gain. A dangerous bargain.",
+    desc: "+40% Faith gen, heresy spread ×1.25. A dangerous bargain.",
     icon: "🔥",
     faithCost: 350,
     bonus: { productionMult: 0.40, heresyRateMult: 1.25 },
@@ -77,7 +77,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_eternal",
     name: "Law of the Eternal Throne",
-    desc: "+15% production, +15% cap, +15% Divinity, +15% pop. The balanced summit.",
+    desc: "+15% Faith gen, +15% Faith cap, +15% prophet conversion, heresy spread ×1.15. The balanced summit.",
     icon: "👑",
     faithCost: 800,
     bonus: { productionMult: 0.15, capMult: 0.15, epMult: 0.15, popGrowthMult: 0.15 },
@@ -85,7 +85,7 @@ export const DIVINE_LAWS: DivineLaw[] = [
   {
     id: "law_paradox",
     name: "Law of the Final Paradox",
-    desc: "+100% production, +100% heresy gain. The god dares everything.",
+    desc: "+100% Faith gen, heresy spread ×2.0. The god dares everything.",
     icon: "🌀",
     faithCost: 1000,
     bonus: { productionMult: 1.0, heresyRateMult: 2.0 },
@@ -121,7 +121,7 @@ export const WORSHIP_MODES: WorshipMode[] = [
   {
     id: "wm_chanting",
     name: "Chanting Choirs",
-    desc: "+1 Faith/sec, +10% production.",
+    desc: "+1 Faith/sec, +10% Faith bonus.",
     icon: "🎵",
     faithPerSec: 1,
     productionMult: 0.10,
@@ -130,7 +130,7 @@ export const WORSHIP_MODES: WorshipMode[] = [
   {
     id: "wm_proselytizing",
     name: "Proselytizing Tide",
-    desc: "+2 Faith/sec, +20% production, +0.05 heresy/sec.",
+    desc: "+2 Faith/sec, +20% Faith bonus, +0.05 heresy/sec.",
     icon: "📣",
     faithPerSec: 2,
     productionMult: 0.20,
@@ -139,7 +139,7 @@ export const WORSHIP_MODES: WorshipMode[] = [
   {
     id: "wm_crusade",
     name: "Crusade",
-    desc: "+3 Faith/sec, +30% production, +0.15 heresy/sec.",
+    desc: "+3 Faith/sec, +30% Faith bonus, +0.15 heresy/sec.",
     icon: "⚔️",
     faithPerSec: 3,
     productionMult: 0.30,
@@ -148,7 +148,7 @@ export const WORSHIP_MODES: WorshipMode[] = [
   {
     id: "wm_ecstasy",
     name: "Sacred Ecstasy",
-    desc: "+5 Faith/sec, +50% production, +0.30 heresy/sec.",
+    desc: "+5 Faith/sec, +50% Faith bonus, +0.30 heresy/sec.",
     icon: "💫",
     faithPerSec: 5,
     productionMult: 0.50,
@@ -157,7 +157,7 @@ export const WORSHIP_MODES: WorshipMode[] = [
   {
     id: "wm_void",
     name: "Devotion to the Void",
-    desc: "+0 Faith/sec, +100% production, +0.50 heresy/sec. The dangerous edge.",
+    desc: "+0 Faith/sec, +100% Faith bonus, +0.50 heresy/sec. The dangerous edge.",
     icon: "🕳️",
     faithPerSec: 0,
     productionMult: 1.0,
@@ -196,7 +196,7 @@ export const MIRACLES: Miracle[] = [
   {
     id: "mir_fecundity",
     name: "Miracle of Fecundity",
-    desc: "Instantly gain 100 population.",
+    desc: "Instantly gain 250 Faith + convert 50 heretics to faithful. (L5-scoped)",
     icon: "👶",
     faithCost: 150,
     effect: "instantPop",
@@ -205,7 +205,7 @@ export const MIRACLES: Miracle[] = [
   {
     id: "mir_manna",
     name: "Raining Manna",
-    desc: "Instantly fill every resource to 50% of its capacity.",
+    desc: "Instantly gain 500 Faith. (L5-scoped — was resource fill)",
     icon: "🍯",
     faithCost: 300,
     effect: "instantResources",
@@ -223,7 +223,7 @@ export const MIRACLES: Miracle[] = [
   {
     id: "mir_genesis",
     name: "Miracle of Genesis",
-    desc: "Doubles production for 300 seconds (one-shot per run).",
+    desc: "Doubles Faith generation for 300 seconds (one-shot per run).",
     icon: "🌟",
     faithCost: 1000,
     effect: "doubleProduction",
@@ -251,7 +251,7 @@ export const HERESY_RESPONSES: HeresyResponse[] = [
   {
     id: "hr_ignore",
     name: "Ignore",
-    desc: "Heresy grows at base rate. +0% production.",
+    desc: "Heresy spread ×1.0. No Faith bonus.",
     icon: "🤐",
     heresyRateMult: 1.0,
     productionMult: 0,
@@ -259,7 +259,7 @@ export const HERESY_RESPONSES: HeresyResponse[] = [
   {
     id: "hr_tolerance",
     name: "Tolerance",
-    desc: "Heresy -20% rate. +5% production.",
+    desc: "Heresy spread ×0.80. +5% Faith gen.",
     icon: "🤝",
     heresyRateMult: 0.80,
     productionMult: 0.05,
@@ -267,7 +267,7 @@ export const HERESY_RESPONSES: HeresyResponse[] = [
   {
     id: "hr_inquisition",
     name: "Inquisition",
-    desc: "Heresy -50% rate. -10% production (a stern hand).",
+    desc: "Heresy spread ×0.50. -10% Faith gen (a stern hand).",
     icon: "🔥",
     heresyRateMult: 0.50,
     productionMult: -0.10,
@@ -275,7 +275,7 @@ export const HERESY_RESPONSES: HeresyResponse[] = [
   {
     id: "hr_purge",
     name: "The Great Purge",
-    desc: "Heresy -90% rate. -25% production. The god will not be questioned.",
+    desc: "Heresy spread ×0.10. -25% Faith gen. The god will not be questioned.",
     icon: "💀",
     heresyRateMult: 0.10,
     productionMult: -0.25,

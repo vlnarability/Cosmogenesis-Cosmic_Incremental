@@ -2134,3 +2134,13 @@ h1, h2, h3 {
   background-size: 120px 120px, 140px 140px, 100px 100px, 160px 160px, 130px 130px, 110px 110px, 150px 150px, 125px 125px, 135px 135px, 145px 145px, 200px 200px, 220px 220px, 180px 180px;
   background-repeat: repeat;
 }
+
+/* L5-TAP-FIX — On touch devices (hover: none), force hover-revealed action
+   buttons to be always-visible. Desktop keeps the hover-reveal pattern for
+   a cleaner aesthetic. Applied via the `touch-visible` class on the
+   Convert/Purge overlay container in ApotheosisModal. */
+@media (hover: none) {
+  .touch-visible {
+    opacity: 1 !important;
+  }
+}

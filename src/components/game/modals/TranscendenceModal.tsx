@@ -467,8 +467,11 @@ export function TranscendenceContent() {
                         onClick={() => {
                           if (!owned && canAfford) purchaseCatalyst(c.id);
                         }}
+                        // L3-TAP-FIX — bumped min-width 78→88px and text 0.65→0.7rem
+                        // for better mobile tap-target sizing and legibility on the
+                        // dense catalyst card row.
                         className={cn(
-                          "rounded-md border p-1.5 text-[0.65rem] flex flex-col items-center gap-0.5 min-w-[78px] transition-colors",
+                          "rounded-md border p-2 text-[0.7rem] flex flex-col items-center gap-0.5 min-w-[88px] transition-colors",
                           owned
                             ? "border-emerald-400/40 bg-emerald-500/5"
                             : canAfford
@@ -476,9 +479,9 @@ export function TranscendenceContent() {
                               : "border-border bg-muted/10 opacity-60 cursor-not-allowed"
                         )}
                       >
-                        <span className="text-base leading-none">{c.icon}</span>
-                        <span className="text-[0.6rem] font-medium text-center leading-tight">{c.name}</span>
-                        <span className={owned ? "text-emerald-300 text-[0.55rem]" : "text-amber-300/80 text-[0.55rem]"}>
+                        <span className="text-lg leading-none">{c.icon}</span>
+                        <span className="text-[0.65rem] font-medium text-center leading-tight">{c.name}</span>
+                        <span className={owned ? "text-emerald-300 text-[0.6rem]" : "text-amber-300/80 text-[0.6rem]"}>
                           {owned ? "Owned ✓" : `${formatNumber(c.cost, 0)} Div`}
                         </span>
                       </button>

@@ -1250,10 +1250,20 @@ export const useGameStore = create<GameStore>()(
           ? totalOwnedSystemsEarly * 0.05
           : 0;
 
+        // L5-SCOPE-FIX — L5 Divine Laws / Worship Modes / Heresy Responses no
+        // longer leak into the cross-layer production/capacity/pop bonuses.
+        // Their productionMult is now routed to an L5-internal Faith-generation
+        // multiplier (see the faith tick below), capMult to a Faith cap, and
+        // popGrowthMult to the prophet conversion rate. This prevents L5
+        // bonuses from inflating peakProductionRate → bgDivPerSec → divinity
+        // (the L3 cosmos loop) which compounded permanently via the META
+        // peakProductionRate field.
+        const l5FaithProdMult = dLaw.productionMult + wMode.productionMult + hResp;
+        const l5FaithCapMult = dLaw.capMult;
+        const l5ProphetBoost = dLaw.popGrowthMult;
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult +
-          dLaw.productionMult + wMode.productionMult + hResp +
           hybrids.productionMult + allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
@@ -1262,14 +1272,12 @@ export const useGameStore = create<GameStore>()(
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult +
-          dLaw.capMult +
           hybrids.capMult + allianceB.capMult +
           fragmentB.capMult +
           0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult +
-          dLaw.popGrowthMult +
           hybrids.popGrowthMult + allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
           galaxySummary.divinityMult;  // L4 Galaxy Claim pop-growth bonuses
@@ -1283,15 +1291,17 @@ export const useGameStore = create<GameStore>()(
         const universalBoostLvl = s.upgrades["universal_boost"] || 0;
         const universalBoostMult = 1 + universalBoostLvl * 0.05;
 
-        // Miracle: double production (one-shot temporary effect)
-        const miracleDouble = (s.miracleTimers?.mir_genesis || 0) > 0;
+        // L5-SCOPE-FIX — Miracle of Genesis (mir_genesis) no longer doubles
+        // autoMult (which fed peakProductionRate → divinity). It now doubles
+        // L5 Faith generation for 300s — see the faith tick below.
+        const miracleFaithDouble = (s.miracleTimers?.mir_genesis || 0) > 0;
 
         // Apply: overclock multiplies layer bonuses (foresight, ritual, etc.) by 2
         const layerProdBonusApplied = layerProdBonus * (overclockActive ? 2 : 1);
         // Surge multiplies total production output (after layer bonus & miracle)
         const surgeMult = surgeActive ? 3 : 1;
         const divineComboMult = divineComboActive ? 1.5 : 1;
-        autoMult *= (1 + layerProdBonusApplied) * (miracleDouble ? 2 : 1) * surgeMult * divineComboMult * universalBoostMult;
+        autoMult *= (1 + layerProdBonusApplied) * surgeMult * divineComboMult * universalBoostMult;
 
         const techMult = techMultiplier(s, "production");
         const capBoostLvl = s.upgrades["expansive_vaults"] || 0;
@@ -2482,8 +2492,25 @@ export const useGameStore = create<GameStore>()(
         // the run-ender now triggers at heresy ≥ 75 (the per-galaxy "red"
         // threshold), since per-galaxy heresy resets at 75 (one-time per
         // threshold per galaxy) and the old ≥ 100 check was effectively dead.
+        // L5-SCOPE-FIX — Faith generation now incorporates the L5-internal
+        // production multiplier (from Divine Laws + Worship Modes + Heresy
+        // Responses) and the mir_genesis ×2 Faith timer. These bonuses no
+        // longer leak into the cross-layer autoMult / peakProductionRate.
+        // l5FaithProdMult is additive (e.g. +0.40 from law_fire + +0.50 from
+        // wm_ecstasy = +0.90 → Faith generation ×1.90).
         if (unlockedLayers.apotheosis) {
-          faith += wMode.faithPerSec * realDt;
+          const l5FaithMult = (1 + l5FaithProdMult) * (miracleFaithDouble ? 2 : 1);
+          faith += wMode.faithPerSec * realDt * l5FaithMult;
+          // L5-SCOPE-FIX — worship-mode heresyPerSec is applied AFTER the
+          // per-galaxy heresy recalculation below (it represents cosmic
+          // corruption not tied to any single galaxy). See the recalculation
+          // block further below.
+          // L5-SCOPE-FIX — Faith cap from Divine Laws (law_vastness +0.30).
+          // Faith can't exceed faithCap; excess is clipped. This gives
+          // capMult a meaningful L5-internal effect instead of leaking into
+          // base-game resource capacities.
+          const faithCap = 50000 * (1 + l5FaithCapMult);
+          if (faith > faithCap) faith = faithCap;
         }
 
         // Layer 6 — Singularity (Universal Map redesign — replaces the old Logic Core automation).
@@ -2891,7 +2918,14 @@ export const useGameStore = create<GameStore>()(
         const heresyLog: string[] = [];
         const l5Upgrades = s.upgrades || {};
         const hwLvl = (l5Upgrades.heresy_ward as number) || 0;
-        const spreadChance = Math.max(0, 1 - 0.30 * hwLvl);
+        // L5-SCOPE-FIX — heresy spread chance now incorporates the previously-dead
+        // heresyRateMult fields: Divine Laws (law_quiet ×0.75, law_fire ×1.25,
+        // law_paradox ×2.0) and Heresy Responses (Tolerance ×0.80, Inquisition
+        // ×0.50, Great Purge ×0.10). These multiply the base spread chance
+        // AFTER the heresy_ward upgrade reduction.
+        const l5HeresyLawMult = divineLawBonus(s.enactedDivineLaws || {}).heresyRateMult;
+        const l5HeresyRespMult = heresyRateMult(s.activeHeresyResponse);
+        const spreadChance = Math.max(0, (1 - 0.30 * hwLvl) * l5HeresyLawMult * l5HeresyRespMult);
         const piLvl = (l5Upgrades.prophet_inspiration as number) || 0;
         const owned = ownedGalaxyIds(galaxyRivalSystems);
 
@@ -2946,6 +2980,11 @@ export const useGameStore = create<GameStore>()(
           }
 
           // Prophets on this galaxy convert adjacent heretics every 10s.
+          // L5-SCOPE-FIX — l5ProphetBoost (from dLaw.popGrowthMult — law_multiplication
+          // +0.30, law_eternal +0.15) now gives each prophet a chance to convert
+          // one additional random heretic anywhere in the grid per tick. This
+          // scopes the popGrowthMult bonus to L5-internal follower growth instead
+          // of leaking into base-game population growth.
           const galaxyProphets = prophets.filter((p) => p.galaxyId === gid);
           if (unlockedLayers.apotheosis && galaxyProphets.length > 0 && prophetConvertTimer <= 0) {
             const next = grid.map((c) => ({ ...c }));
@@ -2982,13 +3021,31 @@ export const useGameStore = create<GameStore>()(
                 p.lastConvertedAt = newTime;
                 heresyLog.push(`🌟 Prophet in ${RIVAL_GALAXY_MAP[gid]?.name || gid} converted ${converted} heretic(s).`);
               }
+              // L5-SCOPE-FIX — popGrowthMult bonus: chance to convert one extra
+              // random heretic anywhere in this galaxy's grid (not just adjacent).
+              // Chance = l5ProphetBoost per prophet per conversion tick.
+              if (l5ProphetBoost > 0 && Math.random() < l5ProphetBoost) {
+                const hereticIdx = next.map((c, idx) => c.state === "heretical" ? idx : -1).filter(idx => idx >= 0);
+                if (hereticIdx.length > 0) {
+                  const pick = hereticIdx[Math.floor(Math.random() * hereticIdx.length)];
+                  next[pick].state = "faithful";
+                  converted++;
+                  heresyLog.push(`🌟 Prophet's inspiration converted a distant heretic in ${RIVAL_GALAXY_MAP[gid]?.name || gid}.`);
+                }
+              }
             }
             grid = next;
           }
 
           // Compute heresy % = (hereticCount / 32) × 100.
+          // L5-SCOPE-FIX — worship-mode heresyPerSec is added to EACH galaxy's
+          // heresy (not just the global) so it persists through manual actions
+          // (convert/purge/initFollowerGrid) that recompute global heresy as
+          // the per-galaxy average. This distributes the cosmic corruption
+          // from extreme worship modes (Devotion to the Void +0.50/s) across
+          // all owned galaxies. Cap at 100 to prevent runaway.
           const hereticCount = grid.filter((c) => c.state === "heretical").length;
-          const heresyPct = (hereticCount / 32) * 100;
+          const heresyPct = Math.min(100, (hereticCount / 32) * 100 + wMode.heresyPerSec * realDt);
           galaxyHeresy[gid] = heresyPct;
 
           // Threshold crossings: 25/50/75 → system loss + grid reset (one-time per galaxy per threshold).
@@ -3049,6 +3106,10 @@ export const useGameStore = create<GameStore>()(
         if (prophetConvertTimer <= 0) prophetConvertTimer = 10;
 
         // Recompute global heresy as the average of owned galaxies' heresy.
+        // L5-SCOPE-FIX — worship-mode heresyPerSec is now baked into each
+        // galaxy's heresy (see the per-galaxy tick above), so the average
+        // already includes the cosmic corruption from worship modes. No
+        // separate global accrual needed here.
         const newHeresy = owned.length > 0
           ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
           : 0;
@@ -5018,7 +5079,7 @@ export const useGameStore = create<GameStore>()(
         const allianceEp = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS).epMult;
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
         const layerEpMult = 1 +
-          fs.epMult + constBp.epMult + rb.epMult + ritualEp + dl.epMult +
+          fs.epMult + constBp.epMult + rb.epMult + ritualEp +
           hybridEp + allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
 
@@ -6490,14 +6551,46 @@ export const useGameStore = create<GameStore>()(
           case "instantFaith":
             faith += m.magnitude;
             break;
-          case "instantPop":
-            pop += m.magnitude;
-            break;
-          case "instantResources":
-            for (const r of Object.keys(res)) {
-              const cap = s.capacities[r] || 0;
-              if (cap > 0) res[r] = Math.min(cap, (res[r] || 0) + cap * m.magnitude);
+          // L5-SCOPE-FIX — Miracle of Fecundity was instantPop (+100 base-game
+          // population), which leaked into the cross-layer pop-growth loop.
+          // Now grants a burst of Faith (magnitude×5 = 250 Faith at magnitude 50)
+          // AND converts up to magnitude/2 heretics to faithful across owned
+          // galaxies — thematically still "fecundity" (growing the faithful
+          // flock) but scoped to L5.
+          case "instantPop": {
+            faith += m.magnitude * 5;
+            const owned = ownedGalaxyIds(s.galaxyRivalSystems || {});
+            const gf = { ...(s.galaxyFollowerGrid || {}) };
+            const gh = { ...(s.galaxyHeresy || {}) };
+            const toConvert = Math.max(1, Math.floor(m.magnitude / 2));
+            let converted = 0;
+            for (const gid of owned) {
+              const grid = (gf[gid] || makeInitialFollowerGrid()).map((c) => ({ ...c }));
+              for (let i = 0; i < grid.length && converted < toConvert; i++) {
+                if (grid[i].state === "heretical") {
+                  grid[i].state = "faithful";
+                  converted++;
+                }
+              }
+              gf[gid] = grid;
+              const hc = grid.filter((c) => c.state === "heretical").length;
+              gh[gid] = (hc / 32) * 100;
+              if (converted >= toConvert) break;
             }
+            heresy = owned.length > 0
+              ? owned.reduce((sum, gid) => sum + (gh[gid] || 0), 0) / owned.length
+              : 0;
+            miracleGalaxyFollowerGrid = gf;
+            miracleGalaxyHeresy = gh;
+            break;
+          }
+          // L5-SCOPE-FIX — Miracle of Manna was instantResources (filled every
+          // base-game resource to 50% cap), which leaked into the cross-layer
+          // resource/cap loop. Now grants a flat Faith burst (magnitude×1000
+          // = 500 Faith at magnitude 0.50) — thematically still "manna from
+          // heaven" but scoped to L5 currency.
+          case "instantResources":
+            faith += Math.round(m.magnitude * 1000);
             break;
           case "reduceHeresy": {
             // Convert up to N heretics to faithful across owned galaxies
