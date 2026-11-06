@@ -892,7 +892,7 @@ export function EnlightenmentContent() {
               style={{
                 left: `${la.left}%`,
                 top: `${la.top}%`,
-                maxWidth: "120px",
+                maxWidth: "150px",
                 color: isCompleted
                   ? CATEGORY_ACCENT[cdef.category]
                   : isStarted

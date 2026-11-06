@@ -139,6 +139,9 @@ export interface HexMapProps {
   subtitle?: string;
   /** className for the outer container. */
   className?: string;
+  /** UI-FIX: Optional tooltip renderer — returns a string for a given cell
+   * that is displayed as a native HTML title tooltip on hover. */
+  hexTooltip?: (cell: HexCell) => string;
 }
 
 export function HexMap({
@@ -149,6 +152,7 @@ export function HexMap({
   title,
   subtitle,
   className,
+  hexTooltip,
 }: HexMapProps) {
   const points = useMemo(() => hexPoints(hexRadius), [hexRadius]);
 
@@ -201,6 +205,10 @@ export function HexMap({
                 onClick={() => onHexClick?.(cell.id)}
                 opacity={cell.dimmed ? 0.4 : 1}
               >
+                {/* UI-FIX: Add hover tooltip via a <title> element inside the <g> */}
+                {hexTooltip && (
+                  <title>{hexTooltip(cell)}</title>
+                )}
                 <polygon
                   points={points}
                   className={cn("transition-colors duration-200")}

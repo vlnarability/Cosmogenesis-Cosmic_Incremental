@@ -181,7 +181,7 @@ export function GenesisContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Genesis is sealed.</p>
-            <p className="text-xs mt-1">Perform all 4 Blood Pacts (Layer 3) to unlock Genesis.</p>
+            <p className="text-xs mt-1">Plant all 4 Genesis Seeds (Layer 3) to unlock Genesis.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
@@ -217,12 +217,26 @@ export function GenesisContent() {
                 }}
                 title="Star System Map"
                 subtitle={`${claimedCount}/${GALAXY_TOTAL_SYSTEMS} claimed · ${exploredCount} explored`}
+                // UI-FIX: Pass hex tooltip data so hovering shows system info
+                hexTooltip={(cell) => {
+                  const sys = GALAXY_SYSTEMS.find(s => s.id === cell.id);
+                  const state = galaxySystems.find(g => g.id === cell.id);
+                  if (!sys) return '';
+                  if (!state?.explored) return `${sys.name} — Unexplored (scan: ${GALAXY_SCAN_COST} Divinity)`;
+                  if (state?.claimed) return `${sys.name} — ✓ Claimed (${BONUS_LABEL[sys.bonus.type]}: ${bonusPct(sys.bonus.value)})${sys.hasVoidShards ? ' · Void Shards' : ''}`;
+                  return `${sys.name} — ${BONUS_LABEL[sys.bonus.type]}: ${bonusPct(sys.bonus.value)} (claim: ${formatNumber(nextClaimCost, 0)} Divinity)${sys.hasVoidShards ? ' · Void Shards' : ''}`;
+                }}
               />
+              {/* UI-FIX: State-aware hint text that changes based on completion */}
               <div className="text-[0.6rem] text-muted-foreground mt-1 leading-relaxed text-center">
-                Click an unexplored hex to{" "}
-                <span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Divinity) or an
-                explored hex to{" "}
-                <span className="text-emerald-300">claim</span> ({nextClaimCost} Divinity).
+                {claimedCount === GALAXY_TOTAL_SYSTEMS ? (
+                  <span className="text-cyan-300">★ All {GALAXY_TOTAL_SYSTEMS} systems claimed — Layer 5 unlocked!</span>
+                ) : exploredCount === GALAXY_TOTAL_SYSTEMS ? (
+                  <>Click an explored hex to{" "}<span className="text-emerald-300">claim</span> ({formatNumber(nextClaimCost, 0)} Divinity).</>
+                ) : (
+                  <>Click an unexplored hex to{" "}<span className="text-violet-300">scan</span> ({GALAXY_SCAN_COST} Divinity) or an
+                  explored hex to{" "}<span className="text-emerald-300">claim</span> ({formatNumber(nextClaimCost, 0)} Divinity).</>
+                )}
               </div>
               {selectedSys && selectedState && (
                 <div className="mt-2 p-2 rounded-md bg-muted/20 border border-border/40 text-xs space-y-1">
@@ -236,7 +250,7 @@ export function GenesisContent() {
                         <div className="text-amber-300">Rare: Void Shards</div>
                       )}
                       <div className={selectedState.claimed ? "text-cyan-300" : "text-emerald-300"}>
-                        {selectedState.claimed ? "✓ Claimed" : `Claim: ${nextClaimCost} Divinity`}
+                        {selectedState.claimed ? "✓ Claimed" : `Claim: ${formatNumber(nextClaimCost, 0)} Divinity`}
                       </div>
                     </>
                   ) : (

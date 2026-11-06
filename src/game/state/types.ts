@@ -204,6 +204,7 @@ export type UpgradeEffectType =
   | "auto_mult"
   | "cost_reduction"
   | "forge_cost_reduction"
+  | "scan_cost_reduction"
   | "start_bonus"
   | "cap_boost"
   | "evolve_boost"

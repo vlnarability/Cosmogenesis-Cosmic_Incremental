@@ -594,16 +594,18 @@ export const UPGRADES: UpgradeDef[] = [
     category: "layer",
     effect: { type: "world_blueprint", value: 0.50 },
   },
+  // BUGFIX: disaster_shield was inert (Sacred Grid removed). Repurposed as
+  // "Galaxy Survey Efficiency" — reduces scan cost by 20% per level.
   {
     id: "disaster_shield",
-    name: "Disaster Shield",
-    desc: (l) => `Sacred Grid disaster chance -${l * 25}% per level (max 4 → 0% chance).`,
+    name: "Survey Efficiency",
+    desc: (l) => `Galaxy scan cost -${l * 20}% per level (max 4 → 80% reduction).`,
     baseCost: 15,
     maxLevel: 4,
     costGrowth: 1.7,
     requiresLayer: "genesis",
     category: "layer",
-    effect: { type: "disaster_shield", value: 0.25 },
+    effect: { type: "scan_cost_reduction", value: 0.20 },
   },
 
   // ---- L5 — Apotheosis (Heresy Web + Prophets) ----

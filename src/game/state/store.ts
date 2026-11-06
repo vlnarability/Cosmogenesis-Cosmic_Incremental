@@ -7005,14 +7005,17 @@ export const useGameStore = create<GameStore>()(
         const state = galaxySystems.find((g) => g.id === systemId);
         if (!state) return;
         if (state.explored || state.claimed) return;
-        // MERGED: was genesisSeeds, now divinity
-        if (!s.debugFreeBuy && (s.divinity || 0) < GALAXY_SCAN_COST) {
-          get().addToLog(`📡 Need ${GALAXY_SCAN_COST} Genesis Seeds to scan ${sys.name}.`);
+        // BUGFIX: Apply scan_cost_reduction upgrade (repurposed from disaster_shield)
+        const surveyLvl = (s.upgrades?.["disaster_shield"] as number) || 0;
+        const scanCostMult = Math.max(0.2, 1 - surveyLvl * 0.20);
+        const scanCost = Math.ceil(GALAXY_SCAN_COST * scanCostMult);
+        if (!s.debugFreeBuy && (s.divinity || 0) < scanCost) {
+          get().addToLog(`📡 Need ${scanCost} Divinity to scan ${sys.name}.`);
           return;
         }
         state.explored = true;
         set({
-          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - GALAXY_SCAN_COST,  // MERGED: was genesisSeeds
+          divinity: s.debugFreeBuy ? (s.divinity || 0) : (s.divinity || 0) - scanCost,  // BUGFIX: use discounted scanCost: was genesisSeeds
           galaxySystems,
         });
         const rareLabel = sys.hasVoidShards ? "Void Shards" : "none";
