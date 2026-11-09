@@ -883,7 +883,7 @@ body.constellation-fullscreen .resource-transition-banner {
 /* Red rift pulse — tight, urgent heartbeat on rift-afflicted galaxies */
 @keyframes singularity-rift-pulse {
   0%, 100% { stroke-opacity: 1; transform: scale(1); }
-  50%      { stroke-opacity: 0.35; transform: scale(1.25); }
+  50%      { stroke-opacity: 0.6; transform: scale(1.2); }
 }
 .singularity-rift-pulse {
   animation: singularity-rift-pulse 1.1s ease-in-out infinite;
@@ -891,10 +891,14 @@ body.constellation-fullscreen .resource-transition-banner {
   transform-box: fill-box;
 }
 
-/* Outer red halo — slower, more diffuse — radiates corruption */
+/* Outer red halo — slower, more diffuse — radiates corruption.
+   L6-STABILITY-FIX — raised minimum stroke-opacity from 0.05 to 0.2 so the
+   rift pulse is always visible (not "transient") throughout the animation
+   cycle. The old 0.05 minimum made the pulse nearly invisible at 50%,
+   causing the perceived "rift disappears" issue. */
 @keyframes singularity-rift-pulse-outer {
   0%, 100% { stroke-opacity: 0.4; transform: scale(1); }
-  50%      { stroke-opacity: 0.05; transform: scale(1.6); }
+  50%      { stroke-opacity: 0.2; transform: scale(1.4); }
 }
 .singularity-rift-pulse-outer {
   animation: singularity-rift-pulse-outer 1.7s ease-in-out infinite;

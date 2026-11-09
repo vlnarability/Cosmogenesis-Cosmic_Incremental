@@ -238,13 +238,20 @@ export function SingularityContent() {
                     );
                   })}
 
-                  {/* Galaxies */}
+                  {/* Galaxies.
+                      L6-CLICK-FIX — galaxy radius increased from 1.3/1.8 to
+                      1.8/2.3 for better visibility and click precision. An
+                      invisible hit-target circle (r=3, fill=transparent,
+                      pointerEvents=all) is rendered FIRST (behind everything)
+                      so the click area is larger than the visual galaxy body.
+                      This fixes the "clicking a specific galaxy selects a
+                      neighbor" issue without changing the visual appearance. */}
                   {UNIVERSAL_GALAXIES.map((g) => {
                     const st = stateById[g.id];
                     const riftList = riftsByGalaxyId[g.id] || [];
                     const anchored = isGalaxyAnchored(g.id, anchorGalaxyIds);
                     const owned = (st?.ownerId || g.ownerId) === "player";
-                    const radius = owned ? 1.8 : 1.3;
+                    const radius = owned ? 2.3 : 1.8;
                     const fill = galaxyColor(g);
                     const isSelected = effectiveSelectedGalaxyId === g.id;
                     return (
@@ -265,6 +272,18 @@ export function SingularityContent() {
                         }}
                         style={{ cursor: "pointer" }}
                       >
+                        {/* L6-CLICK-FIX — invisible hit-target circle (r=3)
+                            rendered first so it sits behind everything but
+                            captures clicks in a larger area than the galaxy
+                            body. fill=transparent + pointerEvents=all ensures
+                            it's invisible but clickable. */}
+                        <circle
+                          cx={g.pos.x}
+                          cy={g.pos.y}
+                          r={3}
+                          fill="transparent"
+                          pointerEvents="all"
+                        />
                         {/* Selection highlight */}
                         {isSelected && (
                           <circle
@@ -336,8 +355,8 @@ export function SingularityContent() {
                   })}
                 </svg>
 
-                {/* Map legend */}
-                <div className="absolute bottom-1 left-1 right-1 flex flex-wrap gap-1.5 text-[0.55rem]">
+                {/* Map legend — L6-TYPOGRAPHY-FIX: bumped text-[0.55rem] → text-[0.6rem] for readability */}
+                <div className="absolute bottom-1 left-1 right-1 flex flex-wrap gap-1.5 text-[0.6rem]">
                   <span className="px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700/50 text-amber-300 flex items-center gap-0.5">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" /> Owned
                   </span>
@@ -375,7 +394,14 @@ export function SingularityContent() {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[0.65rem] font-mono">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Owner</span>
-                      <span className="text-amber-300">{selectedState.ownerId}</span>
+                      {/* L6-FORMAT-FIX — format raw ownerId into a readable label
+                          instead of showing "neutral" / "rival_ashen_masks_of_faith". */}
+                      <span className="text-amber-300" title={selectedState.ownerId}>
+                        {selectedState.ownerId === "player" ? "You"
+                          : selectedState.ownerId === "neutral" ? "Neutral"
+                          : selectedState.ownerId.startsWith("rival_") ? "Rival"
+                          : selectedState.ownerId}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Systems</span>
@@ -408,7 +434,10 @@ export function SingularityContent() {
                         const afford = singularityCores >= cost;
                         return (
                           <div key={r.id} className="flex items-center justify-between gap-2 text-[0.65rem]">
-                            <span className="text-red-300">
+                            {/* L6-SEVERITY-FIX — added title tooltip explaining
+                                what severity means (higher = faster corruption
+                                spread + higher close cost). */}
+                            <span className="text-red-300" title={`Severity ${r.severity}: this rift spreads ${r.severity * 5}% heresy per tick to nearby galaxies. Higher severity = faster corruption and higher close cost.`}>
                               Severity {r.severity} — close cost {cost} Core{cost === 1 ? "" : "s"}
                             </span>
                             <Button
