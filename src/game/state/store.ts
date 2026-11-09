@@ -1261,10 +1261,20 @@ export const useGameStore = create<GameStore>()(
         const l5FaithProdMult = dLaw.productionMult + wMode.productionMult + hResp;
         const l5FaithCapMult = dLaw.capMult;
         const l5ProphetBoost = dLaw.popGrowthMult;
+        // L7-SCOPE-FIX — L7 Omnipotence bonuses (from creatures/legions/stance)
+        // no longer leak into the cross-layer production/capacity/pop bonuses.
+        // `hybrids` is still computed above (line 1221) for the OmnipotenceModal
+        // to display L7-internal bonuses (creature power, instability rate, etc.)
+        // via its own `legionBonus()` call. The L7 bonuses are intentionally NOT
+        // routed to a tick-level multiplier here — they're small and are better
+        // applied at the action-handler level (attackOutpost, createCreature).
+        // This prevents L7 bonuses from inflating peakProductionRate → bgDivPerSec
+        // → divinity (the L3 cosmos loop) which compounded via the META
+        // peakProductionRate field.
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult +
-          hybrids.productionMult + allianceB.productionMult +
+          allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
           galaxySummary.divinityMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
@@ -1272,13 +1282,13 @@ export const useGameStore = create<GameStore>()(
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult +
-          hybrids.capMult + allianceB.capMult +
+          allianceB.capMult +
           fragmentB.capMult +
           0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult +
-          hybrids.popGrowthMult + allianceB.popGrowthMult +
+          allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
           galaxySummary.divinityMult;  // L4 Galaxy Claim pop-growth bonuses
 
@@ -3114,28 +3124,43 @@ export const useGameStore = create<GameStore>()(
           ? owned.reduce((sum, gid) => sum + (galaxyHeresy[gid] || 0), 0) / owned.length
           : 0;
         heresy = newHeresy;
-        // Run-ender: if AVERAGE galaxy heresy reaches 75 (the per-galaxy "red"
-        // threshold), the god is cast down. CLEANUP-LEGACY: previously this
-        // checked heresy >= 100, but per-galaxy heresy resets at 75 (one-time
-        // per threshold), so the average can briefly hit 75 but the global
-        // value was effectively unreachable. Triggering at 75 is the meaningful
-        // "your flock has abandoned you" condition (matching the L5 heresy
-        // threshold seeding where 75 = "red" / 3 systems lost).
+        // L5-HERESY-FIX — heresy >= 75 no longer triggers a full prestige
+        // reset. Layer mechanics should NOT cause game-wide resets (only the
+        // cosmos loop — evolving past Galactic stage — triggers prestige).
+        // Instead, heresy >= 75 is an L5-internal setback:
+        //   1. All galaxy heresy webs are restored to faithful (grid reset)
+        //   2. Global heresy resets to 0
+        //   3. The player loses 50% of their current Faith (the flock's
+        //      faith is shattered, but the god endures)
+        //   4. The "Heresy Survivor" achievement still fires
+        // This keeps the heresy mechanic meaningful (high heresy is a real
+        // setback — you lose Faith + all heresy webs reset) without wiping
+        // L7+ progress (creatures, legions, outpost raids, L6 rifts, etc.).
         if (heresy >= 75) {
-          heresy = 75;
+          heresy = 0;
+          // Reset all owned galaxy heresy webs to faithful.
+          const ownedForReset = ownedGalaxyIds(galaxyRivalSystems);
+          const gfReset = { ...(s.galaxyFollowerGrid || {}) };
+          const ghReset = { ...(s.galaxyHeresy || {}) };
+          for (const gid of ownedForReset) {
+            gfReset[gid] = makeInitialFollowerGrid();
+            ghReset[gid] = 0;
+          }
+          galaxyFollowerGrid = gfReset;
+          galaxyHeresy = ghReset;
           // ACHIEVEMENT-EXPANSION — flag that the player experienced (and
           // thus "survived") a heresy run-ender event. Drives the "Heresy
           // Survivor" achievement.
           const heresyMeta = { ...(s.achievementMeta || {}) };
           heresyMeta.heresySurvivor = 1;
           (s as GameState).achievementMeta = heresyMeta;
-          // Persist the flag in the tick's tail set() by mutating the
-          // local snapshot — the bottom set() call below includes
-          // `achievementMeta` when it differs from the start snapshot.
+          // Apply the Faith penalty + log the setback (deferred to avoid
+          // setState-in-loop).
+          const faithLoss = Math.floor(faith * 0.50);
           setTimeout(() => {
-            get().addToLog("Heresy has reached 75 (average across owned galaxies). The god is cast down — the run ends in ruin.");
-            get().triggerPrestige();
+            get().addToLog(`Heresy reached 75 — the flock rebels! All heresy webs restored, ${faithLoss} Faith lost. The god endures, humbled.`);
           }, 0);
+          faith = Math.floor(faith * 0.50);
         }
 
         // Flush L5 per-galaxy heresy log messages (deferred to avoid setState-in-loop).
@@ -5075,12 +5100,13 @@ export const useGameStore = create<GameStore>()(
         const ritualEp = activeRitualEpBonus(s.purchasedRituals || {}, s.activeTemporaryRituals || {});
         const dl = divineLawBonus(s.enactedDivineLaws || {});
         // Layers 7-9 EP bonus
-        const hybridEp = legionBonus(s.creatures || [], s.legions || [], s.activeOmnipotenceStance).epMult;
+        // L7-SCOPE-FIX — hybridEp (from creatures/legions/stance) removed from
+        // layerEpMult — L7 bonuses should not inflate L2/L3 EP gain on prestige.
         const allianceEp = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS).epMult;
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
         const layerEpMult = 1 +
           fs.epMult + constBp.epMult + rb.epMult + ritualEp +
-          hybridEp + allianceEp + fragmentEp;
+          allianceEp + fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
 
         // ACHIEVEMENT-EXPANSION — apply the "ep" achievement bonus as an

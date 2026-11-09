@@ -197,8 +197,8 @@ export function OmnipotenceContent() {
                   style={{ width: `${Math.min(100, instability)}%` }}
                 />
               </div>
-              <div className="text-[0.6rem] text-muted-foreground mt-1">
-                Active bonuses: +{(lb.productionMult * 100).toFixed(0)}% prod, +{(lb.capMult * 100).toFixed(0)}% cap, +{(lb.epMult * 100).toFixed(0)}% Div, +{(lb.popGrowthMult * 100).toFixed(0)}% pop
+              <div className="text-[0.65rem] text-muted-foreground mt-1">
+                Active L7 bonuses: +{(lb.productionMult * 100).toFixed(0)}% creature power, +{(lb.capMult * 100).toFixed(0)}% creature capacity, +{(lb.popGrowthMult * 100).toFixed(0)}% raid rewards, instability rate ×{stanceRateMult.toFixed(2)}
               </div>
             </div>
 
@@ -218,7 +218,7 @@ export function OmnipotenceContent() {
                         <span className="text-base">{s.icon}</span>
                         <span className="text-xs font-medium">{s.name}</span>
                       </div>
-                      <div className="text-[0.55rem] text-muted-foreground mt-0.5 leading-tight">{s.desc}</div>
+                      <div className="text-[0.6rem] text-muted-foreground mt-0.5 leading-tight">{s.desc}</div>
                     </button>
                   );
                 })}
@@ -323,7 +323,7 @@ export function OmnipotenceContent() {
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="text-xs font-semibold truncate">{c.name}</span>
                             {mutated && (
-                              <Badge variant="outline" className="text-[0.5rem] bg-violet-500/20 text-violet-200 border-violet-400/60">
+                              <Badge variant="outline" className="text-[0.55rem] bg-violet-500/20 text-violet-200 border-violet-400/60">
                                 <Sparkles className="w-2.5 h-2.5 mr-0.5" /> MUTATED ({c.mutatedStat})
                               </Badge>
                             )}
@@ -332,7 +332,7 @@ export function OmnipotenceContent() {
                             {body.name} · ATK {c.attack} / DEF {c.defense} / SPD {c.speed}
                           </div>
                           {inLegion && (
-                            <div className="text-[0.55rem] text-amber-300/80 mt-0.5">In: {inLegion.name}</div>
+                            <div className="text-[0.6rem] text-amber-300/80 mt-0.5">In: {inLegion.name}</div>
                           )}
                         </div>
                         {selectedLegionId && !inLegion && (
@@ -487,7 +487,7 @@ export function OmnipotenceContent() {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-[0.55rem] text-muted-foreground leading-tight">{def.desc}</div>
+                          <div className="text-[0.6rem] text-muted-foreground leading-tight">{def.desc}</div>
                         </div>
                         {active && (
                           <Button
@@ -505,19 +505,20 @@ export function OmnipotenceContent() {
                       {active && (
                         <div className="mt-1.5 space-y-1">
                           <div>
-                            <div className="flex justify-between text-[0.55rem] text-rose-300/80 mb-0.5">
+                            <div className="flex justify-between text-[0.6rem] text-rose-300/80 mb-0.5">
                               <span>Boss HP</span>
                               <span>{Math.ceil(raid.bossHp)}/{raid.bossMaxHp}</span>
                             </div>
                             <div className="h-1.5 bg-rose-950/50 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-rose-500 transition-all"
+                                key={raid.turn}
+                                className="h-full bg-rose-500 transition-all duration-300 ease-out raid-hp-flash"
                                 style={{ width: `${(raid.bossHp / raid.bossMaxHp) * 100}%` }}
                               />
                             </div>
                           </div>
                           <div>
-                            <div className="flex justify-between text-[0.55rem] text-cyan-300/80 mb-0.5">
+                            <div className="flex justify-between text-[0.6rem] text-cyan-300/80 mb-0.5">
                               <span>Your HP</span>
                               <span>{Math.ceil(raid.playerHp)}/{raid.playerMaxHp}</span>
                             </div>
@@ -534,7 +535,7 @@ export function OmnipotenceContent() {
                       {/* Deployed legions + deploy buttons (only for selected active raid) */}
                       {active && isSelected && (
                         <div className="mt-2 space-y-1">
-                          <div className="text-[0.55rem] text-muted-foreground">
+                          <div className="text-[0.6rem] text-muted-foreground">
                             Deployed: {raid.deployedLegionIds.length} legion(s) — Power ATK {totalAttack} / DEF {totalDefense} / SPD {totalSpeed}
                           </div>
                           {legions.length === 0 ? (
@@ -570,7 +571,7 @@ export function OmnipotenceContent() {
 
                       {/* Battle log (last 3 entries) */}
                       {raid.log.length > 0 && (
-                        <div className="mt-1.5 text-[0.55rem] text-muted-foreground/80 space-y-0.5 pl-1 border-l border-muted-foreground/20">
+                        <div className="mt-1.5 text-[0.6rem] text-muted-foreground/80 space-y-0.5 pl-1 border-l border-muted-foreground/20">
                           {raid.log.slice(-3).map((entry, i) => (
                             <div key={i}>{entry}</div>
                           ))}
@@ -583,7 +584,7 @@ export function OmnipotenceContent() {
 
               {/* Manual raid spawn (debug + on-demand) */}
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-muted-foreground/20">
-                <div className="text-[0.55rem] text-muted-foreground">
+                <div className="text-[0.6rem] text-muted-foreground">
                   Active: {outpostRaids.filter((r) => r.status === "active").length}/{MAX_ACTIVE_OUTPOST_RAIDS} (auto-spawns every 120s)
                 </div>
                 <Button
