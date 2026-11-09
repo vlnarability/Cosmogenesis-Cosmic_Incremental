@@ -7614,6 +7614,28 @@ export const useGameStore = create<GameStore>()(
         set({ legions: (s.legions || []).filter((l) => l.id !== legionId) });
       },
 
+      // L7-QA-FIX — releaseCreature: permanently removes a creature from the
+      // lab (and from any legion it's in). This makes the "release a creature"
+      // hint in the cap-blocked error message actually work.
+      releaseCreature: (creatureId) => {
+        const s = get();
+        if (!s.unlockedLayers?.omnipotence) return;
+        const creature = (s.creatures || []).find((c) => c.id === creatureId);
+        if (!creature) return;
+        // Remove from creatures array + clean up legion references + XP/levels.
+        const creatures = (s.creatures || []).filter((c) => c.id !== creatureId);
+        const legions = (s.legions || []).map((l) => ({
+          ...l,
+          creatureIds: l.creatureIds.filter((id) => id !== creatureId),
+        }));
+        const creatureXp = { ...(s.creatureXp || {}) };
+        delete creatureXp[creatureId];
+        const creatureLevels = { ...(s.creatureLevels || {}) };
+        delete creatureLevels[creatureId];
+        set({ creatures, legions, creatureXp, creatureLevels });
+        get().addToLog(`Creature released: ${creature.name}.`);
+      },
+
       // ===== Skirmish Arena (L7 Outpost Raids) =====
       spawnOutpostRaid: (outpostDefId) => {
         const s = get();

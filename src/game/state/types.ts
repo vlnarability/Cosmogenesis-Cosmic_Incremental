@@ -1299,6 +1299,7 @@ export interface GameStore extends GameState {
   createCreature: () => void;
   addCreatureToLegion: (creatureId: string, legionId: string) => void;
   removeCreatureFromLegion: (creatureId: string, legionId: string) => void;
+  releaseCreature: (creatureId: string) => void;
   createLegion: (name: string) => void;
   deleteLegion: (legionId: string) => void;
   // NEW: Skirmish Arena (outpost raids) actions

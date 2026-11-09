@@ -52,6 +52,7 @@ export function OmnipotenceContent() {
   const createCreature = useGameStore((s) => s.createCreature);
   const addCreatureToLegion = useGameStore((s) => s.addCreatureToLegion);
   const removeCreatureFromLegion = useGameStore((s) => s.removeCreatureFromLegion);
+  const releaseCreature = useGameStore((s) => s.releaseCreature);
   const createLegion = useGameStore((s) => s.createLegion);
   const deleteLegion = useGameStore((s) => s.deleteLegion);
   const setOmnipotenceStance = useGameStore((s) => s.setOmnipotenceStance);
@@ -345,6 +346,19 @@ export function OmnipotenceContent() {
                             Remove
                           </Button>
                         )}
+                        {/* L7-QA-FIX — Release button: permanently deletes the creature
+                            (and cleans up legion refs + XP/levels). Makes the cap error
+                            message's "release a creature" hint actually work. */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-rose-400/60 hover:text-rose-400"
+                          onClick={() => releaseCreature(c.id)}
+                          title={`Release ${c.name} (permanent — frees a creature slot)`}
+                          aria-label={`Release ${c.name}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       </div>
                     );
                   })}
