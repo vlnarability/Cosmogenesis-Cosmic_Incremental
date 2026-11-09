@@ -367,7 +367,7 @@ export function Header() {
               size="sm"
               className="h-8 hidden sm:flex text-xs"
               onClick={() => openLayerModal("challenges")}
-              title="Layer 1 — Trials"
+              title="Trials"
             >
               <Skull className="w-3.5 h-3.5" />
               <span className="ml-1">Trials</span>

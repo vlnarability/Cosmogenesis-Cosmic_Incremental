@@ -95,7 +95,7 @@ export function OmnipotenceContent() {
         ? () => drillIntoWarAlliance()
         : undefined,
       title: isDivinityUnlocked
-        ? "Open Layer 8 — Divine Alliance (form alliances with minor gods)"
+        ? "Open Divine Alliance (form alliances with minor gods)"
         : `Locked — repel ${OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock`,
     },
     {
@@ -106,7 +106,7 @@ export function OmnipotenceContent() {
         ? () => drillIntoWarOldGods(null)
         : undefined,
       title: isInfinityUnlocked
-        ? "Open Layer 9 — Infinity (battle the Old Gods)"
+        ? "Open Divine War (battle the Old Gods)"
         : "Locked — form 2+ alliances (L8) to unlock",
     },
   ];
@@ -141,7 +141,7 @@ export function OmnipotenceContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Dna className="w-5 h-5" />
-          Layer 7 — Omnipotence (Bio-engineering)
+          Omnipotence (Bio-engineering)
           <BackgroundLayerBadge layerId="omnipotence" />
         </h2>
         <div className="text-sm text-muted-foreground">
@@ -178,7 +178,7 @@ export function OmnipotenceContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The Creature Lab is sealed.</p>
-            <p className="text-xs mt-1">Activate 3+ Logic Cores (Layer 6 — Singularity) to unlock Omnipotence.</p>
+            <p className="text-xs mt-1">Activate 3+ Logic Cores  to unlock Omnipotence.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -199,7 +199,7 @@ export function OmnipotenceContent() {
                 />
               </div>
               <div className="text-[0.65rem] text-muted-foreground mt-1">
-                Active L7 bonuses: +{(lb.productionMult * 100).toFixed(0)}% creature power, +{(lb.capMult * 100).toFixed(0)}% creature capacity, +{(lb.popGrowthMult * 100).toFixed(0)}% raid rewards, instability rate ×{stanceRateMult.toFixed(2)}
+                Active bonuses: +{(lb.productionMult * 100).toFixed(0)}% creature power, +{(lb.capMult * 100).toFixed(0)}% creature capacity, +{(lb.popGrowthMult * 100).toFixed(0)}% raid rewards, instability rate ×{stanceRateMult.toFixed(2)}
               </div>
             </div>
 
@@ -282,10 +282,10 @@ export function OmnipotenceContent() {
                     <span className={canAffordCreature ? "text-amber-300" : "text-rose-400"}>{createCostFaith} Faith</span>
                     <span className="block">
                       Capacity: {creatures.length}/{maxCreatures}
-                      {filledUniverseSlots > 0 && <span className="text-violet-300/80"> (+{filledUniverseSlots} from L10 archetypes)</span>}
+                      {filledUniverseSlots > 0 && <span className="text-violet-300/80"> (+{filledUniverseSlots} from discovered archetypes)</span>}
                     </span>
                     {atCapacity && (
-                      <span className="block text-rose-400">At capacity — discover more L10 archetypes or release a creature.</span>
+                      <span className="block text-rose-400">At capacity — {unlockedLayers?.eternity ? 'discover more archetypes or' : ''} release a creature.</span>
                     )}
                   </div>
                   <Button
@@ -670,7 +670,7 @@ export function OmnipotenceContent() {
                 variant="outline"
                 className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
                 onClick={() => drillIntoWarAlliance()}
-                title="Open Layer 8 — Divine Alliance (form alliances with minor gods)"
+                title="Open Divine Alliance (form alliances with minor gods)"
               >
                 <Handshake className="w-3 h-3 mr-1" />
                 March on the Alliance Council
@@ -688,7 +688,7 @@ export function OmnipotenceContent() {
                 variant="default"
                 className="h-7 text-[0.65rem] bg-rose-700/70 hover:bg-rose-700"
                 onClick={() => drillIntoWarOldGods(null)}
-                title="Open Layer 9 — Infinity (battle the Old Gods)"
+                title="Open Divine War (battle the Old Gods)"
               >
                 <Crosshair className="w-3 h-3 mr-1" />
                 March on the Old Gods

@@ -232,13 +232,13 @@ export function TranscendenceContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Triangle className="w-5 h-5" />
-          Layer 3 — Transcendence (Divine Engine)
+          Transcendence (Divine Engine)
           <BackgroundLayerBadge layerId="transcendence" />
         </h2>
         <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between flex-wrap gap-1">
             <span>
-              Forge, fuse, and amplify background worlds. Plant all 4 Genesis Seeds to unlock Genesis (L4).
+              Forge, fuse, and amplify background worlds. Plant all 4 Genesis Seeds to unlock Genesis.
             </span>
             <div className="flex gap-1 flex-wrap">
               <Badge variant="outline" className="text-violet-300 border-violet-400/40">
@@ -258,7 +258,7 @@ export function TranscendenceContent() {
                     : "text-rose-300 border-rose-400/40"
                 }
               >
-                🌱 {GENESIS_SEEDS.filter((s) => plantedSeeds[s.id]?.planted).length}/{GENESIS_SEEDS.length} seeds → L4
+                🌱 {GENESIS_SEEDS.filter((s) => plantedSeeds[s.id]?.planted).length}/{GENESIS_SEEDS.length} seeds → Genesis
               </Badge>
               {cosmicFragments > 0 && (
                 <Badge variant="outline" className="text-fuchsia-300 border-fuchsia-400/40">
@@ -342,7 +342,7 @@ export function TranscendenceContent() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[0.7rem] uppercase tracking-wide text-amber-300/80 flex items-center gap-1">
                 <Layers className="w-3 h-3" /> World Fusion
-                <InfoDot text="Fuse 10 worlds of a source tier into 1 of the target tier for 5× production per world. Ascendant tier is breakeven (100× = equal to merged). Greater Ascendant+ are pure boosts (10× each). Void World produces Cosmic Fragments — locked until L7+." />
+                <InfoDot text="Fuse 10 worlds of a source tier into 1 of the target tier for 5× production per world. Ascendant tier is breakeven (100× = equal to merged). Greater Ascendant+ are pure boosts (10× each). Void World produces Cosmic Fragments — locked until Omnipotence+." />
               </div>
               <Badge variant="outline" className="text-[0.6rem] text-amber-300 border-amber-400/40">
                 {FUSION_TIERS.length} tiers
@@ -714,11 +714,11 @@ export function TranscendenceContent() {
                     : "text-amber-300 border-amber-400/40"
                 }`}
               >
-                {GENESIS_SEEDS.filter((s) => plantedSeeds[s.id]?.planted).length}/{GENESIS_SEEDS.length} planted → L4
+                {GENESIS_SEEDS.filter((s) => plantedSeeds[s.id]?.planted).length}/{GENESIS_SEEDS.length} planted → Genesis
               </Badge>
             </div>
             <div className="text-[0.6rem] text-muted-foreground mb-2 leading-snug">
-              Plant 4 seeds to unlock Genesis (L4).
+              Plant 4 seeds to unlock Genesis.
             </div>
             <div className="space-y-1">
               {GENESIS_SEEDS.map((seed) => {

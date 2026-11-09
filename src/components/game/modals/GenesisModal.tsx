@@ -150,7 +150,7 @@ export function GenesisContent() {
       label: "Universe",
       icon: <Globe2 className="w-3 h-3" />,
       onClick: () => drillBackCosmos("universe"),
-      title: "Back to the universal galaxy map (L6 Singularity)",
+      title: "Back to the Universal Map",
     }];
     items.push({
       id: "galaxy",
@@ -179,7 +179,7 @@ export function GenesisContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Egg className="w-5 h-5" />
-          Layer 4 — Genesis (Galaxy Claim)
+          Genesis (Galaxy Claim)
           <BackgroundLayerBadge layerId="genesis" />
         </h2>
         <p className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
@@ -356,7 +356,7 @@ export function GenesisContent() {
                 </div>
                 <div className="text-lg font-bold text-amber-200">+{worldBonus}</div>
                 <div className="text-[0.6rem] text-muted-foreground">
-                  +10 worlds per claimed system (counts toward background simulations cap of 1,000 at L4)
+                  +10 worlds per claimed system (counts toward background simulations cap of 1,000 at Genesis)
                 </div>
               </div>
 
@@ -421,7 +421,7 @@ export function GenesisContent() {
               </div>
 
               <div className="text-[0.6rem] text-muted-foreground leading-relaxed">
-                Fill all {GALAXY_TOTAL_SYSTEMS} systems to complete Layer 4 and unlock{" "}
+                Fill all {GALAXY_TOTAL_SYSTEMS} systems to complete Genesis and unlock{" "}
                 <span className="text-cyan-300">Apotheosis (Layer 5)</span>.
               </div>
             </div>
@@ -430,7 +430,7 @@ export function GenesisContent() {
 
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1">
-          The galaxy star map is the Layer 4 gameplay loop — scan unknown systems to reveal their bonus and
+          The galaxy star map is the Genesis gameplay loop — scan unknown systems to reveal their bonus and
           rare resource, then claim them with Divinity. Adjacency matters: systems with 2+ claimed
           neighbors gain a <span className="text-amber-300">+50% synergy bonus</span>.
         </div>

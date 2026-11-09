@@ -69,7 +69,7 @@ export function DivinityLayerContent() {
       label: "Outpost Raids",
       icon: <Swords className="w-3 h-3" />,
       onClick: () => drillBackWar("outpost"),
-      title: "Back to Layer 7 — Omnipotence (outpost raids)",
+      title: "Back to Outpost Raids",
     },
     {
       id: "alliance",
@@ -85,7 +85,7 @@ export function DivinityLayerContent() {
         ? () => drillIntoWarOldGods(null)
         : undefined,
       title: isInfinityUnlocked
-        ? "Open Layer 9 — Infinity (battle the Old Gods)"
+        ? "Open Divine War (battle the Old Gods)"
         : "Locked — form 2+ alliances to unlock",
     },
   ];
@@ -104,7 +104,7 @@ export function DivinityLayerContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Handshake className="w-5 h-5" />
-          Layer 8 — Divinity (Divine Alliance)
+          Divinity (Divine Alliance)
           <BackgroundLayerBadge layerId="divinity" />
         </h2>
         <p className="text-sm text-muted-foreground flex items-center justify-between">
@@ -131,7 +131,7 @@ export function DivinityLayerContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The Diplomacy Network is sealed.</p>
-            <p className="text-xs mt-1">Repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids (Layer 7 — Omnipotence) to unlock Divinity.</p>
+            <p className="text-xs mt-1">Repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids  to unlock Divinity.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -147,10 +147,10 @@ export function DivinityLayerContent() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(bonus.productionMult * 100).toFixed(0)}% prod</Badge>
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(bonus.capMult * 100).toFixed(0)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(bonus.epMult * 100).toFixed(0)}% Div</Badge>
-                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(bonus.popGrowthMult * 100).toFixed(0)}% pop</Badge>
+                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(bonus.productionMult * 100).toFixed(0)}% alliance power</Badge>
+                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(bonus.capMult * 100).toFixed(0)}% relationship cap</Badge>
+                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(bonus.epMult * 100).toFixed(0)}% trade efficiency</Badge>
+                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(bonus.popGrowthMult * 100).toFixed(0)}% amplifier boost</Badge>
               </div>
             </div>
 
@@ -184,15 +184,15 @@ export function DivinityLayerContent() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-semibold">{g.name}</span>
-                            <Badge variant="outline" className={`text-[0.55rem] ${PERSONALITY_COLORS[g.personality]}`}>
+                            <Badge variant="outline" className={`text-[0.6rem] ${PERSONALITY_COLORS[g.personality]}`}>
                               {g.personality}
                             </Badge>
                             {allied && (
-                              <Badge className="text-[0.55rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
+                              <Badge className="text-[0.6rem] bg-amber-500/20 text-amber-300 border-amber-400/40">
                                 <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> Allied
                               </Badge>
                             )}
-                            <Badge variant="outline" className="text-[0.55rem] text-muted-foreground">
+                            <Badge variant="outline" className="text-[0.6rem] text-muted-foreground">
                               Power {g.powerLevel}
                             </Badge>
                           </div>
@@ -201,20 +201,21 @@ export function DivinityLayerContent() {
 
                           {/* Relationship meter */}
                           <div className="mt-1.5">
-                            <div className="flex items-center justify-between text-[0.55rem] text-muted-foreground mb-0.5">
+                            <div className="flex items-center justify-between text-[0.6rem] text-muted-foreground mb-0.5">
                               <span>Relationship</span>
                               <span>{relationship}/100 {relationship >= RELATIONSHIP_ALLIANCE_THRESHOLD ? "(ally-ready)" : `(${RELATIONSHIP_ALLIANCE_THRESHOLD - relationship} to ally)`}</span>
                             </div>
                             <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
                               <div
-                                className={`h-full transition-all ${allied ? "bg-amber-400" : relationship >= RELATIONSHIP_ALLIANCE_THRESHOLD ? "bg-emerald-400" : relationship >= 30 ? "bg-cyan-400/70" : "bg-muted-foreground/50"}`}
+                                key={relationship}
+                                className={`h-full transition-all duration-300 ease-out relationship-flash ${allied ? "bg-amber-400" : relationship >= RELATIONSHIP_ALLIANCE_THRESHOLD ? "bg-emerald-400" : relationship >= 30 ? "bg-cyan-400/70" : "bg-muted-foreground/50"}`}
                                 style={{ width: `${(relationship / RELATIONSHIP_MAX) * 100}%` }}
                               />
                             </div>
                           </div>
 
                           {/* Trade info */}
-                          <div className="text-[0.55rem] text-muted-foreground mt-1.5">
+                          <div className="text-[0.6rem] text-muted-foreground mt-1.5">
                             Trade: {RESOURCE_ICON[g.demand.resource]} -{g.demand.amount} → {RESOURCE_ICON[g.reward.resource]} +{g.reward.amount}
                           </div>
 
@@ -254,7 +255,7 @@ export function DivinityLayerContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-5 text-[0.55rem] text-sky-300 border-sky-400/40 w-full"
+                                className="h-5 text-[0.6rem] text-sky-300 border-sky-400/40 w-full"
                                 onClick={() => removeAmplifier(g.id)}
                               >
                                 <Radio className="w-2.5 h-2.5 mr-0.5" /> Remove Amplifier
@@ -263,7 +264,7 @@ export function DivinityLayerContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-5 text-[0.55rem] text-sky-300 border-sky-400/40 w-full"
+                                className="h-5 text-[0.6rem] text-sky-300 border-sky-400/40 w-full"
                                 disabled={amplifiers.length >= 3 || divinity < 30}
                                 onClick={() => placeAmplifier(g.id)}
                               >
@@ -284,7 +285,7 @@ export function DivinityLayerContent() {
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Sparkles className="w-3 h-3" />
-          Form 2+ alliances to unlock Layer 9 (Divine War). Allied gods grant passive bonuses and can be called into battle against the Old Gods.
+          Form 2+ alliances to unlock Divine War. Allied gods grant passive bonuses and can be called into battle against the Old Gods.
         </div>
 
         {/* C4 — War-family drill-forward button. Routes to L9 when unlocked. */}
@@ -295,7 +296,7 @@ export function DivinityLayerContent() {
               variant="outline"
               className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
               onClick={() => drillBackWar("outpost")}
-              title="Back to Layer 7 — Omnipotence (outpost raids)"
+              title="Back to Outpost Raids"
             >
               <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
               Back to Outpost Raids
@@ -306,7 +307,7 @@ export function DivinityLayerContent() {
                 variant="default"
                 className="h-7 text-[0.65rem] bg-rose-700/70 hover:bg-rose-700"
                 onClick={() => drillIntoWarOldGods(null)}
-                title="Open Layer 9 — Infinity (battle the Old Gods)"
+                title="Open Divine War (battle the Old Gods)"
               >
                 <Crosshair className="w-3 h-3 mr-1" />
                 March on the Old Gods

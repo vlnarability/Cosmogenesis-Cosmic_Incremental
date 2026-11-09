@@ -55,14 +55,14 @@ export function InfinityContent() {
       label: "Outpost Raids",
       icon: <Swords className="w-3 h-3" />,
       onClick: () => drillBackWar("outpost"),
-      title: "Back to Layer 7 — Omnipotence (outpost raids)",
+      title: "Back to Outpost Raids",
     },
     {
       id: "alliance",
       label: "Alliance Council",
       icon: <Handshake className="w-3 h-3" />,
       onClick: () => drillBackWar("alliance"),
-      title: "Back to Layer 8 — Divinity (Divine Alliance)",
+      title: "Back to Alliance Council",
     },
     {
       id: "oldgods",
@@ -80,7 +80,7 @@ export function InfinityContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Swords className="w-5 h-5" />
-          Layer 9 — Infinity (Divine War)
+          Infinity (Divine War)
           <BackgroundLayerBadge layerId="infinity" />
         </h2>
         <p className="text-sm text-muted-foreground flex items-center justify-between">
@@ -107,7 +107,7 @@ export function InfinityContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The War Council is sealed.</p>
-            <p className="text-xs mt-1">Form 2+ alliances (Layer 8 — Divine Alliance) to unlock Divine War.</p>
+            <p className="text-xs mt-1">Form 2+ alliances  to unlock Divine War.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -350,7 +350,7 @@ export function InfinityContent() {
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Swords className="w-3 h-3" />
-          Defeat all 3 Old Gods to unlock Layer 10 (Ascension). Each victory grants a permanent Divine Fragment bonus.
+          Defeat all 3 Old Gods to unlock Ascension. Each victory grants a permanent Divine Fragment bonus.
         </div>
 
         {/* C4 — War-family drill-back buttons. Routes back to L8 (Alliance
@@ -362,7 +362,7 @@ export function InfinityContent() {
               variant="outline"
               className="h-7 text-[0.65rem] border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
               onClick={() => drillBackWar("alliance")}
-              title="Back to Layer 8 — Divinity (Divine Alliance)"
+              title="Back to Alliance Council"
             >
               <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
               Back to Alliance Council
@@ -372,7 +372,7 @@ export function InfinityContent() {
               variant="ghost"
               className="h-7 text-[0.65rem] text-muted-foreground"
               onClick={() => drillBackWar("outpost")}
-              title="Back to Layer 7 — Omnipotence (outpost raids)"
+              title="Back to Outpost Raids"
             >
               <ChevronRight className="w-3 h-3 rotate-180 mr-1" />
               Back to Outpost Raids

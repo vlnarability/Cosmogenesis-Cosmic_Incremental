@@ -214,7 +214,7 @@ export function ShopModal() {
           <div className="text-[0.65rem] text-muted-foreground px-1 pt-1">
             <span className="text-violet-300/80">Divinity</span> is the unified shop
             currency — earned each time you prestige and folded into your balance
-            automatically. Reach Layer 2 (Enlightenment) to unlock the tabbed shop
+            automatically. Reach Enlightenment to unlock the tabbed shop
             with auto-buyers + layer-specific upgrades.
           </div>
           <div className="flex justify-end pt-2">
@@ -321,7 +321,7 @@ export function ShopModal() {
                     {isMain && (
                       <div className="px-3 py-1.5 rounded-md border border-cyan-400/40 bg-cyan-500/10 text-cyan-200 text-xs flex items-center gap-1.5">
                         <Layers className="w-3 h-3 shrink-0" />
-                        Each auto-buyer unlocks when the NEXT layer unlocks (e.g. Auto-Light Stars appears once L3 is reached).
+                        Each auto-buyer unlocks when the NEXT layer unlocks (e.g. Auto-Light Stars appears once Transcendence is reached).
                       </div>
                     )}
 

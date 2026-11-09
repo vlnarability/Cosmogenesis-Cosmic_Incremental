@@ -147,13 +147,13 @@ export function ApotheosisContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Crown className="w-5 h-5" />
-          Layer 5 — Apotheosis (Galactic Conquest)
+          Apotheosis (Galactic Conquest)
           <BackgroundLayerBadge layerId="apotheosis" />
         </h2>
         <div className="text-sm text-muted-foreground">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span>
-              Conquer 3 rival galaxies to unlock Layer 6. Each claimed rival system grants +18 worlds.
+              Conquer 3 rival galaxies to unlock Singularity. Each claimed rival system grants +18 worlds.
             </span>
             <div className="flex gap-1 flex-wrap">
               <Badge variant="outline" className="text-amber-300 border-amber-400/40">
@@ -180,7 +180,7 @@ export function ApotheosisContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Apotheosis is sealed.</p>
-            <p className="text-xs mt-1">Author at least 1 Genesis world (Layer 4) to unlock Apotheosis.</p>
+            <p className="text-xs mt-1">Author at least 1 Genesis world  to unlock Apotheosis.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -496,7 +496,7 @@ export function ApotheosisContent() {
                 <div className={`h-full transition-all ${heresy >= 75 ? "bg-rose-500" : "bg-rose-400/70"}`} style={{ width: `${Math.min(75, heresy) / 75 * 100}%` }} />
               </div>
               <div className="text-[0.65rem] text-muted-foreground mt-1">
-                Enacted {enactedCount} laws. Active L5 bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% Faith gen, +{(lawBonus.capMult * 100).toFixed(0)}% Faith cap, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% prophet conversion, heresy spread ×{lawBonus.heresyRateMult.toFixed(2)}
+                Enacted {enactedCount} laws. Active bonuses: +{(lawBonus.productionMult * 100).toFixed(0)}% Faith gen, +{(lawBonus.capMult * 100).toFixed(0)}% Faith cap, +{(lawBonus.popGrowthMult * 100).toFixed(0)}% prophet conversion, heresy spread ×{lawBonus.heresyRateMult.toFixed(2)}
               </div>
             </div>
 
@@ -601,7 +601,7 @@ export function ApotheosisContent() {
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <Flame className="w-3 h-3" />
-          <span className="text-rose-300">Galactic Conquest</span> is the new L5 loop. Attack rival galaxies (each system = +18 worlds), manage per-galaxy heresy webs, conquer 3 galaxies to unlock Layer 6 (Singularity).
+          <span className="text-rose-300">Galactic Conquest</span> is the new conquest loop. Attack rival galaxies (each system = +18 worlds), manage per-galaxy heresy webs, conquer 3 galaxies to unlock Singularity.
         </div>
     </>
   );

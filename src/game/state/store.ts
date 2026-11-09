@@ -1271,10 +1271,15 @@ export const useGameStore = create<GameStore>()(
         // This prevents L7 bonuses from inflating peakProductionRate → bgDivPerSec
         // → divinity (the L3 cosmos loop) which compounded via the META
         // peakProductionRate field.
+        // L8-SCOPE-FIX — L8 Divinity bonuses (from alliances with minor gods)
+        // no longer leak into the cross-layer production/capacity/pop bonuses.
+        // `allianceB` is still computed above for the DivinityLayerModal to
+        // display L8-internal bonuses via its own `allianceBonus()` call.
+        // This prevents L8 alliance bonuses from inflating peakProductionRate
+        // → bgDivPerSec → divinity (the L3 cosmos loop).
         const layerProdBonus =
           constB.productionMult +
           foresight.productionMult + route.productionMult +
-          allianceB.productionMult +
           fragmentB.productionMult +
           archetypeProdMult + cosmicBoon +
           galaxySummary.divinityMult +  // L4 Galaxy Claim system bonuses (+ adjacency synergy)
@@ -1282,13 +1287,11 @@ export const useGameStore = create<GameStore>()(
         const layerCapBonus =
           constB.capMult +
           foresight.capMult + route.capMult +
-          allianceB.capMult +
           fragmentB.capMult +
           0;  // L4 Galaxy Claim capacity bonuses
         const layerPopBonus =
           constB.popGrowthMult +
           foresight.popGrowthMult + route.popGrowthMult +
-          allianceB.popGrowthMult +
           fragmentB.popGrowthMult +
           galaxySummary.divinityMult;  // L4 Galaxy Claim pop-growth bonuses
 
@@ -5102,11 +5105,12 @@ export const useGameStore = create<GameStore>()(
         // Layers 7-9 EP bonus
         // L7-SCOPE-FIX — hybridEp (from creatures/legions/stance) removed from
         // layerEpMult — L7 bonuses should not inflate L2/L3 EP gain on prestige.
-        const allianceEp = allianceBonus(s.alliances || {}, s.minorGods || MINOR_GODS).epMult;
+        // L8-SCOPE-FIX — allianceEp (from alliances with minor gods) removed from
+        // layerEpMult — L8 bonuses should not inflate EP gain on prestige.
         const fragmentEp = divineFragmentBonus(s.divineFragments || 0).epMult;
         const layerEpMult = 1 +
           fs.epMult + constBp.epMult + rb.epMult + ritualEp +
-          allianceEp + fragmentEp;
+          fragmentEp;
         epEarned = Math.max(1, Math.floor(epEarned * layerEpMult));
 
         // ACHIEVEMENT-EXPANSION — apply the "ep" achievement bonus as an
@@ -7511,7 +7515,7 @@ export const useGameStore = create<GameStore>()(
         const maxCreatures = 5 + filledSlots;
         const currentCount = (s.creatures || []).length;
         if (currentCount >= maxCreatures) {
-          get().addToLog(`Creature lab at capacity (${currentCount}/${maxCreatures}). Discover more L10 archetypes or release a creature.`);
+          get().addToLog(`Creature lab at capacity (${currentCount}/${maxCreatures}). release a creature (or discover more archetypes from the Genesis Engine).`);
           return;
         }
         const bodyType = draft.bodyType as CreatureBodyTypeId;

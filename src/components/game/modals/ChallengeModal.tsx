@@ -42,7 +42,7 @@ export function ChallengeContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Skull className="w-5 h-5" />
-          Layer 1 — Trials
+          Trials
           <BackgroundLayerBadge layerId="evolution" />
         </h2>
         <div className="text-sm text-muted-foreground">
@@ -66,7 +66,7 @@ export function ChallengeContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Trials are sealed.</p>
-            <p className="text-xs mt-1">Earn your first Galactic Ascension to unlock Layer 1.</p>
+            <p className="text-xs mt-1">Earn your first Galactic Ascension to unlock Trials.</p>
           </div>
         ) : (
           <section>

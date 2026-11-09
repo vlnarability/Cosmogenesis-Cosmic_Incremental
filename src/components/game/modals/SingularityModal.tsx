@@ -130,7 +130,7 @@ export function SingularityContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Orbit className="w-5 h-5 text-cyan-300" />
-          Layer 6 — Singularity (Universal Map)
+          Singularity (Universal Map)
           <BackgroundLayerBadge layerId="singularity" />
         </h2>
         <div className="text-sm text-muted-foreground">
@@ -383,7 +383,7 @@ export function SingularityContent() {
                       {selectedGalaxy.name}
                       {selectedGalaxy.isNewL6 && (
                         <Badge variant="outline" className="ml-1 text-[0.55rem] text-violet-300 border-violet-400/40">
-                          NEW L6
+                          NEW
                         </Badge>
                       )}
                     </div>
@@ -506,7 +506,7 @@ export function SingularityContent() {
                   )}
 
                   {/* C4 — Drill-into-galaxy button. Routes the user to the
-                      galaxy's star-system hex map (L4 Genesis for the starter
+                      galaxy's star-system hex map (Genesis for the starter
                       galaxy, or a synthesized inline view for other galaxies). */}
                   <div className="pt-1.5 border-t border-cyan-400/20">
                     <Button
@@ -535,7 +535,7 @@ export function SingularityContent() {
               {/* Universal Map progress */}
               <div className="stat-card">
                 <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
-                  L6 → L7 progress
+                  Progress to Omnipotence
                 </div>
                 <div className="space-y-1.5">
                   <div>
@@ -607,10 +607,10 @@ export function SingularityContent() {
                 </div>
               </div>
 
-              {/* L6 progression summary */}
+              {/* Singularity progression summary */}
               <div className="stat-card">
                 <div className="text-[0.7rem] uppercase tracking-wide text-muted-foreground mb-1">
-                  L6 progression
+                  Singularity progression
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <Badge variant="outline" className="text-red-300 border-red-400/40">{rifts.length} active rift(s)</Badge>
@@ -670,7 +670,7 @@ function buildCosmosBreadcrumb({
     icon: <Globe2 className="w-3 h-3" />,
     onClick: level === "universe" ? undefined : onBackUniverse,
     isCurrent: level === "universe",
-    title: "Back to the universal galaxy map (L6)",
+    title: "Back to the Universal Map",
   });
   if (level === "galaxy" || level === "system") {
     const gname = galaxyId ? (galaxyMap[galaxyId]?.name ?? galaxyId) : "—";

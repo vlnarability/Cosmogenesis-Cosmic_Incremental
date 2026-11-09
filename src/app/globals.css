@@ -2160,3 +2160,16 @@ h1, h2, h3 {
 .raid-hp-flash {
   animation: raid-hp-flash 0.5s ease-out;
 }
+
+/* L8-RELATIONSHIP-FX — brief flash on the relationship meter bar when
+   Negotiate or Trade increases the relationship value. The `key={relationship}`
+   on the bar fill forces React to remount the div on each relationship change,
+   replaying this animation. */
+@keyframes relationship-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(34,211,238,0.6); }
+  30%  { box-shadow: 0 0 6px 2px rgba(34,211,238,0.7); }
+  100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); }
+}
+.relationship-flash {
+  animation: relationship-flash 0.4s ease-out;
+}

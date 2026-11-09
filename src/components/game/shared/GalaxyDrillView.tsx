@@ -141,7 +141,7 @@ export function GalaxyDrillView({ galaxyId }: GalaxyDrillViewProps) {
             {galaxy.name}
             {galaxy.isNewL6 && (
               <Badge variant="outline" className="text-[0.55rem] text-violet-300 border-violet-400/40 ml-1">
-                NEW L6
+                NEW
               </Badge>
             )}
           </div>

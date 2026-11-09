@@ -253,7 +253,7 @@ export function PrestigeTab() {
             The Ten Ages of Becoming
           </CardTitle>
           <CardDescription>
-            10 layers. Each unlocks a new prestige currency and a new system. Layer 1 (Evolution) is the base game; later layers unlock as you prove your lineage.
+            10 layers. Each unlocks a new prestige currency and a new system. Evolution is the base game; later layers unlock as you prove your lineage.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -383,7 +383,7 @@ export function PrestigeTab() {
             viewIcon={<Triangle className="w-3 h-3 mr-1" />}
           >
             <div className="text-[0.6rem] text-muted-foreground mt-1">
-              Forge, fuse, and amplify background worlds. Plant all 4 Genesis Seeds to unlock Genesis (L4).
+              Forge, fuse, and amplify background worlds. Plant all 4 Genesis Seeds to unlock Genesis.
             </div>
           </LayerCard>
           )}

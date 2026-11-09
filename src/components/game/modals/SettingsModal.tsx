@@ -37,16 +37,16 @@ const SHORTCUT_LABELS: Record<string, string> = {
   save: "Save Game",
   shop: "Open Shop",
   prestige: "Prestige Roadmap",
-  trials: "Trials Layer (L1)",
-  constellations: "Constellations Layer (L2)",
-  market: "Divine Market Layer (L3)",
-  galaxy: "Galaxy Layer (L4)",
-  heresy: "Heresy Layer (L5)",
-  universal: "Universal Map Layer (L6)",
-  creatures: "Creatures Layer (L7)",
-  diplomacy: "Diplomacy Layer (L8)",
-  war: "War Layer (L9)",
-  genesis: "Genesis Engine Layer (L10)",
+  trials: "Trials",
+  constellations: "Constellations",
+  market: "Divine Market",
+  galaxy: "Galaxy Claim",
+  heresy: "Galactic Conquest",
+  universal: "Universal Map",
+  creatures: "Bio-engineering",
+  diplomacy: "Divine Alliance",
+  war: "Divine War",
+  genesis: "Genesis Engine",
   close: "Close Modal / Dismiss Popup",
   // F7 — base-game action shortcuts.
   world: "Open World Tab",
@@ -418,7 +418,7 @@ export function SettingsModal() {
                 Customization
               </h3>
               <p className="text-xs text-muted-foreground">
-                Stage themes set the base palette. Divine overlays (Layer 1-10) tint the primary/accent colors.
+                Stage themes set the base palette. Divine overlays (all layers) tint the primary/accent colors.
                 Special themes override everything when active. Locked themes show "???". Themes auto-unlock as you progress.
               </p>
 
@@ -665,7 +665,7 @@ export function SettingsModal() {
                       variant="outline"
                       onClick={debugGenerateBoon}
                       className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
-                      title="+1 cosmicBoonStacks (L10 ending)"
+                      title="+1 cosmicBoonStacks (Eternity ending)"
                     >
                       <Bug className="w-3 h-3 mr-1" />
                       Generate Cosmic Boon
@@ -675,7 +675,7 @@ export function SettingsModal() {
                       variant="outline"
                       onClick={debugSpawnRelic}
                       className="h-8 border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
-                      title="Spawn 1 fresh relic into the inventory (L10 Genesis Engine)"
+                      title="Spawn 1 fresh relic into the inventory (Genesis Engine)"
                     >
                       <Bug className="w-3 h-3 mr-1" />
                       Spawn Relic

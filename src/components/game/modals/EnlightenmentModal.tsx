@@ -1405,7 +1405,7 @@ export function EnlightenmentContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Eye className="w-5 h-5" />
-          Layer 2 — Enlightenment (Constellation Sky)
+          Enlightenment (Constellation Sky)
           <BackgroundLayerBadge layerId="enlightenment" />
         </h2>
         <div className="text-sm text-slate-300 flex items-center justify-between flex-wrap gap-2">
@@ -1443,7 +1443,7 @@ export function EnlightenmentContent() {
         <div className="text-center text-muted-foreground py-10">
           <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">Enlightenment is sealed.</p>
-          <p className="text-xs mt-1">Master 3 distinct Layer 1 trials to unlock the constellation map.</p>
+          <p className="text-xs mt-1">Master 3 distinct trials to unlock the constellation map.</p>
         </div>
       ) : !expanded ? (
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3 min-h-0">
@@ -1761,7 +1761,7 @@ export function EnlightenmentContent() {
       <div className="text-[0.75rem] text-muted-foreground px-2 py-1.5 rounded bg-muted/40 border border-border/40 flex items-start gap-1.5">
         <span className="text-cyan-400 mt-0.5">ⓘ</span>
         <span>
-          Click a <span className="text-slate-300">star</span> to inspect it, then press <span className="text-violet-300 font-semibold">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per lit star in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per started constellation. Complete <span className="text-emerald-300 font-semibold">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> to advance to Layer 3.
+          Click a <span className="text-slate-300">star</span> to inspect it, then press <span className="text-violet-300 font-semibold">Illuminate</span> to purchase. Costs scale by <span className="text-cyan-300">{WITHIN_CONSTELLATION_GROWTH}×</span> per lit star in the same constellation, plus <span className="text-amber-300">{COST_GROWTH_PER_STARTED}<sup>{startedCount > 0 ? "N" : "0"}</sup>={Math.pow(COST_GROWTH_PER_STARTED, startedCount).toFixed(1)}×</span> per started constellation. Complete <span className="text-emerald-300 font-semibold">{CONSTELLATIONS_REQUIRED_FOR_LAYER_3}</span> to advance to Transcendence.
         </span>
       </div>
         </>

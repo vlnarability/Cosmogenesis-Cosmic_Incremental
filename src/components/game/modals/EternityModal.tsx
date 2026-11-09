@@ -168,7 +168,7 @@ export function EternityContent() {
       <div className="flex flex-col gap-2 text-center sm:text-left mb-3">
         <h2 className="text-lg leading-none font-semibold flex items-center gap-2 flex-wrap">
           <Star className="w-5 h-5" />
-          Layer 10 — Eternity (Genesis Engine)
+          Eternity (Genesis Engine)
           <BackgroundLayerBadge layerId="eternity" />
         </h2>
         <div className="text-sm text-muted-foreground flex items-center justify-between flex-wrap gap-2">
@@ -195,7 +195,7 @@ export function EternityContent() {
           <div className="text-center text-muted-foreground py-10">
             <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">The Genesis Engine lies dormant.</p>
-            <p className="text-xs mt-1">Defeat all 3 Old Gods (Layer 9 — Divine War) to ignite the Crucible.</p>
+            <p className="text-xs mt-1">Defeat all 3 Old Gods  to ignite the Crucible.</p>
           </div>
         ) : allDiscovered && chosenEnding === null ? (
           <EndingScreen
@@ -598,7 +598,7 @@ interface DimensionOption {
   lockedNote?: string;
 }
 
-// Future: unlock dimensions by finishing L10 in each one
+// Future: unlock dimensions by finishing Eternity in each one
 const DIMENSION_OPTIONS: DimensionOption[] = [
   {
     id: "mundane",
@@ -771,7 +771,7 @@ function DimensionPicker({
   onConfirm: () => void;
   onBack: () => void;
 }) {
-  // Future: unlock dimensions by finishing L10 in each one.
+  // Future: unlock dimensions by finishing Eternity in each one.
   // For now only "mundane" is ever in visitedDimensions, so only that row
   // is enabled; every other row is locked + greyed out with a lock icon.
   return (
@@ -862,9 +862,9 @@ function DimensionPicker({
           {selected ? `Reset into: ${DIMENSION_OPTIONS.find((d) => d.id === selected)?.name}` : "Select a dimension"}
         </Button>
       </div>
-      {/* Future: unlock dimensions by finishing L10 in each one. Today, only the Mundane Realm is selectable. */}
+      {/* Future: unlock dimensions by finishing Eternity in each one. Today, only the Mundane Realm is selectable. */}
       <div className="text-[0.55rem] text-muted-foreground/70 text-center">
-        Today, only the Mundane Realm is selectable. Future dimensions will unlock by finishing L10 in each one.
+        Today, only the Mundane Realm is selectable. Future dimensions will unlock by finishing Eternity in each one.
       </div>
     </div>
   );
