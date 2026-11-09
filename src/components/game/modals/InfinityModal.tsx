@@ -232,7 +232,7 @@ export function InfinityContent() {
                             <div className="mt-2 space-y-1.5">
                               <div className="text-[0.55rem] text-muted-foreground">Deploy Legions (toggle):</div>
                               {legions.length === 0 ? (
-                                <div className="text-[0.55rem] text-rose-300/60 italic">No legions formed — visit Layer 7.</div>
+                                <div className="text-[0.55rem] text-rose-300/60 italic">No legions formed — visit Bio-engineering.</div>
                               ) : (
                                 <div className="flex flex-wrap gap-1">
                                   {legions.map((l) => {
@@ -253,7 +253,7 @@ export function InfinityContent() {
 
                               <div className="text-[0.55rem] text-muted-foreground mt-1">Call Allies (toggle):</div>
                               {alliedGods.length === 0 ? (
-                                <div className="text-[0.55rem] text-rose-300/60 italic">No allies — form alliances in Layer 8.</div>
+                                <div className="text-[0.55rem] text-rose-300/60 italic">No allies — form alliances in Divine Alliance.</div>
                               ) : (
                                 <div className="flex flex-wrap gap-1">
                                   {alliedGods.map((g) => {
@@ -314,7 +314,7 @@ export function InfinityContent() {
                 <div>
                   <div className="text-[0.6rem] text-muted-foreground mb-0.5">Legions ({legions.length})</div>
                   {legions.length === 0 ? (
-                    <div className="text-[0.55rem] text-rose-300/60 italic">No legions — visit Layer 7.</div>
+                    <div className="text-[0.55rem] text-rose-300/60 italic">No legions — visit Bio-engineering.</div>
                   ) : (
                     <div className="space-y-0.5">
                       {legions.map((l) => {
@@ -331,7 +331,7 @@ export function InfinityContent() {
                 <div>
                   <div className="text-[0.6rem] text-muted-foreground mb-0.5">Allies ({alliedGods.length})</div>
                   {alliedGods.length === 0 ? (
-                    <div className="text-[0.55rem] text-rose-300/60 italic">No allies — visit Layer 8.</div>
+                    <div className="text-[0.55rem] text-rose-300/60 italic">No allies — visit Divine Alliance.</div>
                   ) : (
                     <div className="space-y-0.5">
                       {alliedGods.map((g) => (

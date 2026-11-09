@@ -442,7 +442,7 @@ export function OmnipotenceContent() {
                 </Badge>
               </div>
               <div className="text-[0.6rem] text-muted-foreground mb-2 leading-tight">
-                Minor Old-God outposts raid your galaxies every {120}s. Deploy legions → click Attack → repel 10 raids to unlock Layer 8 (Divine Alliance).
+                Minor Old-God outposts raid your galaxies every {120}s. Deploy legions → click Attack → repel 10 raids to unlock Divine Alliance.
                 Each victory: +1 Divine Fragment (total {divineFragments}) + {CREATURE_XP_PER_RAID} XP per deployed creature. Creatures level up every {CREATURE_XP_PER_LEVEL} XP (+10% ATK/DEF/SPD per level).
               </div>
 
@@ -656,7 +656,7 @@ export function OmnipotenceContent() {
         <Separator className="my-2" />
         <div className="text-[0.65rem] text-muted-foreground px-1 flex items-center gap-1">
           <AlertTriangle className="w-3 h-3" />
-          Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Layer 8 (Divine Alliance). At 100 instability, creatures go rogue and raid YOUR galaxies.
+          Design creatures → form Legions → repel {OUTPOST_RAID_COUNT_FOR_L8} outpost raids to unlock Divine Alliance. At 100 instability, creatures go rogue and raid YOUR galaxies.
         </div>
 
         {/* C4 — War-family drill-forward buttons. Visible only when this
