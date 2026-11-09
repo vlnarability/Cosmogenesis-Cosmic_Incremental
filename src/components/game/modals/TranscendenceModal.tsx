@@ -974,7 +974,7 @@ export function TranscendenceContent() {
           across 5 portfolios for Divinity dividends. Riskier portfolios crash more often (Eternal Engine
           catalyst prevents crashes).
         </div>
-        <div>Plant all 4 Genesis Seeds to unlock Layer 4 (Genesis).</div>
+        <div>Plant all 4 Genesis Seeds to unlock Genesis.</div>
       </div>
     </>
   );

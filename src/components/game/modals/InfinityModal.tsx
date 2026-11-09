@@ -117,10 +117,10 @@ export function InfinityContent() {
                 {totalDefeated}/{OLD_GODS.length} Old Gods defeated · {legions.length} legions · {alliedGods.length} allies available
               </div>
               <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(fragmentBonus.productionMult * 100).toFixed(0)}% prod</Badge>
-                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(fragmentBonus.capMult * 100).toFixed(0)}% cap</Badge>
-                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(fragmentBonus.epMult * 100).toFixed(0)}% Div</Badge>
-                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(fragmentBonus.popGrowthMult * 100).toFixed(0)}% pop</Badge>
+                <Badge variant="outline" className="text-cyan-300 border-cyan-400/40">+{(fragmentBonus.productionMult * 100).toFixed(0)}% divine assault</Badge>
+                <Badge variant="outline" className="text-amber-300 border-amber-400/40">+{(fragmentBonus.capMult * 100).toFixed(0)}% legion cap</Badge>
+                <Badge variant="outline" className="text-emerald-300 border-emerald-400/40">+{(fragmentBonus.epMult * 100).toFixed(0)}% divinity emp</Badge>
+                <Badge variant="outline" className="text-violet-300 border-violet-400/40">+{(fragmentBonus.popGrowthMult * 100).toFixed(0)}% ally power</Badge>
               </div>
             </div>
 
