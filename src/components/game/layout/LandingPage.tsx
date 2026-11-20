@@ -26,7 +26,7 @@
 
 import { useEffect, useState } from "react";
 import { STORAGE_KEY, useGameStore, getCurrentSlot, setCurrentSlot, readSlotInfo, NUM_SLOTS } from "@/game/state/store";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, Trash2 } from "lucide-react";
 
 // Slot names are stored separately in localStorage (not in the save data)
 // so renaming doesn't trigger a save re-serialization.
@@ -56,6 +56,7 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const [slotNames, setSlotNames] = useState<Record<number, string>>({});
   const [renamingSlot, setRenamingSlot] = useState<number | null>(null);
   const [renameText, setRenameText] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const difficultyMode = useGameStore((s) => s.difficultyMode);
   const setDifficultyMode = useGameStore((s) => s.setDifficultyMode);
 
@@ -114,6 +115,25 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
   const cancelRename = () => {
     setRenamingSlot(null);
     setRenameText("");
+    setConfirmingDelete(null);
+  };
+
+  // DELETE-SAVE — removes the save data + slot name from localStorage and
+  // refreshes the slot info display. Called from the trash button in the
+  // rename UI (two-click confirmation: first click shows "Sure?", second
+  // click deletes).
+  const deleteSlot = (slot: number) => {
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_slot${slot}`);
+      const names = readSlotNames();
+      delete names[slot];
+      localStorage.setItem(SLOT_NAMES_KEY, JSON.stringify(names));
+    } catch { /* ignore */ }
+    setSlotNames(readSlotNames());
+    setSlotInfos(Array.from({ length: NUM_SLOTS }, (_, i) => readSlotInfo(i + 1)));
+    setRenamingSlot(null);
+    setRenameText("");
+    setConfirmingDelete(null);
   };
 
   return (
@@ -221,6 +241,34 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
                       <button onClick={cancelRename} className="text-[#e8e2d4]/40 hover:text-white shrink-0" title="Cancel">
                         <X className="w-3 h-3" />
                       </button>
+                      {/* DELETE-SAVE — trash button with two-click confirmation.
+                          Only shows when the slot has a save (info is truthy).
+                          First click: button turns red with "Sure?" text.
+                          Second click: deletes the save. */}
+                      {info && (
+                        <button
+                          onClick={() => {
+                            if (confirmingDelete === slotNum) {
+                              deleteSlot(slotNum);
+                            } else {
+                              setConfirmingDelete(slotNum);
+                            }
+                          }}
+                          className={`shrink-0 flex items-center gap-0.5 text-[0.55rem] font-medium transition-colors ${
+                            confirmingDelete === slotNum
+                              ? "text-red-400 hover:text-red-300"
+                              : "text-[#e8e2d4]/20 hover:text-red-400"
+                          }`}
+                          title={confirmingDelete === slotNum ? "Click again to confirm deletion" : "Delete save"}
+                          aria-label={`Delete save in slot ${slotNum}`}
+                        >
+                          {confirmingDelete === slotNum ? (
+                            <>Sure?</>
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <>
