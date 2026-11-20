@@ -423,6 +423,23 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
             const relVx = b.vx - a.vx;
             const relVy = b.vy - a.vy;
             const relSpeed = Math.sqrt(relVx * relVx + relVy * relVy);
+            // LIFE PLANET PROTECTION — locked life planets (lifeProgress >= 1.0,
+            // not selected) are immune to destructive collisions. They absorb
+            // incoming bodies (merge) regardless of relative speed. This
+            // prevents accidentally destroying a save-planet when pulling dust
+            // near it with the gravity well.
+            const aIsLockedLife = a.type === "planet" && a.lifeProgress >= 1.0 && a.id !== selectedPlanetIdRef.current;
+            const bIsLockedLife = b.type === "planet" && b.lifeProgress >= 1.0 && b.id !== selectedPlanetIdRef.current;
+            if (aIsLockedLife || bIsLockedLife) {
+              // Always merge — the life planet absorbs the other body.
+              // The life planet's name/saveId/lifeProgress are preserved by
+              // mergeBodies (larger mass wins).
+              const merged_body = mergeBodies(a, b);
+              merged.add(a.id);
+              merged.add(b.id);
+              newBodies.push(merged_body);
+              break;
+            }
             if (relSpeed < MERGE_SPEED_THRESHOLD) {
               // Merge
               const merged_body = mergeBodies(a, b);
