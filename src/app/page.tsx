@@ -1,54 +1,54 @@
 "use client";
 
 import { useState } from "react";
-import { LandingPage } from "@/components/game/layout/LandingPage";
 import { GameShell } from "@/components/game/layout/GameShell";
 import { SolarGenesis } from "@/components/game/genesis/SolarGenesis";
 
-// SOLAR-GENESIS-GATE — Solar Genesis shows AFTER the player clicks Descend
-// on an empty slot, not before the LandingPage. Flow:
-//   1. Page loads → LandingPage (unless descending flag → GameShell)
-//   2. Player selects an empty slot → clicks Descend → SolarGenesis
-//   3. SolarGenesis completes → GameShell
-// If the slot has an existing save, Descend goes directly to GameShell.
+// SOLAR-GENESIS-GATE — the game entry flow is now:
+//   1. Title screen: "Cosmogenesis" + "Descend" button
+//   2. Solar Genesis: the save screen — planets you've made persist
+//      between sessions. Make new planets (new saves), select one to
+//      Begin, or push a planet into the sun to delete it.
+//   3. GameShell: the actual game
+
+// Minimal title screen — just the game name + a single button.
+function TitleScreen({ onPlay }: { onPlay: () => void }) {
+  return (
+    <main className="min-h-screen bg-[#03030c] flex flex-col items-center justify-center">
+      <h1 className="text-5xl font-light tracking-wide text-amber-100/90 mb-2">
+        Cosmogenesis
+      </h1>
+      <p className="text-sm text-slate-500/70 italic mb-8">
+        Awaken as a single cell.
+      </p>
+      <button
+        onClick={onPlay}
+        className="px-8 py-3 text-base text-amber-100 border border-amber-400/30 rounded hover:bg-amber-400/10 hover:border-amber-400/50 transition-colors"
+      >
+        Descend
+      </button>
+    </main>
+  );
+}
 
 export default function Home() {
-  const [stage, setStage] = useState<"genesis" | "landing" | "game">(() => {
-    if (typeof window === "undefined") return "landing";
-    // If we just reloaded from a slot switch with an existing save,
-    // skip to the game.
-    if (sessionStorage.getItem("cosmogenesis_descending")) {
-      sessionStorage.removeItem("cosmogenesis_descending");
-      return "game";
-    }
-    // If SolarGenesis was just completed (from a slot switch on an empty
-    // slot), go directly to the game.
+  const [stage, setStage] = useState<"title" | "genesis" | "game">(() => {
+    if (typeof window === "undefined") return "title";
+    // If we just completed SolarGenesis (from a previous session that
+    // was interrupted), skip to the game.
     if (sessionStorage.getItem("cosmogenesis_genesis_done")) {
       sessionStorage.removeItem("cosmogenesis_genesis_done");
       return "game";
     }
-    // If we're reloading from selecting an empty slot (new game),
-    // show SolarGenesis.
-    if (sessionStorage.getItem("cosmogenesis_new_game")) {
-      sessionStorage.removeItem("cosmogenesis_new_game");
-      return "genesis";
-    }
-    return "landing";
+    return "title";
   });
+
+  if (stage === "title") {
+    return <TitleScreen onPlay={() => setStage("genesis")} />;
+  }
 
   if (stage === "genesis") {
     return <SolarGenesis onComplete={() => setStage("game")} />;
-  }
-
-  if (stage === "landing") {
-    return (
-      <LandingPage
-        onDescend={(isNewGame: boolean) => {
-          if (isNewGame) setStage("genesis");
-          else setStage("game");
-        }}
-      />
-    );
   }
 
   return <GameShell />;

@@ -26,7 +26,7 @@ const CURSOR_MASS = 8000;
 const DT = 1 / 60;
 const DUST_COUNT = 100;
 const TARGET_DUST = 100;
-const DUST_SPAWN_INTERVAL = 1.5;
+const DUST_SPAWN_INTERVAL = 1.0;
 const HABITABLE_INNER = 150;
 const HABITABLE_OUTER = 260;
 const MERGE_SPEED_THRESHOLD = 80;
@@ -49,6 +49,8 @@ interface Body {
   trail: Array<{ x: number; y: number }>;
   lifeProgress: number;
   inHabitableZone: boolean;
+  name?: string;
+  saveId?: string;
 }
 
 interface Star {
@@ -106,18 +108,32 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
 }
 
 // Merge two bodies conserving momentum and mass.
+// RADIUS FIX: uses sqrt(r1² + r2²) (area-conserving, 2D) instead of
+// cbrt(r1³ + r2³) (volume-conserving, 3D). The 3D formula made merged
+// bodies barely larger than their components (two r=2 dust → r=2.52,
+// only 26% bigger). The 2D formula gives a visible size increase
+// (two r=2 dust → r=2.83, 42% bigger).
 function mergeBodies(a: Body, b: Body): Body {
   const totalMass = a.mass + b.mass;
   const nx = (a.mass * a.x + b.mass * b.x) / totalMass;
   const ny = (a.mass * a.y + b.mass * b.y) / totalMass;
   const nvx = (a.mass * a.vx + b.mass * b.vx) / totalMass;
   const nvy = (a.mass * a.vy + b.mass * b.vy) / totalMass;
-  const nr = Math.cbrt(a.radius ** 3 + b.radius ** 3);
+  const nr = Math.sqrt(a.radius ** 2 + b.radius ** 2);
   const ntype = totalMass >= PLANET_MASS_THRESHOLD ? "planet" : totalMass >= 1.5 ? "rock" : "dust";
   const nHue = (a.hue + b.hue) / 2;
   const lifeProgress = Math.max(a.lifeProgress, b.lifeProgress);
   const inHab = a.inHabitableZone || b.inHabitableZone;
-  return makeBody(ntype, nx, ny, nvx, nvy, totalMass, nr, nHue);
+  const result = makeBody(ntype, nx, ny, nvx, nvy, totalMass, nr, nHue);
+  result.lifeProgress = lifeProgress;
+  result.inHabitableZone = inHab;
+  // Preserve name + saveId if either body had them (the larger one wins).
+  if (a.saveId || b.saveId) {
+    const keeper = a.mass >= b.mass ? a : b;
+    result.name = keeper.name;
+    result.saveId = keeper.saveId;
+  }
+  return result;
 }
 
 // Shatter a body into debris when a high-speed collision occurs.
@@ -138,8 +154,42 @@ function shatterBody(body: Body, relVx: number, relVy: number): Body[] {
   return pieces;
 }
 
+// ---- Solar system persistence ----
+// Life planets are saved to localStorage so they persist between sessions.
+// Dust and rocks are transient (regenerated each session). Each life planet
+// maps to a save data entry: cosmogenesis_save_{saveId}.
+const SOLAR_SYSTEM_KEY = "cosmogenesis_solar_system";
+const SAVE_PREFIX = "cosmogenesis_save_";
+
+interface PersistedPlanet {
+  id: number;
+  name: string;
+  saveId: string;
+  x: number; y: number;
+  vx: number; vy: number;
+  mass: number;
+  radius: number;
+  hue: number;
+  lifeProgress: number;
+}
+
+function loadSolarSystem(): PersistedPlanet[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = localStorage.getItem(SOLAR_SYSTEM_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveSolarSystem(planets: PersistedPlanet[]) {
+  try {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(SOLAR_SYSTEM_KEY, JSON.stringify(planets));
+  } catch { /* ignore */ }
+}
+
 interface SolarGenesisProps {
-  onComplete: () => void;
+  onComplete: (saveId?: string) => void;
 }
 
 export function SolarGenesis({ onComplete }: SolarGenesisProps) {
@@ -154,7 +204,31 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
   const [planetCount, setPlanetCount] = useState(0);
   const [dustCount, setDustCount] = useState(DUST_COUNT);
   const [rockCount, setRockCount] = useState(0);
+  // Refs mirror the state values so the animation loop can read them
+  // without being recreated when they change. This prevents the
+  // requestAnimationFrame loop from being cancelled + restarted dozens
+  // of times per second during merging (which was preventing the dust
+  // spawn timer from ever firing).
+  const hasLifePlanetRef = useRef(false);
+  const planetCountRef = useRef(0);
+  const dustCountRef = useRef(DUST_COUNT);
+  const rockCountRef = useRef(0);
   const [selectedPlanetId, setSelectedPlanetId] = useState<number | null>(null);
+  const selectedPlanetIdRef = useRef<number | null>(null);
+  const saveTimerRef = useRef<number>(0);
+  const [selectedPlanetName, setSelectedPlanetName] = useState("");
+
+  // Wrapper that updates both the state and the ref together.
+  const selectPlanet = useCallback((id: number | null) => {
+    selectedPlanetIdRef.current = id;
+    setSelectedPlanetId(id);
+    if (id !== null) {
+      const p = bodiesRef.current.find((b) => b.id === id);
+      setSelectedPlanetName(p?.name || "");
+    } else {
+      setSelectedPlanetName("");
+    }
+  }, []);
 
   // ---- Initialize ----
   useEffect(() => {
@@ -164,7 +238,26 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
     const h = canvas.clientHeight;
     starRef.current.x = w / 2;
     starRef.current.y = h / 2;
-    bodiesRef.current = initDust(starRef.current.x, starRef.current.y);
+    // Load persisted life planets + fresh dust.
+    const persisted = loadSolarSystem();
+    const planetBodies: Body[] = persisted.map((p) => ({
+      id: p.id,
+      type: "planet" as const,
+      x: p.x, y: p.y,
+      vx: p.vx, vy: p.vy,
+      mass: p.mass,
+      radius: p.radius,
+      hue: p.hue,
+      trail: [],
+      lifeProgress: p.lifeProgress,
+      inHabitableZone: true,
+      name: p.name,
+      saveId: p.saveId,
+    }));
+    // Ensure nextId doesn't collide with persisted IDs.
+    const maxId = planetBodies.reduce((mx, b) => Math.max(mx, b.id), 0);
+    nextId = Math.max(nextId, maxId + 1);
+    bodiesRef.current = [...planetBodies, ...initDust(starRef.current.x, starRef.current.y)];
     cameraRef.current.offsetX = w / 2;
     cameraRef.current.offsetY = h / 2;
 
@@ -214,10 +307,45 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         const r2 = dx * dx + dy * dy;
         const r = Math.sqrt(r2);
         if (r < star.radius) {
-          // Consumed by star
+          // Consumed by star — if this is a life planet with a save, delete the save.
+          if (b.type === "planet" && b.lifeProgress >= 1.0 && b.saveId) {
+            try { localStorage.removeItem(`${SAVE_PREFIX}${b.saveId}`); } catch { /* ignore */ }
+            if (b.id === selectedPlanetIdRef.current) {
+              setSelectedPlanetId(null);
+              setSelectedPlanetName("");
+            }
+          }
           b.mass = 0;
           continue;
         }
+
+        // ORBIT LOCKING — life planets (lifeProgress >= 1.0) that are NOT
+        // selected have their orbits locked: they maintain a stable circular
+        // orbit and are immune to the cursor gravity well. This prevents
+        // accidentally pulling a save-planet out of orbit when clicking near
+        // it. Selecting a planet unlocks its orbit (so the player can push
+        // it into the sun to delete the save).
+        const isLockedLifePlanet = b.type === "planet" && b.lifeProgress >= 1.0 && b.id !== selectedPlanetIdRef.current;
+        if (isLockedLifePlanet) {
+          // Clamp velocity to ideal circular orbital velocity for this radius.
+          // This keeps the planet in a stable orbit indefinitely.
+          const idealV = Math.sqrt((G * STAR_MASS) / r);
+          const vMag = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+          if (vMag > 0) {
+            const scale = idealV / vMag;
+            b.vx *= scale;
+            b.vy *= scale;
+          }
+          // Skip cursor gravity + damping for locked planets.
+          b.vx += (dx / r) * ((G * STAR_MASS) / Math.max(r2, 100)) * DT;
+          b.vy += (dy / r) * ((G * STAR_MASS) / Math.max(r2, 100)) * DT;
+          b.x += b.vx * DT;
+          b.y += b.vy * DT;
+          b.trail.push({ x: b.x, y: b.y });
+          if (b.trail.length > TRAIL_LENGTH) b.trail.shift();
+          continue;
+        }
+
         const starForce = (G * STAR_MASS) / Math.max(r2, 100);
         let ax = (dx / r) * starForce;
         let ay = (dy / r) * starForce;
@@ -353,7 +481,7 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         dustSpawnTimerRef.current = DUST_SPAWN_INTERVAL;
         const currentDust = finalBodies.filter((b) => b.type === "dust").length;
         if (currentDust < TARGET_DUST) {
-          const toSpawn = Math.min(5, TARGET_DUST - currentDust);
+          const toSpawn = Math.min(10, TARGET_DUST - currentDust);
           for (let i = 0; i < toSpawn; i++) {
             finalBodies.push(spawnDust(star.x, star.y));
           }
@@ -365,6 +493,15 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
       const planets = finalBodies.filter((b) => b.type === "planet");
       const dust = finalBodies.filter((b) => b.type === "dust").length;
       const rocks = finalBodies.filter((b) => b.type === "rock").length;
+
+      // Assign saveId + default name to planets that just developed life.
+      for (const p of planets) {
+        if (p.lifeProgress >= 1.0 && !p.saveId) {
+          p.saveId = `planet_${p.id}_${Date.now()}`;
+          p.name = p.name || `Planet ${p.id}`;
+        }
+      }
+
       const hasLife = planets.some((p) => p.lifeProgress > 0.99);
       if (planets.length !== planetCount) setPlanetCount(planets.length);
       if (dust !== dustCount) setDustCount(dust);
@@ -372,12 +509,25 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
       if (hasLife && !hasLifePlanet) {
         setHasLifePlanet(true);
       }
-      // Life-detected reset — if the planet with life is destroyed (shattered
-      // in a collision or consumed by the star), the flag resets so the
-      // "Life detected" message goes away and the Begin button disappears.
       if (!hasLife && hasLifePlanet) {
         setHasLifePlanet(false);
         setSelectedPlanetId(null);
+        setSelectedPlanetName("");
+      }
+
+      // ---- Periodic solar system save (every ~5 seconds) ----
+      saveTimerRef.current -= DT;
+      if (saveTimerRef.current <= 0) {
+        saveTimerRef.current = 5;
+        const toSave: PersistedPlanet[] = planets
+          .filter((p) => p.lifeProgress >= 1.0 && p.saveId)
+          .map((p) => ({
+            id: p.id, name: p.name || "", saveId: p.saveId!,
+            x: p.x, y: p.y, vx: p.vx, vy: p.vy,
+            mass: p.mass, radius: p.radius, hue: p.hue,
+            lifeProgress: p.lifeProgress,
+          }));
+        saveSolarSystem(toSave);
       }
 
       // ---- Render ----
@@ -520,12 +670,49 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
   }, [hasLifePlanet, planetCount, dustCount]);
 
   // ---- Mouse handlers ----
+  // Clicking a life planet SELECTS it (doesn't create a gravity well).
+  // Clicking empty space or the SELECTED planet activates the gravity well
+  // (so the player can push the selected planet into the sun to delete it).
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    mouseRef.current.x = e.clientX - rect.left;
-    mouseRef.current.y = e.clientY - rect.top;
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const cam = cameraRef.current;
+    const star = starRef.current;
+    const wx = (sx - cam.offsetX) / cam.zoom + star.x;
+    const wy = (sy - cam.offsetY) / cam.zoom + star.y;
+
+    // Check if clicking on an unselected life planet → select it, no gravity well.
+    for (const b of bodiesRef.current) {
+      if (b.type === "planet" && b.lifeProgress >= 1.0 && b.id !== selectedPlanetIdRef.current) {
+        if (dist(wx, wy, b.x, b.y) < b.radius + 8) {
+          setSelectedPlanetId(b.id);
+          setSelectedPlanetName(b.name || "");
+          return; // Don't activate gravity well.
+        }
+      }
+    }
+
+    // Clicking on empty space when a planet is selected → deselect.
+    if (selectedPlanetIdRef.current !== null) {
+      let clickedOnSelected = false;
+      for (const b of bodiesRef.current) {
+        if (b.id === selectedPlanetIdRef.current && dist(wx, wy, b.x, b.y) < b.radius + 8) {
+          clickedOnSelected = true;
+          break;
+        }
+      }
+      if (!clickedOnSelected) {
+        setSelectedPlanetId(null);
+        setSelectedPlanetName("");
+      }
+    }
+
+    // Activate gravity well (for dust pulling OR pushing the selected planet).
+    mouseRef.current.x = sx;
+    mouseRef.current.y = sy;
     mouseRef.current.down = true;
   }, []);
 
@@ -541,29 +728,6 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
     mouseRef.current.down = false;
   }, []);
 
-  // ---- Click a planet to select it ----
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (!hasLifePlanet) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const cam = cameraRef.current;
-    const star = starRef.current;
-    // Screen -> world: (sx - offsetX) / zoom + starX
-    const wx = (sx - cam.offsetX) / cam.zoom + star.x;
-    const wy = (sy - cam.offsetY) / cam.zoom + star.y;
-    for (const b of bodiesRef.current) {
-      if (b.type === "planet" && b.lifeProgress > 0.99) {
-        if (dist(wx, wy, b.x, b.y) < b.radius + 8) {
-          setSelectedPlanetId(b.id);
-          break;
-        }
-      }
-    }
-  }, [hasLifePlanet]);
-
   return (
     <div className="fixed inset-0 bg-[#03030c] flex items-center justify-center overflow-hidden">
       <canvas
@@ -573,7 +737,6 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        onClick={handleClick}
       />
 
       {/* UI overlay */}
@@ -581,13 +744,17 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         <h1 className="text-2xl font-light tracking-wide text-amber-100/90 mb-1">
           Solar Genesis
         </h1>
-        {!hasLifePlanet ? (
+        {selectedPlanetId !== null ? (
+          <p className="text-sm text-emerald-300/90 max-w-md">
+            Selected. Press Begin to start, or hold near the planet to push it into the sun (delete).
+          </p>
+        ) : !hasLifePlanet ? (
           <p className="text-sm text-slate-400/80 max-w-md">
             Hold to pull dust together. Scroll to zoom. Guide a planet into the green ring to seed life.
           </p>
         ) : (
           <p className="text-sm text-emerald-300/90 max-w-md">
-            Life detected. Click the green planet to select it, then press Begin.
+            Life detected. Click a green planet to select it.
           </p>
         )}
       </div>
@@ -600,18 +767,31 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         {hasLifePlanet && <div className="text-emerald-400/80">Life: detected</div>}
       </div>
 
-      {/* Begin button */}
-      {hasLifePlanet && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+      {/* Selected planet panel: name input + Begin button */}
+      {selectedPlanetId !== null && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
+          <input
+            type="text"
+            value={selectedPlanetName}
+            onChange={(e) => {
+              const name = e.target.value.slice(0, 24);
+              setSelectedPlanetName(name);
+              const p = bodiesRef.current.find((b) => b.id === selectedPlanetId);
+              if (p) p.name = name;
+            }}
+            placeholder="Name this world…"
+            maxLength={24}
+            className="bg-[#0a0a1a] border border-emerald-400/30 rounded px-3 py-2 text-sm text-emerald-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-400/60"
+          />
           <Button
             size="lg"
             className="px-8 py-3 text-base bg-emerald-600/80 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-50 shadow-lg shadow-emerald-500/20"
-            disabled={selectedPlanetId === null}
-            onClick={onComplete}
+            onClick={() => {
+              const p = bodiesRef.current.find((b) => b.id === selectedPlanetId);
+              onComplete(p?.saveId);
+            }}
           >
-            {selectedPlanetId === null
-              ? "Select a planet first"
-              : "Begin"}
+            Begin
           </Button>
         </div>
       )}
