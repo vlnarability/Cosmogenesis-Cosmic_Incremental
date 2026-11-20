@@ -22,16 +22,18 @@ import { Button } from "@/components/ui/button";
 const G = 45;
 const STAR_MASS = 8000;
 // Tuned for intuitive gameplay — planets should form within 10-15s of holding.
-const CURSOR_MASS = 6000;
+const CURSOR_MASS = 8000;
 const DT = 1 / 60;
-const DUST_COUNT = 70;
+const DUST_COUNT = 100;
+const TARGET_DUST = 100;
+const DUST_SPAWN_INTERVAL = 1.5;
 const HABITABLE_INNER = 150;
 const HABITABLE_OUTER = 260;
-const MERGE_SPEED_THRESHOLD = 60;
+const MERGE_SPEED_THRESHOLD = 80;
 const PLANET_MASS_THRESHOLD = 6;
 const LIFE_RATE = 0.04;
 const TRAIL_LENGTH = 18;
-const CURSOR_RANGE = 200;
+const CURSOR_RANGE = 220;
 const SHATTER_MIN_SPEED = 50;
 
 interface Body {
@@ -82,6 +84,23 @@ function initDust(starX: number, starY: number): Body[] {
   return bodies;
 }
 
+// Spawn a single dust particle at a random orbital position on the outer
+// edge of the dust field. Used by the continuous-spawn system to maintain
+// ~TARGET_DUST dust particles on screen at all times.
+function spawnDust(starX: number, starY: number): Body {
+  const angle = Math.random() * Math.PI * 2;
+  const d = 250 + Math.random() * 150; // outer edge (250-400 from star)
+  const x = starX + Math.cos(angle) * d;
+  const y = starY + Math.sin(angle) * d;
+  const orbSpeed = Math.sqrt((G * STAR_MASS) / d) * (0.7 + Math.random() * 0.5);
+  const vx = -Math.sin(angle) * orbSpeed;
+  const vy = Math.cos(angle) * orbSpeed;
+  const mass = 0.8 + Math.random() * 0.4;
+  const radius = 1.8 + Math.random() * 1.0;
+  const hue = 190 + Math.random() * 50;
+  return makeBody("dust", x, y, vx, vy, mass, radius, hue);
+}
+
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
 }
@@ -128,8 +147,9 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
   const bodiesRef = useRef<Body[]>([]);
   const starRef = useRef<Star>({ x: 0, y: 0, mass: STAR_MASS, radius: 22, pulse: 0 });
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0, y: 0, down: false });
-  const cameraRef = useRef<{ zoom: number; offsetX: number; offsetY: number }>({ zoom: 1, offsetX: 0, offsetY: 0 });
+  const cameraRef = useRef<{ zoom: number; offsetX: number; offsetY: number }>({ zoom: 0.8, offsetX: 0, offsetY: 0 });
   const animRef = useRef<number>(0);
+  const dustSpawnTimerRef = useRef<number>(0);
   const [hasLifePlanet, setHasLifePlanet] = useState(false);
   const [planetCount, setPlanetCount] = useState(0);
   const [dustCount, setDustCount] = useState(DUST_COUNT);
@@ -156,7 +176,19 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
     };
     handleResize();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+
+    // Manual zoom via mouse wheel — user controls zoom entirely.
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const cam = cameraRef.current;
+      const zoomDelta = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      cam.zoom = Math.max(0.2, Math.min(3.0, cam.zoom * zoomDelta));
+    };
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      canvas.removeEventListener("wheel", handleWheel);
+    };
   }, []);
 
   // ---- Physics + render loop ----
@@ -206,10 +238,10 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
             // Velocity damping within the gravity well — simulates
             // inter-particle collisions that dissipate kinetic energy,
             // allowing material to accrete rather than fling past.
-            // Without this, bodies orbit the cursor at high speed and
-            // never slow down enough to merge.
-            b.vx *= 0.97;
-            b.vy *= 0.97;
+            // Strong damping (0.93/tick) so long holds reliably merge
+            // all nearby dust into progressively larger bodies.
+            b.vx *= 0.93;
+            b.vy *= 0.93;
           }
         }
 
@@ -309,18 +341,25 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
       const finalBodies = alive.filter((b) => !merged.has(b.id)).concat(newBodies);
       bodiesRef.current = finalBodies;
 
-      // ---- Camera zoom ----
-      let maxDist = 0;
-      for (const b of finalBodies) {
-        const d = dist(b.x, b.y, star.x, star.y);
-        if (d > maxDist) maxDist = d;
-      }
+      // ---- Camera: manual zoom only (user controls via wheel) ----
       const w = canvas.width;
       const h = canvas.height;
-      const targetZoom = Math.min(1.0, (Math.min(w, h) * 0.42) / Math.max(maxDist, HABITABLE_OUTER + 50));
-      cam.zoom += (targetZoom - cam.zoom) * 0.02;
       cam.offsetX = w / 2;
       cam.offsetY = h / 2;
+
+      // ---- Continuous dust spawning — maintain ~TARGET_DUST particles ----
+      dustSpawnTimerRef.current -= DT;
+      if (dustSpawnTimerRef.current <= 0) {
+        dustSpawnTimerRef.current = DUST_SPAWN_INTERVAL;
+        const currentDust = finalBodies.filter((b) => b.type === "dust").length;
+        if (currentDust < TARGET_DUST) {
+          const toSpawn = Math.min(5, TARGET_DUST - currentDust);
+          for (let i = 0; i < toSpawn; i++) {
+            finalBodies.push(spawnDust(star.x, star.y));
+          }
+          bodiesRef.current = finalBodies;
+        }
+      }
 
       // ---- Update React state (throttled by comparing values) ----
       const planets = finalBodies.filter((b) => b.type === "planet");
@@ -332,6 +371,13 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
       if (rocks !== rockCount) setRockCount(rocks);
       if (hasLife && !hasLifePlanet) {
         setHasLifePlanet(true);
+      }
+      // Life-detected reset — if the planet with life is destroyed (shattered
+      // in a collision or consumed by the star), the flag resets so the
+      // "Life detected" message goes away and the Begin button disappears.
+      if (!hasLife && hasLifePlanet) {
+        setHasLifePlanet(false);
+        setSelectedPlanetId(null);
       }
 
       // ---- Render ----
@@ -537,7 +583,7 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
         </h1>
         {!hasLifePlanet ? (
           <p className="text-sm text-slate-400/80 max-w-md">
-            Hold to pull dust together. Guide a planet into the green habitable ring to seed life.
+            Hold to pull dust together. Scroll to zoom. Guide a planet into the green ring to seed life.
           </p>
         ) : (
           <p className="text-sm text-emerald-300/90 max-w-md">

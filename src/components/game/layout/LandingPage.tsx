@@ -50,7 +50,7 @@ function writeSlotName(slot: number, name: string) {
   } catch { /* ignore */ }
 }
 
-export function LandingPage({ onDescend }: { onDescend: () => void }) {
+export function LandingPage({ onDescend }: { onDescend: (isNewGame: boolean) => void }) {
   const [selectedSlot, setSelectedSlot] = useState(1);
   const [slotInfos, setSlotInfos] = useState<(ReturnType<typeof readSlotInfo> | null)[]>([null, null, null]);
   const [slotNames, setSlotNames] = useState<Record<number, string>>({});
@@ -92,12 +92,23 @@ export function LandingPage({ onDescend }: { onDescend: () => void }) {
     store.flushSave();       // flush to old slot
     store.clearPendingSave(); // clear timer + pending write
     setCurrentSlot(selectedSlot);
+    const isNewGame = !selectedHasSave;
     if (selectedSlot !== currentSlot) {
-      sessionStorage.setItem("cosmogenesis_descending", "1");
+      // Switching to a different slot — reload to re-hydrate.
+      // If the new slot is empty (new game), set the new_game flag so
+      // page.tsx shows SolarGenesis after reload. Otherwise set the
+      // descending flag to skip straight to GameShell.
+      if (isNewGame) {
+        sessionStorage.setItem("cosmogenesis_new_game", "1");
+      } else {
+        sessionStorage.setItem("cosmogenesis_descending", "1");
+      }
       window.location.reload();
       return;
     }
-    onDescend();
+    // Same slot — call onDescend directly. If the slot is empty, this
+    // triggers SolarGenesis (new game). Otherwise it loads the game.
+    onDescend(isNewGame);
   };
 
   const startRename = (slot: number) => {
