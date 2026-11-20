@@ -35,6 +35,11 @@ const LIFE_RATE = 0.04;
 const TRAIL_LENGTH = 18;
 const CURSOR_RANGE = 220;
 const SHATTER_MIN_SPEED = 50;
+const STAR_RADIUS = 22;
+// Planets can't grow larger than ~64% of the star's radius. Mass still
+// accumulates (the planet gets denser) but the visual size is capped so
+// a planet never appears larger than the star.
+const MAX_BODY_RADIUS = STAR_RADIUS * 0.64; // ~14
 
 interface Body {
   id: number;
@@ -119,7 +124,7 @@ function mergeBodies(a: Body, b: Body): Body {
   const ny = (a.mass * a.y + b.mass * b.y) / totalMass;
   const nvx = (a.mass * a.vx + b.mass * b.vx) / totalMass;
   const nvy = (a.mass * a.vy + b.mass * b.vy) / totalMass;
-  const nr = Math.sqrt(a.radius ** 2 + b.radius ** 2);
+  const nr = Math.min(Math.sqrt(a.radius ** 2 + b.radius ** 2), MAX_BODY_RADIUS);
   const ntype = totalMass >= PLANET_MASS_THRESHOLD ? "planet" : totalMass >= 1.5 ? "rock" : "dust";
   const nHue = (a.hue + b.hue) / 2;
   const lifeProgress = Math.max(a.lifeProgress, b.lifeProgress);
@@ -195,7 +200,7 @@ interface SolarGenesisProps {
 export function SolarGenesis({ onComplete }: SolarGenesisProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bodiesRef = useRef<Body[]>([]);
-  const starRef = useRef<Star>({ x: 0, y: 0, mass: STAR_MASS, radius: 22, pulse: 0 });
+  const starRef = useRef<Star>({ x: 0, y: 0, mass: STAR_MASS, radius: STAR_RADIUS, pulse: 0 });
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0, y: 0, down: false });
   const cameraRef = useRef<{ zoom: number; offsetX: number; offsetY: number }>({ zoom: 0.8, offsetX: 0, offsetY: 0 });
   const animRef = useRef<number>(0);
