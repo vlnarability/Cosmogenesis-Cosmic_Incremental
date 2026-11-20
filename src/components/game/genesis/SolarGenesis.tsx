@@ -503,17 +503,11 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
       }
 
       const hasLife = planets.some((p) => p.lifeProgress > 0.99);
-      if (planets.length !== planetCount) setPlanetCount(planets.length);
-      if (dust !== dustCount) setDustCount(dust);
-      if (rocks !== rockCount) setRockCount(rocks);
-      if (hasLife && !hasLifePlanet) {
-        setHasLifePlanet(true);
-      }
-      if (!hasLife && hasLifePlanet) {
-        setHasLifePlanet(false);
-        setSelectedPlanetId(null);
-        setSelectedPlanetName("");
-      }
+      if (planets.length !== planetCountRef.current) { planetCountRef.current = planets.length; setPlanetCount(planets.length); }
+      if (dust !== dustCountRef.current) { dustCountRef.current = dust; setDustCount(dust); }
+      if (rocks !== rockCountRef.current) { rockCountRef.current = rocks; setRockCount(rocks); }
+      if (hasLife && !hasLifePlanetRef.current) { hasLifePlanetRef.current = true; setHasLifePlanet(true); }
+      if (!hasLife && hasLifePlanetRef.current) { hasLifePlanetRef.current = false; setHasLifePlanet(false); selectPlanet(null); }
 
       // ---- Periodic solar system save (every ~5 seconds) ----
       saveTimerRef.current -= DT;
@@ -667,7 +661,7 @@ export function SolarGenesis({ onComplete }: SolarGenesisProps) {
 
     animRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animRef.current);
-  }, [hasLifePlanet, planetCount, dustCount]);
+  }, []);
 
   // ---- Mouse handlers ----
   // Clicking a life planet SELECTS it (doesn't create a gravity well).
